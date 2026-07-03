@@ -1,0 +1,675 @@
+@CyberErp.Hrms.Api_HostAddress = http://localhost:5014
+@AuthToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJCdXNpbmVzc0Jvb2tBUEkiLCJqdGkiOiJiOGMzYWU3Ni0zZDg5LTQwNDktYTY4MC04YTViMjc2ZGE5MWUiLCJpYXQiOiIxNzcxMjQ5NTAwIiwiVXNlcklkIjoiMDE5YzY2NTMtOWJmYy03OWFjLWFiMTctZGQ2MDAzYmY4ZGE1IiwiRnVsbE5hbWUiOiJKb2huIERvZSIsIkVtYWlsIjoiam9obi5kb2VAZXhhbXBsZS5jb20iLCJQaG9uZU5vIjoiKzEyMzQ1Njc4OTAiLCJVc2VyTmFtZSI6ImpvaG5kb2UiLCJUZW5hbnRJZCI6IjAxOWM2NjUzLTg4ZjAtNzViYy04NTk4LTcxYzc5NDYyOGYzYyIsImV4cCI6MTc3MTI1MzEwMCwiaXNzIjoiQnVzaW5lc3NCb29rQVBJIiwiYXVkIjoiQnVzaW5lc3NCb29rQVBJVXNlcnMifQ.UE8OMCAcV0gyIunJ2h4kzPVShqCz4rTDmm1u0FB-2rY
+
+# ===========================================
+# AUTH CONTROLLER
+# ===========================================
+
+# Login
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "userName": "johndoe",
+  "password": "Password123!"
+}
+
+###
+# Logout
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/auth/logout
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "tokenId": "your-token-id-here"
+}
+
+###
+# Register (Create new tenant and user)
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "John Doe",
+  "email": "john.doe@example.com",
+  "phoneNumber": "+1234567890",
+  "userName": "johndoe",
+  "password": "Password123!",
+  "tenantName": "John's Business",
+  "tenantIdentifier": "john-business",
+  "tenantAddress": "123 Main Street",
+  "tenantPhoneNumber": "+1234567890"
+}
+
+###
+# Register with Google
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/auth/register/google
+Content-Type: application/json
+
+{
+  "fullName": "John Doe",
+  "email": "meftuhharar@gmail.com",
+  "phoneNumber": "+1234567890",
+  "tenantName": "John's Business",
+  "tenantIdentifier": "john-business-2",
+  "tenantAddress": "123 Main Street",
+  "tenantPhoneNumber": "+1234567890",
+  "googleToken": "your-google-id-token-here"
+}
+
+# ===========================================
+# FINANCE CONTROLLERS
+# ===========================================
+
+# Payments
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/payments
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/payments/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/payments
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "PAY-001",
+  "amount": 1000.00,
+  "date": "2024-01-15T10:00:00Z",
+  "remark": "Test payment"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/payments/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "PAY-001-UPDATED",
+  "amount": 1500.00,
+  "remark": "Updated payment"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/payments/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Collections
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/collections
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/collections/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/collections
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "COL-001",
+  "amount": 500.00,
+  "date": "2024-01-15T10:00:00Z",
+  "remark": "Test collection"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/collections/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "COL-001-UPDATED",
+  "amount": 750.00,
+  "remark": "Updated collection"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/collections/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Expenses
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/expenses
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/expenses/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/expenses
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "EXP-001",
+  "amount": 200.00,
+  "expenseTypeId": "00000000-0000-0000-0000-000000000001",
+  "date": "2024-01-15T10:00:00Z",
+  "remark": "Test expense"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/expenses/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "EXP-001-UPDATED",
+  "amount": 300.00,
+  "expenseTypeId": "00000000-0000-0000-0000-000000000001",
+  "remark": "Updated expense"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/expenses/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Banks
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/banks
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/banks/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/banks
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Test Bank",
+  "isDefault": true,
+  "balance": 10000.00,
+  "openingBalance": 10000.00
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/banks/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Updated Test Bank",
+  "isDefault": false,
+  "balance": 15000.00
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/banks/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Bank Transfers
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/banktransfers
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/banktransfers/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/banktransfers
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "BT-001",
+  "fromBankId": "00000000-0000-0000-0000-000000000001",
+  "toBankId": "00000000-0000-0000-0000-000000000002",
+  "amount": 5000.00,
+  "date": "2024-01-15T10:00:00Z",
+  "remark": "Test transfer"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/banktransfers/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "BT-001-UPDATED",
+  "amount": 7500.00,
+  "remark": "Updated transfer"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/banktransfers/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Account Transactions
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/accounttransactions
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/accounttransactions/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/accounttransactions
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "AT-001",
+  "documentNo": "DOC-001",
+  "voucherId": "00000000-0000-0000-0000-000000000001",
+  "voucherDetailId": "00000000-0000-0000-0000-000000000002",
+  "fiscalYearId": "00000000-0000-0000-0000-000000000003",
+  "sourceId": "00000000-0000-0000-0000-000000000004",
+  "voucherType": "Payment",
+  "date": "2024-01-15T10:00:00Z",
+  "debit": 1000.00,
+  "credit": 0.00,
+  "balance": 1000.00
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/accounttransactions/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "AT-001-UPDATED",
+  "debit": 1500.00,
+  "credit": 500.00,
+  "balance": 1000.00
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/accounttransactions/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# ===========================================
+# INVENTORY CONTROLLERS
+# ===========================================
+
+# Issues
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/issues
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/issues/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/issues
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "ISS-001",
+  "storeId": "00000000-0000-0000-0000-000000000001",
+  "fiscalYearId": "00000000-0000-0000-0000-000000000002",
+  "preparedById": "00000000-0000-0000-0000-000000000003",
+  "statusId": "00000000-0000-0000-0000-000000000004",
+  "date": "2024-01-15T10:00:00Z"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/issues/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "ISS-001-UPDATED",
+  "statusId": "00000000-0000-0000-0000-000000000005"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/issues/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Stores
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/stores
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/stores/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/stores
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Main Store",
+  "storeType": "Warehouse",
+  "isDefault": true
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/stores/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "id":"019c66ba-5f91-706b-b20a-d2032d4991fa",
+  "name": "Updated Main Store",
+  "storeType": "Warehouse",
+  "isDefault": false
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/stores/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Items
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/items
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/items/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/items
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Test Item",
+  "code": "ITEM-001",
+  "itemCategoryId": "00000000-0000-0000-0000-000000000001",
+  "itemTypeId": "00000000-0000-0000-0000-000000000002",
+  "unitId": "00000000-0000-0000-0000-000000000003",
+  "minimumStock": 10,
+  "maximumStock": 100
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/items/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Updated Test Item",
+  "code": "ITEM-001-UPDATED",
+  "minimumStock": 20,
+  "maximumStock": 200
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/items/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Transfer Issues
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/transferissues
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/transferissues/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/transferissues
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "TI-001",
+  "fromStoreId": "00000000-0000-0000-0000-000000000001",
+  "toStoreId": "00000000-0000-0000-0000-000000000002",
+  "fiscalYearId": "00000000-0000-0000-0000-000000000003",
+  "preparedById": "00000000-0000-0000-0000-000000000004",
+  "issuedById": "00000000-0000-0000-0000-000000000005",
+  "receivedById": "00000000-0000-0000-0000-000000000006",
+  "statusId": "00000000-0000-0000-0000-000000000007",
+  "date": "2024-01-15T10:00:00Z"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/transferissues/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "TI-001-UPDATED",
+  "statusId": "00000000-0000-0000-0000-000000000008"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/transferissues/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Transfer Receives
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/transferreceives
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/transferreceives/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/transferreceives
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "TR-001",
+  "fromStoreId": "00000000-0000-0000-0000-000000000001",
+  "toStoreId": "00000000-0000-0000-0000-000000000002",
+  "fiscalYearId": "00000000-0000-0000-0000-000000000003",
+  "preparedById": "00000000-0000-0000-0000-000000000004",
+  "receivedById": "00000000-0000-0000-0000-000000000005",
+  "statusId": "00000000-0000-0000-0000-000000000006",
+  "transferIssueId": "00000000-0000-0000-0000-000000000007",
+  "date": "2024-01-15T10:00:00Z"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/transferreceives/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "TR-001-UPDATED",
+  "statusId": "00000000-0000-0000-0000-000000000008"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/transferreceives/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Store Requisitions
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/storerequisitions
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/storerequisitions/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/storerequisitions
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "SR-001",
+  "storeId": "00000000-0000-0000-0000-000000000001",
+  "toStoreId": "00000000-0000-0000-0000-000000000002",
+  "fiscalYearId": "00000000-0000-0000-0000-000000000003",
+  "preparedById": "00000000-0000-0000-0000-000000000004",
+  "requestedById": "00000000-0000-0000-0000-000000000005",
+  "statusId": "00000000-0000-0000-0000-000000000006",
+  "date": "2024-01-15T10:00:00Z"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/storerequisitions/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "referenceNo": "SR-001-UPDATED",
+  "statusId": "00000000-0000-0000-0000-000000000007"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/storerequisitions/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# ===========================================
+# MASTER CONTROLLERS
+# ===========================================
+
+# Users
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/users
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/users/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/users
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "userName": "user",
+  "email": "test@example.com",
+  "password": "password!",
+  "FullName": "Test",
+  "phoneNumber": "1234567890"
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/users/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "userName": "updateduser",
+  "email": "updated@example.com",
+  "firstName": "Updated",
+  "lastName": "User",
+  "phoneNo": "0987654321"
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/users/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Approvers
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/approvers
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/approvers/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/approvers
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "approverId": "00000000-0000-0000-0000-000000000001",
+  "statusId": "00000000-0000-0000-0000-000000000002",
+  "level": 1,
+  "sequence": 1
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/approvers/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "level": 2,
+  "sequence": 2
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/approvers/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Roles
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/roles?tenantId=00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+GET {{CyberErp.Hrms.Api_HostAddress}}/api/roles/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+###
+POST {{CyberErp.Hrms.Api_HostAddress}}/api/roles
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Admin",
+  "code": "ADMIN",
+  "isActive": true
+}
+
+###
+PUT {{CyberErp.Hrms.Api_HostAddress}}/api/roles/00000000-0000-0000-0000-000000000001
+Content-Type: application/json
+Authorization: Bearer {{AuthToken}}
+
+{
+  "name": "Updated Admin",
+  "code": "ADMIN-UPDATED",
+  "isActive": false
+}
+
+###
+DELETE {{CyberErp.Hrms.Api_HostAddress}}/api/roles/00000000-0000-0000-0000-000000000001
+Accept: application/json
+Authorization: Bearer {{AuthToken}}
+
+# Weather Forecast (Sample)
+GET {{CyberErp.Hrms.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

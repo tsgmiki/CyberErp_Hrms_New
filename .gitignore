@@ -1,0 +1,29 @@
+# ---------- .NET / backend ----------
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+backend/**/logs/
+*.log
+
+# ---------- Node / frontend ----------
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ---------- Editor / tooling ----------
+.sixth/
+.history-memo/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------- Secrets / local config ----------
+appsettings.*.local.json
+.env
+.env.local
+.env.*.local
