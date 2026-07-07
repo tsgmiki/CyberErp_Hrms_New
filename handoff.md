@@ -12,10 +12,10 @@
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
   Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system) → `e2b0f25` (employee
   employment terms + dashboard workforce analytics) → `9dacdca` (grade derived from salary scale,
-  `Employee.JobGradeId` dropped + dashboard redesign).
-- **Uncommitted:** Termination List + document generation + dynamic clearance configuration
-  (migration `AddDynamicClearanceConfig`, applied) → then the Dashboard Clearance tab +
-  approver-driven clearance + settlement gate (§1 items 1–2, no new migration). **Nothing pushed.**
+  `Employee.JobGradeId` dropped + dashboard redesign) → `d7058db` (Termination List + document
+  generation + dynamic clearance config + approver-driven Dashboard clearance queue + settlement gate;
+  migration `AddDynamicClearanceConfig`).
+- **Uncommitted:** nothing. **Nothing pushed.**
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
