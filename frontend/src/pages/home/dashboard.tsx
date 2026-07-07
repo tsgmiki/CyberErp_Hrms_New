@@ -1,7 +1,7 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useCallback, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/context/AuthContext";
 import {
   Building,
@@ -14,6 +14,8 @@ import {
   Hourglass,
   CalendarClock,
   ArrowUpRight,
+  CheckCircle2,
+  ShieldAlert,
 } from "lucide-react";
 import getAllBranch from "@/services/admin/branch/getAll";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
@@ -22,10 +24,15 @@ import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllAuditLog from "@/services/admin/auditLog/getAll";
 import getEmployeesOnProbation from "@/services/admin/employee/onProbation";
 import getUpcomingRetirements from "@/services/admin/employee/upcomingRetirements";
+import { getMyClearances, updateClearance } from "@/services/admin/employee/termination";
 import { getAllWorkflows, getWorkflowStats } from "@/services/admin/workflow";
+import Modal from "@/components/common/modal";
 import { workflowEntityTypeLabel } from "@/constants/orgStructure";
 import { parameterInitialData } from "@/constants/initialization";
 import type ParameterModel from "@/models/ParameterModel";
+import type { MyClearanceItemModel } from "@/models";
+
+type ClearanceDecision = "Cleared" | "Blocked";
 
 const countParam: ParameterModel = { ...parameterInitialData, take: 1 };
 const feedParam: ParameterModel = { ...parameterInitialData, take: 6 };
@@ -127,6 +134,58 @@ function EmptyRow({ text }: { text: string }) {
   return <p className="px-4 py-8 text-center text-sm text-muted">{text}</p>;
 }
 
+/**
+ * One row of the approver's clearance queue. Clean layout: identity on the left, two prominent
+ * decision buttons on the right. The remark is captured in a modal (opened via onPick), not inline.
+ */
+function ClearanceQueueRow({
+  item,
+  busy,
+  onPick,
+}: {
+  item: MyClearanceItemModel;
+  busy: boolean;
+  onPick: (item: MyClearanceItemModel, status: ClearanceDecision) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">
+          {item.employeeName}
+          <span className="ml-1.5 rounded bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted">
+            {item.department}
+          </span>
+        </p>
+        <p className="mt-0.5 truncate text-xs text-muted">
+          {item.employeeNumber} — {item.description}
+          {item.lastWorkingDate
+            ? ` · ${t("Last day")} ${new Date(item.lastWorkingDate).toLocaleDateString()}`
+            : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "Cleared")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <CheckCircle2 size={17} /> {t("Clear")}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "Blocked")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ShieldAlert size={17} /> {t("Block")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DaysBadge({ days, warnAt }: { days?: number | null; warnAt: number }) {
   if (typeof days !== "number") return null;
   const cls =
@@ -147,7 +206,16 @@ function DaysBadge({ days, warnAt }: { days?: number | null; warnAt: number }) {
 function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [watchTab, setWatchTab] = useState<"probation" | "retirements">("probation");
+  const queryClient = useQueryClient();
+  const [watchTab, setWatchTab] = useState<"probation" | "retirements" | "clearance">("probation");
+  const [clearanceBusy, setClearanceBusy] = useState(false);
+  const [clearanceError, setClearanceError] = useState<string | null>(null);
+  // The clearance decision (Clear / Block) being confirmed in the note modal.
+  const [pendingDecision, setPendingDecision] = useState<{
+    item: MyClearanceItemModel;
+    status: ClearanceDecision;
+  } | null>(null);
+  const [pendingNote, setPendingNote] = useState("");
 
   const hour = new Date().getHours();
   const greetingKey = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -195,10 +263,44 @@ function Dashboard() {
     queryKey: ["upcomingRetirements"],
     queryFn: getUpcomingRetirements,
   });
+  const { data: myClearances, isLoading: lmc } = useQuery({
+    queryKey: ["myClearances"],
+    queryFn: getMyClearances,
+  });
+
+  // The Clearance tab is only for assigned approvers (conditionally rendered).
+  const isApprover = myClearances?.isApprover === true;
+  const clearanceItems = myClearances?.items ?? [];
+
+  // Opens the note modal for a Clear / Block decision (remark captured there, not inline).
+  const pickDecision = useCallback((item: MyClearanceItemModel, status: ClearanceDecision) => {
+    setClearanceError(null);
+    setPendingNote(item.note ?? "");
+    setPendingDecision({ item, status });
+  }, []);
+
+  const confirmDecision = useCallback(async () => {
+    if (!pendingDecision) return;
+    setClearanceBusy(true);
+    const res = await updateClearance(pendingDecision.item.clearanceId, pendingDecision.status, pendingNote);
+    setClearanceBusy(false);
+    if (!res.ok) {
+      setClearanceError(res.message); // keep the modal open so the approver can retry
+      return;
+    }
+    // A clearance decision changes the approver queue and the case's checklist.
+    queryClient.invalidateQueries({ queryKey: ["myClearances"] });
+    queryClient.invalidateQueries({ queryKey: ["employeeTerminations"] });
+    setPendingDecision(null);
+    setPendingNote("");
+  }, [pendingDecision, pendingNote, queryClient]);
 
   const watchTabs = [
     { key: "probation" as const, label: t("On Probation"), count: probation?.length ?? 0 },
     { key: "retirements" as const, label: t("Upcoming Retirements"), count: retirements?.length ?? 0 },
+    ...(isApprover
+      ? [{ key: "clearance" as const, label: t("Clearance"), count: clearanceItems.length }]
+      : []),
   ];
 
   return (
@@ -317,7 +419,7 @@ function Dashboard() {
               ))}
             </div>
 
-            {watchTab === "probation" ? (
+            {watchTab === "probation" && (
               <div className="divide-y divide-border/60">
                 {lpr && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
                 {!lpr && (probation?.length ?? 0) === 0 && (
@@ -345,7 +447,9 @@ function Dashboard() {
                   </Link>
                 ))}
               </div>
-            ) : (
+            )}
+
+            {watchTab === "retirements" && (
               <div className="divide-y divide-border/60">
                 {lrt && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
                 {!lrt && (retirements?.length ?? 0) === 0 && (
@@ -366,6 +470,23 @@ function Dashboard() {
                       <DaysBadge days={e.daysRemaining} warnAt={14} />
                     </div>
                   </Link>
+                ))}
+              </div>
+            )}
+
+            {watchTab === "clearance" && (
+              <div className="divide-y divide-border/60">
+                {lmc && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
+                {!lmc && clearanceItems.length === 0 && (
+                  <EmptyRow text={t("No clearances awaiting your approval.", "No clearances awaiting your approval.")} />
+                )}
+                {clearanceItems.map((item) => (
+                  <ClearanceQueueRow
+                    key={item.clearanceId}
+                    item={item}
+                    busy={clearanceBusy}
+                    onPick={pickDecision}
+                  />
                 ))}
               </div>
             )}
@@ -432,6 +553,68 @@ function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Clearance decision modal — larger remark textarea, confirm to submit. */}
+      {pendingDecision && (
+        <Modal
+          visible
+          size="md"
+          title={pendingDecision.status === "Cleared" ? t("Mark Cleared") : t("Mark Blocked")}
+          description={`${pendingDecision.item.department} · ${pendingDecision.item.employeeName} (${pendingDecision.item.employeeNumber})`}
+          onClose={() => setPendingDecision(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setPendingDecision(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={clearanceBusy}
+                onClick={confirmDecision}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50 ${
+                  pendingDecision.status === "Cleared" ? "bg-success" : "bg-error"
+                }`}
+              >
+                {pendingDecision.status === "Cleared" ? (
+                  <>
+                    <CheckCircle2 size={16} /> {t("Confirm Clearance")}
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert size={16} /> {t("Confirm Block")}
+                  </>
+                )}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <p className="text-sm text-foreground">
+              {pendingDecision.item.description}
+            </p>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+              {t("Remarks")}
+            </label>
+            <textarea
+              autoFocus
+              rows={5}
+              value={pendingNote}
+              onChange={(e) => setPendingNote(e.target.value)}
+              placeholder={
+                pendingDecision.status === "Cleared"
+                  ? t("Optional note about this clearance…")
+                  : t("Reason for blocking (recommended)…")
+              }
+              className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+            />
+            {clearanceError && <p className="text-xs text-error">{clearanceError}</p>}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

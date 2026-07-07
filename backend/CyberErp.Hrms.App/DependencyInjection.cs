@@ -15,6 +15,7 @@ using CyberErp.Hrms.App.Features.Core.Employees;
 using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.DocumentTemplates;
 using CyberErp.Hrms.App.Features.Core.Workflows;
+using CyberErp.Hrms.App.Features.Core.ClearanceDepartments;
 using CyberErp.Hrms.App.Features.Core.Roles;
 
 namespace CyberErp.Hrms.App
@@ -172,10 +173,18 @@ namespace CyberErp.Hrms.App
             // Termination & clearance (offboarding)
             services.AddScoped<ISaveEmployeeTermination, SaveEmployeeTermination>();
             services.AddScoped<IGetEmployeeTerminations, GetEmployeeTerminations>();
+            services.AddScoped<IGetTerminatedEmployees, GetTerminatedEmployees>();
+            services.AddScoped<IGetMyClearances, GetMyClearances>();
             services.AddScoped<IUpdateTerminationClearance, UpdateTerminationClearance>();
             services.AddScoped<IFinalizeEmployeeTermination, FinalizeEmployeeTermination>();
             services.AddScoped<ICancelEmployeeTermination, CancelEmployeeTermination>();
             services.AddScoped<IDeleteEmployeeTermination, DeleteEmployeeTermination>();
+
+            // Dynamic clearance configuration (departments + approvers)
+            services.AddScoped<ISaveClearanceDepartment, SaveClearanceDepartment>();
+            services.AddScoped<IGetAllClearanceDepartments, GetAllClearanceDepartments>();
+            services.AddScoped<IGetClearanceDepartmentById, GetClearanceDepartmentById>();
+            services.AddScoped<IDeleteClearanceDepartment, DeleteClearanceDepartment>();
 
             // Roles & user-role assignment (workflow approver authorization, HC025 groundwork)
             services.AddScoped<ISaveRole, SaveRole>();

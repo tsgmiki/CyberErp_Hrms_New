@@ -30,6 +30,8 @@ import {
   UserCog,
   KeyRound,
   UserCheck,
+  UserX,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { useLocation } from "react-router-dom";
@@ -74,6 +76,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     Icon: UsersRound,
     links: [
       { to: "/employee", label: "Employees", Icon: Users },
+      { to: "/terminationList", label: "Termination List", Icon: UserX },
       { to: "/employeeField", label: "Employee Fields", Icon: ListPlus },
       { to: "/documentTemplate", label: "Document Templates", Icon: FileText },
     ],
@@ -114,6 +117,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     links: [
       { to: "/workflow", label: "Workflow Tracking", Icon: GitPullRequestArrow },
       { to: "/workflowDefinition", label: "Workflow Definitions", Icon: GitBranch },
+      { to: "/clearanceDepartment", label: "Clearance Departments", Icon: ClipboardCheck },
       { to: "/user", label: "Users", Icon: UserCog },
       { to: "/role", label: "Roles", Icon: KeyRound },
       { to: "/userRole", label: "User Roles", Icon: UserCheck },

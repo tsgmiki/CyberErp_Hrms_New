@@ -114,6 +114,48 @@ export interface TerminationClearanceModel {
   note?: string;
   clearedBy?: string;
   clearedAt?: string;
+  /** Whether the current user is authorized to decide this department's clearance. */
+  canDecide?: boolean;
+  /** Configured approver display names (empty = open — anyone may clear). */
+  approverNames?: string[];
+}
+
+/** One outstanding clearance item assigned to the current user (Dashboard queue). */
+export interface MyClearanceItemModel {
+  clearanceId: string;
+  terminationId: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber: string;
+  department: string;
+  description: string;
+  status: string; // Pending | Blocked
+  note?: string;
+  lastWorkingDate?: string;
+}
+
+/** The current user's clearance queue + whether they are an assigned approver at all. */
+export interface MyClearancesModel {
+  isApprover: boolean;
+  items: MyClearanceItemModel[];
+}
+
+/** One row of the Termination List: a terminated employee + their latest case. */
+export interface TerminatedEmployeeModel {
+  id?: string; // list template expects `id` — mapped from employeeId
+  employeeId: string;
+  employeeNumber: string;
+  fullName: string;
+  photoUrl?: string;
+  email?: string;
+  phoneNumber?: string;
+  hireDate?: string;
+  terminationId?: string;
+  terminationType?: string;
+  noticeDate?: string;
+  lastWorkingDate?: string;
+  settledAt?: string;
+  reason?: string;
 }
 
 /** Termination & clearance case (offboarding). */

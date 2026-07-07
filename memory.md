@@ -75,7 +75,14 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 - **Document Templates (HC022):** `{{placeholder}}` merge engine, TipTap editor, generate/print.
 - **Personnel Actions:** Transfer / Promotion / Demotion (EmployeeMovement) + Disciplinary Measures.
 - **Workflow Engine:** generic definitions/steps/approvers/instances/action-log; tracking UI + dashboard.
-- **Termination & Clearance:** voluntary/involuntary; Manager→HRBP→Dept Head; IT/Store/Finance clearance.
+- **Termination & Clearance:** voluntary/involuntary; Manager→HRBP→Dept Head approval. **Clearance is
+  dynamic:** admin-configured `ClearanceDepartment`s (+ per-department User/Role approvers, any one
+  authorized user clears; open when none) drive the checklist — built-in IT/Store/Finance only as
+  fallback. **Approvers clear from a conditionally-shown Dashboard "Clearance" tab** (queue =
+  `my-clearances`, approver-only); the employee's termination-tab checklist is read-only. **Settlement
+  gate:** HR finalizes only after all *assigned* approvers clear (blocked halts; open/no-approver
+  items auto-clear on settle). **Termination List** menu: terminated employees (excluded from the main
+  employee list), complete history modal, and official-document generation (termination merge tokens).
 - **Roles/Permissions:** Role/UserRole + Module/Operation/RolePermission (adopted template tables);
   User admin CRUD.
 - **Salary Scale:** JobGrade trimmed to Name/NameA/Code; `lupStep` (Step, no UI) + `coreSalaryScale`;
@@ -93,7 +100,7 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 **DB migrations (chronological, in `backend/CyberErp.Hrms.Inf/Migrations`):**
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
 `AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
-→ `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId`.
+→ `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

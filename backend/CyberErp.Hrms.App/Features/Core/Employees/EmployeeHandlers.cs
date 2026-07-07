@@ -390,6 +390,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<EmploymentStatus>(request.Status, out var status))
                 query = query.Where(x => x.EmploymentStatus == status);
 
+            // Terminated employees live in the Termination List, not the main directory —
+            // excluded unless the caller explicitly filters for the Terminated status.
+            var wantsTerminated = !string.IsNullOrWhiteSpace(request.Status)
+                && Enum.TryParse<EmploymentStatus>(request.Status, out var wanted)
+                && wanted == EmploymentStatus.Terminated;
+            if (!wantsTerminated)
+                query = query.Where(x => !x.IsTerminated && x.EmploymentStatus != EmploymentStatus.Terminated);
+
             if (!string.IsNullOrWhiteSpace(request.SearchText))
             {
                 var term = request.SearchText.Trim();

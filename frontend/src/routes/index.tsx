@@ -37,6 +37,8 @@ const EmployeeFieldPage = memo(lazy(() => import("@/pages/admin/employeeField"))
 const DocumentTemplatePage = memo(lazy(() => import("@/pages/admin/documentTemplate")));
 const WorkflowPage = memo(lazy(() => import("@/pages/admin/workflow")));
 const WorkflowDefinitionPage = memo(lazy(() => import("@/pages/admin/workflowDefinition")));
+const TerminationListPage = memo(lazy(() => import("@/pages/admin/terminationList")));
+const ClearanceDepartmentPage = memo(lazy(() => import("@/pages/admin/clearanceDepartment")));
 export default function AppRoutes() {
   return (
     <Routes>
@@ -88,6 +90,8 @@ export default function AppRoutes() {
         <Route path="documentTemplate" element={<DocumentTemplatePage />} />
         <Route path="workflow" element={<WorkflowPage />} />
         <Route path="workflowDefinition" element={<WorkflowDefinitionPage />} />
+        <Route path="terminationList" element={<TerminationListPage />} />
+        <Route path="clearanceDepartment" element={<ClearanceDepartmentPage />} />
        </Route>
     </Routes>
   );

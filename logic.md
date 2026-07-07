@@ -51,6 +51,52 @@ Task RejectAsync(Guid instanceId, string? comment);
 Transfer / Promotion / Demotion / Disciplinary (Supervisor Review → HR Approval), Termination
 (Manager → HRBP → Dept Head), **Leave Approval (Supervisor Review → HR Approval)**.
 
+### Dynamic clearance configuration (offboarding — mirrors the workflow approver pattern)
+`hrms_ClearanceDepartment` (Name, Description = checklist requirement text, SortOrder, IsActive) +
+child `hrms_ClearanceDepartmentApprover` (ApproverType User|Role — reuses `WorkflowApproverType` —,
+ApproverId, server-resolved DisplayName). Admin UI `/clearanceDepartment` (System group), controller
+`ClearanceDepartmentController`, slices in `Features/Core/ClearanceDepartments/`.
+- **Checklist build:** `TerminationShared.BeginClearanceAsync` reads *active* departments (ordered
+  SortOrder, Name) and stamps each `hrms_TerminationClearance` row with `DepartmentId`; when **none**
+  are configured it falls back to the built-in IT/Store/Finance defaults (DepartmentId null).
+  Deleting a department SET NULLs existing checklist rows (they revert to open).
+- **Authorization:** `TerminationShared.EvaluateClearanceApproverAsync` — no approvers = open
+  (anyone); otherwise the current user must be a listed **user** approver or hold a listed **role**
+  (via `Core.UserRole`). **Any single authorized user's decision clears the department.** Enforced
+  server-side in `UpdateTerminationClearance` (400 listing authorized names); surfaced per row as
+  `CanDecide` + `ApproverNames` on `TerminationClearanceDto` (batch-computed in
+  `GetEmployeeTerminations`, like the workflow tracking list). Legacy rows without `DepartmentId`
+  match a configured department **by name** (active only).
+- **Where approvers act — the Dashboard "Clearance" tab (not the termination tab).** Approvers work
+  their queue from a **conditionally-rendered** Dashboard tab next to Upcoming Retirements:
+  `GET EmployeeTermination/my-clearances` (`GetMyClearances`) returns `{ IsApprover, Items }` —
+  `IsApprover` = the user is a *specific* approver (user or role) on any **active** department
+  (drives tab visibility); `Items` = every **outstanding** (not-Cleared) clearance in in-progress
+  cases for a department they specifically approve (open/no-approver departments are excluded — they
+  belong to no one). Each row shows identity + two prominent **Clear / Block** buttons; clicking one
+  opens a **decision modal** with a large remarks textarea + Confirm (the remark is captured there,
+  not inline — modal stays open on a 400 so the approver can retry). The employee's **termination tab
+  clearance checklist is read-only** (progress view only).
+- **Settlement gate (`FinalizeEmployeeTermination`):** HR can settle only after **all assigned
+  approvers** finish. Concretely: (1) any **Blocked** clearance halts settlement; (2) every clearance
+  whose department has ≥1 configured approver must be **Cleared** (a Cleared item implies an
+  authorized approver signed it — clearing is authorization-gated); (3) remaining not-Cleared items
+  belong to departments with **no** approver (nobody to sign them) and are **auto-cleared on
+  settlement** with a `system` note. Then `MarkSettled` (all-cleared invariant holds) + terminate +
+  reopen position.
+
+### Terminated-employee separation (Termination List)
+`GetAllEmployees` excludes `IsTerminated`/`EmploymentStatus.Terminated` rows **unless** the caller
+explicitly filters `status=Terminated`. Terminated employees live in the **Termination List** menu
+(`/terminationList`, Personnel group): `GET EmployeeTermination/terminated` pages employees
+(`IsTerminated` OR status Terminated, most recently updated first) each with the **latest case**
+(settled preferred) via a correlated subquery. The row's History modal shows the complete record —
+termination cases + full clearance detail, personnel movements, disciplinary record (existing
+per-employee GETs) — and its Documents action opens the standard `GenerateDocumentModal`.
+**Termination merge tokens** in `GenerateEmployeeDocument` (group "Termination"):
+`{{TerminationType}} {{TerminationDate}} {{LastWorkingDate}} {{TerminationNoticeDate}}
+{{TerminationReason}}` — from the employee's latest case (settled preferred), blank when none.
+
 ## 2. Multi-step approval flow (the exact sequence)
 
 ```
@@ -208,6 +254,9 @@ Leave:  hrms_LeaveRequest ── EmployeeId → hrms_Employee, LeaveTypeId → h
 
 Workflow: WorkflowDefinition 1─< WorkflowStep 1─< WorkflowStepApprover
           WorkflowInstance (EntityType+EntityId → any governed record) 1─< WorkflowActionLog
+
+Clearance: hrms_ClearanceDepartment 1─< hrms_ClearanceDepartmentApprover (User|Role)
+           hrms_EmployeeTermination 1─< hrms_TerminationClearance ── DepartmentId? → hrms_ClearanceDepartment (SET NULL)
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).

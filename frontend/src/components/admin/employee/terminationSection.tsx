@@ -6,18 +6,14 @@ import { useTranslation } from "react-i18next";
 import {
   UserX,
   Plus,
-  CheckCircle2,
-  ShieldAlert,
   Ban,
   Hourglass,
   BadgeCheck,
-  RotateCcw,
 } from "lucide-react";
 import type { EmployeeTerminationModel, TerminationClearanceModel } from "@/models";
 import {
   getTerminations,
   saveTermination,
-  updateClearance,
   finalizeTermination,
   cancelTermination,
 } from "@/services/admin/employee/termination";
@@ -41,22 +37,26 @@ const CLEAR_TONE: Record<string, string> = {
   Blocked: "bg-error/15 text-error",
 };
 
-/** One departmental clearance row: status badge + note + decision buttons. */
-function ClearanceRow({
-  item,
-  disabled,
-  onSet,
-}: {
-  item: TerminationClearanceModel;
-  disabled: boolean;
-  onSet: (id: string, status: string, note: string) => void;
-}) {
+/**
+ * One departmental clearance row — read-only status view. Clearance decisions are made by the
+ * assigned approvers from their Dashboard "Clearance" tab, not here; this shows progress only.
+ */
+function ClearanceRow({ item }: { item: TerminationClearanceModel }) {
   const { t } = useTranslation();
-  const [note, setNote] = useState(item.note ?? "");
 
   return (
     <tr className="border-b border-border/60">
-      <td className="px-4 py-2.5 font-semibold text-foreground">{item.department}</td>
+      <td className="px-4 py-2.5 font-semibold text-foreground">
+        {item.department}
+        {(item.approverNames?.length ?? 0) > 0 && (
+          <span
+            className="mt-0.5 block text-[11px] font-normal text-muted"
+            title={`${t("Authorized")}: ${item.approverNames!.join(", ")}`}
+          >
+            {t("Approvers")}: {item.approverNames!.join(", ")}
+          </span>
+        )}
+      </td>
       <td className="px-4 py-2.5 text-xs text-muted">{item.description}</td>
       <td className="px-4 py-2.5">
         <span className={`rounded px-2 py-0.5 text-xs font-semibold ${CLEAR_TONE[item.status] ?? ""}`}>
@@ -68,35 +68,7 @@ function ClearanceRow({
           </span>
         )}
       </td>
-      <td className="px-4 py-2.5">
-        <input
-          type="text"
-          value={note}
-          disabled={disabled}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder={t("Note")}
-          className="h-8 w-full min-w-32 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-50"
-        />
-      </td>
-      <td className="px-4 py-2.5 text-right">
-        <span className="inline-flex items-center gap-0.5">
-          <button
-            type="button" title={t("Mark Cleared")} disabled={disabled || item.status === "Cleared"}
-            onClick={() => onSet(item.id, "Cleared", note)}
-            className="rounded p-1 text-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40"
-          ><CheckCircle2 size={16} /></button>
-          <button
-            type="button" title={t("Mark Blocked")} disabled={disabled || item.status === "Blocked"}
-            onClick={() => onSet(item.id, "Blocked", note)}
-            className="rounded p-1 text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40"
-          ><ShieldAlert size={16} /></button>
-          <button
-            type="button" title={t("Reset to Pending")} disabled={disabled || item.status === "Pending"}
-            onClick={() => onSet(item.id, "Pending", note)}
-            className="rounded p-1 text-muted hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40"
-          ><RotateCcw size={15} /></button>
-        </span>
-      </td>
+      <td className="px-4 py-2.5 text-xs text-muted">{item.note || "—"}</td>
     </tr>
   );
 }
@@ -273,6 +245,9 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
                   {active.clearances?.filter((c) => c.status === "Cleared").length}/{active.clearances?.length} {t("cleared")}
                 </span>
               </div>
+              <div className="px-4 pb-1 text-[11px] text-muted">
+                {t("Assigned approvers clear these from their Dashboard “Clearance” tab. Settlement unlocks once all assigned approvers are done.")}
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-[13px]">
                   <thead>
@@ -281,17 +256,11 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
                       <th className="px-4 py-2 font-semibold">{t("Requirement")}</th>
                       <th className="px-4 py-2 font-semibold">{t("Status")}</th>
                       <th className="px-4 py-2 font-semibold">{t("Note")}</th>
-                      <th className="px-4 py-2 text-right font-semibold">{t("Action")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(active.clearances ?? []).map((c) => (
-                      <ClearanceRow
-                        key={c.id}
-                        item={c}
-                        disabled={busy}
-                        onSet={(id, status, note) => run(() => updateClearance(id, status, note))}
-                      />
+                      <ClearanceRow key={c.id} item={c} />
                     ))}
                   </tbody>
                 </table>

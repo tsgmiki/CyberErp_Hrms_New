@@ -91,15 +91,18 @@ public class EmployeeTermination : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
-    /// <summary>Approval outcome: opens the departmental clearance checklist.</summary>
-    public void BeginClearance(IEnumerable<(string Department, string Description)> checklist)
+    /// <summary>
+    /// Approval outcome: opens the departmental clearance checklist. Items built from a configured
+    /// <see cref="ClearanceDepartment"/> carry its id so approver authorization can be enforced.
+    /// </summary>
+    public void BeginClearance(IEnumerable<(string Department, string Description, Guid? DepartmentId)> checklist)
     {
         if (Status != TerminationStatus.Initiated)
             throw new InvalidOperationException($"Clearance can only start from Initiated (current: {Status}).");
         Status = TerminationStatus.ClearanceInProgress;
-        foreach (var (department, description) in checklist)
+        foreach (var (department, description, departmentId) in checklist)
             if (_clearances.All(c => c.Department != department))
-                _clearances.Add(TerminationClearance.Create(Id, department, description));
+                _clearances.Add(TerminationClearance.Create(Id, department, description, departmentId));
         base.Update();
     }
 
@@ -138,6 +141,9 @@ public class TerminationClearance : BaseEntity
     public Guid TerminationId { get; private set; }
     public string Department { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
+    /// <summary>Configured <see cref="ClearanceDepartment"/> this item was built from (null for
+    /// the built-in fallback checklist and legacy rows) — resolves the authorized approvers.</summary>
+    public Guid? DepartmentId { get; private set; }
     public ClearanceStatus Status { get; private set; } = ClearanceStatus.Pending;
     public string? Note { get; private set; }
     public string? ClearedBy { get; private set; }
@@ -145,7 +151,7 @@ public class TerminationClearance : BaseEntity
 
     private TerminationClearance() : base() { }
 
-    public static TerminationClearance Create(Guid terminationId, string department, string description)
+    public static TerminationClearance Create(Guid terminationId, string department, string description, Guid? departmentId = null)
     {
         if (string.IsNullOrWhiteSpace(department))
             throw new ArgumentException("Department cannot be empty.", nameof(department));
@@ -153,7 +159,8 @@ public class TerminationClearance : BaseEntity
         {
             TerminationId = terminationId,
             Department = department,
-            Description = description
+            Description = description,
+            DepartmentId = departmentId
         };
     }
 

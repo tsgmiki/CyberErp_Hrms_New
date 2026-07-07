@@ -47,7 +47,53 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(c => c.Note).HasMaxLength(1000);
             builder.Property(c => c.ClearedBy).HasMaxLength(200);
 
+            // Deleting a configured department must not break existing checklist rows — they
+            // fall back to the built-in "open" behaviour (no approver restriction).
+            builder.HasOne<ClearanceDepartment>()
+                .WithMany()
+                .HasForeignKey(c => c.DepartmentId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             builder.HasIndex(c => c.TerminationId);
+            builder.HasIndex(c => c.DepartmentId);
+        }
+    }
+
+    public class ClearanceDepartmentConfiguration : IEntityTypeConfiguration<ClearanceDepartment>
+    {
+        public void Configure(EntityTypeBuilder<ClearanceDepartment> builder)
+        {
+            builder.ToTable("hrms_ClearanceDepartment", "Core");
+
+            builder.HasKey(d => d.Id);
+
+            builder.Property(d => d.Name).IsRequired().HasMaxLength(100);
+            builder.Property(d => d.Description).IsRequired().HasMaxLength(500);
+
+            builder.HasMany(d => d.Approvers)
+                .WithOne()
+                .HasForeignKey(a => a.DepartmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(d => d.Approvers).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // Uniqueness (per tenant, by name) is enforced in the save handler.
+            builder.HasIndex(d => new { d.TenantId, d.Name });
+        }
+    }
+
+    public class ClearanceDepartmentApproverConfiguration : IEntityTypeConfiguration<ClearanceDepartmentApprover>
+    {
+        public void Configure(EntityTypeBuilder<ClearanceDepartmentApprover> builder)
+        {
+            builder.ToTable("hrms_ClearanceDepartmentApprover", "Core");
+
+            builder.HasKey(a => a.Id);
+
+            builder.Property(a => a.ApproverType).IsRequired().HasConversion<string>().HasMaxLength(20);
+            builder.Property(a => a.DisplayName).IsRequired().HasMaxLength(300);
+
+            builder.HasIndex(a => a.DepartmentId);
+            builder.HasIndex(a => new { a.ApproverType, a.ApproverId });
         }
     }
 }

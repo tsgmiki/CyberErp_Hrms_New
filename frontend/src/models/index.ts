@@ -51,6 +51,9 @@ export type {
   DisciplinaryMeasureModel,
   EmployeeTerminationModel,
   TerminationClearanceModel,
+  TerminatedEmployeeModel,
+  MyClearanceItemModel,
+  MyClearancesModel,
 } from "./masters/EmployeeModel";
 export type { default as EmployeeFieldModel } from "./masters/EmployeeFieldModel";
 export type {
@@ -66,3 +69,4 @@ export type {
   WorkflowActionModel,
   WorkflowStatsModel,
 } from "./masters/HrWorkflowModel";
+export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDepartmentModel";

@@ -37,6 +37,7 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
     /// </summary>
     public partial class GenerateEmployeeDocument(
         IRepository<DocumentTemplate> templates,
+        IRepository<EmployeeTermination> terminations,
         IGetEmployeeById getEmployee,
         IGetEmployeePhoto getPhoto,
         IGetCompanyLogo getLogo) : IGenerateEmployeeDocument
@@ -123,6 +124,20 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             Add("Salary", e.Salary?.ToString("N2", CultureInfo.InvariantCulture));
             Add("Today", DateTime.Now.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
 
+            // Termination tokens (Experience / Termination letters) — from the employee's latest
+            // case, preferring the settled one; all blank when no case exists.
+            var termination = await terminations.GetAll()
+                .Where(x => x.EmployeeId == e.Id)
+                .OrderByDescending(x => x.Status == TerminationStatus.Settled)
+                .ThenByDescending(x => x.CreatedAt)
+                .Select(x => new { x.TerminationType, x.NoticeDate, x.LastWorkingDate, x.SettledAt, x.Reason })
+                .FirstOrDefaultAsync();
+            Add("TerminationType", termination?.TerminationType.ToString());
+            Add("TerminationNoticeDate", FormatDate(termination?.NoticeDate));
+            Add("LastWorkingDate", FormatDate(termination?.LastWorkingDate));
+            Add("TerminationDate", FormatDate(termination?.SettledAt ?? termination?.LastWorkingDate));
+            Add("TerminationReason", termination?.Reason);
+
             // Custom fields (HC021) by definition name — master tokens win on any name clash.
             foreach (var (name, value) in e.CustomFields)
                 if (!tokens.ContainsKey(name)) Add(name, value);
@@ -206,6 +221,11 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             new() { Token = "{{Salary}}", Label = "Salary", Group = "Placement" },
             new() { Token = "{{EmploymentStatus}}", Label = "Employment status", Group = "Placement" },
             new() { Token = "{{HireDate}}", Label = "Hire date", Group = "Placement" },
+            new() { Token = "{{TerminationType}}", Label = "Termination type", Group = "Termination" },
+            new() { Token = "{{TerminationDate}}", Label = "Termination (settlement) date", Group = "Termination" },
+            new() { Token = "{{LastWorkingDate}}", Label = "Last working date", Group = "Termination" },
+            new() { Token = "{{TerminationNoticeDate}}", Label = "Notice date", Group = "Termination" },
+            new() { Token = "{{TerminationReason}}", Label = "Termination reason", Group = "Termination" },
             new() { Token = "{{Today}}", Label = "Today's date", Group = "Document" },
             new() { Token = "{{Photo}}", Label = "Photo (image)", Group = "Document" },
             new() { Token = "{{PhotoUrl}}", Label = "Photo URL (for <img src>)", Group = "Document" },

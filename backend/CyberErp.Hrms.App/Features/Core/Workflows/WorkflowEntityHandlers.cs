@@ -30,7 +30,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     /// </summary>
     public class EmployeeTerminationWorkflowHandler(
         IRepository<EmployeeTermination> repository,
-        IRepository<TerminationClearance> clearanceRepository) : IWorkflowEntityHandler
+        IRepository<TerminationClearance> clearanceRepository,
+        IRepository<ClearanceDepartment> clearanceDepartmentRepository) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) =>
             string.Equals(entityType, WorkflowEntityTypes.Termination, StringComparison.OrdinalIgnoreCase);
@@ -41,7 +42,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .Include(t => t.Clearances)
                     .FirstOrDefaultAsync(t => t.Id == entityId)
                 ?? throw new NotFoundException(nameof(EmployeeTermination), entityId.ToString());
-            await TerminationShared.BeginClearanceAsync(termination, clearanceRepository);
+            await TerminationShared.BeginClearanceAsync(termination, clearanceRepository, clearanceDepartmentRepository);
             repository.UpdateAsync(termination);
             await repository.SaveChangesAsync();
         }

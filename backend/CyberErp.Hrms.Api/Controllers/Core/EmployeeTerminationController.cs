@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,6 +11,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     public class EmployeeTerminationController(
         ISaveEmployeeTermination saveHandler,
         IGetEmployeeTerminations getHandler,
+        IGetTerminatedEmployees terminatedHandler,
+        IGetMyClearances myClearancesHandler,
         IUpdateTerminationClearance clearanceHandler,
         IFinalizeEmployeeTermination finalizeHandler,
         ICancelEmployeeTermination cancelHandler,
@@ -19,6 +22,16 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet]
         public Task<List<EmployeeTerminationDto>> GetByEmployee([FromQuery] Guid employeeId)
             => getHandler.GetAsync(employeeId);
+
+        /// <summary>Paged Termination List: terminated employees with their latest case.</summary>
+        [HttpGet("terminated")]
+        public Task<PaginatedResponse<TerminatedEmployeeDto>> GetTerminated([FromQuery] GetAllRequest request)
+            => terminatedHandler.GetAsync(request);
+
+        /// <summary>The current user's clearance queue (Dashboard "Clearance" tab, approver-only).</summary>
+        [HttpGet("my-clearances")]
+        public Task<MyClearancesDto> GetMyClearances()
+            => myClearancesHandler.GetAsync();
 
         [HttpPost]
         public Task<Guid> Create([FromBody] SaveEmployeeTerminationDto dto)

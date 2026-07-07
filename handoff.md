@@ -11,17 +11,57 @@
 - On branch **`feature/hrms-buildout`** (branched off `main`). Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
   Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system) → `e2b0f25` (employee
-  employment terms + dashboard workforce analytics).
-- **Uncommitted:** Employee↔SalaryScale pay point → then `Employee.JobGradeId` removal / grade-derived
-  (§1 item 1, migrations `AddEmployeeSalaryScale` + `RemoveEmployeeJobGradeId`, both applied) + the
-  dashboard UI redesign (§1 item 2). **Nothing pushed.**
+  employment terms + dashboard workforce analytics) → `9dacdca` (grade derived from salary scale,
+  `Employee.JobGradeId` dropped + dashboard redesign).
+- **Uncommitted:** Termination List + document generation + dynamic clearance configuration
+  (migration `AddDynamicClearanceConfig`, applied) → then the Dashboard Clearance tab +
+  approver-driven clearance + settlement gate (§1 items 1–2, no new migration). **Nothing pushed.**
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Removed `Employee.JobGradeId` — grade now DERIVED from the salary scale** (migration
+1. **Dashboard Clearance tab + approver-driven clearance + settlement gate** (no migration — reuses
+   `AddDynamicClearanceConfig` schema; verified E2E on a disposable tenant, then purged):
+   - **Dashboard "Clearance" tab** (`dashboard.tsx`) next to Upcoming Retirements,
+     **conditionally rendered** only when `GET EmployeeTermination/my-clearances` returns
+     `isApprover:true`. Lists the approver's outstanding items (specific user/role assignments;
+     open departments excluded). **Modern layout:** identity + two prominent **Clear / Block**
+     buttons per row; the remark is captured in a **decision modal** (large textarea + Confirm),
+     not an inline textbox. Invalidates `myClearances` + `employeeTerminations` on decide (modal
+     stays open on error). Backend `GetMyClearances` (+ DI + controller route).
+   - **Termination tab checklist is now read-only** (`terminationSection.tsx` `ClearanceRow`
+     stripped of the note input + Clear/Block/Reset buttons + Action column; shows note as text) —
+     clearance decisions moved entirely to the Dashboard tab.
+   - **Settlement gate** (`FinalizeEmployeeTermination`): blocks on any Blocked item; requires every
+     clearance whose department has ≥1 approver to be Cleared ("Awaiting: …"); auto-clears remaining
+     open (no-approver) items with a `system` note so finalize isn't dead-ended. E2E: queue scoped to
+     the user's dept only; finalize 400 (awaiting IT+Finance) → clear IT → 400 (awaiting Finance) →
+     role-grant + clear Finance → finalize 200 with Store (open) auto-cleared; blocked-item finalize
+     400. See `logic.md` §1 (clearance subsections). **Uncommitted.**
+2. **Termination List + document generation + dynamic clearance config** (migration
+   `AddDynamicClearanceConfig`, **applied**; verified E2E on a disposable tenant, then purged):
+   - **Terminated separation:** `GetAllEmployees` excludes terminated rows unless
+     `status=Terminated` is requested. New **Termination List** menu (`/terminationList`, Personnel
+     group; sidebar `UserX` icon): `GET EmployeeTermination/terminated` (paged, latest case via
+     correlated subquery, settled preferred). Row actions: **History** modal (termination cases +
+     read-only clearance detail + movements + disciplinary record) and **Generate Document**
+     (reuses `GenerateDocumentModal`). New tokens in the merge engine, group "Termination":
+     TerminationType/Date/NoticeDate, LastWorkingDate, TerminationReason.
+   - **Dynamic clearance:** new `hrms_ClearanceDepartment` (+`hrms_ClearanceDepartmentApprover`,
+     User|Role like workflow steps, display names resolved server-side) + admin UI
+     `/clearanceDepartment` (System group, `ClipboardCheck` icon; approver-chip form mirrors the
+     workflow definition designer). `BeginClearanceAsync` builds the checklist from active
+     departments (fallback: built-in IT/Store/Finance when none configured);
+     `hrms_TerminationClearance.DepartmentId` (SET NULL on department delete) links each item.
+     Enforcement in `UpdateTerminationClearance`: **any one** authorized user (listed user OR
+     holder of a listed role) clears; others get 400 listing authorized names. DTO exposes
+     `CanDecide`/`ApproverNames` (batch-computed); `terminationSection` disables decision buttons
+     and shows approver names per row. E2E verified: configured checklist replaces defaults,
+     unauthorized 400 → user-approver 200 → role-grant then 200, finalize → employee left the main
+     list and appeared in the Termination List; letter generated with all termination tokens.
+2. **Removed `Employee.JobGradeId` — grade now DERIVED from the salary scale** (migration
    `RemoveEmployeeJobGradeId`, **applied**: DropForeignKey `FK_hrms_Employee_hrms_JobGrade_JobGradeId` +
    DropIndex `IX_hrms_Employee_JobGradeId` + DropColumn `JobGradeId` on `hrms_Employee`). Follows the
    earlier pay-point work (migration `AddEmployeeSalaryScale` added `Employee.SalaryScaleId` FK): the grade
