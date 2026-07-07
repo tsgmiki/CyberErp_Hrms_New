@@ -68,7 +68,6 @@ namespace CyberErp.Hrms.App.Features.Core.JobGrades
     public class DeleteJobGrade(
         IRepository<JobGrade> repository,
         IRepository<SalaryScale> salaryScaleRepository,
-        IRepository<Employee> employeeRepository,
         ILogger<DeleteJobGrade> logger) : IDeleteJobGrade
     {
         public async Task DeleteAsync(Guid id)
@@ -76,10 +75,10 @@ namespace CyberErp.Hrms.App.Features.Core.JobGrades
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(JobGrade), id.ToString());
 
+            // Employees reference a grade only via their salary scale, so the salary-scale guard
+            // (below) transitively protects grades that are in use by employees too.
             if (await salaryScaleRepository.GetAll().AnyAsync(s => s.JobGradeId == id))
                 throw new ValidationException(nameof(id), "Cannot delete a job grade that is referenced by one or more salary scales.");
-            if (await employeeRepository.GetAll().AnyAsync(e => e.JobGradeId == id))
-                throw new ValidationException(nameof(id), "Cannot delete a job grade that is assigned to one or more employees.");
 
             repository.Delete(entity);
             await repository.SaveChangesAsync();

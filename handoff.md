@@ -10,15 +10,44 @@
 
 - On branch **`feature/hrms-buildout`** (branched off `main`). Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
-  Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system).
-- **Uncommitted:** the Employee employment-terms + dashboard-analytics work (§1 item 1). **Not pushed.**
+  Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system) → `e2b0f25` (employee
+  employment terms + dashboard workforce analytics).
+- **Uncommitted:** Employee↔SalaryScale pay point → then `Employee.JobGradeId` removal / grade-derived
+  (§1 item 1, migrations `AddEmployeeSalaryScale` + `RemoveEmployeeJobGradeId`, both applied) + the
+  dashboard UI redesign (§1 item 2). **Nothing pushed.**
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Employee employment terms + dashboard analytics** (migration `AddEmployeeEmploymentTerms`):
+1. **Removed `Employee.JobGradeId` — grade now DERIVED from the salary scale** (migration
+   `RemoveEmployeeJobGradeId`, **applied**: DropForeignKey `FK_hrms_Employee_hrms_JobGrade_JobGradeId` +
+   DropIndex `IX_hrms_Employee_JobGradeId` + DropColumn `JobGradeId` on `hrms_Employee`). Follows the
+   earlier pay-point work (migration `AddEmployeeSalaryScale` added `Employee.SalaryScaleId` FK): the grade
+   is redundant on the employee because it's reachable via `SalaryScale.JobGradeId`.
+   - **Backend:** dropped `JobGradeId` from `Employee` entity/config + `CreateEmployeeDto`; removed the
+     `JobGrade` repo injection and the grade-existence / scale-belongs-to-grade checks in
+     `EnsureReferencesExistAsync` (now validates position + scale only); the read projection **derives**
+     `JobGradeId`/`JobGradeName` from `SalaryScale.JobGrade`. `EmployeeMovement` keeps its own
+     `From/ToJobGradeId` history; From-snapshot sourced from the scale; `ApplyMovement` no longer sets a
+     grade (signature dropped the grade param). `DeleteJobGrade` dropped the direct employee check (scale
+     guard covers it). Backend builds clean; migration applied to `CERP`; grade-derivation verified via
+     the LEFT-JOIN the projection compiles to (scale → grade "01", amount 11000).
+   - **Frontend:** Job Grade dropdown **kept as a filter only** (relabelled "Job Grade (filter)") — it
+     narrows the Salary Scale list (`getAllSalaryScale({jobGradeId})`) but `saveEmployee` strips
+     `jobGradeId`/`jobGradeName`/`salaryScaleStep`/`salaryScaleAmount` from the payload. Picking a scale
+     still auto-fills the **editable** Salary. `tsc -b`/`vite build` pass.
+   - ⚠️ **Behavioral note:** a movement that records a grade change is history only; to change an
+     employee's (derived) grade you must reassign the salary scale. **Uncommitted.**
+2. **Dashboard redesign (presentation only, `frontend/src/pages/home/dashboard.tsx`)**: replaced the
+   7-block stacked layout (gradient hero + separate sections) with an ERP-style hierarchy — quiet
+   header row, one 6-tile KPI strip (incl. actionable On-Probation / Retiring-Soon counts), then a
+   2/3 + 1/3 work area: "Approvals & Workflows" card + a **tabbed Workforce Watchlist** (Probation |
+   Upcoming Retirements) on the left, compact Recent Activity + Quick Access on the right. Reusable
+   inline building blocks (`KpiTile` w/ tone, `Card`, `DaysBadge`, `EmptyRow`); same queries/services,
+   theme tokens only, no new libraries. **Uncommitted.**
+2. **Employee employment terms + dashboard analytics** (migration `AddEmployeeEmploymentTerms`):
    added `EmploymentNature` (Permanent/Contract), `ContractPeriod` (int months), `IsProbation`,
    `ProbationEndDate`, and denormalized `IsTerminated` (set by `Terminate()`; existing Terminated rows
    backfilled). DTOs/validators/projection updated; conditional-required rules (Contract→period,

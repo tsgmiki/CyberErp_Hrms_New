@@ -52,8 +52,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             Tin = e.Tin,
             PensionNumber = e.PensionNumber,
             HireDate = e.HireDate,
-            JobGradeId = e.JobGradeId,
-            JobGradeName = e.JobGrade != null ? e.JobGrade.Name : null,
+            // Job grade is DERIVED from the linked salary scale (no longer stored on the employee).
+            JobGradeId = e.SalaryScale != null ? e.SalaryScale.JobGradeId : (Guid?)null,
+            JobGradeName = e.SalaryScale != null && e.SalaryScale.JobGrade != null ? e.SalaryScale.JobGrade.Name : null,
+            SalaryScaleId = e.SalaryScaleId,
+            SalaryScaleStep = e.SalaryScale != null && e.SalaryScale.Step != null ? e.SalaryScale.Step.Name : null,
+            SalaryScaleAmount = e.SalaryScale != null ? e.SalaryScale.Salary : (decimal?)null,
             Salary = e.Salary,
             PositionId = e.PositionId,
             PositionCode = e.Position != null ? e.Position.Code : null,
@@ -85,15 +89,31 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             return pos.BranchId;
         }
 
+        /// <summary>
+        /// The employee's salary defaults from the linked salary scale but stays editable: an explicit
+        /// value from the client wins; otherwise fall back to the scale amount (HC — pay point).
+        /// </summary>
+        internal static async Task<decimal?> ResolveSalaryAsync(CreateEmployeeDto dto, IRepository<SalaryScale> salaryScales)
+        {
+            if (dto.Salary.HasValue) return dto.Salary;
+            if (!dto.SalaryScaleId.HasValue) return null;
+            return await salaryScales.GetAll()
+                .Where(s => s.Id == dto.SalaryScaleId.Value)
+                .Select(s => (decimal?)s.Salary)
+                .FirstOrDefaultAsync();
+        }
+
         internal static async Task EnsureReferencesExistAsync(
             CreateEmployeeDto dto,
             IRepository<Position> positions,
-            IRepository<JobGrade> jobGrades)
+            IRepository<SalaryScale> salaryScales)
         {
             if (dto.PositionId.HasValue && !await positions.GetAll().AnyAsync(p => p.Id == dto.PositionId.Value))
                 throw new NotFoundException(nameof(Position), dto.PositionId.Value.ToString());
-            if (dto.JobGradeId.HasValue && !await jobGrades.GetAll().AnyAsync(g => g.Id == dto.JobGradeId.Value))
-                throw new NotFoundException(nameof(JobGrade), dto.JobGradeId.Value.ToString());
+            // The salary scale is the employee's pay point; the job grade is derived from it, so there
+            // is no separate grade to validate against.
+            if (dto.SalaryScaleId.HasValue && !await salaryScales.GetAll().AnyAsync(s => s.Id == dto.SalaryScaleId.Value))
+                throw new NotFoundException(nameof(SalaryScale), dto.SalaryScaleId.Value.ToString());
         }
 
         /// <summary>
@@ -183,7 +203,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> repository,
         IRepository<Person> personRepository,
         IRepository<Position> positionRepository,
-        IRepository<JobGrade> jobGradeRepository,
+        IRepository<SalaryScale> salaryScaleRepository,
         IRepository<EmployeeFieldDefinition> fieldDefinitionRepository,
         IRepository<EmployeeFieldValue> fieldValueRepository,
         IValidator<CreateEmployeeDto> validator,
@@ -197,8 +217,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (await repository.GetAll().AnyAsync(x => x.EmployeeNumber == dto.EmployeeNumber))
                 throw new DuplicateException(nameof(Employee), nameof(dto.EmployeeNumber), dto.EmployeeNumber);
 
-            await EmployeeShared.EnsureReferencesExistAsync(dto, positionRepository, jobGradeRepository);
+            await EmployeeShared.EnsureReferencesExistAsync(dto, positionRepository, salaryScaleRepository);
             var branchId = await EmployeeShared.ResolveBranchAsync(dto, positionRepository);
+            var salary = await EmployeeShared.ResolveSalaryAsync(dto, salaryScaleRepository);
 
             // Person + employee are inserted in ONE SaveChanges — a single database transaction,
             // so a failure on either side rolls back both.
@@ -214,8 +235,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 Enum.Parse<EmploymentStatus>(dto.EmploymentStatus),
                 dto.DateOfBirth, dto.PlaceOfBirth, dto.SpouseName, dto.Email,
                 dto.NationalId, dto.Tin, dto.PensionNumber,
-                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId,
-                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate);
+                dto.HireDate, dto.PositionId, salary, branchId,
+                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate,
+                dto.SalaryScaleId);
             await repository.AddAsync(entity);
 
             await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);
@@ -235,7 +257,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> repository,
         IRepository<Person> personRepository,
         IRepository<Position> positionRepository,
-        IRepository<JobGrade> jobGradeRepository,
+        IRepository<SalaryScale> salaryScaleRepository,
         IRepository<EmployeeFieldDefinition> fieldDefinitionRepository,
         IRepository<EmployeeFieldValue> fieldValueRepository,
         IValidator<UpdateEmployeeDto> validator,
@@ -253,8 +275,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (await repository.GetAll().AnyAsync(x => x.EmployeeNumber == dto.EmployeeNumber && x.Id != dto.Id))
                 throw new DuplicateException(nameof(Employee), nameof(dto.EmployeeNumber), dto.EmployeeNumber);
 
-            await EmployeeShared.EnsureReferencesExistAsync(dto, positionRepository, jobGradeRepository);
+            await EmployeeShared.EnsureReferencesExistAsync(dto, positionRepository, salaryScaleRepository);
             var branchId = await EmployeeShared.ResolveBranchAsync(dto, positionRepository);
+            var salary = await EmployeeShared.ResolveSalaryAsync(dto, salaryScaleRepository);
 
             // Person + employee update in the same SaveChanges (one transaction).
             var person = await personRepository.GetAll().FirstOrDefaultAsync(p => p.Id == entity.PersonId)
@@ -271,8 +294,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 Enum.Parse<EmploymentStatus>(dto.EmploymentStatus),
                 dto.DateOfBirth, dto.PlaceOfBirth, dto.SpouseName, dto.Email,
                 dto.NationalId, dto.Tin, dto.PensionNumber,
-                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId,
-                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate);
+                dto.HireDate, dto.PositionId, salary, branchId,
+                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate,
+                dto.SalaryScaleId);
             repository.UpdateAsync(entity);
 
             await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);

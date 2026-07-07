@@ -41,6 +41,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
         public DateTime? HireDate { get; set; }
         public Guid? JobGradeId { get; set; }
         public string? JobGradeName { get; set; }
+        public Guid? SalaryScaleId { get; set; }
+        /// <summary>Display label of the linked salary scale (its step name).</summary>
+        public string? SalaryScaleStep { get; set; }
+        public decimal? SalaryScaleAmount { get; set; }
         public decimal? Salary { get; set; }
 
         public Guid? PositionId { get; set; }
@@ -88,7 +92,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
         public string? PensionNumber { get; set; }
         public DateTime? HireDate { get; set; }
         public Guid? PositionId { get; set; }
-        public Guid? JobGradeId { get; set; }
+        public Guid? SalaryScaleId { get; set; }
         public decimal? Salary { get; set; }
 
         /// <summary>Dynamic field values keyed by field definition name (HC021).</summary>

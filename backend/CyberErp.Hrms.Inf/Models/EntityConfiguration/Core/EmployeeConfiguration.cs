@@ -37,9 +37,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .HasForeignKey(e => e.PositionId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasOne(e => e.JobGrade)
+            builder.HasOne(e => e.SalaryScale)
                 .WithMany()
-                .HasForeignKey(e => e.JobGradeId)
+                .HasForeignKey(e => e.SalaryScaleId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasOne(e => e.Branch)
@@ -48,12 +48,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Navigation(e => e.Position).UsePropertyAccessMode(PropertyAccessMode.Field);
-            builder.Navigation(e => e.JobGrade).UsePropertyAccessMode(PropertyAccessMode.Field);
+            builder.Navigation(e => e.SalaryScale).UsePropertyAccessMode(PropertyAccessMode.Field);
             builder.Navigation(e => e.Branch).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             builder.HasIndex(e => e.PersonId);
             builder.HasIndex(e => e.PositionId);
-            builder.HasIndex(e => e.JobGradeId);
+            builder.HasIndex(e => e.SalaryScaleId);
             builder.HasIndex(e => e.BranchId);
             builder.HasIndex(e => e.EmploymentStatus);
             // Dashboard analytics: probation roster (status+flag) and upcoming-retirement (DOB range) scans.

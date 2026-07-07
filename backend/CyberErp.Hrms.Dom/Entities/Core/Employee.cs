@@ -75,10 +75,13 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
     public DateTime? ProbationEndDate { get; private set; }
     /// <summary>Denormalized termination flag (false by default; set true when the employee is terminated).</summary>
     public bool IsTerminated { get; private set; }
-    /// <summary>Personal grade (may differ from the position class grade during transitions).</summary>
-    public Guid? JobGradeId { get; private set; }
-    private JobGrade? _jobGrade;
-    public JobGrade? JobGrade => _jobGrade;
+    /// <summary>
+    /// Pay point: the salary scale (grade + step + amount) the employee is placed on. The employee's
+    /// job grade is DERIVED from this scale (SalaryScale.JobGrade) rather than stored separately.
+    /// </summary>
+    public Guid? SalaryScaleId { get; private set; }
+    private SalaryScale? _salaryScale;
+    public SalaryScale? SalaryScale => _salaryScale;
     public decimal? Salary { get; private set; }
 
     // Organizational placement — the unit is derived from the position.
@@ -113,13 +116,13 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         string? pensionNumber = null,
         DateTime? hireDate = null,
         Guid? positionId = null,
-        Guid? jobGradeId = null,
         decimal? salary = null,
         Guid? branchId = null,
         EmploymentNature employmentNature = EmploymentNature.Permanent,
         int? contractPeriod = null,
         bool isProbation = false,
-        DateTime? probationEndDate = null)
+        DateTime? probationEndDate = null,
+        Guid? salaryScaleId = null)
     {
         if (personId == Guid.Empty)
             throw new ArgumentException("A person record is required.", nameof(personId));
@@ -143,7 +146,7 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
             PensionNumber = pensionNumber,
             HireDate = hireDate,
             PositionId = positionId,
-            JobGradeId = jobGradeId,
+            SalaryScaleId = salaryScaleId,
             Salary = salary,
             BranchId = branchId,
             EmploymentNature = employmentNature,
@@ -165,13 +168,13 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         string? pensionNumber,
         DateTime? hireDate,
         Guid? positionId,
-        Guid? jobGradeId,
         decimal? salary,
         Guid? branchId,
         EmploymentNature employmentNature = EmploymentNature.Permanent,
         int? contractPeriod = null,
         bool isProbation = false,
-        DateTime? probationEndDate = null)
+        DateTime? probationEndDate = null,
+        Guid? salaryScaleId = null)
     {
         if (string.IsNullOrWhiteSpace(employeeNumber))
             throw new ArgumentException("Employee number cannot be empty.", nameof(employeeNumber));
@@ -190,7 +193,7 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         PensionNumber = pensionNumber;
         HireDate = hireDate;
         PositionId = positionId;
-        JobGradeId = jobGradeId;
+        SalaryScaleId = salaryScaleId;
         Salary = salary;
         BranchId = branchId;
         EmploymentNature = employmentNature;
@@ -234,10 +237,12 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
 
     /// <summary>
     /// Applies an executed personnel movement (transfer / promotion / demotion) to the placement
-    /// fields. When the position changes, the branch always follows the new position (isolation
-    /// is transitive); grade and salary only change when the movement specifies them.
+    /// fields. When the position changes, the branch always follows the new position (isolation is
+    /// transitive); salary changes only when the movement specifies it. The job grade is no longer
+    /// stored on the employee (it derives from the salary scale), so a grade change is recorded on the
+    /// movement for history but is not applied here — reassign the salary scale to change the grade.
     /// </summary>
-    public void ApplyMovement(bool changePosition, Guid? positionId, Guid? branchId, Guid? jobGradeId, decimal? salary)
+    public void ApplyMovement(bool changePosition, Guid? positionId, Guid? branchId, decimal? salary)
     {
         if (salary is < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(salary));
@@ -247,7 +252,6 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
             PositionId = positionId;
             BranchId = branchId;
         }
-        if (jobGradeId.HasValue) JobGradeId = jobGradeId;
         if (salary.HasValue) Salary = salary;
         base.Update();
     }

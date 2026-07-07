@@ -34,6 +34,9 @@ export default interface EmployeeModel extends AbstractModel {
   hireDate?: string;
   jobGradeId?: string;
   jobGradeName?: string;
+  salaryScaleId?: string;
+  salaryScaleStep?: string;
+  salaryScaleAmount?: number;
   salary?: number;
 
   positionId?: string;

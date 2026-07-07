@@ -149,6 +149,31 @@ to `IsTerminated = 1` in the migration.
 - Backend: `CreateEmployeeDtoValidator` uses `.When(x => x.EmploymentNature == "Contract")` /
   `.When(x => x.IsProbation)`; the entity also guards the invariants in `ValidateEmploymentTerms`.
 
+### Salary scale (pay point) — grade is now DERIVED from the scale
+The employee links to a **salary scale** (`coreSalaryScale`) via nullable `Employee.SalaryScaleId`
+— the specific grade+step+amount pay point. **`Employee.JobGradeId` was dropped** (migration
+`RemoveEmployeeJobGradeId`: DropForeignKey/DropIndex/DropColumn on `hrms_Employee`): the grade is
+redundant on the employee because it is reachable through `SalaryScale.JobGradeId`. The employee's grade
+is therefore **derived**, never stored.
+- **Form logic (`masterForm`):** the Job Grade dropdown is a **client-side filter only** (label
+  "Job Grade (filter)") — it narrows the Salary Scale dropdown via `getAllSalaryScale({ jobGradeId })`
+  (`jobGradeSelectHandler` also clears any prior scale) but is never persisted. Choosing a scale
+  (`salaryScaleSelectHandler`) records `salaryScaleId` and **auto-fills the Salary field with the scale
+  amount, which stays editable**. `saveEmployee` strips `jobGradeId`/`jobGradeName`/`salaryScaleStep`/
+  `salaryScaleAmount` from the payload (filter/display-only; `CreateEmployeeDto` has no `JobGradeId`).
+  On edit, the derived `jobGradeId` on the read DTO pre-seeds the filter so the scale list is pre-narrowed.
+- **Backend:** `EmployeeShared.EnsureReferencesExistAsync` validates only that the **position** and
+  **salary scale** exist (the old grade existence + scale-belongs-to-grade consistency checks are gone —
+  there is no grade input to reconcile). `ResolveSalaryAsync` uses the client's salary if supplied, else
+  defaults to the scale amount. The read projection **derives** `JobGradeId = e.SalaryScale.JobGradeId`
+  and `JobGradeName = e.SalaryScale.JobGrade.Name`, alongside `SalaryScaleId`/`SalaryScaleStep`/
+  `SalaryScaleAmount`. `DeleteJobGrade` no longer checks employees directly — the salary-scale guard
+  transitively protects in-use grades.
+- **Movements:** `EmployeeMovement` keeps its own `From/ToJobGradeId` history columns. The **From** grade
+  snapshot is now sourced from the salary scale (`e.SalaryScale.JobGradeId`), and `ApplyMovement` no
+  longer sets a grade on the employee. ⚠️ A grade change recorded on a movement is history only — to
+  actually change an employee's (derived) grade, reassign the salary scale.
+
 ## 5. Dashboard analytics queries (optimized)
 
 Two employee widgets on the dashboard, each a dedicated endpoint on `EmployeeController` returning a
@@ -168,7 +193,8 @@ lean projection (tenant/branch-scoped via `IRepository.GetAll()`):
 ```
 CorePerson 1─┐
              └─< hrms_Employee >── PositionId → hrms_Position ── PositionClassId → hrms_PositionClass
-                    │  JobGradeId → hrms_JobGrade           hrms_PositionClass ── SalaryScaleId → coreSalaryScale
+                    │  SalaryScaleId → coreSalaryScale (pay point; grade DERIVED via scale, not stored)
+                    │                                       hrms_PositionClass ── SalaryScaleId → coreSalaryScale
                     │  BranchId   → hrms_Branch             coreSalaryScale ── JobGradeId → hrms_JobGrade
                     │                                                        └─ StepId     → lupStep
                     ├─< hrms_EmployeeEducation / Experience / Dependent / Document  (→ CorePerson)

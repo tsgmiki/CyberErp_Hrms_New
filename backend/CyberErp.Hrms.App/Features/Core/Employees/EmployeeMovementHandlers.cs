@@ -115,7 +115,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .Where(e => e.Id == dto.EmployeeId)
                 .Select(e => new
                 {
-                    e.PositionId, e.JobGradeId, e.Salary, e.BranchId, e.EmployeeNumber,
+                    e.PositionId, e.Salary, e.BranchId, e.EmployeeNumber,
+                    // Current grade for the From-snapshot is derived from the salary scale.
+                    FromJobGradeId = e.SalaryScale != null ? (Guid?)e.SalaryScale.JobGradeId : null,
                     FirstName = e.Person != null ? e.Person.FirstName : string.Empty,
                     LastName = e.Person != null ? e.Person.GrandFatherName : string.Empty
                 })
@@ -147,7 +149,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             // The From* snapshot freezes the employee's placement at recording time.
             var created = EmployeeMovement.Create(
                 dto.EmployeeId, type, dto.EffectiveDate,
-                employee.PositionId, employee.JobGradeId, employee.Salary, employee.BranchId,
+                employee.PositionId, employee.FromJobGradeId, employee.Salary, employee.BranchId,
                 dto.ToPositionId, dto.ToJobGradeId, dto.ToSalary,
                 dto.Reason, dto.Remark);
             await repository.AddAsync(created);
@@ -202,7 +204,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .FirstOrDefaultAsync();
             }
 
-            employee.ApplyMovement(changePosition, movement.ToPositionId, newBranchId, movement.ToJobGradeId, movement.ToSalary);
+            // Grade is derived from the salary scale, so a movement records the grade change for history
+            // but does not mutate the employee's grade here (reassign the salary scale to change grade).
+            employee.ApplyMovement(changePosition, movement.ToPositionId, newBranchId, movement.ToSalary);
             employeeRepository.UpdateAsync(employee);
 
             if (changePosition)

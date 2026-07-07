@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260707191902_AddEmployeeSalaryScale")]
+    partial class AddEmployeeSalaryScale
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -453,6 +456,9 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<bool>("IsTerminated")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("JobGradeId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("NationalId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -515,6 +521,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasIndex("DateOfBirth");
 
                     b.HasIndex("EmploymentStatus");
+
+                    b.HasIndex("JobGradeId");
 
                     b.HasIndex("PersonId");
 
@@ -2963,6 +2971,11 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasForeignKey("BranchId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.JobGrade", "JobGrade")
+                        .WithMany()
+                        .HasForeignKey("JobGradeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Person", "Person")
                         .WithMany()
                         .HasForeignKey("PersonId")
@@ -2980,6 +2993,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Branch");
+
+                    b.Navigation("JobGrade");
 
                     b.Navigation("Person");
 

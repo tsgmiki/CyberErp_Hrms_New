@@ -13,6 +13,7 @@ import { employeePhotoUrl, uploadEmployeePhoto } from "@/services/admin/employee
 import getAllEmployeeField from "@/services/admin/employeeField/getAll";
 import getAllPosition from "@/services/admin/position/getAll";
 import getAllJobGrade from "@/services/admin/jobGrade/getAll";
+import getAllSalaryScale from "@/services/admin/salaryScale/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import {
@@ -82,6 +83,14 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
     queryFn: () => getAllJobGrade(gradeParam),
   });
 
+  // Salary scales are scoped to the selected job grade (req. #2).
+  const [scaleParam, setScaleParam] = useState({ ...lookupParam });
+  const { data: scales, isLoading: scalesLoading } = useQuery({
+    queryKey: ["salaryScales", "byGrade", formData.jobGradeId, scaleParam],
+    queryFn: () => getAllSalaryScale({ ...scaleParam, jobGradeId: formData.jobGradeId }),
+    enabled: !!formData.jobGradeId,
+  });
+
   // Dropdown shows vacant positions; on edit the employee's current (now occupied) position is
   // absent from that list, so re-add it to keep the existing placement visible and selectable.
   const positionOptions = useMemo(() => {
@@ -105,6 +114,29 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
   const selectHandler = useCallback((name: string, r: any) => {
     setFormData((p) => ({ ...p, [name]: r.id }));
   }, []);
+  // Changing the job grade re-scopes the salary scale, so any previously-chosen scale is cleared.
+  const jobGradeSelectHandler = useCallback((_name: string, r: any) => {
+    setFormData((p) => ({
+      ...p,
+      jobGradeId: r.id,
+      jobGradeName: r.name,
+      salaryScaleId: undefined,
+      salaryScaleStep: undefined,
+    }));
+  }, []);
+  // Picking a salary scale records it and auto-fills the (still editable) salary (req. #3 & #4).
+  const salaryScaleSelectHandler = useCallback(
+    (_name: string, r: any) => {
+      const scale = (scales?.data ?? []).find((s) => s.id === r.id);
+      setFormData((p) => ({
+        ...p,
+        salaryScaleId: r.id,
+        salaryScaleStep: scale?.step,
+        salary: scale?.salary ?? p.salary,
+      }));
+    },
+    [scales],
+  );
   const customChangeHandler = useCallback((e: any) => {
     const { name, value } = e.target;
     setCustomData((p) => ({ ...p, [name]: value }));
@@ -293,10 +325,24 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
               data: positionOptions as never,
             },
             {
-              name: "jobGradeId", label: "Job Grade", type: "dropDown", onSelect: selectHandler,
+              // Filter only — the grade is derived from the chosen salary scale, not stored here.
+              name: "jobGradeId", label: "Job Grade (filter)", type: "dropDown", onSelect: jobGradeSelectHandler,
               value: formData.jobGradeId, displayValue: formData.jobGradeName,
+              placeholder: "Filter salary scales by grade",
               param: gradeParam, setParam: setGradeParam as any, isLoading: gradesLoading,
               data: (grades?.data ?? []).map((g) => ({ id: g.id, name: g.name })) as never,
+            },
+            {
+              name: "salaryScaleId", label: "Salary Scale (Step)", type: "dropDown", onSelect: salaryScaleSelectHandler,
+              value: formData.salaryScaleId, displayValue: formData.salaryScaleStep,
+              error: formState?.zodErrors?.salaryScaleId,
+              disabled: !formData.jobGradeId,
+              placeholder: formData.jobGradeId ? "Select a step" : "Select a job grade first",
+              param: scaleParam, setParam: setScaleParam as any, isLoading: scalesLoading,
+              data: (scales?.data ?? []).map((s) => ({
+                id: s.id,
+                name: `${s.step ?? "Step"} — ${s.salary != null ? Number(s.salary).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ""}`,
+              })) as never,
             },
             { name: "salary", label: "Salary", value: formData.salary, onChange: changeHandler, error: formState?.zodErrors?.salary, inputType: "number", type: "text" },
             {

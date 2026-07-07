@@ -40,6 +40,12 @@ export default async function saveEmployee(
   body.isProbation = body.isProbation === true || body.isProbation === "true";
   // IsTerminated is controlled by the termination flow, never by the profile form.
   delete body.isTerminated;
+  // Job grade is derived from the salary scale — the dropdown is a client-side filter only, never
+  // stored on the employee. These display/filter-only fields are not sent to the API.
+  delete body.jobGradeId;
+  delete body.jobGradeName;
+  delete body.salaryScaleStep;
+  delete body.salaryScaleAmount;
 
   try {
     const response = await fetch(`${API_BASE_URL}/Employee`, {

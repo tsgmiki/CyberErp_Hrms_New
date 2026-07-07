@@ -67,8 +67,11 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
   custom-field engine, tabbed profile UI. **Person split:** personal identity in `Core.CorePerson`;
   `Employee.PersonId` FK; Education/Experience/Family re-FK'd to CorePerson. **Employment terms:**
   EmploymentNature (Permanent/Contract), ContractPeriod, IsProbation + ProbationEndDate (conditional,
-  required-when), denormalized IsTerminated. **Dashboard analytics:** Employees-on-Probation +
-  Upcoming-Retirements widgets (retirement = DOB + 60y, sargable filter).
+  required-when), denormalized IsTerminated. **Pay point:** links to a SalaryScale (`SalaryScaleId`,
+  grade+step+amount); **`Employee.JobGradeId` was dropped — the grade is DERIVED via `SalaryScale.JobGradeId`.**
+  The Job Grade dropdown survives frontend-only as a **filter** for the scale list; scale auto-fills the
+  editable salary. **Dashboard analytics:** Employees-on-Probation + Upcoming-Retirements widgets (retirement =
+  DOB + 60y, sargable filter).
 - **Document Templates (HC022):** `{{placeholder}}` merge engine, TipTap editor, generate/print.
 - **Personnel Actions:** Transfer / Promotion / Demotion (EmployeeMovement) + Disciplinary Measures.
 - **Workflow Engine:** generic definitions/steps/approvers/instances/action-log; tracking UI + dashboard.
@@ -89,7 +92,8 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 
 **DB migrations (chronological, in `backend/CyberErp.Hrms.Inf/Migrations`):**
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
-`AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`.
+`AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
+→ `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.
