@@ -19,6 +19,7 @@ import {
   genderOptions,
   maritalStatusOptions,
   employmentStatusOptions,
+  employmentNatureOptions,
   yesNoOptions,
 } from "@/constants/orgStructure";
 
@@ -304,6 +305,33 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
               data: employmentStatusOptions as never,
             },
             { name: "hireDate", label: "Hire Date", value: formData.hireDate, onChange: changeHandler, type: "date" },
+            {
+              name: "employmentNature", label: "Employment Nature", type: "dropDown", onSelect: selectHandler,
+              value: formData.employmentNature ?? "Permanent", displayValue: formData.employmentNature ?? "Permanent",
+              data: employmentNatureOptions as never,
+            },
+            // Conditional: contract period shows (and is required) only for a Contract nature.
+            ...(formData.employmentNature === "Contract"
+              ? [{
+                  name: "contractPeriod", label: "Contract Period (months)", required: true,
+                  value: formData.contractPeriod, onChange: changeHandler,
+                  error: formState?.zodErrors?.contractPeriod, inputType: "number", type: "text" as const,
+                }]
+              : []),
+            {
+              name: "isProbation", label: "On Probation", type: "dropDown", onSelect: selectHandler,
+              value: formData.isProbation === true || formData.isProbation === "true" ? "true" : "false",
+              displayValue: formData.isProbation === true || formData.isProbation === "true" ? "Yes" : "No",
+              data: yesNoOptions as never,
+            },
+            // Conditional: probation end date shows (and is required) only when on probation.
+            ...(formData.isProbation === true || formData.isProbation === "true"
+              ? [{
+                  name: "probationEndDate", label: "Probation End Date", required: true,
+                  value: formData.probationEndDate, onChange: changeHandler,
+                  error: formState?.zodErrors?.probationEndDate, type: "date" as const,
+                }]
+              : []),
 
             ...customComponents,
             { name: "id", value: formData.id, type: "hidden" },

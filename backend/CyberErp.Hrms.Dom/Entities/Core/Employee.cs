@@ -26,6 +26,13 @@ public enum EmploymentStatus
     Retired = 5
 }
 
+/// <summary>Nature of the employment contract. Stored as a string (see EmployeeConfiguration).</summary>
+public enum EmploymentNature
+{
+    Permanent = 0,
+    Contract = 1
+}
+
 /// <summary>
 /// Employee master record (HC015-HC016): personal details, identification numbers and
 /// organizational placement. The organization unit is derived from the assigned
@@ -59,6 +66,15 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
     public EmploymentStatus EmploymentStatus { get; private set; } = EmploymentStatus.Active;
     /// <summary>Managerial staff receive the managerial annual-leave entitlement (legacy IsManager).</summary>
     public bool IsManagerial { get; private set; }
+
+    // Employment terms (belong strictly to the employment record, not the shared person)
+    public EmploymentNature EmploymentNature { get; private set; } = EmploymentNature.Permanent;
+    /// <summary>Contract length in months — required for a Contract nature, null for Permanent.</summary>
+    public int? ContractPeriod { get; private set; }
+    public bool IsProbation { get; private set; }
+    public DateTime? ProbationEndDate { get; private set; }
+    /// <summary>Denormalized termination flag (false by default; set true when the employee is terminated).</summary>
+    public bool IsTerminated { get; private set; }
     /// <summary>Personal grade (may differ from the position class grade during transitions).</summary>
     public Guid? JobGradeId { get; private set; }
     private JobGrade? _jobGrade;
@@ -99,7 +115,11 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         Guid? positionId = null,
         Guid? jobGradeId = null,
         decimal? salary = null,
-        Guid? branchId = null)
+        Guid? branchId = null,
+        EmploymentNature employmentNature = EmploymentNature.Permanent,
+        int? contractPeriod = null,
+        bool isProbation = false,
+        DateTime? probationEndDate = null)
     {
         if (personId == Guid.Empty)
             throw new ArgumentException("A person record is required.", nameof(personId));
@@ -107,6 +127,7 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
             throw new ArgumentException("Employee number cannot be empty.", nameof(employeeNumber));
         if (salary.HasValue && salary < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(salary));
+        ValidateEmploymentTerms(employmentNature, contractPeriod, isProbation, probationEndDate);
 
         return new Employee
         {
@@ -124,7 +145,11 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
             PositionId = positionId,
             JobGradeId = jobGradeId,
             Salary = salary,
-            BranchId = branchId
+            BranchId = branchId,
+            EmploymentNature = employmentNature,
+            ContractPeriod = employmentNature == EmploymentNature.Contract ? contractPeriod : null,
+            IsProbation = isProbation,
+            ProbationEndDate = isProbation ? probationEndDate : null
         };
     }
 
@@ -142,12 +167,17 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         Guid? positionId,
         Guid? jobGradeId,
         decimal? salary,
-        Guid? branchId)
+        Guid? branchId,
+        EmploymentNature employmentNature = EmploymentNature.Permanent,
+        int? contractPeriod = null,
+        bool isProbation = false,
+        DateTime? probationEndDate = null)
     {
         if (string.IsNullOrWhiteSpace(employeeNumber))
             throw new ArgumentException("Employee number cannot be empty.", nameof(employeeNumber));
         if (salary.HasValue && salary < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(salary));
+        ValidateEmploymentTerms(employmentNature, contractPeriod, isProbation, probationEndDate);
 
         EmployeeNumber = employeeNumber;
         EmploymentStatus = employmentStatus;
@@ -163,7 +193,20 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         JobGradeId = jobGradeId;
         Salary = salary;
         BranchId = branchId;
+        EmploymentNature = employmentNature;
+        ContractPeriod = employmentNature == EmploymentNature.Contract ? contractPeriod : null;
+        IsProbation = isProbation;
+        ProbationEndDate = isProbation ? probationEndDate : null;
         base.Update();
+    }
+
+    /// <summary>Enforces the conditional invariants: contract period for Contract, end date for probation.</summary>
+    private static void ValidateEmploymentTerms(EmploymentNature nature, int? contractPeriod, bool isProbation, DateTime? probationEndDate)
+    {
+        if (nature == EmploymentNature.Contract && (!contractPeriod.HasValue || contractPeriod.Value <= 0))
+            throw new ArgumentException("A contract employee must have a positive contract period.", nameof(contractPeriod));
+        if (isProbation && !probationEndDate.HasValue)
+            throw new ArgumentException("A probation end date is required when the employee is on probation.", nameof(probationEndDate));
     }
 
     /// <summary>Sets the stored photo file name after a successful upload (HC015/HC023).</summary>
@@ -183,6 +226,8 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
     public void Terminate()
     {
         EmploymentStatus = EmploymentStatus.Terminated;
+        IsTerminated = true;
+        IsProbation = false;
         PositionId = null;
         base.Update();
     }

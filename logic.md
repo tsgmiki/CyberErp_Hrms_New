@@ -129,7 +129,41 @@ balance); then **close** the source fiscal year.
 (**hardcoded — becomes shift/policy-driven in Attendance Phase 3**) and active `Holiday` rows
 (recurring holidays matched by month/day). Half-day = single working day → 0.5.
 
-## 4. Database entity relationships (key foreign keys)
+## 4. Employee employment terms + conditional form logic
+
+The employment record (`hrms_Employee`) carries terms that belong strictly to employment (not the
+shared `CorePerson`): `EmploymentNature` (Permanent | Contract, string-stored enum), `ContractPeriod`
+(int, months), `IsProbation` (bool), `ProbationEndDate` (date), and a denormalized `IsTerminated`
+(bool, default false — set true by `Employee.Terminate()`, which the termination final-settlement
+handler already calls; also clears `IsProbation`). Existing `Terminated`-status rows were backfilled
+to `IsTerminated = 1` in the migration.
+
+**Conditional rules (enforced in 3 places — form UX, zod, and FluentValidation):**
+- `EmploymentNature === "Contract"` → the **Contract Period** field renders and is **required**
+  (hidden for Permanent). The domain nulls `ContractPeriod` when nature is Permanent.
+- `IsProbation === true` → the **Probation End Date** field renders and is **required** (hidden when
+  false). The domain nulls `ProbationEndDate` when not on probation.
+- Frontend: fields are conditionally spread into the `masterForm` component array; the probation
+  Yes/No dropdown carries `"true"/"false"`, coerced to a real JSON boolean in `saveEmployee`
+  (System.Text.Json will not read `"true"` into a `bool`). `IsTerminated` is never sent by the form.
+- Backend: `CreateEmployeeDtoValidator` uses `.When(x => x.EmploymentNature == "Contract")` /
+  `.When(x => x.IsProbation)`; the entity also guards the invariants in `ValidateEmploymentTerms`.
+
+## 5. Dashboard analytics queries (optimized)
+
+Two employee widgets on the dashboard, each a dedicated endpoint on `EmployeeController` returning a
+lean projection (tenant/branch-scoped via `IRepository.GetAll()`):
+- **Employees on Probation** — `GET /api/v1/Employee/on-probation`:
+  `Where(e => e.EmploymentStatus == Active && e.IsProbation)`, backed by the composite index
+  `(EmploymentStatus, IsProbation)`. `DaysRemaining` to `ProbationEndDate` computed in memory.
+- **Upcoming Retirements** — `GET /api/v1/Employee/upcoming-retirements`: there is **no** stored
+  retirement date; it is derived as `DateOfBirth + 60y` (statutory age). "Retires within a month"
+  ⟺ `RetirementDate < today + 1mo` ⟺ **`DateOfBirth < (today + 1mo − 60y)`**. The threshold is a
+  C# constant, so the filter is **SARGABLE** (plain range scan on the `DateOfBirth` index, no per-row
+  `DATEADD`). `RetirementDate`/`DaysRemaining` computed in memory after materializing the small set.
+  Includes already-due (negative `DaysRemaining`) rows.
+
+## 6. Database entity relationships (key foreign keys)
 
 ```
 CorePerson 1─┐

@@ -1299,7 +1299,24 @@ export const EmployeeSchema = z.object({
     (v) => (v === "" || v == null ? undefined : Number(v)),
     z.number("Salary must be a number").min(0, "Salary cannot be negative").optional(),
   ),
-});
+  employmentNature: z.string().optional(),
+  contractPeriod: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : Number(v)),
+    z.number("Contract period must be a number").int().positive().optional(),
+  ),
+  isProbation: z.union([z.boolean(), z.string()]).optional(),
+  probationEndDate: z.string().nullish(),
+})
+  // Contract nature requires a contract period.
+  .refine((d) => d.employmentNature !== "Contract" || d.contractPeriod != null, {
+    message: "Contract Period is required for contract employees.",
+    path: ["contractPeriod"],
+  })
+  // Probation requires an end date.
+  .refine((d) => !(d.isProbation === true || d.isProbation === "true") || !!d.probationEndDate, {
+    message: "Probation End Date is required when on probation.",
+    path: ["probationEndDate"],
+  });
 export const EmployeeFieldSchema = z.object({
   name: z
     .string()

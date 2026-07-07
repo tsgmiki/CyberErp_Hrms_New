@@ -65,7 +65,10 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 - **Multi-Branch:** Branch, branch-level isolation, head-office visibility, audit-trail interceptor.
 - **Employee (§3.2, HC015–029):** Employee master + Education/Experience/Dependents/Documents,
   custom-field engine, tabbed profile UI. **Person split:** personal identity in `Core.CorePerson`;
-  `Employee.PersonId` FK; Education/Experience/Family re-FK'd to CorePerson.
+  `Employee.PersonId` FK; Education/Experience/Family re-FK'd to CorePerson. **Employment terms:**
+  EmploymentNature (Permanent/Contract), ContractPeriod, IsProbation + ProbationEndDate (conditional,
+  required-when), denormalized IsTerminated. **Dashboard analytics:** Employees-on-Probation +
+  Upcoming-Retirements widgets (retirement = DOB + 60y, sargable filter).
 - **Document Templates (HC022):** `{{placeholder}}` merge engine, TipTap editor, generate/print.
 - **Personnel Actions:** Transfer / Promotion / Demotion (EmployeeMovement) + Disciplinary Measures.
 - **Workflow Engine:** generic definitions/steps/approvers/instances/action-log; tracking UI + dashboard.
@@ -86,7 +89,7 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 
 **DB migrations (chronological, in `backend/CyberErp.Hrms.Inf/Migrations`):**
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
-`AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave`.
+`AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

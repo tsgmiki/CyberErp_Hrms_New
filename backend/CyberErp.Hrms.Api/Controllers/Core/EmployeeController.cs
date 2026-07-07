@@ -12,11 +12,23 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetEmployeeById getByIdHandler,
         IGetAllEmployees getAllHandler,
         IUploadEmployeePhoto uploadPhotoHandler,
-        IGetEmployeePhoto getPhotoHandler) : BaseController
+        IGetEmployeePhoto getPhotoHandler,
+        IGetEmployeesOnProbation onProbationHandler,
+        IGetUpcomingRetirements upcomingRetirementsHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<EmployeeDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>Dashboard analytics: active employees currently on probation.</summary>
+        [HttpGet("on-probation")]
+        public Task<List<ProbationEmployeeDto>> OnProbation()
+            => onProbationHandler.GetAsync();
+
+        /// <summary>Dashboard analytics: active employees retiring within one month (or already due).</summary>
+        [HttpGet("upcoming-retirements")]
+        public Task<List<RetirementEmployeeDto>> UpcomingRetirements()
+            => upcomingRetirementsHandler.GetAsync();
 
         [HttpGet("{id:guid}")]
         public Task<EmployeeDto> GetById(Guid id)

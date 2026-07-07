@@ -36,6 +36,10 @@ export default async function saveEmployee(
   for (const key of Object.keys(body)) {
     if (body[key] === "") delete body[key];
   }
+  // The probation flag comes off a Yes/No dropdown as "true"/"false"; JSON must send a real boolean.
+  body.isProbation = body.isProbation === true || body.isProbation === "true";
+  // IsTerminated is controlled by the termination flow, never by the profile form.
+  delete body.isTerminated;
 
   try {
     const response = await fetch(`${API_BASE_URL}/Employee`, {

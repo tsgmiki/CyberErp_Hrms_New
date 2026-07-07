@@ -18,6 +18,11 @@ export default interface EmployeeModel extends AbstractModel {
   locationName?: string;
   // Employment record
   employmentStatus?: string;
+  employmentNature?: string;
+  contractPeriod?: number;
+  isProbation?: boolean | string;
+  probationEndDate?: string;
+  isTerminated?: boolean;
   dateOfBirth?: string;
   placeOfBirth?: string;
   spouseName?: string;

@@ -14,6 +14,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(e => e.EmployeeNumber).IsRequired().HasMaxLength(50);
             builder.Property(e => e.EmploymentStatus).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(e => e.EmploymentNature).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(e => e.PlaceOfBirth).HasMaxLength(200);
             builder.Property(e => e.SpouseName).HasMaxLength(200);
             builder.Property(e => e.Email).HasMaxLength(200);
@@ -55,6 +56,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(e => e.JobGradeId);
             builder.HasIndex(e => e.BranchId);
             builder.HasIndex(e => e.EmploymentStatus);
+            // Dashboard analytics: probation roster (status+flag) and upcoming-retirement (DOB range) scans.
+            builder.HasIndex(e => new { e.EmploymentStatus, e.IsProbation });
+            builder.HasIndex(e => e.DateOfBirth);
             // Employee numbers are unique organization-wide (per tenant), across all branches.
             builder.HasIndex(e => new { e.TenantId, e.EmployeeNumber }).IsUnique();
         }

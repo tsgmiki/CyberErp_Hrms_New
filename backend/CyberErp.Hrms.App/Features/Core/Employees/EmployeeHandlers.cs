@@ -38,6 +38,11 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             PhoneNumber = e.Person != null ? e.Person.PhoneNumber : null,
             LocationName = e.Person != null ? e.Person.LocationName : null,
             EmploymentStatus = e.EmploymentStatus.ToString(),
+            EmploymentNature = e.EmploymentNature.ToString(),
+            ContractPeriod = e.ContractPeriod,
+            IsProbation = e.IsProbation,
+            ProbationEndDate = e.ProbationEndDate,
+            IsTerminated = e.IsTerminated,
             DateOfBirth = e.DateOfBirth,
             PlaceOfBirth = e.PlaceOfBirth,
             SpouseName = e.SpouseName,
@@ -209,7 +214,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 Enum.Parse<EmploymentStatus>(dto.EmploymentStatus),
                 dto.DateOfBirth, dto.PlaceOfBirth, dto.SpouseName, dto.Email,
                 dto.NationalId, dto.Tin, dto.PensionNumber,
-                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId);
+                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId,
+                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate);
             await repository.AddAsync(entity);
 
             await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);
@@ -265,7 +271,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 Enum.Parse<EmploymentStatus>(dto.EmploymentStatus),
                 dto.DateOfBirth, dto.PlaceOfBirth, dto.SpouseName, dto.Email,
                 dto.NationalId, dto.Tin, dto.PensionNumber,
-                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId);
+                dto.HireDate, dto.PositionId, dto.JobGradeId, dto.Salary, branchId,
+                Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate);
             repository.UpdateAsync(entity);
 
             await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);

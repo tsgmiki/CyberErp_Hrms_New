@@ -8,16 +8,28 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- Branch **`main`**, **one commit** (`6779d11 Initial commit`). **~260 paths are uncommitted** — the
-  entire recent build (Salary Scale, PositionClass→SalaryScale refactor, User CRUD, the whole
-  Attendance & Leave subsystem incl. fiscal-year integration and the Annual Leave Ledger) is unstaged.
-- **Nothing has been committed by the assistant** — commit/push only when the user explicitly asks.
-- When you do commit: branch off `main` first if asked to preserve it; the pre-commit hook will prompt
-  you to confirm `memory.md` / `handoff.md` / `logic.md` are updated (bypass: `git commit --no-verify`).
+- On branch **`feature/hrms-buildout`** (branched off `main`). Commits: `6779d11 Initial commit` →
+  `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
+  Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system).
+- **Uncommitted:** the Employee employment-terms + dashboard-analytics work (§1 item 1). **Not pushed.**
+- Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
+  `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
+  (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Documentation & state-tracking system** (this task): created `memory.md`, `handoff.md`, `logic.md`
+1. **Employee employment terms + dashboard analytics** (migration `AddEmployeeEmploymentTerms`):
+   added `EmploymentNature` (Permanent/Contract), `ContractPeriod` (int months), `IsProbation`,
+   `ProbationEndDate`, and denormalized `IsTerminated` (set by `Terminate()`; existing Terminated rows
+   backfilled). DTOs/validators/projection updated; conditional-required rules (Contract→period,
+   Probation→end date) in FluentValidation + zod + the form. Employee form shows the fields with
+   conditional rendering (probation Yes/No dropdown coerced to a real bool in `saveEmployee`). Two new
+   dashboard widgets: **Employees on Probation** (`GET Employee/on-probation`) and **Upcoming Retirements**
+   (`GET Employee/upcoming-retirements`, DOB+60y, sargable filter). New indexes `(EmploymentStatus,
+   IsProbation)` and `DateOfBirth`. See `logic.md` §4–5. **Note:** retirement age 60 is a constant in
+   `GetUpcomingRetirements` (not yet config); `IsTerminated` is redundant with `EmploymentStatus.Terminated`
+   but was explicitly requested — kept in sync via `Terminate()`.
+2. **Documentation & state-tracking system**: created `memory.md`, `handoff.md`, `logic.md`
    at repo root + a tracked `.githooks/pre-commit` hook (activated via `git config core.hooksPath .githooks`).
 2. **Annual Leave Ledger** (`/annualLeaveLedger`): new menu — pick an `AnnualLeaveSetting`, preview each
    active employee's service-based calculated entitlement, click **Calculate** to persist (idempotent).

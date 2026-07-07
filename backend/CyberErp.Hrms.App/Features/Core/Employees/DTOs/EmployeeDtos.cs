@@ -25,6 +25,11 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
 
         // Employment record
         public string EmploymentStatus { get; set; } = string.Empty;
+        public string EmploymentNature { get; set; } = nameof(Dom.Entities.Core.EmploymentNature.Permanent);
+        public int? ContractPeriod { get; set; }
+        public bool IsProbation { get; set; }
+        public DateTime? ProbationEndDate { get; set; }
+        public bool IsTerminated { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public string? PlaceOfBirth { get; set; }
         public string? SpouseName { get; set; }
@@ -70,6 +75,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
 
         // Employment fields
         public string EmploymentStatus { get; set; } = nameof(Dom.Entities.Core.EmploymentStatus.Active);
+        public string EmploymentNature { get; set; } = nameof(Dom.Entities.Core.EmploymentNature.Permanent);
+        public int? ContractPeriod { get; set; }
+        public bool IsProbation { get; set; }
+        public DateTime? ProbationEndDate { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public string? PlaceOfBirth { get; set; }
         public string? SpouseName { get; set; }
@@ -110,6 +119,16 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
             RuleFor(x => x.EmploymentStatus).NotEmpty()
                 .Must(v => Enum.TryParse<EmploymentStatus>(v, out _))
                 .WithMessage("EmploymentStatus must be one of: Active, Probation, OnLeave, Suspended, Terminated, Retired.");
+            RuleFor(x => x.EmploymentNature).NotEmpty()
+                .Must(v => Enum.TryParse<EmploymentNature>(v, out _))
+                .WithMessage("EmploymentNature must be Permanent or Contract.");
+            // Conditional requirements mirroring the form logic.
+            RuleFor(x => x.ContractPeriod).NotNull().GreaterThan(0)
+                .When(x => x.EmploymentNature == nameof(EmploymentNature.Contract))
+                .WithMessage("Contract period (months) is required for contract employees.");
+            RuleFor(x => x.ProbationEndDate).NotNull()
+                .When(x => x.IsProbation)
+                .WithMessage("Probation end date is required when the employee is on probation.");
             RuleFor(x => x.Email).EmailAddress().When(x => !string.IsNullOrEmpty(x.Email));
             RuleFor(x => x.Salary).GreaterThanOrEqualTo(0).When(x => x.Salary.HasValue);
         }

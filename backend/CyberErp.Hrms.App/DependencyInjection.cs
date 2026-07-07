@@ -143,6 +143,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
             services.AddScoped<IUploadEmployeePhoto, UploadEmployeePhoto>();
             services.AddScoped<IGetEmployeePhoto, GetEmployeePhoto>();
+            services.AddScoped<IGetEmployeesOnProbation, GetEmployeesOnProbation>();
+            services.AddScoped<IGetUpcomingRetirements, GetUpcomingRetirements>();
             services.AddScoped<ISaveEmployeeEducation, SaveEmployeeEducation>();
             services.AddScoped<IDeleteEmployeeEducation, DeleteEmployeeEducation>();
             services.AddScoped<IGetEmployeeEducations, GetEmployeeEducations>();

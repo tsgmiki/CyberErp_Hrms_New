@@ -17,6 +17,8 @@ import {
   GitFork,
   GitPullRequestArrow,
   Users,
+  Hourglass,
+  CalendarClock,
 } from "lucide-react";
 import getAllBranch from "@/services/admin/branch/getAll";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
@@ -24,6 +26,8 @@ import getAllPosition from "@/services/admin/position/getAll";
 import getAllWorkLocation from "@/services/admin/workLocation/getAll";
 import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllAuditLog from "@/services/admin/auditLog/getAll";
+import getEmployeesOnProbation from "@/services/admin/employee/onProbation";
+import getUpcomingRetirements from "@/services/admin/employee/upcomingRetirements";
 import { getAllWorkflows, getWorkflowStats } from "@/services/admin/workflow";
 import { workflowEntityTypeLabel } from "@/constants/orgStructure";
 import { parameterInitialData } from "@/constants/initialization";
@@ -139,6 +143,14 @@ function Dashboard() {
     queryKey: ["workflows", feedParam],
     queryFn: () => getAllWorkflows(feedParam),
   });
+  const { data: probation, isLoading: lpr } = useQuery({
+    queryKey: ["employeesOnProbation"],
+    queryFn: getEmployeesOnProbation,
+  });
+  const { data: retirements, isLoading: lrt } = useQuery({
+    queryKey: ["upcomingRetirements"],
+    queryFn: getUpcomingRetirements,
+  });
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -247,6 +259,84 @@ function Dashboard() {
           ))}
         </div>
       </section>
+
+      {/* Workforce watchlists */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Employees on probation */}
+        <section className="rounded-xl border border-border bg-card shadow-sm">
+          <header className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Hourglass className="h-4 w-4 text-primary" />
+              {t("Employees on Probation")}
+            </h2>
+            <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning tabular-nums">
+              {lpr ? "—" : probation?.length ?? 0}
+            </span>
+          </header>
+          <div className="divide-y divide-border/60">
+            {lpr && <p className="px-4 py-5 text-center text-sm text-muted">{t("Loading", "Loading")}…</p>}
+            {!lpr && (probation?.length ?? 0) === 0 && (
+              <p className="px-4 py-5 text-center text-sm text-muted">
+                {t("No employees on probation.", "No employees on probation.")}
+              </p>
+            )}
+            {probation?.map((e) => (
+              <Link key={e.id} to="/employee" className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-secondary/40">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">{e.fullName}</p>
+                  <p className="truncate text-xs text-muted">
+                    {e.employeeNumber}
+                    {e.positionTitle ? ` · ${e.positionTitle}` : ""}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right text-xs">
+                  <p className="text-muted">{e.probationEndDate ? new Date(e.probationEndDate).toLocaleDateString() : "—"}</p>
+                  {typeof e.daysRemaining === "number" && (
+                    <p className={`text-[11px] font-medium ${e.daysRemaining < 0 ? "text-error" : e.daysRemaining <= 7 ? "text-warning" : "text-muted/80"}`}>
+                      {e.daysRemaining < 0 ? `${-e.daysRemaining}d overdue` : `${e.daysRemaining}d left`}
+                    </p>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* Upcoming retirements */}
+        <section className="rounded-xl border border-border bg-card shadow-sm">
+          <header className="flex items-center justify-between border-b border-border px-4 py-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              {t("Upcoming Retirements")}
+            </h2>
+            <span className="rounded-full bg-info/15 px-2 py-0.5 text-xs font-semibold text-info tabular-nums">
+              {lrt ? "—" : retirements?.length ?? 0}
+            </span>
+          </header>
+          <div className="divide-y divide-border/60">
+            {lrt && <p className="px-4 py-5 text-center text-sm text-muted">{t("Loading", "Loading")}…</p>}
+            {!lrt && (retirements?.length ?? 0) === 0 && (
+              <p className="px-4 py-5 text-center text-sm text-muted">
+                {t("No retirements within a month.", "No retirements within a month.")}
+              </p>
+            )}
+            {retirements?.map((e) => (
+              <Link key={e.id} to="/employee" className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-secondary/40">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-foreground">{e.fullName}</p>
+                  <p className="truncate text-xs text-muted">{e.employeeNumber}</p>
+                </div>
+                <div className="shrink-0 text-right text-xs">
+                  <p className="text-muted">{new Date(e.retirementDate).toLocaleDateString()}</p>
+                  <p className={`text-[11px] font-medium ${e.daysRemaining < 0 ? "text-error" : e.daysRemaining <= 14 ? "text-warning" : "text-muted/80"}`}>
+                    {e.daysRemaining < 0 ? `${-e.daysRemaining}d overdue` : `${e.daysRemaining}d left`}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Recent activity (audit trail) */}

@@ -39,6 +39,11 @@ export const employmentStatusOptions = [
   "Retired",
 ].map((v) => ({ id: v, name: v }));
 
+export const employmentNatureOptions = [
+  { id: "Permanent", name: "Permanent" },
+  { id: "Contract", name: "Contract" },
+];
+
 export const relationshipOptions = [
   "Spouse",
   "Child",
