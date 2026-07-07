@@ -10,8 +10,10 @@ public class HrmsDbContextDesignTimeFactory : IDesignTimeDbContextFactory<HrmsDb
     public HrmsDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<HrmsDbContext>();
+        // Must match ConnectionStrings:DefaultConnection in appsettings.json so `dotnet ef`
+        // migrates the same database the API uses at runtime.
         var connectionString =
-            "Server=CLOUDX-SICS2\\SQLEXPRESS;Database=Hrms;Trusted_Connection=True;TrustServerCertificate=True;";
+            "Server=CLOUDX-SICS2\\SQLEXPRESS;Database=CERP;Trusted_Connection=True;TrustServerCertificate=True;";
         optionsBuilder.UseSqlServer(connectionString, b => b.MigrationsAssembly("CyberErp.Hrms.Inf"));
 
         var tenantAccessor = new StaticMultiTenantContextAccessor<AppTenantInfo>(new AppTenantInfo

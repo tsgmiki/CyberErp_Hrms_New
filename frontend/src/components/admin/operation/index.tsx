@@ -13,7 +13,7 @@ function Operation() {
     <EntityModuleShell
       title="Operations"
       headerDescription="Manage operations and sidebar route links"
-      headerIcon={<Shield className="h-6 w-6 text-red-600" />}
+      headerIcon={<Shield className="h-6 w-6 text-primary" />}
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}

@@ -10,6 +10,7 @@ using Finbuckle.MultiTenant;
 using Finbuckle.MultiTenant.AspNetCore.Extensions;
 using Finbuckle.MultiTenant.Extensions;
 using CyberErp.Hrms.Inf;
+using CyberErp.Hrms.Inf.Common;
 using CyberErp.Hrms.Inf.Models;
 using CyberErp.Hrms.Inf.MultiTenant;
 using CyberErp.Hrms.App;
@@ -53,6 +54,9 @@ public static class ServiceCollectionExtensions
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
+                // Form-driven UI posts numeric fields as strings; accept them for int/decimal.
+                options.JsonSerializerOptions.NumberHandling =
+                    System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
             });
 
         return services;
@@ -87,9 +91,11 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHrmsDbContext(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<HrmsDbContext>(options =>
+        services.AddDbContext<HrmsDbContext>((sp, options) =>
         {
             options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CyberErp.Hrms.Inf"));
+            // Audit-trail interceptor (resolved per-scope so it sees the current user/tenant).
+            options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
         });
         services.AddScoped<DbContext>(sp => sp.GetRequiredService<HrmsDbContext>());
 

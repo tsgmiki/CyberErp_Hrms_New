@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# pre-commit - Documentation & state-tracking guard.
+#
+# Enforces the memory.md / handoff.md / logic.md discipline: if a commit changes code but does not
+# include any of the tracking docs, it prompts the developer to confirm the docs were updated.
+#
+# Tracked under .githooks/ and activated with:   git config core.hooksPath .githooks
+# Bypass (use sparingly):   SKIP_DOC_CHECK=1 git commit ...   |   git commit --no-verify
+#
+# Native git only - no external dependencies.
+
+DOCS_RE='^(memory|handoff|logic)\.md$'
+
+# Explicit escape hatch for automation / purely mechanical commits.
+[ "${SKIP_DOC_CHECK:-0}" = "1" ] && exit 0
+
+staged=$(git diff --cached --name-only)
+[ -z "$staged" ] && exit 0                       # nothing staged (e.g. --allow-empty)
+
+docs_staged=$(printf '%s\n' "$staged" | grep -E "$DOCS_RE" || true)
+non_docs=$(printf '%s\n' "$staged" | grep -vE "$DOCS_RE" || true)
+
+# The tracking docs are part of this commit, or it is a docs-only commit -> nothing to verify.
+[ -n "$docs_staged" ] && exit 0
+[ -z "$non_docs" ] && exit 0
+
+# Code changed but no tracking doc is staged -> verify with the developer.
+# git detaches stdin, so open the controlling terminal explicitly on fd 3 and require that it is an
+# actual terminal ([ -t 3 ]). A /dev/tty node can exist yet not be interactive (CI / no controlling
+# terminal); in that case warn and allow rather than block automated commits.
+if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
+  {
+    echo ""
+    echo "=============================================================="
+    echo "  Documentation & state-tracking check"
+    echo "=============================================================="
+    echo "  This commit changes code but updates NONE of the tracking docs:"
+    echo "    - memory.md   : goals / architecture / current state"
+    echo "    - handoff.md  : latest changes / outstanding tasks / resume context"
+    echo "    - logic.md    : system logic, multi-step approvals, entity relationships"
+    echo ""
+    echo "  Reflect the latest changes in the relevant doc(s), then re-stage."
+    echo ""
+    printf "  Have you updated the documentation to reflect these changes? [y/N] "
+  } >&3
+  read reply <&3
+  exec 3>&-
+
+  case "$reply" in
+    [Yy] | [Yy][Ee][Ss])
+      echo "  ok - proceeding with commit." >&2
+      exit 0
+      ;;
+    *)
+      echo "  x commit aborted - update memory.md / handoff.md / logic.md first." >&2
+      echo "    (bypass: git commit --no-verify)" >&2
+      exit 1
+      ;;
+  esac
+else
+  exec 3>&- 2>/dev/null || true
+  echo "pre-commit: code changed but memory.md/handoff.md/logic.md are not part of this commit;" >&2
+  echo "            no interactive terminal to confirm - allowing. Update the docs, or set SKIP_DOC_CHECK=1." >&2
+  exit 0
+fi

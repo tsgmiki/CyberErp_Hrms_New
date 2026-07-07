@@ -60,7 +60,9 @@ public class LoginRepository(
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
                     UserName = user.UserName,
-                    TenantId = !string.IsNullOrEmpty(user.TenantId) ? Guid.Parse(user.TenantId) : null
+                    TenantId = !string.IsNullOrEmpty(user.TenantId) ? Guid.Parse(user.TenantId) : null,
+                    BranchId = user.BranchId,
+                    IsHeadOffice = user.IsHeadOffice
                 };
 
                 var token = _authentication.GenerateToken(userResult, tokenId);
@@ -72,6 +74,7 @@ public class LoginRepository(
                     SetTenantCookie(user.TenantId);
 
                 SetUserCookies(user.Id.ToString(), user.UserName);
+                SetBranchCookies(user.BranchId, user.IsHeadOffice);
 
                 return userResult;
             });
@@ -118,5 +121,28 @@ public class LoginRepository(
                 Expires = DateTimeOffset.UtcNow.AddDays(14)
             });
         }
+    }
+
+    private void SetBranchCookies(Guid? branchId, bool isHeadOffice)
+    {
+        var context = _httpContextAccessor.HttpContext;
+        if (context == null) return;
+
+        var options = new CookieOptions
+        {
+            HttpOnly = true,
+            IsEssential = true,
+            SameSite = SameSiteMode.Lax,
+            Secure = context.Request.IsHttps,
+            Expires = DateTimeOffset.UtcNow.AddDays(14)
+        };
+
+        // BranchId scopes a branch admin; absent for Head Office.
+        if (branchId.HasValue)
+            context.Response.Cookies.Append("BranchId", branchId.Value.ToString(), options);
+        else
+            context.Response.Cookies.Delete("BranchId");
+
+        context.Response.Cookies.Append("IsHeadOffice", isHeadOffice ? "true" : "false", options);
     }
 }

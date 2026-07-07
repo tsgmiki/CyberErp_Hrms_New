@@ -13,7 +13,7 @@ function Role() {
     <EntityModuleShell
       title="Roles"
       headerDescription="Manage user roles and access permissions"
-      headerIcon={<Shield className="h-6 w-6 text-red-600" />}
+      headerIcon={<Shield className="h-6 w-6 text-primary" />}
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}

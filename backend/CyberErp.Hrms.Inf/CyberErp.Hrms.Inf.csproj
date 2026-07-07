@@ -22,4 +22,8 @@
     <ProjectReference Include="..\CyberErp.Hrms.Dom\CyberErp.Hrms.Dom.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Repositories\Core\Operations\GetById\" />
+  </ItemGroup>
+
 </Project>

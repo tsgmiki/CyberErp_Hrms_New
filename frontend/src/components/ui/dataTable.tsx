@@ -168,7 +168,7 @@ const DataTable = ({
               className={`p-3 ${responsiveClass(col.responsive)} ${col.width ?? "w-auto"}`}
             >
               {typeof col.render !== "undefined"
-                ? col.render(String(item[col.name as string] ?? ""), item)
+                ? col.render((item[col.name as string] ?? "") as string, item)
                 : (item[col.name as string] as ReactNode)}
             </td>
           ))}

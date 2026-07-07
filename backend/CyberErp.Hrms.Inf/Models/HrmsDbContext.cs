@@ -47,6 +47,53 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<SubscriptionPlan> SubscriptionPlan { get; set; }
     public DbSet<TenantSubscription> TenantSubscription { get; set; }
 
+    // Organizational Structure (HRMS §3.1)
+    public DbSet<OrganizationUnit> OrganizationUnit { get; set; }
+    public DbSet<Position> Position { get; set; }
+    public DbSet<PositionClass> PositionClass { get; set; }
+    public DbSet<JobGrade> JobGrade { get; set; }
+    public DbSet<Step> Step { get; set; }
+    public DbSet<SalaryScale> SalaryScale { get; set; }
+    public DbSet<FiscalYear> FiscalYear { get; set; }
+    public DbSet<AnnualLeaveSetting> AnnualLeaveSetting { get; set; }
+    public DbSet<LeaveType> LeaveType { get; set; }
+    public DbSet<Holiday> Holiday { get; set; }
+    public DbSet<LeaveRequest> LeaveRequest { get; set; }
+    public DbSet<LeaveBalance> LeaveBalance { get; set; }
+    public DbSet<LeaveBalanceTransaction> LeaveBalanceTransaction { get; set; }
+    public DbSet<JobCategory> JobCategory { get; set; }
+    public DbSet<WorkLocation> WorkLocation { get; set; }
+
+    // Multi-Branch Organizational Structure
+    public DbSet<Branch> Branch { get; set; }
+    public DbSet<AuditLog> AuditLog { get; set; }
+
+    // Employee Data Management (HRMS §3.2)
+    public DbSet<Person> Person { get; set; }
+    public DbSet<Employee> Employee { get; set; }
+    public DbSet<EmployeeEducation> EmployeeEducation { get; set; }
+    public DbSet<EmployeeExperience> EmployeeExperience { get; set; }
+    public DbSet<EmployeeDependent> EmployeeDependent { get; set; }
+    public DbSet<EmployeeFieldDefinition> EmployeeFieldDefinition { get; set; }
+    public DbSet<EmployeeFieldValue> EmployeeFieldValue { get; set; }
+    public DbSet<EmployeeDocument> EmployeeDocument { get; set; }
+    public DbSet<EmployeeMovement> EmployeeMovement { get; set; }
+    public DbSet<DisciplinaryMeasure> DisciplinaryMeasure { get; set; }
+    public DbSet<EmployeeTermination> EmployeeTermination { get; set; }
+    public DbSet<TerminationClearance> TerminationClearance { get; set; }
+    public DbSet<Role> Role { get; set; }
+    public DbSet<UserRole> UserRole { get; set; }
+    public DbSet<Module> Module { get; set; }
+    public DbSet<Operation> Operation { get; set; }
+    public DbSet<RolePermission> RolePermission { get; set; }
+    public DbSet<WorkflowDefinition> WorkflowDefinition { get; set; }
+    public DbSet<WorkflowStep> WorkflowStep { get; set; }
+    public DbSet<WorkflowStepApprover> WorkflowStepApprover { get; set; }
+    public DbSet<WorkflowInstance> WorkflowInstance { get; set; }
+    public DbSet<WorkflowActionLog> WorkflowActionLog { get; set; }
+    public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
+    public DbSet<CompanyProfile> CompanyProfile { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -114,5 +161,52 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TenantConfiguration());
         modelBuilder.ApplyConfiguration(new SubscriptionPlanConfiguration());
         modelBuilder.ApplyConfiguration(new TenantSubscriptionConfiguration());
+
+        // Organizational Structure (HRMS §3.1)
+        modelBuilder.ApplyConfiguration(new JobGradeConfiguration());
+        modelBuilder.ApplyConfiguration(new StepConfiguration());
+        modelBuilder.ApplyConfiguration(new SalaryScaleConfiguration());
+        modelBuilder.ApplyConfiguration(new FiscalYearConfiguration());
+        modelBuilder.ApplyConfiguration(new AnnualLeaveSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaveTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new HolidayConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaveRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaveBalanceConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaveBalanceTransactionConfiguration());
+        modelBuilder.ApplyConfiguration(new JobCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkLocationConfiguration());
+        modelBuilder.ApplyConfiguration(new OrganizationUnitConfiguration());
+        modelBuilder.ApplyConfiguration(new PositionClassConfiguration());
+        modelBuilder.ApplyConfiguration(new PositionConfiguration());
+
+        // Multi-Branch Organizational Structure
+        modelBuilder.ApplyConfiguration(new BranchConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditLogConfiguration());
+
+        // Employee Data Management (HRMS §3.2)
+        modelBuilder.ApplyConfiguration(new PersonConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeEducationConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeExperienceConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeDependentConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeFieldDefinitionConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeFieldValueConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeMovementConfiguration());
+        modelBuilder.ApplyConfiguration(new DisciplinaryMeasureConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeTerminationConfiguration());
+        modelBuilder.ApplyConfiguration(new TerminationClearanceConfiguration());
+        modelBuilder.ApplyConfiguration(new RoleConfiguration());
+        modelBuilder.ApplyConfiguration(new UserRoleConfiguration());
+        modelBuilder.ApplyConfiguration(new ModuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OperationConfiguration());
+        modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowDefinitionConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowStepConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowStepApproverConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowInstanceConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowActionLogConfiguration());
+        modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new CompanyProfileConfiguration());
     }
 }

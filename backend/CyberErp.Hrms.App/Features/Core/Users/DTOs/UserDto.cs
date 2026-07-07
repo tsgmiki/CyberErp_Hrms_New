@@ -32,6 +32,8 @@ namespace CyberErp.Hrms.App.Features.Core.Users.DTOs
         public string UserName { get; set; } = string.Empty;
         public Guid? CompanyId { get; set; }
         public Guid? TenantId { get; set; }
+        public Guid? BranchId { get; set; }
+        public bool IsHeadOffice { get; set; }
         public string Token { get; set; } = string.Empty;
     }
 }

@@ -46,6 +46,20 @@ namespace CyberErp.Hrms.App.Common.DTOs
         public Guid? ItemId { get; set; }
         public string? VoucherType { get; set; }
         public bool? IsDirect { get; set; }
+
+        // Organizational Structure hierarchy filters (HRMS §3.1)
+        public Guid? ParentId { get; set; }
+        public bool? IsRoot { get; set; }
+        public string? Status { get; set; }
+
+        /// <summary>When true, restrict positions to vacant (open) ones — used by the employee form.</summary>
+        public bool? IsVacant { get; set; }
+
+        /// <summary>Filters salary-scale rows to a single job grade.</summary>
+        public Guid? JobGradeId { get; set; }
+
+        /// <summary>Filters records (e.g. leave requests/balances) to a single employee.</summary>
+        public Guid? EmployeeId { get; set; }
     }
 }
 

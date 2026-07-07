@@ -36,5 +36,10 @@ export default interface ParameterModel {
   operationId?: string;
   reportCategory?: string;
   userId?: string;
+  parentId?: string;
+  /** Restrict positions to vacant (open) ones — used by the employee placement dropdown. */
+  isVacant?: boolean;
+  /** Filters the salary-scale grid to a single job grade. */
+  jobGradeId?: string;
 
 }

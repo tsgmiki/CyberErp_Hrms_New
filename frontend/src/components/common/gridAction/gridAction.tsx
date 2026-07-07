@@ -99,6 +99,10 @@ function GridAction(props: Props) {
   const location = useLocation();
   const pathName = location.pathname;
 
+  // When no permission data is loaded (permission system not configured), don't gate
+  // actions — otherwise every Edit/Delete would be disabled. Real gating still applies
+  // once PermissionData is populated.
+  const hasPermissions = Array.isArray(permissions) && permissions.length > 0;
   const canAdd = permissions?.find(
     (b) => pathName.includes(b.link as string) && b.canAdd == true,
   );
@@ -109,9 +113,9 @@ function GridAction(props: Props) {
     (b) => pathName.includes(b.link as string) && b.canDelete == true,
   );
 
-  const disableAdd = !canAdd;
-  const disableEdit = !canEdit;
-  const disableDelete = !canDelete;
+  const disableAdd = hasPermissions && !canAdd;
+  const disableEdit = hasPermissions && !canEdit;
+  const disableDelete = hasPermissions && !canDelete;
   const isRejectAction = actionName === "Reject";
 
   return (

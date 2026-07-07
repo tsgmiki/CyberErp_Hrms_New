@@ -27,3 +27,6 @@ appsettings.*.local.json
 .env
 .env.local
 .env.*.local
+
+# ---------- Runtime uploads (employee photos, etc.) ----------
+backend/CyberErp.Hrms.Api/App_Data/employee-photos/

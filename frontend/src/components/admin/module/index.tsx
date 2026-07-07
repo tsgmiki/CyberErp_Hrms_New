@@ -13,10 +13,10 @@ function Module() {
     <EntityModuleShell
       title="Modules"
       headerDescription="Manage application modules and subsystems"
-      headerIcon={<LayoutGrid className="h-6 w-6 text-red-600" />}
+      headerIcon={<LayoutGrid className="h-6 w-6 text-primary" />}
       tableTitle="Modules"
       tableDescription="Manage application modules and their permissions"
-      tableIcon={<LayoutGrid className="h-5 w-5 text-red-600" />}
+      tableIcon={<LayoutGrid className="h-5 w-5 text-primary" />}
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}
