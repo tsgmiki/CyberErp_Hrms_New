@@ -65,6 +65,30 @@ export const documentTemplateSamples: Record<string, DocumentTemplateSample> = {
     footer: letterFooter,
   },
 
+  ClearanceCertificate: {
+    header: letterHeader,
+    body: `
+<div style="font-family: Georgia, serif; color:#111; line-height:1.6;">
+  <p style="text-align:right;">{{Today}}</p>
+  <h2 style="text-align:center; text-transform:uppercase; letter-spacing:1px;">Clearance Certificate</h2>
+  <p>This is to certify that <strong>{{FullName}}</strong> (Employee No. {{EmployeeNumber}}),
+  formerly holding the position of <strong>{{Position}}</strong> in the {{OrganizationUnit}} unit,
+  has completed the organizational clearance process following separation effective
+  <strong>{{TerminationDate}}</strong> (last working day {{LastWorkingDate}}).</p>
+  <p>Departmental clearance status: <strong>{{ClearanceStatus}}</strong></p>
+  <div style="margin:12px 0;">{{ClearanceTable}}</div>
+  <p>Accordingly, the employee is hereby granted final clearance as of {{ClearanceDate}}.</p>
+  <table style="width:100%; margin-top:48px; font-family:Arial, sans-serif;">
+    <tr>
+      <td style="text-align:left;">_____________________________<br/>Human Resources</td>
+      <td style="text-align:center;">_____________________________<br/>Finance</td>
+      <td style="text-align:right;">_____________________________<br/>Authorized Signature</td>
+    </tr>
+  </table>
+</div>`,
+    footer: letterFooter,
+  },
+
   IdCard: {
     body: `
 <div style="width:320px; border:2px solid #1e3a5f; border-radius:10px; overflow:hidden; font-family: Arial, sans-serif;">

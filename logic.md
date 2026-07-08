@@ -82,8 +82,31 @@ ApproverId, server-resolved DisplayName). Admin UI `/clearanceDepartment` (Syste
   whose department has ≥1 configured approver must be **Cleared** (a Cleared item implies an
   authorized approver signed it — clearing is authorization-gated); (3) remaining not-Cleared items
   belong to departments with **no** approver (nobody to sign them) and are **auto-cleared on
-  settlement** with a `system` note. Then `MarkSettled` (all-cleared invariant holds) + terminate +
-  reopen position.
+  settlement** with a `system` note. Then `MarkSettled(vacatedPositionId)` (all-cleared invariant
+  holds) + terminate + reopen position. Settlement **snapshots the vacated position** on the case
+  (see reinstatement below).
+
+### Reinstatement (reverse a settled termination)
+`Employee.Terminate()` nulls `PositionId`, so `FinalizeEmployeeTermination` passes the pre-termination
+`oldPositionId` into `MarkSettled`, stored as `EmployeeTermination.VacatedPositionId` (nullable Guid,
+**no FK** — a snapshot like the movement position columns). Migration `AddTerminationReinstatement`
+adds `VacatedPositionId` + `ReinstatedAt`.
+- **`GET EmployeeTermination/reinstatement-info?employeeId=`** (`GetReinstatementInfo`): reads the
+  latest settled case's `VacatedPositionId`, returns `{ PreviousPositionId, PreviousPositionTitle,
+  PreviousPositionAvailable (position exists && IsVacant), PreviousPositionOccupiedBy }`. Names are
+  materialized then joined in memory (EF can't translate `string.Join` in a projection).
+- **`POST EmployeeTermination/reinstate`** `{ EmployeeId, PositionId }` (`ReinstateEmployee`): employee
+  must be terminated; the target position must exist and be **vacant** (else 400 "select a vacant
+  position"); `Employee.Reinstate(positionId, branchId)` → Active, `IsTerminated=false`, branch follows
+  the position (department derives from it), salary/pay-point preserved; `MarkPositionOccupiedAsync`;
+  the latest settled case is stamped `MarkReinstated()`. The employee then **leaves the Termination
+  List** and returns to the main Employee List automatically.
+- **UI** (`terminationList/index.tsx` `ReinstateModal`): a **Reinstate** action fetches the info; when
+  the previous position is available it's preselected ("will be restored unless you pick another"),
+  otherwise a warning names the occupant and a **required** vacant-position picker forces a new choice.
+  The picker is the searchable `DropDownField` (`param`/`setParam`) with `take:10` + `isVacant:true` —
+  it shows 10 rows but the search box pushes `searchText` to the API, so it searches **all** vacant
+  positions server-side (Position GetAll filters Code/PositionClass.Title), not just the loaded 10.
 
 ### Terminated-employee separation (Termination List)
 `GetAllEmployees` excludes `IsTerminated`/`EmploymentStatus.Terminated` rows **unless** the caller
@@ -96,6 +119,18 @@ per-employee GETs) — and its Documents action opens the standard `GenerateDocu
 **Termination merge tokens** in `GenerateEmployeeDocument` (group "Termination"):
 `{{TerminationType}} {{TerminationDate}} {{LastWorkingDate}} {{TerminationNoticeDate}}
 {{TerminationReason}}` — from the employee's latest case (settled preferred), blank when none.
+
+### Clearance document generation
+Same template + merge + `GenerateDocumentModal` + react-to-print stack. New **Clearance** merge tokens
+in `GenerateEmployeeDocument`, sourced from the latest **settled** termination's checklist:
+`{{ClearanceTable}}` (system-built raw-HTML `<table>` of Department/Requirement/Status/Cleared-By/Date —
+cell values HTML-encoded, emitted un-encoded like `{{Photo}}`/`{{Logo}}`), `{{ClearanceStatus}}`
+("Fully Cleared" when all Cleared), `{{ClearanceDate}}` (SettledAt). New enum
+`DocumentTemplateType.ClearanceCertificate` (stored as string — no migration). A **turnkey starter**
+template is created by the idempotent `SeedDefaultDocumentTemplates` (`POST DocumentTemplate/seed-defaults`,
+"Seed default templates" button on the Document Templates list) — a "Clearance Certificate" with a
+letterhead, employee block, `{{ClearanceTable}}`, and signature footer. Generated/printed from the
+Termination List's existing **Generate Document** action.
 
 ## 2. Multi-step approval flow (the exact sequence)
 
@@ -257,6 +292,7 @@ Workflow: WorkflowDefinition 1─< WorkflowStep 1─< WorkflowStepApprover
 
 Clearance: hrms_ClearanceDepartment 1─< hrms_ClearanceDepartmentApprover (User|Role)
            hrms_EmployeeTermination 1─< hrms_TerminationClearance ── DepartmentId? → hrms_ClearanceDepartment (SET NULL)
+           hrms_EmployeeTermination.VacatedPositionId? (snapshot, no FK) + ReinstatedAt? (reinstatement)
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).

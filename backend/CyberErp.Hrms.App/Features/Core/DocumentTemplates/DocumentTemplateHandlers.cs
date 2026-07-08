@@ -15,6 +15,7 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
     public interface IDeleteDocumentTemplate { Task DeleteAsync(Guid id); }
     public interface IGetDocumentTemplateById { Task<DocumentTemplateDto> GetAsync(Guid id); }
     public interface IGetAllDocumentTemplates { Task<PaginatedResponse<DocumentTemplateDto>> GetAsync(GetAllRequest request); }
+    public interface ISeedDefaultDocumentTemplates { Task<int> SeedAsync(); }
 
     internal static class DocumentTemplateShared
     {
@@ -139,6 +140,68 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
                 .ToListAsync();
 
             return new PaginatedResponse<DocumentTemplateDto> { Total = total, Data = data };
+        }
+    }
+
+    // ---- Seed default templates (idempotent) ------------------------------------
+
+    /// <summary>
+    /// Creates ready-to-use starter templates when absent (idempotent per tenant, matched by name).
+    /// Currently ships the <b>Clearance Certificate</b> that renders the offboarding checklist via the
+    /// {{ClearanceTable}} merge token — so HR can print a final clearance document out of the box.
+    /// </summary>
+    public class SeedDefaultDocumentTemplates(
+        IRepository<DocumentTemplate> repository,
+        ILogger<SeedDefaultDocumentTemplates> logger) : ISeedDefaultDocumentTemplates
+    {
+        private const string ClearanceCertificateName = "Clearance Certificate";
+
+        private const string ClearanceHeader =
+            "<div style=\"display:flex;align-items:center;justify-content:space-between;\">" +
+            "<div>{{Logo}}</div>" +
+            "<div style=\"text-align:right;\"><div style=\"font-size:12px;color:#555;\">{{Branch}}</div></div>" +
+            "</div>";
+
+        private const string ClearanceBody =
+            "<h2 style=\"text-align:center;margin:8px 0 16px;letter-spacing:1px;\">CLEARANCE CERTIFICATE</h2>" +
+            "<p>This is to certify that <strong>{{FullName}}</strong> (Employee No. <strong>{{EmployeeNumber}}</strong>), " +
+            "formerly holding the position of <strong>{{Position}}</strong>, has completed the organizational " +
+            "clearance process following separation effective <strong>{{TerminationDate}}</strong> " +
+            "(last working day {{LastWorkingDate}}).</p>" +
+            "<p>Departmental clearance status: <strong>{{ClearanceStatus}}</strong></p>" +
+            "<div style=\"margin:12px 0;\">{{ClearanceTable}}</div>" +
+            "<p>Accordingly, the employee is hereby granted final clearance as of {{ClearanceDate}}.</p>";
+
+        private const string ClearanceFooter =
+            "<div style=\"display:flex;justify-content:space-between;margin-top:48px;\">" +
+            "<div>_____________________________<br/>Human Resources</div>" +
+            "<div>_____________________________<br/>Finance</div>" +
+            "<div>_____________________________<br/>Authorized Signature</div>" +
+            "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
+
+        public async Task<int> SeedAsync()
+        {
+            var created = 0;
+
+            if (!await repository.GetAll().AnyAsync(t => t.Name == ClearanceCertificateName))
+            {
+                var template = DocumentTemplate.Create(
+                    ClearanceCertificateName,
+                    DocumentTemplateType.ClearanceCertificate,
+                    ClearanceBody,
+                    ClearanceHeader,
+                    ClearanceFooter,
+                    "Final clearance certificate for a terminated employee (offboarding checklist).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            if (created > 0)
+            {
+                await repository.SaveChangesAsync();
+                logger.LogInformation("Seeded {Count} default document template(s)", created);
+            }
+            return created;
         }
     }
 }

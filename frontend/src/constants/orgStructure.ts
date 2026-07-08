@@ -121,6 +121,7 @@ export const documentTypeOptions = [
   { id: "EmploymentLetter", name: "Employment Letter" },
   { id: "ExperienceLetter", name: "Experience Letter" },
   { id: "IdCard", name: "ID Card" },
+  { id: "ClearanceCertificate", name: "Clearance Certificate" },
   { id: "Other", name: "Other" },
 ];
 

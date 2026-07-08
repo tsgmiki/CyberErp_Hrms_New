@@ -52,6 +52,7 @@ export type {
   EmployeeTerminationModel,
   TerminationClearanceModel,
   TerminatedEmployeeModel,
+  ReinstatementInfoModel,
   MyClearanceItemModel,
   MyClearancesModel,
 } from "./masters/EmployeeModel";

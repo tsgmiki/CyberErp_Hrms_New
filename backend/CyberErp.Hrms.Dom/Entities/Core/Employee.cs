@@ -236,6 +236,26 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
     }
 
     /// <summary>
+    /// Reverses a termination: the employee returns to Active on a (vacant) position — their previous
+    /// one when still open, otherwise a newly chosen one. The branch follows the position (isolation is
+    /// transitive), and the organization unit/department is derived from it. Salary and pay point are
+    /// preserved from before the termination.
+    /// </summary>
+    public void Reinstate(Guid positionId, Guid? branchId)
+    {
+        if (!IsTerminated && EmploymentStatus != EmploymentStatus.Terminated)
+            throw new InvalidOperationException("Only a terminated employee can be reinstated.");
+        if (positionId == Guid.Empty)
+            throw new ArgumentException("A position is required to reinstate an employee.", nameof(positionId));
+
+        EmploymentStatus = EmploymentStatus.Active;
+        IsTerminated = false;
+        PositionId = positionId;
+        BranchId = branchId;
+        base.Update();
+    }
+
+    /// <summary>
     /// Applies an executed personnel movement (transfer / promotion / demotion) to the placement
     /// fields. When the position changes, the branch always follows the new position (isolation is
     /// transitive); salary changes only when the movement specifies it. The job grade is no longer

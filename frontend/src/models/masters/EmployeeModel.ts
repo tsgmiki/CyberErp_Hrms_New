@@ -140,6 +140,16 @@ export interface MyClearancesModel {
   items: MyClearanceItemModel[];
 }
 
+/** Pre-reinstatement context: the employee's previous position + whether it is still available. */
+export interface ReinstatementInfoModel {
+  employeeId: string;
+  employeeName: string;
+  previousPositionId?: string;
+  previousPositionTitle?: string;
+  previousPositionAvailable: boolean;
+  previousPositionOccupiedBy?: string;
+}
+
 /** One row of the Termination List: a terminated employee + their latest case. */
 export interface TerminatedEmployeeModel {
   id?: string; // list template expects `id` — mapped from employeeId

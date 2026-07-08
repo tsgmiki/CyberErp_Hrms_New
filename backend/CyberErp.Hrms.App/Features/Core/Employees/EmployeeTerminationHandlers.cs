@@ -479,13 +479,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var employee = await employeeRepository.GetAll().FirstOrDefaultAsync(e => e.Id == termination.EmployeeId)
                 ?? throw new NotFoundException(nameof(Employee), termination.EmployeeId.ToString());
 
-            // System automations: end the employment, decouple the seat and reopen it.
+            // System automations: end the employment, decouple the seat and reopen it. The vacated
+            // position is captured before Terminate() nulls it so reinstatement can restore it.
             var oldPositionId = employee.PositionId;
             employee.Terminate();
             employeeRepository.UpdateAsync(employee);
             await EmployeeShared.RecomputePositionVacancyAsync(oldPositionId, employee.Id, positionRepository, employeeRepository);
 
-            termination.MarkSettled();
+            termination.MarkSettled(oldPositionId);
             repository.UpdateAsync(termination);
             await repository.SaveChangesAsync();
             logger.LogInformation("Settled EmployeeTermination {Id}: employee {EmployeeId} terminated, position {PositionId} reopened",

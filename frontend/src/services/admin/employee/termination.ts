@@ -3,7 +3,12 @@ import { EmployeeTerminationSchema } from "@/components/util/validation";
 import { createSaveService } from "@/template/createSaveService";
 import { createPagedQuery } from "@/template/createPagedQuery";
 import errorMessageParser from "@/components/util/errorMessageParser";
-import type { EmployeeTerminationModel, TerminatedEmployeeModel, MyClearancesModel } from "@/models";
+import type {
+  EmployeeTerminationModel,
+  TerminatedEmployeeModel,
+  MyClearancesModel,
+  ReinstatementInfoModel,
+} from "@/models";
 import type ParameterModel from "@/models/ParameterModel";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -52,3 +57,29 @@ export const updateClearance = (id: string, status: string, note?: string) =>
 export const finalizeTermination = (id: string) => post(`EmployeeTermination/${id}/finalize`);
 
 export const cancelTermination = (id: string) => post(`EmployeeTermination/${id}/cancel`);
+
+/** Pre-reinstatement context: previous position + whether it is still available. */
+export const getReinstatementInfo = (employeeId: string) =>
+  api.get<ReinstatementInfoModel>(`EmployeeTermination/reinstatement-info?employeeId=${employeeId}`);
+
+/** Reinstate a terminated employee onto the chosen (vacant) position. */
+export async function reinstateEmployee(
+  employeeId: string,
+  positionId: string,
+): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch(`${API_BASE_URL}/EmployeeTermination/reinstate`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ employeeId, positionId }),
+  });
+  const text = await res.text();
+  let message = res.ok ? "Employee reinstated" : "Request failed";
+  try {
+    const parsed = JSON.parse(text);
+    message = parsed?.errors ? errorMessageParser(parsed.errors) : (parsed?.message ?? message);
+  } catch {
+    if (text) message = text;
+  }
+  return { ok: res.ok, message };
+}

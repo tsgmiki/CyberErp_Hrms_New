@@ -11,6 +11,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IDeleteDocumentTemplate deleteHandler,
         IGetDocumentTemplateById getByIdHandler,
         IGetAllDocumentTemplates getAllHandler,
+        ISeedDefaultDocumentTemplates seedHandler,
         IGetDocumentMergeFields mergeFieldsHandler,
         IGenerateEmployeeDocument generateHandler,
         IUploadCompanyLogo uploadLogoHandler,
@@ -21,6 +22,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet]
         public Task<PaginatedResponse<DocumentTemplateDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>Creates the built-in starter templates (e.g. Clearance Certificate) when absent.</summary>
+        [HttpPost("seed-defaults")]
+        public async Task<IActionResult> SeedDefaults()
+        {
+            var created = await seedHandler.SeedAsync();
+            return Ok(new { message = created > 0 ? $"Created {created} default template(s)." : "Default templates already exist." });
+        }
 
         /// <summary>Catalog of merge tokens (incl. dynamic custom fields) for the template editor palette.</summary>
         [HttpGet("merge-fields")]

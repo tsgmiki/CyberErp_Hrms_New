@@ -180,6 +180,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<ICancelEmployeeTermination, CancelEmployeeTermination>();
             services.AddScoped<IDeleteEmployeeTermination, DeleteEmployeeTermination>();
 
+            // Reinstatement (reverse a settled termination, restoring placement)
+            services.AddScoped<IGetReinstatementInfo, GetReinstatementInfo>();
+            services.AddScoped<IReinstateEmployee, ReinstateEmployee>();
+
             // Dynamic clearance configuration (departments + approvers)
             services.AddScoped<ISaveClearanceDepartment, SaveClearanceDepartment>();
             services.AddScoped<IGetAllClearanceDepartments, GetAllClearanceDepartments>();
@@ -227,6 +231,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IDeleteDocumentTemplate, DeleteDocumentTemplate>();
             services.AddScoped<IGetDocumentTemplateById, GetDocumentTemplateById>();
             services.AddScoped<IGetAllDocumentTemplates, GetAllDocumentTemplates>();
+            services.AddScoped<ISeedDefaultDocumentTemplates, SeedDefaultDocumentTemplates>();
             services.AddScoped<IGetDocumentMergeFields, GetDocumentMergeFields>();
             services.AddScoped<IGenerateEmployeeDocument, GenerateEmployeeDocument>();
             services.AddScoped<IUploadCompanyLogo, UploadCompanyLogo>();

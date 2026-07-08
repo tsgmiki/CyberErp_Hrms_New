@@ -281,6 +281,11 @@ function Dashboard() {
 
   const confirmDecision = useCallback(async () => {
     if (!pendingDecision) return;
+    // Blocking a clearance requires a reason.
+    if (pendingDecision.status === "Blocked" && !pendingNote.trim()) {
+      setClearanceError(t("A reason is required to block a clearance."));
+      return;
+    }
     setClearanceBusy(true);
     const res = await updateClearance(pendingDecision.item.clearanceId, pendingDecision.status, pendingNote);
     setClearanceBusy(false);
@@ -293,7 +298,7 @@ function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["employeeTerminations"] });
     setPendingDecision(null);
     setPendingNote("");
-  }, [pendingDecision, pendingNote, queryClient]);
+  }, [pendingDecision, pendingNote, queryClient, t]);
 
   const watchTabs = [
     { key: "probation" as const, label: t("On Probation"), count: probation?.length ?? 0 },
@@ -573,9 +578,17 @@ function Dashboard() {
               </button>
               <button
                 type="button"
-                disabled={clearanceBusy}
+                disabled={
+                  clearanceBusy ||
+                  (pendingDecision.status === "Blocked" && !pendingNote.trim())
+                }
                 onClick={confirmDecision}
-                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50 ${
+                title={
+                  pendingDecision.status === "Blocked" && !pendingNote.trim()
+                    ? t("A reason is required to block a clearance")
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-on-accent disabled:cursor-not-allowed disabled:opacity-50 ${
                   pendingDecision.status === "Cleared" ? "bg-success" : "bg-error"
                 }`}
               >
@@ -597,7 +610,13 @@ function Dashboard() {
               {pendingDecision.item.description}
             </p>
             <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-              {t("Remarks")}
+              {pendingDecision.status === "Blocked" ? (
+                <>
+                  {t("Reason")} <span className="text-error">*</span>
+                </>
+              ) : (
+                t("Remarks")
+              )}
             </label>
             <textarea
               autoFocus
@@ -607,10 +626,13 @@ function Dashboard() {
               placeholder={
                 pendingDecision.status === "Cleared"
                   ? t("Optional note about this clearance…")
-                  : t("Reason for blocking (recommended)…")
+                  : t("Explain why this clearance is being blocked…")
               }
               className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             />
+            {pendingDecision.status === "Blocked" && !pendingNote.trim() && (
+              <p className="text-xs text-muted">{t("A reason is required to block a clearance.")}</p>
+            )}
             {clearanceError && <p className="text-xs text-error">{clearanceError}</p>}
           </div>
         </Modal>

@@ -1,16 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { FileText, History, UserX } from "lucide-react";
+import { FileText, History, UserX, UserCheck, AlertTriangle } from "lucide-react";
+import DropDownField from "@/components/ui/dropDownField";
 import { EntityListShell, useEntityList } from "@/template";
-import { getTerminatedEmployees, getTerminations } from "@/services/admin/employee/termination";
+import {
+  getTerminatedEmployees,
+  getTerminations,
+  getReinstatementInfo,
+  reinstateEmployee,
+} from "@/services/admin/employee/termination";
 import { getMovements, getDisciplinaryMeasures } from "@/services/admin/employee/personnelActions";
+import getAllPosition from "@/services/admin/position/getAll";
 import { employeePhotoUrl } from "@/services/admin/employee/photo";
 import GenerateDocumentModal from "../employee/generateDocumentModal";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
+import { parameterInitialData } from "@/constants/initialization";
 import type { TerminatedEmployeeModel, TerminationClearanceModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 
@@ -241,13 +249,166 @@ function HistoryModal({
 }
 
 /**
+ * Reinstate a terminated employee: restore the previous position when it is still vacant, otherwise
+ * force the selection of a new vacant position (their previous one has since been filled).
+ */
+function ReinstateModal({
+  employee,
+  onClose,
+  onDone,
+}: {
+  employee: TerminatedEmployeeModel;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const employeeId = employee.employeeId;
+  const [positionId, setPositionId] = useState("");
+  const [positionName, setPositionName] = useState("");
+  const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Server-side, searchable position lookup: only 10 rows are shown, but typing searches ALL
+  // vacant positions (the search text is pushed to the API, not filtered client-side).
+  const [positionParam, setPositionParam] = useState({
+    ...parameterInitialData,
+    take: 10,
+    isVacant: true,
+  });
+
+  const { data: info, isLoading: infoLoading } = useQuery({
+    queryKey: ["reinstatementInfo", employeeId],
+    queryFn: () => getReinstatementInfo(employeeId),
+  });
+  const { data: positions, isLoading: positionsLoading } = useQuery({
+    queryKey: ["positions", "vacant", positionParam],
+    queryFn: () => getAllPosition(positionParam),
+  });
+
+  const previousAvailable = info?.previousPositionAvailable === true;
+
+  // Default the selection to the previous position when it is still available (user can override).
+  useEffect(() => {
+    if (previousAvailable && info?.previousPositionId && !positionId) {
+      setPositionId(info.previousPositionId);
+      setPositionName(info.previousPositionTitle ?? "");
+    }
+  }, [previousAvailable, info?.previousPositionId, info?.previousPositionTitle, positionId]);
+
+  const confirm = async () => {
+    setTouched(true);
+    if (!positionId) {
+      setError(t("Select a vacant position to reinstate the employee to."));
+      return;
+    }
+    setBusy(true);
+    const res = await reinstateEmployee(employeeId, positionId);
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.message);
+      return;
+    }
+    onDone();
+  };
+
+  return (
+    <Modal
+      visible
+      size="md"
+      title={t("Reinstate Employee")}
+      description={`${employee.fullName} (${employee.employeeNumber})`}
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
+          >
+            {t("Cancel")}
+          </button>
+          <button
+            type="button"
+            disabled={busy || infoLoading}
+            onClick={confirm}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+          >
+            <UserCheck size={16} /> {t("Reinstate")}
+          </button>
+        </>
+      }
+    >
+      {infoLoading && <Loading />}
+      {!infoLoading && info && (
+        <div className="space-y-3">
+          {previousAvailable ? (
+            <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-foreground">
+              {t("Previous position is available")}:{" "}
+              <strong>{info.previousPositionTitle}</strong>. {t("It will be restored unless you pick another below.")}
+            </p>
+          ) : (
+            <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+              <span>
+                {info.previousPositionTitle ? (
+                  <>
+                    {t("Previous position")} <strong>{info.previousPositionTitle}</strong>{" "}
+                    {info.previousPositionOccupiedBy
+                      ? t("is now held by {{name}}.", { name: info.previousPositionOccupiedBy })
+                      : t("is no longer available.")}{" "}
+                  </>
+                ) : (
+                  <>{t("No previous position is on record.")} </>
+                )}
+                {t("Select a vacant position for the reinstatement.")}
+              </span>
+            </p>
+          )}
+
+          <DropDownField
+            name="positionId"
+            type="dropDown"
+            label={previousAvailable ? t("Position") : t("Vacant Position")}
+            required={!previousAvailable}
+            placeholder={t("Search a vacant position…")}
+            value={positionId}
+            displayValue={positionName}
+            isLoading={positionsLoading}
+            param={positionParam}
+            setParam={setPositionParam as never}
+            data={
+              (positions?.data ?? []).map((p) => ({
+                id: p.id,
+                name: `${p.code} — ${p.positionClassTitle ?? ""}${p.organizationUnitName ? ` · ${p.organizationUnitName}` : ""}`,
+              })) as never
+            }
+            onSelect={(_name, item: { id: string; name: string }) => {
+              setPositionId(item.id);
+              setPositionName(item.name);
+              setError(null);
+            }}
+          />
+
+          {touched && !positionId && (
+            <p className="text-xs text-error">{t("A vacant position is required.")}</p>
+          )}
+          {error && <p className="text-xs text-error">{error}</p>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/**
  * Termination List: all terminated employees (excluded from the main employee directory) with
  * their complete history and official-document generation (Experience / Termination letters).
  */
 function TerminationList() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [historyFor, setHistoryFor] = useState<TerminatedEmployeeModel | null>(null);
   const [docFor, setDocFor] = useState<TerminatedEmployeeModel | null>(null);
+  const [reinstateFor, setReinstateFor] = useState<TerminatedEmployeeModel | null>(null);
 
   const list = useEntityList({
     queryKey: "terminatedEmployees",
@@ -322,6 +483,14 @@ function TerminationList() {
               >
                 <FileText size={14} />
               </button>
+              <button
+                type="button"
+                onClick={() => setReinstateFor(record)}
+                title={t("Reinstate Employee")}
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-success hover:border-success hover:bg-success/10"
+              >
+                <UserCheck size={14} />
+              </button>
             </span>
           ),
         },
@@ -353,6 +522,20 @@ function TerminationList() {
           employeeId={docFor.employeeId}
           employeeName={docFor.fullName}
           onClose={() => setDocFor(null)}
+        />
+      )}
+      {reinstateFor && (
+        <ReinstateModal
+          employee={reinstateFor}
+          onClose={() => setReinstateFor(null)}
+          onDone={() => {
+            setReinstateFor(null);
+            // The employee leaves the Termination List and returns to the active directory;
+            // their previous/target position vacancy also changed.
+            queryClient.invalidateQueries({ queryKey: ["terminatedEmployees"] });
+            queryClient.invalidateQueries({ queryKey: ["employees"] });
+            queryClient.invalidateQueries({ queryKey: ["positions"] });
+          }}
         />
       )}
     </div>

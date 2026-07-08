@@ -138,6 +138,57 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             Add("TerminationDate", FormatDate(termination?.SettledAt ?? termination?.LastWorkingDate));
             Add("TerminationReason", termination?.Reason);
 
+            // Clearance-certificate tokens — from the latest SETTLED termination's checklist.
+            var clearanceCase = await terminations.GetAll()
+                .Where(x => x.EmployeeId == e.Id && x.Status == TerminationStatus.Settled)
+                .OrderByDescending(x => x.SettledAt)
+                .Select(x => new
+                {
+                    x.SettledAt,
+                    Clearances = x.Clearances
+                        .OrderBy(c => c.Department)
+                        .Select(c => new { c.Department, c.Description, c.Status, c.ClearedBy, c.ClearedAt })
+                        .ToList()
+                })
+                .FirstOrDefaultAsync();
+
+            Add("ClearanceDate", FormatDate(clearanceCase?.SettledAt));
+            Add("ClearanceStatus",
+                clearanceCase != null && clearanceCase.Clearances.Count > 0
+                    && clearanceCase.Clearances.All(c => c.Status == ClearanceStatus.Cleared)
+                    ? "Fully Cleared" : "—");
+
+            // {{ClearanceTable}} is system-built HTML (cell *values* are still encoded), emitted raw
+            // like the photo/logo tokens so the checklist renders as a real table in the document.
+            if (clearanceCase is null || clearanceCase.Clearances.Count == 0)
+            {
+                tokens["ClearanceTable"] = string.Empty;
+            }
+            else
+            {
+                const string th = "border:1px solid #999;padding:6px 8px;text-align:left;background:#f2f2f2;";
+                const string td = "border:1px solid #ccc;padding:6px 8px;text-align:left;";
+                var table = new StringBuilder();
+                table.Append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;\">")
+                    .Append("<thead><tr>")
+                    .Append($"<th style=\"{th}\">Department</th>")
+                    .Append($"<th style=\"{th}\">Requirement</th>")
+                    .Append($"<th style=\"{th}\">Status</th>")
+                    .Append($"<th style=\"{th}\">Cleared By</th>")
+                    .Append($"<th style=\"{th}\">Date</th>")
+                    .Append("</tr></thead><tbody>");
+                foreach (var c in clearanceCase.Clearances)
+                    table.Append("<tr>")
+                        .Append($"<td style=\"{td}\">{WebUtility.HtmlEncode(c.Department)}</td>")
+                        .Append($"<td style=\"{td}\">{WebUtility.HtmlEncode(c.Description)}</td>")
+                        .Append($"<td style=\"{td}\">{c.Status}</td>")
+                        .Append($"<td style=\"{td}\">{WebUtility.HtmlEncode(c.ClearedBy ?? string.Empty)}</td>")
+                        .Append($"<td style=\"{td}\">{FormatDate(c.ClearedAt)}</td>")
+                        .Append("</tr>");
+                table.Append("</tbody></table>");
+                tokens["ClearanceTable"] = table.ToString();
+            }
+
             // Custom fields (HC021) by definition name — master tokens win on any name clash.
             foreach (var (name, value) in e.CustomFields)
                 if (!tokens.ContainsKey(name)) Add(name, value);
@@ -226,6 +277,9 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             new() { Token = "{{LastWorkingDate}}", Label = "Last working date", Group = "Termination" },
             new() { Token = "{{TerminationNoticeDate}}", Label = "Notice date", Group = "Termination" },
             new() { Token = "{{TerminationReason}}", Label = "Termination reason", Group = "Termination" },
+            new() { Token = "{{ClearanceTable}}", Label = "Clearance checklist (table)", Group = "Clearance" },
+            new() { Token = "{{ClearanceStatus}}", Label = "Overall clearance status", Group = "Clearance" },
+            new() { Token = "{{ClearanceDate}}", Label = "Clearance (settlement) date", Group = "Clearance" },
             new() { Token = "{{Today}}", Label = "Today's date", Group = "Document" },
             new() { Token = "{{Photo}}", Label = "Photo (image)", Group = "Document" },
             new() { Token = "{{PhotoUrl}}", Label = "Photo URL (for <img src>)", Group = "Document" },

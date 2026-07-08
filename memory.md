@@ -83,6 +83,10 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
   gate:** HR finalizes only after all *assigned* approvers clear (blocked halts; open/no-approver
   items auto-clear on settle). **Termination List** menu: terminated employees (excluded from the main
   employee list), complete history modal, and official-document generation (termination merge tokens).
+  **Reinstatement:** reverse a settled termination from the Termination List — settlement snapshots the
+  vacated position (`VacatedPositionId`), reinstate restores it (or forces a vacant-position pick when
+  filled), employee returns to Active. **Clearance certificate:** `{{ClearanceTable}}` merge tokens +
+  a seeded "Clearance Certificate" starter template, printed via the existing Generate Document flow.
 - **Roles/Permissions:** Role/UserRole + Module/Operation/RolePermission (adopted template tables);
   User admin CRUD.
 - **Salary Scale:** JobGrade trimmed to Name/NameA/Code; `lupStep` (Step, no UI) + `coreSalaryScale`;
@@ -100,7 +104,8 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 **DB migrations (chronological, in `backend/CyberErp.Hrms.Inf/Migrations`):**
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
 `AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
-→ `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`.
+→ `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`
+→ `AddTerminationReinstatement`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

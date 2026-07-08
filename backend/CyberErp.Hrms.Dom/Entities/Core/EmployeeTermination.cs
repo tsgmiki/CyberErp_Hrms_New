@@ -43,6 +43,14 @@ public class EmployeeTermination : BaseEntity, IAggregateRoot, IAuditable
     public string Reason { get; private set; } = string.Empty;
     public string? Remarks { get; private set; }
     public DateTime? SettledAt { get; private set; }
+    /// <summary>
+    /// The position the employee held, snapshotted at settlement (their live PositionId is nulled by
+    /// <see cref="Employee.Terminate"/>). Lets reinstatement restore the previous placement. Carries
+    /// no FK — a historical snapshot, like <see cref="EmployeeMovement"/>'s From/To position columns.
+    /// </summary>
+    public Guid? VacatedPositionId { get; private set; }
+    /// <summary>Set when a settled termination is reversed by reinstatement (null otherwise).</summary>
+    public DateTime? ReinstatedAt { get; private set; }
 
     private readonly List<TerminationClearance> _clearances = [];
     public IReadOnlyCollection<TerminationClearance> Clearances => _clearances;
@@ -106,8 +114,11 @@ public class EmployeeTermination : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
-    /// <summary>Final settlement — only when every clearance item is cleared.</summary>
-    public void MarkSettled()
+    /// <summary>
+    /// Final settlement — only when every clearance item is cleared. Snapshots the vacated position
+    /// (before the employee's placement is decoupled) so a later reinstatement can restore it.
+    /// </summary>
+    public void MarkSettled(Guid? vacatedPositionId)
     {
         if (Status != TerminationStatus.ClearanceInProgress)
             throw new InvalidOperationException($"Only a clearance-in-progress termination can be settled (current: {Status}).");
@@ -115,6 +126,18 @@ public class EmployeeTermination : BaseEntity, IAggregateRoot, IAuditable
             throw new InvalidOperationException("All clearance items must be cleared before settlement.");
         Status = TerminationStatus.Settled;
         SettledAt = DateTime.UtcNow;
+        VacatedPositionId = vacatedPositionId;
+        base.Update();
+    }
+
+    /// <summary>Records that this settled termination was reversed by an employee reinstatement.</summary>
+    public void MarkReinstated()
+    {
+        if (Status != TerminationStatus.Settled)
+            throw new InvalidOperationException($"Only a settled termination can be reinstated (current: {Status}).");
+        if (ReinstatedAt.HasValue)
+            throw new InvalidOperationException("This termination has already been reinstated.");
+        ReinstatedAt = DateTime.UtcNow;
         base.Update();
     }
 

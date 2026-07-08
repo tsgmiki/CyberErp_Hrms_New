@@ -15,14 +15,37 @@
   `Employee.JobGradeId` dropped + dashboard redesign) → `d7058db` (Termination List + document
   generation + dynamic clearance config + approver-driven Dashboard clearance queue + settlement gate;
   migration `AddDynamicClearanceConfig`).
-- **Uncommitted:** nothing. **Nothing pushed.**
+- **Uncommitted:** Employee Reinstatement + Clearance Document generation (§1 item 1, migration
+  `AddTerminationReinstatement`, applied). Prior work through `709ece0` is committed + pushed.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Dashboard Clearance tab + approver-driven clearance + settlement gate** (no migration — reuses
+1. **Employee Reinstatement + Clearance Document** (migration `AddTerminationReinstatement`, applied;
+   E2E-verified on a disposable tenant, then purged):
+   - **Reinstatement:** settlement now snapshots the vacated position
+     (`MarkSettled(vacatedPositionId)` → `EmployeeTermination.VacatedPositionId`, no FK) so it can be
+     restored. `GET EmployeeTermination/reinstatement-info?employeeId=` reports the previous position +
+     availability (+ occupant); `POST EmployeeTermination/reinstate {employeeId,positionId}` validates
+     the target is vacant (else 400), `Employee.Reinstate` → Active + placement restored (branch/dept
+     follow the position), stamps `ReinstatedAt`; the employee leaves the Termination List. UI: a
+     **Reinstate** action on the Termination List opens `ReinstateModal` — preselects the previous
+     position when available, else forces a vacant-position pick (`getAllPosition({isVacant:true})`).
+     New slice `EmployeeReinstatementHandlers.cs`. **NOTE:** `GetReinstatementInfo` materializes name
+     parts then joins in memory — EF can't translate `string.Join` in a projection (hit + fixed in E2E).
+   - **Clearance document:** new **Clearance** merge tokens (`{{ClearanceTable}}` raw-HTML checklist,
+     `{{ClearanceStatus}}`, `{{ClearanceDate}}`) in `GenerateEmployeeDocument`; `DocumentTemplateType.
+     ClearanceCertificate` (string enum, no migration); idempotent `SeedDefaultDocumentTemplates`
+     (`POST DocumentTemplate/seed-defaults` + "Seed default templates" button) ships a turnkey
+     "Clearance Certificate" template. Generated from the Termination List's existing Generate
+     Document action. See `logic.md` §1. **Uncommitted.**
+   - **UI fixes (follow-up):** the reinstate vacant-position selector is now the searchable
+     `DropDownField` (`take:10`, server-side `searchText` over all vacant positions) instead of a
+     plain `<select>`; and the template editor's "Load sample" now has a `ClearanceCertificate` entry
+     in `constants/documentTemplates.ts` (it was a silent no-op for that type before). **Uncommitted.**
+2. **Dashboard Clearance tab + approver-driven clearance + settlement gate** (no migration — reuses
    `AddDynamicClearanceConfig` schema; verified E2E on a disposable tenant, then purged):
    - **Dashboard "Clearance" tab** (`dashboard.tsx`) next to Upcoming Retirements,
      **conditionally rendered** only when `GET EmployeeTermination/my-clearances` returns

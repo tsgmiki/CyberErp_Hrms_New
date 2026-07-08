@@ -16,7 +16,9 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IUpdateTerminationClearance clearanceHandler,
         IFinalizeEmployeeTermination finalizeHandler,
         ICancelEmployeeTermination cancelHandler,
-        IDeleteEmployeeTermination deleteHandler) : BaseController
+        IDeleteEmployeeTermination deleteHandler,
+        IGetReinstatementInfo reinstatementInfoHandler,
+        IReinstateEmployee reinstateHandler) : BaseController
     {
         /// <summary>Termination cases (with clearance checklist) for one employee, newest first.</summary>
         [HttpGet]
@@ -32,6 +34,19 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet("my-clearances")]
         public Task<MyClearancesDto> GetMyClearances()
             => myClearancesHandler.GetAsync();
+
+        /// <summary>Pre-reinstatement context: previous position + whether it is still available.</summary>
+        [HttpGet("reinstatement-info")]
+        public Task<ReinstatementInfoDto> GetReinstatementInfo([FromQuery] Guid employeeId)
+            => reinstatementInfoHandler.GetAsync(employeeId);
+
+        /// <summary>Reinstate a terminated employee onto a (vacant) position — restores their placement.</summary>
+        [HttpPost("reinstate")]
+        public async Task<IActionResult> Reinstate([FromBody] ReinstateEmployeeDto dto)
+        {
+            await reinstateHandler.ReinstateAsync(dto);
+            return Ok(new { message = "Employee reinstated" });
+        }
 
         [HttpPost]
         public Task<Guid> Create([FromBody] SaveEmployeeTerminationDto dto)

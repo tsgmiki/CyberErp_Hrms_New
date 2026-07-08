@@ -16,6 +16,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(t => t.Status).IsRequired().HasConversion<string>().HasMaxLength(30);
             builder.Property(t => t.Reason).IsRequired().HasMaxLength(1000);
             builder.Property(t => t.Remarks).HasMaxLength(2000);
+            // VacatedPositionId is a historical snapshot (no FK, like EmployeeMovement's position columns).
 
             builder.HasOne<Employee>()
                 .WithMany()

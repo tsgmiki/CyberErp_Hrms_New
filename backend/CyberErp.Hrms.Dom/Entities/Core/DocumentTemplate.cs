@@ -11,7 +11,8 @@ public enum DocumentTemplateType
     EmploymentLetter = 0,
     ExperienceLetter = 1,
     IdCard = 2,
-    Other = 3
+    Other = 3,
+    ClearanceCertificate = 4
 }
 
 /// <summary>
