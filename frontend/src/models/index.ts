@@ -71,3 +71,13 @@ export type {
   WorkflowStatsModel,
 } from "./masters/HrWorkflowModel";
 export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDepartmentModel";
+export type {
+  default as WorkforcePlanModel,
+  WorkforcePlanLineModel,
+  EstablishmentRowModel,
+  SeparationSuggestionModel,
+  WorkforcePlanPeriodSummaryModel,
+  WorkforcePlanSummaryModel,
+  WorkforcePlanComparisonModel,
+  ApprovedDemandRowModel,
+} from "./masters/WorkforcePlanModel";

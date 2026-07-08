@@ -14,6 +14,7 @@ public static class WorkflowEntityTypes
     public const string DisciplinaryMeasure = "DisciplinaryMeasure";
     public const string Termination = "EmployeeTermination";
     public const string LeaveRequest = "LeaveRequest";
+    public const string WorkforcePlan = "WorkforcePlan";
 }
 
 /// <summary>

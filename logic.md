@@ -269,7 +269,60 @@ lean projection (tenant/branch-scoped via `IRepository.GetAll()`):
   `DATEADD`). `RetirementDate`/`DaysRemaining` computed in memory after materializing the small set.
   Includes already-due (negative `DaysRemaining`) rows.
 
-## 6. Database entity relationships (key foreign keys)
+## 6. Workforce Planning (HC053–HC076)
+
+Two tables: `hrms_WorkforcePlan` (aggregate) 1─< `hrms_WorkforcePlanLine`. Slices in
+`Features/Core/WorkforcePlans/`; controller `WorkforcePlanController`; UI `/workforcePlan` (plan
+designer: header + editable lines grid + live cost tiles) and `/establishmentOverview` under the
+new **Planning** sidebar group.
+
+- **Plan** = Name, Horizon (Annual/MediumTerm/MultiYear, HC053), Scenario
+  (Baseline/Growth/Contraction/Restructuring, HC067), Status
+  (Draft→Submitted→Approved/Rejected→Archived), scope `OrganizationUnitId?` (null =
+  organization-wide; else the unit **subtree** via an in-memory BFS — HC054),
+  `StartFiscalYearId` + `PeriodCount` (1–10 consecutive fiscal-year periods — HC069), budget
+  envelope (`TotalBudget`, `BudgetThresholdPercent`, `EscalationJustification`), denormalized
+  `ProjectedCost`, and **version chain** `Version` + `RootPlanId` (null on v1; chain groups by
+  `RootPlanId ?? Id` — HC071).
+- **Line** = unit × position class × planned employment type (Permanent/Contract/Intern/Consultant —
+  a planning-level enum, the Employee entity untouched, HC057) × period, carrying: establishment
+  snapshot (Authorized/Filled/Vacant), demand (NewHires/Replacements/TemporaryStaff, HC058), supply
+  (MobilityIn/Promotions/ActingAssignments, HC059), separations
+  (Retirements/Resignations/ContractExpiries, HC060), `IsCriticalRole` + free-text
+  `RequiredCompetencies` (HC061–062; structured competency model deferred to L&D, HC063), and
+  per-head annual costs (salary defaulted from the role's **salary scale × 12** when 0, HC064).
+  Computed (not stored): `EndHeadcount = max(0, Filled − separations + demand + supply)`,
+  `HeadcountGap = max(0, End − Authorized)`, `LineCost = End × (salary+allowances+benefits)`.
+  Unique index (Plan, Unit, Class, Type, Period).
+- **Establishment anchoring (HC055/HC056):** a `Position` row = one authorized seat; `IsVacant`
+  splits filled/vacant. `GET WorkforcePlan/establishment` groups seats per unit × role (+ grade +
+  job family) with a vacancy-aging approximation (days since the vacant seat's UpdatedAt);
+  `POST {id}/populate` rebuilds the plan grid from it. `GET {id}/suggest-separations` pre-fills
+  retirements per unit × role from the DOB+60y sargable forecast within the horizon.
+- **Budget control (HC065/HC066):** variance = budget − projected cost; submission (handler
+  pre-check → 400, domain invariant as backstop) **requires an escalation justification when
+  projected cost > budget × (1 + threshold%)**.
+- **Approval (HC070/HC072):** `Submit` routes through the generic engine (entity type
+  `WorkforcePlan`; seeded chain **Directorate Review → HR Review → Finance Review → Executive
+  Approval**); no active definition → direct approval. The process is selectable in the Workflow
+  Definitions designer (`workflowEntityTypeOptions` in `constants/orgStructure.ts` — ⚠️ every new
+  workflow-backed module must add its entity-type key there, or the chain is not configurable
+  from the UI). `WorkforcePlanWorkflowHandler.OnApproved`
+  approves the plan **and auto-archives older Approved versions of the same chain** (one approved
+  plan per chain); OnRejected → Rejected (still editable, resubmittable). Approved/Submitted/
+  Archived plans are immutable — `POST {id}/new-version` clones into a Draft vN+1 (only one open
+  draft/submitted version per chain).
+- **Analytics & feeds:** `GET {id}/summary` (per-period headcount/demand/supply/separations/cost +
+  budget position), `GET compare?ids=` (2–5 plans side-by-side — HC068), `GET approved-demand`
+  (outstanding NewHires/Replacements/Temporary of Approved plans — the recruitment-requisition feed,
+  HC075; also surfaced in the UI "Hiring Demand" modal). The plan designer shows a live
+  **Period Projections** table (per-year end headcount, hiring demand, internal mobility, attrition,
+  cost trend — HC069/HC073) and a per-line **Gap** column (HC062). Export: plans list rides the
+  standard list-export; the Establishment Overview has its own Excel export via `exportListToExcel`
+  (HC074). Deferred integration surfaces (HC076): competencies text + critical-role flags for
+  L&D/succession; approved-demand for module 3.5 recruitment.
+
+## 7. Database entity relationships (key foreign keys)
 
 ```
 CorePerson 1─┐
@@ -293,6 +346,11 @@ Workflow: WorkflowDefinition 1─< WorkflowStep 1─< WorkflowStepApprover
 Clearance: hrms_ClearanceDepartment 1─< hrms_ClearanceDepartmentApprover (User|Role)
            hrms_EmployeeTermination 1─< hrms_TerminationClearance ── DepartmentId? → hrms_ClearanceDepartment (SET NULL)
            hrms_EmployeeTermination.VacatedPositionId? (snapshot, no FK) + ReinstatedAt? (reinstatement)
+
+Planning:  hrms_WorkforcePlan ── StartFiscalYearId → Core.FiscalYear, OrganizationUnitId? → hrms_OrganizationUnit
+           hrms_WorkforcePlan 1─< hrms_WorkforcePlanLine ── OrganizationUnitId → hrms_OrganizationUnit,
+                                                            PositionClassId → hrms_PositionClass
+           hrms_WorkforcePlan.RootPlanId? (version-chain key, no FK)
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).

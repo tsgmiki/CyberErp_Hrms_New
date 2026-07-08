@@ -211,6 +211,21 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, EmployeeMovementWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, DisciplinaryMeasureWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeTerminationWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, WorkforcePlanWorkflowHandler>();
+
+            // Workforce Planning (HC053–HC076)
+            services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();
+            services.AddScoped<Features.Core.WorkforcePlans.IGetWorkforcePlanById, Features.Core.WorkforcePlans.GetWorkforcePlanById>();
+            services.AddScoped<Features.Core.WorkforcePlans.IGetAllWorkforcePlans, Features.Core.WorkforcePlans.GetAllWorkforcePlans>();
+            services.AddScoped<Features.Core.WorkforcePlans.IDeleteWorkforcePlan, Features.Core.WorkforcePlans.DeleteWorkforcePlan>();
+            services.AddScoped<Features.Core.WorkforcePlans.ISubmitWorkforcePlan, Features.Core.WorkforcePlans.SubmitWorkforcePlan>();
+            services.AddScoped<Features.Core.WorkforcePlans.ICreateWorkforcePlanVersion, Features.Core.WorkforcePlans.CreateWorkforcePlanVersion>();
+            services.AddScoped<Features.Core.WorkforcePlans.IGetEstablishmentOverview, Features.Core.WorkforcePlans.GetEstablishmentOverview>();
+            services.AddScoped<Features.Core.WorkforcePlans.IPopulateWorkforcePlan, Features.Core.WorkforcePlans.PopulateWorkforcePlan>();
+            services.AddScoped<Features.Core.WorkforcePlans.ISuggestPlanSeparations, Features.Core.WorkforcePlans.SuggestPlanSeparations>();
+            services.AddScoped<Features.Core.WorkforcePlans.IGetWorkforcePlanSummary, Features.Core.WorkforcePlans.GetWorkforcePlanSummary>();
+            services.AddScoped<Features.Core.WorkforcePlans.ICompareWorkforcePlans, Features.Core.WorkforcePlans.CompareWorkforcePlans>();
+            services.AddScoped<Features.Core.WorkforcePlans.IGetApprovedDemand, Features.Core.WorkforcePlans.GetApprovedDemand>();
             services.AddScoped<IGetAllWorkflowInstances, GetAllWorkflowInstances>();
             services.AddScoped<IGetWorkflowStats, GetWorkflowStats>();
             services.AddScoped<IGetWorkflowActions, GetWorkflowActions>();

@@ -14,16 +14,45 @@
   employment terms + dashboard workforce analytics) → `9dacdca` (grade derived from salary scale,
   `Employee.JobGradeId` dropped + dashboard redesign) → `d7058db` (Termination List + document
   generation + dynamic clearance config + approver-driven Dashboard clearance queue + settlement gate;
-  migration `AddDynamicClearanceConfig`).
-- **Uncommitted:** Employee Reinstatement + Clearance Document generation (§1 item 1, migration
-  `AddTerminationReinstatement`, applied). Prior work through `709ece0` is committed + pushed.
+  migration `AddDynamicClearanceConfig`) → `709ece0` (docs sync) → `2887f96` (employee reinstatement +
+  clearance certificate; migration `AddTerminationReinstatement`).
+- **Uncommitted:** Workforce Planning module (§1 item 1, migration `AddWorkforcePlanning`, applied).
+  Reinstatement + clearance-document work is committed as `2887f96`; history through `709ece0` is
+  pushed to origin.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Employee Reinstatement + Clearance Document** (migration `AddTerminationReinstatement`, applied;
+1. **Workforce Planning module — HC053–HC076** (migration `AddWorkforcePlanning`, applied;
+   E2E-verified on a disposable tenant incl. the full 4-step workflow approval, then purged):
+   - Tables `hrms_WorkforcePlan` (horizon/scenario/status, unit-subtree scope, FY + PeriodCount
+     horizon, budget + threshold + escalation justification, denormalized ProjectedCost, Version +
+     RootPlanId chain) 1─< `hrms_WorkforcePlanLine` (unit × role × planned employment type
+     [Permanent/Contract/Intern/Consultant — module enum, Employee untouched] × period; establishment
+     snapshot, demand/supply/separations, critical-role + competencies text, per-head costs with
+     salary defaulted from the scale ×12; computed EndHeadcount/Gap/LineCost; unique composite).
+   - Slices `Features/Core/WorkforcePlans/` (save/get/list/delete/submit/new-version + establishment
+     overview, populate-from-establishment, suggest-separations [DOB+60y within horizon], summary,
+     compare, approved-demand). `WorkforcePlanWorkflowHandler` (approve + auto-archive superseded
+     versions; reject → editable). Seeded chain Directorate → HR → Finance → Executive.
+   - Budget gate: submit 400s without escalation justification when cost > budget×(1+threshold%).
+     **Gotcha fixed during E2E:** domain `InvalidOperationException`s surface as 500 — module
+     convention is handler-level `ValidationException` pre-checks (added on submit + update paths).
+   - Frontend: **Planning** sidebar group → `/workforcePlan` (list w/ compare-checkboxes +
+     CompareModal + Hiring-Demand modal; designer form: header FormProvider + 24-column editable
+     lines grid [incl. visible Gap column, HC062] + live cost/variance tiles + **Period Projections
+     table** [per-year headcount/demand/mobility/attrition/cost trend, HC069/HC073] +
+     Populate/Suggest/Submit[escalation modal]/New-Version) and `/establishmentOverview` (tiles +
+     occupancy bars + vacancy aging + **Excel export**, HC074). New model/service files; options in
+     `constants/orgStructure.ts`.
+   - **Review fixes (user caught HC070 gap):** `workflowEntityTypeOptions` was missing
+     `WorkforcePlan` (and `LeaveRequest`) — the Workflow Definitions designer could not configure
+     those chains even though the backend/seed existed. Added both. ⚠️ Rule: every new
+     workflow-backed module must add its entity-type key to `workflowEntityTypeOptions`.
+     **Uncommitted.**
+2. **Employee Reinstatement + Clearance Document** (migration `AddTerminationReinstatement`, applied;
    E2E-verified on a disposable tenant, then purged):
    - **Reinstatement:** settlement now snapshots the vacated position
      (`MarkSettled(vacatedPositionId)` → `EmployeeTermination.VacatedPositionId`, no FK) so it can be

@@ -32,6 +32,9 @@ import {
   UserCheck,
   UserX,
   ClipboardCheck,
+  Target,
+  ClipboardList,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { useLocation } from "react-router-dom";
@@ -94,6 +97,15 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/salaryScale", label: "Salary Scale", Icon: Coins },
       { to: "/jobCategory", label: "Job Categories", Icon: Tags },
       { to: "/workLocation", label: "Work Locations", Icon: MapPin },
+    ],
+  },
+  {
+    key: "planning",
+    label: "Planning",
+    Icon: Target,
+    links: [
+      { to: "/workforcePlan", label: "Workforce Plans", Icon: ClipboardList },
+      { to: "/establishmentOverview", label: "Establishment Overview", Icon: LayoutGrid },
     ],
   },
   {

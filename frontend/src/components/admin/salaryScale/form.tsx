@@ -103,7 +103,7 @@ function SalaryScaleForm({ id, setId, jobGradeId, gradeLabel }: Props) {
               setParam: setStepParam as any,
               isLoading: isStepsLoading,
               onSelect: selectHandler,
-              data: steps?.data?.map((item: any) => ({ id: item.id, name: `${item.code} — ${item.name}` })) as never,
+              data: steps?.data?.map((item: any) => ({ id: item.id, name: `${item.name}` })) as never,
             },
             {
               name: "salary",

@@ -73,6 +73,8 @@ export const workflowEntityTypeOptions = [
   { id: "EmployeeMovement.Demotion", name: "Demotion" },
   { id: "DisciplinaryMeasure", name: "Disciplinary Measure" },
   { id: "EmployeeTermination", name: "Termination" },
+  { id: "LeaveRequest", name: "Leave Request" },
+  { id: "WorkforcePlan", name: "Workforce Plan" },
 ];
 
 /** Termination kinds. */
@@ -127,3 +129,29 @@ export const documentTypeOptions = [
 
 export const documentTypeLabel = (id?: string) =>
   documentTypeOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
+/** Workforce-plan horizons (HC053). */
+export const planHorizonOptions = [
+  { id: "Annual", name: "Annual (1 year)" },
+  { id: "MediumTerm", name: "Medium-term (2–3 years)" },
+  { id: "MultiYear", name: "Multi-year (4+ years)" },
+];
+
+export const planHorizonLabel = (id?: string) =>
+  planHorizonOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
+/** Workforce-plan scenarios (HC067). */
+export const planScenarioOptions = [
+  { id: "Baseline", name: "Baseline" },
+  { id: "Growth", name: "Growth" },
+  { id: "Contraction", name: "Contraction" },
+  { id: "Restructuring", name: "Restructuring" },
+];
+
+/** Planning-level employment types (HC057) — broader than the employee master's nature. */
+export const plannedEmploymentTypeOptions = [
+  { id: "Permanent", name: "Permanent" },
+  { id: "Contract", name: "Contract" },
+  { id: "Intern", name: "Intern" },
+  { id: "Consultant", name: "Consultant" },
+];

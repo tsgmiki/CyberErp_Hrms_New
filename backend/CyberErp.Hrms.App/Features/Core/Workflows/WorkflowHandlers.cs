@@ -381,6 +381,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("Manager Review", "Manager"), ("HRBP Review", "HRBP"), ("Department Head Approval", "Department Head")]),
             (WorkflowEntityTypes.LeaveRequest, "Leave Approval",
                 [("Supervisor Review", null), ("HR Approval", null)]),
+            (WorkflowEntityTypes.WorkforcePlan, "Workforce Plan Approval",
+                [("Directorate Review", "Directorate Head"), ("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
         ];
 
         public async Task<int> SeedAsync()

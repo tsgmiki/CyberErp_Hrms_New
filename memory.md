@@ -92,6 +92,14 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 - **Salary Scale:** JobGrade trimmed to Name/NameA/Code; `lupStep` (Step, no UI) + `coreSalaryScale`;
   salary grid filtered by JobGrade. **PositionClass now links to a SalaryScale** (grade+step+exact
   salary), not a JobGrade; added Minimum/Maximum Age + Weekly Working Hours.
+- **Workforce Planning (HC053–076):** versioned, scenario-tagged plans (`hrms_WorkforcePlan` 1─<
+  `hrms_WorkforcePlanLine`) anchored to the live establishment (populate from Position seats;
+  authorized/filled/vacant per unit × role); demand/supply/separations per line + planning-level
+  employment types (incl. Intern/Consultant, Employee untouched); costing from the salary scale with
+  budget-threshold escalation gate; seeded Directorate→HR→Finance→Executive approval; version chains
+  (approve vN → auto-archive vN−1); retirement suggestions (DOB+60y); scenario comparison; Establishment
+  Overview page; approved-demand feed for recruitment (module 3.5 hook). Deferred: structured competency
+  model (HC061–063 deep) + requisition consumption.
 - **Attendance & Leave (HC030–052), phased:**
   - *Phase 1:* LeaveType, Holiday, `IWorkingCalendar` (working-days excl. weekends/holidays).
   - *Phase 2:* LeaveBalance (ledger) + LeaveRequest on the workflow engine (submit→approve→deduct,
@@ -105,7 +113,7 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
 `AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
 → `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`
-→ `AddTerminationReinstatement`.
+→ `AddTerminationReinstatement` → `AddWorkforcePlanning`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

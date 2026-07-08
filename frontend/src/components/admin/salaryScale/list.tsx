@@ -86,7 +86,7 @@ function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades 
           <option value="">Select a job grade…</option>
           {jobGrades.map((g) => (
             <option key={g.id} value={g.id}>
-              {g.code} — {g.name}
+              {g.name}
             </option>
           ))}
         </select>

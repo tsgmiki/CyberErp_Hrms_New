@@ -58,6 +58,50 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     }
 
     /// <summary>
+    /// Workflow outcomes for workforce plans (HC070): final approval makes the plan the approved
+    /// workforce baseline and archives any older approved version of the same chain (HC071);
+    /// rejection returns it to the planner for revision.
+    /// </summary>
+    public class WorkforcePlanWorkflowHandler(
+        IRepository<WorkforcePlan> repository) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.WorkforcePlan, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var plan = await repository.GetAll().FirstOrDefaultAsync(p => p.Id == entityId)
+                ?? throw new NotFoundException(nameof(WorkforcePlan), entityId.ToString());
+            plan.Approve();
+            repository.UpdateAsync(plan);
+
+            // One approved plan per version chain: the newly approved version supersedes older ones.
+            var rootId = plan.RootPlanId ?? plan.Id;
+            var superseded = await repository.GetAll()
+                .Where(p => (p.RootPlanId == rootId || p.Id == rootId)
+                    && p.Id != plan.Id
+                    && p.Status == Dom.Entities.Core.WorkforcePlanStatus.Approved)
+                .ToListAsync();
+            foreach (var old in superseded)
+            {
+                old.Archive();
+                repository.UpdateAsync(old);
+            }
+
+            await repository.SaveChangesAsync();
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var plan = await repository.GetAll().FirstOrDefaultAsync(p => p.Id == entityId)
+                ?? throw new NotFoundException(nameof(WorkforcePlan), entityId.ToString());
+            plan.Reject();
+            repository.UpdateAsync(plan);
+            await repository.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
     /// Workflow outcomes for disciplinary cases: approval confirms the measure (Resolved);
     /// rejection voids the case (Cancelled).
     /// </summary>

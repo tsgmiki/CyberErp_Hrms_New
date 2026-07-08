@@ -83,6 +83,8 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<TerminationClearance> TerminationClearance { get; set; }
     public DbSet<ClearanceDepartment> ClearanceDepartment { get; set; }
     public DbSet<ClearanceDepartmentApprover> ClearanceDepartmentApprover { get; set; }
+    public DbSet<WorkforcePlan> WorkforcePlan { get; set; }
+    public DbSet<WorkforcePlanLine> WorkforcePlanLine { get; set; }
     public DbSet<Role> Role { get; set; }
     public DbSet<UserRole> UserRole { get; set; }
     public DbSet<Module> Module { get; set; }
@@ -200,6 +202,8 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TerminationClearanceConfiguration());
         modelBuilder.ApplyConfiguration(new ClearanceDepartmentConfiguration());
         modelBuilder.ApplyConfiguration(new ClearanceDepartmentApproverConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkforcePlanConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkforcePlanLineConfiguration());
         modelBuilder.ApplyConfiguration(new RoleConfiguration());
         modelBuilder.ApplyConfiguration(new UserRoleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleConfiguration());
