@@ -46,6 +46,14 @@ Task RejectAsync(Guid instanceId, string? comment);
   modules call it at the top of edit/execute/cancel/delete handlers.
 - `IWorkflowApproverAuth`: `CanDecide` = the current user matches a step user-approver OR intersects a
   step role via `Core.UserRole`. Enforced in Approve/Reject; the tracking list batch-computes per row.
+- **Approver inbox** — `GET Workflow/my-approvals` (`GetMyApprovals`) → `{ IsApprover, Items }`:
+  `IsApprover` = the user is a *specific* approver (user or role) on any **active** definition's step
+  (drives the conditional Dashboard **Approvals** tab); `Items` = Running instances whose **current
+  step** lists them specifically. Open steps (no approvers) are excluded from personal inboxes — they
+  remain actionable from `/workflow`. The Dashboard tab (next to Upcoming Retirements/Clearance) has
+  prominent Approve/Reject buttons opening a comment modal (**reason required to reject**); decisions
+  call the standard `Workflow/{id}/approve|reject`. This is *the* approver entry point — without it,
+  assigned approvers had no cue that work was waiting (actioning only existed on the tracking page).
 
 **Seeded defaults** (`SeedDefaultWorkflows`, `POST /api/v1/WorkflowDefinition/seed-defaults`, idempotent):
 Transfer / Promotion / Demotion / Disciplinary (Supervisor Review → HR Approval), Termination
@@ -322,7 +330,83 @@ new **Planning** sidebar group.
   (HC074). Deferred integration surfaces (HC076): competencies text + critical-role flags for
   L&D/succession; approved-demand for module 3.5 recruitment.
 
-## 7. Database entity relationships (key foreign keys)
+## 7. Recruitment & Talent Acquisition — Phase 1 (HC077–HC100 core)
+
+Six tables (slices in `Features/Core/Recruitment/`, controllers in `RecruitmentControllers.cs`,
+Recruitment sidebar group → `/hiringRequest` `/jobRequisition` `/candidate` `/jobApplication`).
+Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
+
+- **`hrms_HiringRequest`** (HC077–HC083): directorate + role + headcount + planning-level employment
+  type + justification/requirements/timeline + `EstimatedBudget` + optional `WorkforcePlanId` link
+  snapshot (no FK, HC081). Status Draft→Submitted→Approved/Rejected→Closed. **Submit gate (HC082):
+  requested positions ≤ currently vacant seats** for the unit × role (a Position row = one seat);
+  then workflow `HiringRequest` (seeded Directorate Head → HR → Finance, HC078); no definition →
+  direct approval. `GET HiringRequest/budget-monitor` = per-unit approved/submitted totals (HC083).
+- **`hrms_JobRequisition`** (HC084–HC088, HC091, HC095) 1─< `hrms_RequisitionScreeningCriterion`:
+  **creatable only from an APPROVED hiring request (HC080)**; role details (Title/Description/
+  Qualifications/Experience/Skills/SalaryScale) default from the request's PositionClass, editable;
+  Σ requisitioned positions per request ≤ the request's approved count. Status Draft→PendingApproval
+  →Approved→Posted→Closed (+Rejected editable, +Cancelled). Workflow `JobRequisition` (seeded HR →
+  Approving Authority, HC085). Posting: channel Internal/External/Both (HC088), `GET
+  {id}/generate-posting` builds the standard advertisement from the details (HC091, stored text
+  editable), `PUT posting` + `POST {id}/post` (requires text) / close / cancel.
+- **`hrms_Candidate`** (HC089–HC090, HC092–HC097): centralized applicant master; Source
+  External/Internal/JobBoard/SocialMedia/Referral/WalkIn (HC092); internal candidates link an
+  employee (FK SET NULL); structured Education/Experience/Skills summaries + YearsOfExperience
+  (resume *parsing* is the HC094 integration hook on top of these fields); resume file upload
+  (PDF/DOC/DOCX ≤5MB, photo-storage pattern, `Storage:CandidateResumePath` ??
+  App_Data/candidate-resumes, gitignored); **consent mandatory at create** (`ConsentGiven` +
+  `ConsentAt`, HC097); `POST {id}/anonymize` scrubs all PII + deletes the resume file irreversibly,
+  keeps anonymous history; talent-pool flag + notes (HC089). `GET Candidate/match?requisitionId=` —
+  ranked matching (HC090): 60% skills-token overlap + 25 experience-met + 10 talent-pool + 5
+  internal; list filter via ?status= Archived|TalentPool|{Source}.
+- **`hrms_JobApplication`** (HC098–HC099) 1─< `hrms_JobApplicationStageLog`: unique candidate ×
+  requisition; applications accepted only on Approved/Posted requisitions; stage machine Received→
+  Screening→Shortlisted→Interview→Selected (+OfferPending/Hired reserved for the offer stage;
+  Rejected/Withdrawn/Hired terminal-immutable); **the interview stage is not forced — transitions
+  may bypass it (HC102)**; screening score/remarks recorded with moves (HC095/HC099); every
+  transition appends an ActedBy/ActedAt log row (tenant-stamped + explicitly Added — the
+  aggregate-child gotcha). `?parentId=` scopes the list to one requisition's pipeline.
+- **Evaluator scoring & ranking** (migration `AddRecruitmentCandidateLifecycle`): each screening
+  criterion can be assigned an evaluator — **internal Employee (FK SET NULL, name snapshotted
+  server-side), ExternalPerson, or Organization** (`CriterionEvaluatorType` + name). Evaluators score
+  applicants per criterion 0–100 (`hrms_ApplicationCriterionScore`, unique per application×criterion,
+  weight snapshot); the application's total **auto-recomputes as Σ(score×weight)/Σ(weight)**.
+  `PUT JobApplication/scores` (upsert sheet), `GET JobApplication/ranking?requisitionId=` — ordered
+  ranking with per-criterion breakdown + a FailsMandatory flag (mandatory criterion < 50). UI: score
+  sheet modal (live total preview) + Ranking modal on the requisition.
+- **CorePerson integration & hire conversion:** `Candidate.PersonId` — a CorePerson row is created
+  (or, for Internal candidates, **reused from the employee**) at candidate save (grandfather name +
+  gender therefore required); saving keeps it in sync; legacy candidates backfill on next save.
+  **`POST Candidate/{id}/hire`** converts to an employee **on the SAME person — zero re-entry**:
+  requires an application at Selected + the compliance set (below); creates the Employee (optional
+  vacant position [occupancy synced], salary from scale or explicit, Permanent/Contract w/ period,
+  **probation tracking** via IsProbation + end date → status Probation); moves the application →
+  Hired (logged); `Candidate.MarkHired` archives + links `HiredEmployeeId` (no FK — SQL Server
+  multiple-cascade-path limit; InternalEmployeeId holds the SET NULL slot). Hired candidates can't
+  be anonymized (their identity lives on as the employee).
+- **Candidate documents & automated migration:** `hrms_CandidateDocument` (typed, binary inline like
+  EmployeeDocument, ≤5MB) — upload/list/download/delete under `Candidate/{id}/documents`. **At hire,
+  every document (plus the disk-stored resume) migrates automatically** to `hrms_EmployeeDocument`
+  with the new owner `EmployeeDocumentOwner.Recruitment` (OwnerId = the employee id; string-stored
+  enum → no migration on that table) — retrievable via the existing
+  `GET EmployeeDocument?ownerType=Recruitment&ownerId={employeeId}`.
+- **Mandatory documentation (compliance gate):** required set = **National ID + Guarantor Form +
+  Medical Certificate + (Signed Offer Letter OR Employment Contract)**
+  (`CandidateShared.MissingComplianceDocuments`). Candidate DTO exposes
+  `ComplianceComplete`/`MissingComplianceDocuments`; **hire 400s listing what's missing**; the
+  candidate form shows the checklist + compliance badge and disables Hire until complete.
+- **Talent Pool** (`/talentPool`, Recruitment group): searchable past-applicant interface — name/
+  skills search, All/TalentPool/Archived filters, per-candidate **application history**
+  (`GET JobApplication?categoryId={candidateId}`), hired badge, and one-click **Apply to Vacancy**
+  onto any open requisition.
+- **Notifications** (HC079/HC087/HC099/HC100): in-app via status chips + the Dashboard approvals
+  inbox; e-mail (incl. the configurable acknowledgement, HC100) is the documented hook — no SMTP
+  infrastructure exists. **Deferred to Phase 2/3:** interviews & panels (HC101–HC109), background
+  verification (HC110), offer letters/workflow (HC111–HC114), public career portal (HC093),
+  onboarding checklist (HC115–116 beyond the hire conversion now in place), job-board feeds (HC092).
+
+## 8. Database entity relationships (key foreign keys)
 
 ```
 CorePerson 1─┐
@@ -351,6 +435,15 @@ Planning:  hrms_WorkforcePlan ── StartFiscalYearId → Core.FiscalYear, Orga
            hrms_WorkforcePlan 1─< hrms_WorkforcePlanLine ── OrganizationUnitId → hrms_OrganizationUnit,
                                                             PositionClassId → hrms_PositionClass
            hrms_WorkforcePlan.RootPlanId? (version-chain key, no FK)
+
+Recruit:   hrms_HiringRequest ── OrganizationUnitId, PositionClassId (Restrict); WorkforcePlanId? (no FK)
+           hrms_JobRequisition ── HiringRequestId (Restrict), OrganizationUnitId, PositionClassId,
+                                  WorkLocationId?, SalaryScaleId? ── 1─< hrms_RequisitionScreeningCriterion
+                                  (criterion.EvaluatorEmployeeId? → hrms_Employee SET NULL)
+           hrms_Candidate ── InternalEmployeeId? → hrms_Employee (SET NULL), PersonId? → CorePerson (Restrict),
+                             HiredEmployeeId? (no FK — cascade-path limit) ── 1─< hrms_CandidateDocument (Cascade)
+           hrms_JobApplication ── CandidateId, RequisitionId (Restrict; unique pair)
+                                  1─< hrms_JobApplicationStageLog, 1─< hrms_ApplicationCriterionScore
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).

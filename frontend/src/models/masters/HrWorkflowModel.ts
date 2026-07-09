@@ -45,6 +45,24 @@ export interface WorkflowInstanceModel extends AbstractModel {
   currentStepApprovers?: string[];
 }
 
+/** One approval awaiting the current user's decision (Dashboard "Approvals" inbox). */
+export interface MyApprovalItemModel {
+  instanceId: string;
+  summary: string;
+  entityType: string;
+  currentStepOrder: number;
+  currentStepName: string;
+  totalSteps: number;
+  requestedBy?: string;
+  requestedAt?: string;
+}
+
+/** The current user's approval inbox + whether they are an assigned approver at all. */
+export interface MyApprovalsModel {
+  isApprover: boolean;
+  items: MyApprovalItemModel[];
+}
+
 /** One decision on a workflow instance. */
 export interface WorkflowActionModel {
   stepOrder: number;

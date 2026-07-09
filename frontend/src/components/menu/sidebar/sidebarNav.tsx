@@ -35,6 +35,10 @@ import {
   Target,
   ClipboardList,
   LayoutGrid,
+  UserPlus,
+  FilePlus2,
+  Megaphone,
+  Star,
   type LucideIcon,
 } from "lucide-react";
 import { useLocation } from "react-router-dom";
@@ -106,6 +110,18 @@ const NAV_GROUPS: NavGroupDef[] = [
     links: [
       { to: "/workforcePlan", label: "Workforce Plans", Icon: ClipboardList },
       { to: "/establishmentOverview", label: "Establishment Overview", Icon: LayoutGrid },
+    ],
+  },
+  {
+    key: "recruitment",
+    label: "Recruitment",
+    Icon: UserPlus,
+    links: [
+      { to: "/hiringRequest", label: "Hiring Requests", Icon: FilePlus2 },
+      { to: "/jobRequisition", label: "Job Requisitions", Icon: Megaphone },
+      { to: "/candidate", label: "Candidates", Icon: Users },
+      { to: "/jobApplication", label: "Applications", Icon: ClipboardList },
+      { to: "/talentPool", label: "Talent Pool", Icon: Star },
     ],
   },
   {

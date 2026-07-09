@@ -8,6 +8,7 @@ import type {
   WorkflowDefinitionModel,
   WorkflowActionModel,
   WorkflowStatsModel,
+  MyApprovalsModel,
 } from "@/models";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -17,6 +18,9 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 export const getAllWorkflows = createPagedQuery<WorkflowInstanceModel>("Workflow");
 
 export const getWorkflowStats = () => api.get<WorkflowStatsModel>("Workflow/stats");
+
+/** The current user's approval inbox (Dashboard "Approvals" tab, approver-only). */
+export const getMyApprovals = () => api.get<MyApprovalsModel>("Workflow/my-approvals");
 
 export const getWorkflowActions = (id: string) =>
   api.get<WorkflowActionModel[]>(`Workflow/${id}/actions`);

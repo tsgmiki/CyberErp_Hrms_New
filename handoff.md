@@ -16,16 +16,85 @@
   generation + dynamic clearance config + approver-driven Dashboard clearance queue + settlement gate;
   migration `AddDynamicClearanceConfig`) → `709ece0` (docs sync) → `2887f96` (employee reinstatement +
   clearance certificate; migration `AddTerminationReinstatement`).
-- **Uncommitted:** Workforce Planning module (§1 item 1, migration `AddWorkforcePlanning`, applied).
-  Reinstatement + clearance-document work is committed as `2887f96`; history through `709ece0` is
-  pushed to origin.
+- **Uncommitted:** Recruitment Phase 1 (§1 item 1, migration `AddRecruitmentPhase1`, applied) + the
+  Dashboard "Approvals" inbox + the budget-parse fix (§1 items 2–3, no migration). Workforce
+  Planning is committed as `346170b`; history through `709ece0` is pushed to origin
+  (`d7058db`→`346170b` local only).
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Workforce Planning module — HC053–HC076** (migration `AddWorkforcePlanning`, applied;
+1. **Recruitment candidate lifecycle — 5 user requirements** (migration
+   `AddRecruitmentCandidateLifecycle`, applied; E2E-verified end-to-end, tenant purged):
+   1. *Evaluator scoring:* criteria carry an evaluator (Employee [FK SET NULL + server-resolved
+      name] / ExternalPerson / Organization); `hrms_ApplicationCriterionScore` (unique per
+      app×criterion, weight snapshot); total auto = Σ(score×weight)/Σweight (verified 81.67);
+      `PUT JobApplication/scores` + `GET ranking?requisitionId=` (breakdown + FailsMandatory<50);
+      score-sheet modal w/ live preview + Ranking modal.
+   2. *CorePerson link:* `Candidate.PersonId` created at save (grandfather+gender now required;
+      Internal candidates REUSE their employee's person); hire creates the Employee **on the same
+      person** — verified same-person=YES.
+   3. *Document migration:* `hrms_CandidateDocument` (typed, inline binary) + at hire ALL docs +
+      resume auto-migrate → `hrms_EmployeeDocument` w/ new owner `Recruitment` (OwnerId=employeeId,
+      string enum → no migration on that table).
+   4. *Talent Pool* (`/talentPool`): searchable past applicants, application history
+      (`JobApplication?categoryId=`), Apply-to-Vacancy, hired badges.
+   5. *Mandatory documentation:* compliance set (ID + Guarantor + Medical + signed offer/contract)
+      gates hire (400 lists missing); candidate form shows checklist + badge; Hire modal (number,
+      vacant position, nature/contract, probation → status Probation).
+   ⚠️ Gotcha: `Candidate.HiredEmployeeId` has NO FK — a second SET NULL path to hrms_Employee trips
+   SQL Server's multiple-cascade-path rule (InternalEmployeeId holds the slot). **Uncommitted.**
+2. **Recruitment & Talent Acquisition — Phase 1, HC077–HC100 core** (migration
+   `AddRecruitmentPhase1`, applied; full-pipeline E2E on a disposable tenant, then purged):
+   - 6 tables: `hrms_HiringRequest` (need assessment: justification/budget/plan-link; submit gated
+     by **vacant establishment seats** [HC082]; workflow `HiringRequest` seeded Directorate Head →
+     HR → Finance) → `hrms_JobRequisition` (+ScreeningCriterion; **only from an APPROVED request**
+     [HC080]; defaults from PositionClass; Σ positions ≤ request; workflow `JobRequisition`;
+     posting generate/set/publish w/ channel Internal/External/Both) → `hrms_Candidate` (consent
+     mandatory [HC097], resume upload PDF/DOC/DOCX, talent pool, anonymize scrubs PII+file,
+     skills-token matching endpoint [HC090]) → `hrms_JobApplication` (+StageLog; unique
+     candidate×requisition; stage machine w/ interview bypass [HC102], terminal lock, screening
+     score; append-only transition log).
+   - Slices `Features/Core/Recruitment/` (4 handler files + DTOs), `RecruitmentControllers.cs`,
+     2 workflow handlers + seeds, **workflowEntityTypeOptions += HiringRequest/JobRequisition**
+     (the HC070 lesson applied). Numbers HRQ-/REQ-/CND-#### (count+1, unique-indexed).
+   - Frontend: **Recruitment** sidebar group → hiringRequest (budget-monitor modal), jobRequisition
+     (criteria editor + posting designer + match modal), candidate (consent checkbox, resume
+     upload/view, talent-pool toggle, anonymize confirm), jobApplication (stage chips + new/move/
+     history modals). `App_Data/candidate-resumes/` gitignored.
+   - E2E verified: establishment gate 400 → reduce → 3-step approval; requisition-before-approval
+     400; class defaults; over-requisition 400; 2-step approval → posting generated/published;
+     consentless candidate 400; resume round-trip; match ranked (75 = skills+exp+pool); duplicate
+     application 400; Received→Screening(85)→Shortlisted→Selected with interview bypassed; terminal
+     move 400; budget monitor row; anonymize scrubbed. (One test-side false alarm: Git Bash mangles
+     em-dashes in inline JSON → 400s that are NOT app bugs; send UTF-8 via file.)
+   - **Deferred:** Phase 2 interviews/offers (HC101–HC114), Phase 3 public portal + onboarding→
+     employee creation (HC093/HC115–117), email notifications (no SMTP), resume parsing (HC094),
+     job-board feeds (HC092 inbound). **Uncommitted.**
+2. **Workforce-plan "Approved Budget resets to 0" bug — fixed** (frontend only): the save service
+   coerced numerics with `Number(v) || 0`, so a budget typed with thousands separators
+   ("500,000") became `NaN` → silently saved as **0** (user-reported). Fix in
+   `services/admin/workforcePlan/index.ts`: exported `parsePlanNumber` strips `,`/spaces before
+   parsing; header fields (budget/threshold/periods) now **fail validation** on genuinely
+   non-numeric input instead of silently zeroing; line cells use the tolerant parse with a 0
+   fallback; the form's live tiles (`n()` in `form.tsx`) mirror the same parsing so display ==
+   what saves. ⚠️ Pattern note: `Number(x) || 0` is a silent-data-loss trap on formatted input —
+   prefer separator-tolerant parse + explicit validation. **Uncommitted.**
+2. **Dashboard "Approvals" inbox for workflow approvers** (no migration; fixes "approver logs in and
+   has nothing to action"): reproduced E2E — the engine/API were correct (`canDecide:true` on the
+   tracking list) but the only actionable surface was buried at System → Workflow Tracking with no
+   cue. Added `GET Workflow/my-approvals` (`GetMyApprovals` in `WorkflowHandlers.cs`: Running
+   instances whose CURRENT step lists the user specifically [user or role]; open steps excluded;
+   `IsApprover` flag from active definitions drives tab visibility) + a conditionally-rendered
+   **Approvals** tab on the Dashboard watchlist (before Clearance) with prominent Approve/Reject
+   buttons + comment modal (reject requires a reason), invalidating
+   myApprovals/workflows/workflowStats/workforcePlans/employees on decide, plus an "Open Workflow
+   Tracking" link. Verified E2E on a disposable 2-user tenant (submitter sees isApprover:false;
+   approver sees the item, step-advances 1→2, final approve → plan Approved + inbox empty), purged.
+   **Uncommitted.**
+2. **Workforce Planning module — HC053–HC076** (migration `AddWorkforcePlanning`, applied;
    E2E-verified on a disposable tenant incl. the full 4-step workflow approval, then purged):
    - Tables `hrms_WorkforcePlan` (horizon/scenario/status, unit-subtree scope, FY + PeriodCount
      horizon, budget + threshold + escalation justification, denormalized ProjectedCost, Version +

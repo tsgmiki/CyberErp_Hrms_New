@@ -30,3 +30,4 @@ appsettings.*.local.json
 
 # ---------- Runtime uploads (employee photos, etc.) ----------
 backend/CyberErp.Hrms.Api/App_Data/employee-photos/
+backend/CyberErp.Hrms.Api/App_Data/candidate-resumes/

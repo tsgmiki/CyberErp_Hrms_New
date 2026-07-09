@@ -6,7 +6,9 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
 public enum EmployeeDocumentOwner
 {
     Education = 0,
-    Experience = 1
+    Experience = 1,
+    /// <summary>Documents migrated from the candidate file at hire (OwnerId = the employee id).</summary>
+    Recruitment = 2
 }
 
 /// <summary>

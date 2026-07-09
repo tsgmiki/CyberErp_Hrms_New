@@ -75,6 +75,8 @@ export const workflowEntityTypeOptions = [
   { id: "EmployeeTermination", name: "Termination" },
   { id: "LeaveRequest", name: "Leave Request" },
   { id: "WorkforcePlan", name: "Workforce Plan" },
+  { id: "HiringRequest", name: "Hiring Need" },
+  { id: "JobRequisition", name: "Job Requisition" },
 ];
 
 /** Termination kinds. */
@@ -155,3 +157,54 @@ export const plannedEmploymentTypeOptions = [
   { id: "Intern", name: "Intern" },
   { id: "Consultant", name: "Consultant" },
 ];
+
+/** Candidate acquisition sources (HC092). */
+export const candidateSourceOptions = [
+  { id: "External", name: "External" },
+  { id: "Internal", name: "Internal (Employee)" },
+  { id: "JobBoard", name: "Job Board" },
+  { id: "SocialMedia", name: "Social Media" },
+  { id: "Referral", name: "Referral" },
+  { id: "WalkIn", name: "Walk-in" },
+];
+
+/** Posting channels (HC088). */
+export const postingChannelOptions = [
+  { id: "Internal", name: "Internal Job Market" },
+  { id: "External", name: "External Portal" },
+  { id: "Both", name: "Internal + External" },
+];
+
+/** Application pipeline stages HR can move to (HC098; offer/hire stages are process-driven). */
+export const applicationStageOptions = [
+  { id: "Received", name: "Received" },
+  { id: "Screening", name: "Screening" },
+  { id: "Shortlisted", name: "Shortlisted" },
+  { id: "Interview", name: "Interview" },
+  { id: "Selected", name: "Selected" },
+  { id: "Rejected", name: "Rejected" },
+  { id: "Withdrawn", name: "Withdrawn" },
+];
+
+/** Who evaluates a screening criterion. */
+export const criterionEvaluatorTypeOptions = [
+  { id: "None", name: "HR / Unassigned" },
+  { id: "Employee", name: "Internal Employee" },
+  { id: "ExternalPerson", name: "External Person" },
+  { id: "Organization", name: "Organization" },
+];
+
+/** Candidate document kinds; the first four + a signed offer/contract are the compliance set. */
+export const candidateDocumentTypeOptions = [
+  { id: "NationalId", name: "National ID" },
+  { id: "GuarantorForm", name: "Guarantor Form" },
+  { id: "MedicalCertificate", name: "Medical Certificate" },
+  { id: "SignedOfferLetter", name: "Signed Offer Letter" },
+  { id: "EmploymentContract", name: "Employment Contract" },
+  { id: "EducationCertificate", name: "Education Certificate" },
+  { id: "ExperienceLetter", name: "Experience Letter" },
+  { id: "Other", name: "Other" },
+];
+
+export const candidateDocumentTypeLabel = (id?: string) =>
+  candidateDocumentTypeOptions.find((o) => o.id === id)?.name ?? id ?? "";

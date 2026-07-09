@@ -41,6 +41,11 @@ const TerminationListPage = memo(lazy(() => import("@/pages/admin/terminationLis
 const ClearanceDepartmentPage = memo(lazy(() => import("@/pages/admin/clearanceDepartment")));
 const WorkforcePlanPage = memo(lazy(() => import("@/pages/admin/workforcePlan")));
 const EstablishmentOverviewPage = memo(lazy(() => import("@/pages/admin/establishmentOverview")));
+const HiringRequestPage = memo(lazy(() => import("@/pages/admin/hiringRequest")));
+const JobRequisitionPage = memo(lazy(() => import("@/pages/admin/jobRequisition")));
+const CandidatePage = memo(lazy(() => import("@/pages/admin/candidate")));
+const JobApplicationPage = memo(lazy(() => import("@/pages/admin/jobApplication")));
+const TalentPoolPage = memo(lazy(() => import("@/pages/admin/talentPool")));
 export default function AppRoutes() {
   return (
     <Routes>
@@ -96,6 +101,11 @@ export default function AppRoutes() {
         <Route path="clearanceDepartment" element={<ClearanceDepartmentPage />} />
         <Route path="workforcePlan" element={<WorkforcePlanPage />} />
         <Route path="establishmentOverview" element={<EstablishmentOverviewPage />} />
+        <Route path="hiringRequest" element={<HiringRequestPage />} />
+        <Route path="jobRequisition" element={<JobRequisitionPage />} />
+        <Route path="candidate" element={<CandidatePage />} />
+        <Route path="jobApplication" element={<JobApplicationPage />} />
+        <Route path="talentPool" element={<TalentPoolPage />} />
        </Route>
     </Routes>
   );

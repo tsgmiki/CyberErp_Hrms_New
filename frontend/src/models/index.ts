@@ -69,8 +69,23 @@ export type {
   WorkflowInstanceModel,
   WorkflowActionModel,
   WorkflowStatsModel,
+  MyApprovalItemModel,
+  MyApprovalsModel,
 } from "./masters/HrWorkflowModel";
 export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDepartmentModel";
+export type {
+  HiringRequestModel,
+  RecruitmentBudgetRowModel,
+  ScreeningCriterionModel,
+  CriterionScoreModel,
+  ApplicationRankingRowModel,
+  CandidateDocumentModel,
+  JobRequisitionModel,
+  CandidateModel,
+  CandidateMatchModel,
+  ApplicationStageLogModel,
+  JobApplicationModel,
+} from "./masters/RecruitmentModel";
 export type {
   default as WorkforcePlanModel,
   WorkforcePlanLineModel,

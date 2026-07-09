@@ -25,14 +25,21 @@ import getAllAuditLog from "@/services/admin/auditLog/getAll";
 import getEmployeesOnProbation from "@/services/admin/employee/onProbation";
 import getUpcomingRetirements from "@/services/admin/employee/upcomingRetirements";
 import { getMyClearances, updateClearance } from "@/services/admin/employee/termination";
-import { getAllWorkflows, getWorkflowStats } from "@/services/admin/workflow";
+import {
+  getAllWorkflows,
+  getWorkflowStats,
+  getMyApprovals,
+  approveWorkflow,
+  rejectWorkflow,
+} from "@/services/admin/workflow";
 import Modal from "@/components/common/modal";
 import { workflowEntityTypeLabel } from "@/constants/orgStructure";
 import { parameterInitialData } from "@/constants/initialization";
 import type ParameterModel from "@/models/ParameterModel";
-import type { MyClearanceItemModel } from "@/models";
+import type { MyClearanceItemModel, MyApprovalItemModel } from "@/models";
 
 type ClearanceDecision = "Cleared" | "Blocked";
+type ApprovalVerb = "approve" | "reject";
 
 const countParam: ParameterModel = { ...parameterInitialData, take: 1 };
 const feedParam: ParameterModel = { ...parameterInitialData, take: 6 };
@@ -186,6 +193,50 @@ function ClearanceQueueRow({
   );
 }
 
+/** One row of the approver's workflow inbox: identity + prominent Approve / Reject actions. */
+function ApprovalQueueRow({
+  item,
+  busy,
+  onPick,
+}: {
+  item: MyApprovalItemModel;
+  busy: boolean;
+  onPick: (item: MyApprovalItemModel, verb: ApprovalVerb) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">{item.summary}</p>
+        <p className="mt-0.5 truncate text-xs text-muted">
+          {workflowEntityTypeLabel(item.entityType)} · {t("Step")} {item.currentStepOrder}/{item.totalSteps} —{" "}
+          {item.currentStepName}
+          {item.requestedBy ? ` · ${item.requestedBy}` : ""}
+          {item.requestedAt ? ` · ${relativeTime(item.requestedAt)}` : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "approve")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <CheckCircle2 size={17} /> {t("Approve")}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "reject")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ShieldAlert size={17} /> {t("Reject")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DaysBadge({ days, warnAt }: { days?: number | null; warnAt: number }) {
   if (typeof days !== "number") return null;
   const cls =
@@ -207,9 +258,17 @@ function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [watchTab, setWatchTab] = useState<"probation" | "retirements" | "clearance">("probation");
+  const [watchTab, setWatchTab] = useState<"probation" | "retirements" | "approvals" | "clearance">("probation");
   const [clearanceBusy, setClearanceBusy] = useState(false);
   const [clearanceError, setClearanceError] = useState<string | null>(null);
+  // The workflow decision (Approve / Reject) being confirmed in the comment modal.
+  const [approvalDecision, setApprovalDecision] = useState<{
+    item: MyApprovalItemModel;
+    verb: ApprovalVerb;
+  } | null>(null);
+  const [approvalComment, setApprovalComment] = useState("");
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   // The clearance decision (Clear / Block) being confirmed in the note modal.
   const [pendingDecision, setPendingDecision] = useState<{
     item: MyClearanceItemModel;
@@ -267,10 +326,17 @@ function Dashboard() {
     queryKey: ["myClearances"],
     queryFn: getMyClearances,
   });
+  const { data: myApprovals, isLoading: lma } = useQuery({
+    queryKey: ["myApprovals"],
+    queryFn: getMyApprovals,
+  });
 
   // The Clearance tab is only for assigned approvers (conditionally rendered).
   const isApprover = myClearances?.isApprover === true;
   const clearanceItems = myClearances?.items ?? [];
+  // The Approvals tab is only for users assigned as workflow approvers (user or role).
+  const isWorkflowApprover = myApprovals?.isApprover === true;
+  const approvalItems = myApprovals?.items ?? [];
 
   // Opens the note modal for a Clear / Block decision (remark captured there, not inline).
   const pickDecision = useCallback((item: MyClearanceItemModel, status: ClearanceDecision) => {
@@ -300,9 +366,40 @@ function Dashboard() {
     setPendingNote("");
   }, [pendingDecision, pendingNote, queryClient, t]);
 
+  const pickApproval = useCallback((item: MyApprovalItemModel, verb: ApprovalVerb) => {
+    setApprovalError(null);
+    setApprovalComment("");
+    setApprovalDecision({ item, verb });
+  }, []);
+
+  const confirmApproval = useCallback(async () => {
+    if (!approvalDecision) return;
+    setApprovalBusy(true);
+    const res = await (approvalDecision.verb === "approve" ? approveWorkflow : rejectWorkflow)(
+      approvalDecision.item.instanceId,
+      approvalComment,
+    );
+    setApprovalBusy(false);
+    if (!res.ok) {
+      setApprovalError(res.message); // keep the modal open so the approver can retry
+      return;
+    }
+    // A decision moves the instance (and, on final approval, applies the module action).
+    queryClient.invalidateQueries({ queryKey: ["myApprovals"] });
+    queryClient.invalidateQueries({ queryKey: ["workflows"] });
+    queryClient.invalidateQueries({ queryKey: ["workflowStats"] });
+    queryClient.invalidateQueries({ queryKey: ["workforcePlans"] });
+    queryClient.invalidateQueries({ queryKey: ["employees"] });
+    setApprovalDecision(null);
+    setApprovalComment("");
+  }, [approvalDecision, approvalComment, queryClient]);
+
   const watchTabs = [
     { key: "probation" as const, label: t("On Probation"), count: probation?.length ?? 0 },
     { key: "retirements" as const, label: t("Upcoming Retirements"), count: retirements?.length ?? 0 },
+    ...(isWorkflowApprover
+      ? [{ key: "approvals" as const, label: t("Approvals"), count: approvalItems.length }]
+      : []),
     ...(isApprover
       ? [{ key: "clearance" as const, label: t("Clearance"), count: clearanceItems.length }]
       : []),
@@ -479,6 +576,28 @@ function Dashboard() {
               </div>
             )}
 
+            {watchTab === "approvals" && (
+              <div className="divide-y divide-border/60">
+                {lma && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
+                {!lma && approvalItems.length === 0 && (
+                  <EmptyRow text={t("No approvals awaiting your decision.", "No approvals awaiting your decision.")} />
+                )}
+                {approvalItems.map((item) => (
+                  <ApprovalQueueRow
+                    key={item.instanceId}
+                    item={item}
+                    busy={approvalBusy}
+                    onPick={pickApproval}
+                  />
+                ))}
+                <div className="px-4 py-2 text-right">
+                  <Link to="/workflow" className="text-xs font-medium text-primary hover:underline">
+                    {t("Open Workflow Tracking")}
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {watchTab === "clearance" && (
               <div className="divide-y divide-border/60">
                 {lmc && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
@@ -558,6 +677,80 @@ function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Workflow decision modal — comment + confirm (Approve / Reject). */}
+      {approvalDecision && (
+        <Modal
+          visible
+          size="md"
+          title={approvalDecision.verb === "approve" ? t("Approve Step") : t("Reject Workflow")}
+          description={approvalDecision.item.summary}
+          onClose={() => setApprovalDecision(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setApprovalDecision(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={approvalBusy || (approvalDecision.verb === "reject" && !approvalComment.trim())}
+                onClick={confirmApproval}
+                title={
+                  approvalDecision.verb === "reject" && !approvalComment.trim()
+                    ? t("A reason is required to reject")
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-on-accent disabled:cursor-not-allowed disabled:opacity-50 ${
+                  approvalDecision.verb === "approve" ? "bg-success" : "bg-error"
+                }`}
+              >
+                {approvalDecision.verb === "approve" ? (
+                  <>
+                    <CheckCircle2 size={16} /> {t("Confirm Approval")}
+                  </>
+                ) : (
+                  <>
+                    <ShieldAlert size={16} /> {t("Confirm Rejection")}
+                  </>
+                )}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <p className="text-sm text-muted">
+              {t("Step")} {approvalDecision.item.currentStepOrder}/{approvalDecision.item.totalSteps} —{" "}
+              {approvalDecision.item.currentStepName}
+            </p>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+              {approvalDecision.verb === "reject" ? (
+                <>
+                  {t("Reason")} <span className="text-error">*</span>
+                </>
+              ) : (
+                t("Comment")
+              )}
+            </label>
+            <textarea
+              autoFocus
+              rows={4}
+              value={approvalComment}
+              onChange={(e) => setApprovalComment(e.target.value)}
+              placeholder={
+                approvalDecision.verb === "approve"
+                  ? t("Optional comment…")
+                  : t("Explain why this request is being rejected…")
+              }
+              className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+            />
+            {approvalError && <p className="text-xs text-error">{approvalError}</p>}
+          </div>
+        </Modal>
+      )}
 
       {/* Clearance decision modal — larger remark textarea, confirm to submit. */}
       {pendingDecision && (

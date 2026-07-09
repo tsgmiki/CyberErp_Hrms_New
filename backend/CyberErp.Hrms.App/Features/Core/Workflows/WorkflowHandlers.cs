@@ -10,6 +10,7 @@ using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationExcept
 namespace CyberErp.Hrms.App.Features.Core.Workflows
 {
     public interface IGetAllWorkflowInstances { Task<PaginatedResponse<WorkflowInstanceDto>> GetAsync(GetAllRequest request); }
+    public interface IGetMyApprovals { Task<MyApprovalsDto> GetAsync(); }
     public interface IGetWorkflowStats { Task<WorkflowStatsDto> GetAsync(); }
     public interface IGetWorkflowActions { Task<List<WorkflowActionDto>> GetAsync(Guid instanceId); }
     public interface ISaveWorkflowDefinition { Task<Guid> SaveAsync(SaveWorkflowDefinitionDto dto); }
@@ -121,6 +122,84 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             }).ToList();
 
             return new PaginatedResponse<WorkflowInstanceDto> { Total = total, Data = data };
+        }
+    }
+
+    /// <summary>
+    /// The current user's approval inbox (Dashboard "Approvals" tab): every Running instance whose
+    /// CURRENT step lists them as a <b>specific</b> approver — directly, or through one of their
+    /// roles. Open steps (no configured approvers) are excluded: anyone *may* act on them, so they
+    /// belong to no one's personal queue (they stay actionable from the Workflow Tracking page).
+    /// Also reports whether the user is an assigned approver at all, for conditional rendering.
+    /// </summary>
+    public class GetMyApprovals(
+        IRepository<WorkflowInstance> repository,
+        IRepository<WorkflowDefinition> definitions,
+        IWorkflowApproverAuth approverAuth,
+        Common.Services.ICurrentUserService currentUser) : IGetMyApprovals
+    {
+        public async Task<MyApprovalsDto> GetAsync()
+        {
+            var userId = currentUser.GetCurrentUserId();
+            if (userId is null) return new MyApprovalsDto { IsApprover = false };
+
+            var roleIds = await approverAuth.GetCurrentUserRoleIdsAsync();
+
+            // Is the user a specific approver anywhere on an ACTIVE definition? (tab visibility)
+            var isApprover = await definitions.GetAll()
+                .Where(d => d.IsActive)
+                .SelectMany(d => d.Steps)
+                .SelectMany(s => s.Approvers)
+                .AnyAsync(a =>
+                    (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
+                    (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
+            if (!isApprover) return new MyApprovalsDto { IsApprover = false };
+
+            // Batch the running instances' current-step approvers (same shape as the tracking list).
+            var running = await repository.GetAll()
+                .Where(x => x.Status == WorkflowInstanceStatus.Running)
+                .Select(x => new
+                {
+                    x.Id, x.DefinitionId, x.EntityType, x.Summary,
+                    x.CurrentStepOrder, x.CurrentStepName, x.TotalSteps,
+                    x.RequestedBy, x.CreatedAt
+                })
+                .ToListAsync();
+            if (running.Count == 0) return new MyApprovalsDto { IsApprover = true };
+
+            var defIds = running.Select(x => x.DefinitionId).Distinct().ToList();
+            var approverRows = await definitions.GetAllWithoutTenantFilter()
+                .Where(d => defIds.Contains(d.Id))
+                .SelectMany(d => d.Steps, (d, s) => new { d.Id, Step = s })
+                .SelectMany(x => x.Step.Approvers, (x, a) => new
+                {
+                    DefinitionId = x.Id,
+                    x.Step.StepOrder,
+                    a.ApproverType,
+                    a.ApproverId
+                })
+                .ToListAsync();
+
+            var items = running
+                .Where(x => approverRows.Any(a =>
+                    a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder &&
+                    ((a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
+                     (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)))))
+                .OrderBy(x => x.CreatedAt)
+                .Select(x => new MyApprovalItemDto
+                {
+                    InstanceId = x.Id,
+                    Summary = x.Summary,
+                    EntityType = x.EntityType,
+                    CurrentStepOrder = x.CurrentStepOrder,
+                    CurrentStepName = x.CurrentStepName,
+                    TotalSteps = x.TotalSteps,
+                    RequestedBy = x.RequestedBy,
+                    RequestedAt = x.CreatedAt.ToDateTimeUtc()
+                })
+                .ToList();
+
+            return new MyApprovalsDto { IsApprover = true, Items = items };
         }
     }
 
@@ -383,6 +462,10 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("Supervisor Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.WorkforcePlan, "Workforce Plan Approval",
                 [("Directorate Review", "Directorate Head"), ("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
+            (WorkflowEntityTypes.HiringRequest, "Hiring Need Approval",
+                [("Directorate Head Review", "Directorate Head"), ("HR Review", "HR"), ("Finance Review", "Finance")]),
+            (WorkflowEntityTypes.JobRequisition, "Requisition Approval",
+                [("HR Review", "HR"), ("Approving Authority", null)]),
         ];
 
         public async Task<int> SeedAsync()

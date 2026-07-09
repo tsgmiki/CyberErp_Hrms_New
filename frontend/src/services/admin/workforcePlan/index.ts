@@ -50,6 +50,23 @@ export interface WorkforcePlanSaveResult {
   id?: string;
 }
 
+/**
+ * Tolerant numeric parse for budget/headcount inputs: strips thousands separators and spaces
+ * ("500,000" → 500000) instead of letting Number() yield NaN. Returns NaN only for genuinely
+ * non-numeric text so callers can raise a validation error rather than silently saving 0.
+ */
+export function parsePlanNumber(v: unknown): number {
+  const s = String(v ?? "").replace(/[,\s]/g, "");
+  if (s === "") return 0;
+  return Number(s);
+}
+
+/** Line-cell variant: tolerant parse with a 0 fallback (grid cells are spreadsheet-like). */
+const cellNum = (v: unknown): number => {
+  const n = parsePlanNumber(v);
+  return Number.isNaN(n) ? 0 : n;
+};
+
 /** Bespoke save: the plan carries a nested lines grid, so it posts JSON from component state. */
 export async function saveWorkforcePlan(
   data: WorkforcePlanModel,
@@ -69,31 +86,55 @@ export async function saveWorkforcePlan(
       zodErrors: { lines: ["Every line needs an organization unit and a role"] },
     };
 
+  // Header numerics: tolerate thousands separators; genuinely non-numeric input is a validation
+  // error — silently saving 0 loses the user's figure (the original "budget resets to 0" bug).
+  const totalBudget = parsePlanNumber(data.totalBudget);
+  if (Number.isNaN(totalBudget))
+    return {
+      status: "error",
+      message: "Validation failed",
+      zodErrors: { totalBudget: ["Approved Budget must be a number (e.g. 500000 or 500,000)"] },
+    };
+  const budgetThresholdPercent = parsePlanNumber(data.budgetThresholdPercent);
+  if (Number.isNaN(budgetThresholdPercent))
+    return {
+      status: "error",
+      message: "Validation failed",
+      zodErrors: { budgetThresholdPercent: ["Escalation Threshold must be a number"] },
+    };
+  const periodCount = parsePlanNumber(data.periodCount);
+  if (Number.isNaN(periodCount))
+    return {
+      status: "error",
+      message: "Validation failed",
+      zodErrors: { periodCount: ["Periods must be a number"] },
+    };
+
   const isUpdate = !!data.id;
   const body: Record<string, unknown> = {
     ...data,
-    periodCount: Number(data.periodCount) || 1,
-    totalBudget: Number(data.totalBudget) || 0,
-    budgetThresholdPercent: Number(data.budgetThresholdPercent) || 0,
+    periodCount: periodCount || 1,
+    totalBudget,
+    budgetThresholdPercent,
     lines: (data.lines ?? []).map((l) => ({
       ...l,
-      periodIndex: Number(l.periodIndex) || 0,
-      authorizedHeadcount: Number(l.authorizedHeadcount) || 0,
-      filledCount: Number(l.filledCount) || 0,
-      vacantCount: Number(l.vacantCount) || 0,
-      newHires: Number(l.newHires) || 0,
-      replacements: Number(l.replacements) || 0,
-      temporaryStaff: Number(l.temporaryStaff) || 0,
-      mobilityIn: Number(l.mobilityIn) || 0,
-      promotions: Number(l.promotions) || 0,
-      actingAssignments: Number(l.actingAssignments) || 0,
-      retirements: Number(l.retirements) || 0,
-      resignations: Number(l.resignations) || 0,
-      contractExpiries: Number(l.contractExpiries) || 0,
+      periodIndex: cellNum(l.periodIndex),
+      authorizedHeadcount: cellNum(l.authorizedHeadcount),
+      filledCount: cellNum(l.filledCount),
+      vacantCount: cellNum(l.vacantCount),
+      newHires: cellNum(l.newHires),
+      replacements: cellNum(l.replacements),
+      temporaryStaff: cellNum(l.temporaryStaff),
+      mobilityIn: cellNum(l.mobilityIn),
+      promotions: cellNum(l.promotions),
+      actingAssignments: cellNum(l.actingAssignments),
+      retirements: cellNum(l.retirements),
+      resignations: cellNum(l.resignations),
+      contractExpiries: cellNum(l.contractExpiries),
       isCriticalRole: l.isCriticalRole === true || String(l.isCriticalRole) === "true",
-      annualSalaryCost: Number(l.annualSalaryCost) || 0,
-      annualAllowances: Number(l.annualAllowances) || 0,
-      annualBenefits: Number(l.annualBenefits) || 0,
+      annualSalaryCost: cellNum(l.annualSalaryCost),
+      annualAllowances: cellNum(l.annualAllowances),
+      annualBenefits: cellNum(l.annualBenefits),
     })),
   };
   if (!isUpdate) delete body.id;

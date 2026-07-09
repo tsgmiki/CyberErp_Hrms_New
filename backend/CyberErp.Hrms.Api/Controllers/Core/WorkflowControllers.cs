@@ -7,6 +7,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// <summary>Workflow tracking + approvals (instances of the generic engine).</summary>
     public class WorkflowController(
         IGetAllWorkflowInstances getAllHandler,
+        IGetMyApprovals myApprovalsHandler,
         IGetWorkflowStats statsHandler,
         IGetWorkflowActions actionsHandler,
         IWorkflowService workflowService) : BaseController
@@ -15,6 +16,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet]
         public Task<PaginatedResponse<WorkflowInstanceDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>The current user's approval inbox (Dashboard "Approvals" tab, approver-only).</summary>
+        [HttpGet("my-approvals")]
+        public Task<MyApprovalsDto> GetMyApprovals()
+            => myApprovalsHandler.GetAsync();
 
         /// <summary>Counts by status for the dashboard tracking panel.</summary>
         [HttpGet("stats")]

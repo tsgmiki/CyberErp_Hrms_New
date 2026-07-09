@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260708151242_AddRecruitmentPhase1")]
+    partial class AddRecruitmentPhase1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -93,64 +96,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsUnique();
 
                     b.ToTable("hrms_AnnualLeaveSetting", "Core");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ApplicationCriterionScore", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("ApplicationId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("CriterionId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Remarks")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<decimal>("Score")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<DateTime>("ScoredAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("ScoredBy")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Weight")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ApplicationId", "CriterionId")
-                        .IsUnique();
-
-                    b.ToTable("hrms_ApplicationCriterionScore", "Core");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AuditLog", b =>
@@ -342,9 +287,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid?>("HiredEmployeeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("InternalEmployeeId")
                         .HasColumnType("uniqueidentifier");
 
@@ -353,9 +295,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<bool>("IsInTalentPool")
                         .HasColumnType("bit");
-
-                    b.Property<Guid?>("PersonId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(50)
@@ -400,11 +339,7 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasIndex("Email");
 
-                    b.HasIndex("HiredEmployeeId");
-
                     b.HasIndex("InternalEmployeeId");
-
-                    b.HasIndex("PersonId");
 
                     b.HasIndex("TenantId", "CandidateNumber")
                         .IsUnique();
@@ -412,65 +347,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasIndex("TenantId", "IsInTalentPool");
 
                     b.ToTable("hrms_Candidate", "Core");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CandidateDocument", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CandidateId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<byte[]>("Content")
-                        .IsRequired()
-                        .HasColumnType("varbinary(max)");
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("DocumentType")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CandidateId", "DocumentType");
-
-                    b.ToTable("hrms_CandidateDocument", "Core");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ClearanceDepartment", b =>
@@ -2681,18 +2557,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("EvaluatorEmployeeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("EvaluatorName")
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("EvaluatorType")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
                     b.Property<bool>("IsMandatory")
                         .HasColumnType("bit");
 
@@ -2723,8 +2587,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("EvaluatorEmployeeId");
 
                     b.HasIndex("RequisitionId");
 
@@ -3901,15 +3763,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("LeaveType");
                 });
 
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ApplicationCriterionScore", b =>
-                {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.JobApplication", null)
-                        .WithMany("CriterionScores")
-                        .HasForeignKey("ApplicationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Branch", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Branch", "Parent")
@@ -3926,20 +3779,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .WithMany()
                         .HasForeignKey("InternalEmployeeId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Person", null)
-                        .WithMany()
-                        .HasForeignKey("PersonId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CandidateDocument", b =>
-                {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Candidate", null)
-                        .WithMany()
-                        .HasForeignKey("CandidateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ClearanceDepartmentApprover", b =>
@@ -4273,11 +4112,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.RequisitionScreeningCriterion", b =>
                 {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Employee", null)
-                        .WithMany()
-                        .HasForeignKey("EvaluatorEmployeeId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.JobRequisition", null)
                         .WithMany("ScreeningCriteria")
                         .HasForeignKey("RequisitionId")
@@ -4473,8 +4307,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.JobApplication", b =>
                 {
-                    b.Navigation("CriterionScores");
-
                     b.Navigation("StageLog");
                 });
 

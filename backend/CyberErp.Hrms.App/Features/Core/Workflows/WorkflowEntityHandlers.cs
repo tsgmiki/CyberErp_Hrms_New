@@ -102,6 +102,64 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     }
 
     /// <summary>
+    /// Workflow outcomes for hiring-need assessments (HC078): approval opens recruitment for the
+    /// need (requisitions can be raised, HC080); rejection returns it to the requester.
+    /// </summary>
+    public class HiringRequestWorkflowHandler(
+        IRepository<HiringRequest> repository) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.HiringRequest, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == entityId)
+                ?? throw new NotFoundException(nameof(HiringRequest), entityId.ToString());
+            request.Approve();
+            repository.UpdateAsync(request);
+            await repository.SaveChangesAsync();
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == entityId)
+                ?? throw new NotFoundException(nameof(HiringRequest), entityId.ToString());
+            request.Reject();
+            repository.UpdateAsync(request);
+            await repository.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Workflow outcomes for job requisitions (HC085): approval readies the vacancy for posting;
+    /// rejection returns it to HR for revision.
+    /// </summary>
+    public class JobRequisitionWorkflowHandler(
+        IRepository<JobRequisition> repository) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.JobRequisition, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var requisition = await repository.GetAll().FirstOrDefaultAsync(q => q.Id == entityId)
+                ?? throw new NotFoundException(nameof(JobRequisition), entityId.ToString());
+            requisition.Approve();
+            repository.UpdateAsync(requisition);
+            await repository.SaveChangesAsync();
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var requisition = await repository.GetAll().FirstOrDefaultAsync(q => q.Id == entityId)
+                ?? throw new NotFoundException(nameof(JobRequisition), entityId.ToString());
+            requisition.Reject();
+            repository.UpdateAsync(requisition);
+            await repository.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
     /// Workflow outcomes for disciplinary cases: approval confirms the measure (Resolved);
     /// rejection voids the case (Cancelled).
     /// </summary>

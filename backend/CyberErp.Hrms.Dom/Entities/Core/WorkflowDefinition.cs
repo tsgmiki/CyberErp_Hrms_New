@@ -15,6 +15,8 @@ public static class WorkflowEntityTypes
     public const string Termination = "EmployeeTermination";
     public const string LeaveRequest = "LeaveRequest";
     public const string WorkforcePlan = "WorkforcePlan";
+    public const string HiringRequest = "HiringRequest";
+    public const string JobRequisition = "JobRequisition";
 }
 
 /// <summary>

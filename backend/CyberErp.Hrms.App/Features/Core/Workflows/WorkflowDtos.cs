@@ -41,6 +41,28 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         public List<WorkflowStepDto> Steps { get; set; } = [];
     }
 
+    /// <summary>One approval awaiting the current user's decision (Dashboard "Approvals" inbox).</summary>
+    public class MyApprovalItemDto
+    {
+        public Guid InstanceId { get; set; }
+        public string Summary { get; set; } = string.Empty;
+        public string EntityType { get; set; } = string.Empty;
+        public int CurrentStepOrder { get; set; }
+        public string CurrentStepName { get; set; } = string.Empty;
+        public int TotalSteps { get; set; }
+        public string? RequestedBy { get; set; }
+        public DateTime RequestedAt { get; set; }
+    }
+
+    /// <summary>The current user's approval inbox + whether they are an assigned approver at all.</summary>
+    public class MyApprovalsDto
+    {
+        /// <summary>True when the current user is a configured approver (directly or via a role) on
+        /// any active workflow step — drives the conditional Dashboard "Approvals" tab.</summary>
+        public bool IsApprover { get; set; }
+        public List<MyApprovalItemDto> Items { get; set; } = [];
+    }
+
     public class SaveWorkflowDefinitionDtoValidator : AbstractValidator<SaveWorkflowDefinitionDto>
     {
         public SaveWorkflowDefinitionDtoValidator()

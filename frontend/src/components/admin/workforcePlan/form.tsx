@@ -24,6 +24,7 @@ import {
   suggestSeparations,
   submitWorkforcePlan,
   createWorkforcePlanVersion,
+  parsePlanNumber,
 } from "@/services/admin/workforcePlan";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
 import getAllPositionClass from "@/services/admin/positionClass/getAll";
@@ -70,9 +71,14 @@ const emptyLine = (): WorkforcePlanLineModel => ({
   annualBenefits: 0,
 });
 
+/** Tolerant numeric read ("500,000" → 500000; junk → 0) — mirrors the save service's parsing. */
+const n = (v: unknown) => {
+  const x = parsePlanNumber(v);
+  return Number.isNaN(x) ? 0 : x;
+};
+
 /** Client-side mirror of the domain projections so totals track the grid live. */
 function computeLine(l: WorkforcePlanLineModel) {
-  const n = (v: unknown) => Number(v) || 0;
   const endHeadcount = Math.max(
     0,
     n(l.filledCount) -
@@ -174,8 +180,8 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
 
   const totals = useMemo(() => {
     const computed = lines.map(computeLine);
-    const budget = Number(formData.totalBudget) || 0;
-    const threshold = Number(formData.budgetThresholdPercent) || 0;
+    const budget = n(formData.totalBudget);
+    const threshold = n(formData.budgetThresholdPercent);
     const cost = computed.reduce((s, c) => s + c.cost, 0);
     const ceiling = budget * (1 + threshold / 100);
     return {
@@ -190,8 +196,7 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
   // Time-phased projections (HC069/HC073): per-period headcount, hiring demand, internal mobility
   // (supply), attrition (separations) and cost trend — live from the grid, mirroring the domain.
   const periodProjections = useMemo(() => {
-    const n = (v: unknown) => Number(v) || 0;
-    const count = Math.max(1, Number(formData.periodCount) || 1);
+    const count = Math.max(1, n(formData.periodCount) || 1);
     return Array.from({ length: count }, (_, p) => {
       const periodLines = lines.filter((l) => Number(l.periodIndex) === p);
       const computed = periodLines.map(computeLine);
@@ -589,7 +594,7 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
                       onChange={(e) => setLine(i, { periodIndex: Number(e.target.value) })}
                       className={selectCls}
                     >
-                      {Array.from({ length: Number(formData.periodCount) || 1 }, (_, p) => (
+                      {Array.from({ length: n(formData.periodCount) || 1 }, (_, p) => (
                         <option key={p} value={p}>{p + 1}</option>
                       ))}
                     </select>
@@ -678,7 +683,7 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
           <div className="space-y-2 text-sm text-foreground">
             <p>
               {t("Projected cost")}: <strong>{fmtMoney(totals.cost)}</strong> · {t("Budget")}:{" "}
-              <strong>{fmtMoney(Number(formData.totalBudget) || 0)}</strong>
+              <strong>{fmtMoney(n(formData.totalBudget))}</strong>
             </p>
             {totals.excess > 0 ? (
               <>

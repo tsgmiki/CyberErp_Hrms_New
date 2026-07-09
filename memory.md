@@ -100,6 +100,23 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
   (approve vN → auto-archive vN−1); retirement suggestions (DOB+60y); scenario comparison; Establishment
   Overview page; approved-demand feed for recruitment (module 3.5 hook). Deferred: structured competency
   model (HC061–063 deep) + requisition consumption.
+- **Recruitment & Talent Acquisition (HC077–117), phased:**
+  - *Phase 1 (DONE):* HiringRequest (need assessment, establishment-gated submit, Directorate→HR→
+    Finance workflow, budget monitor) → JobRequisition (+screening criteria; only from approved
+    requests; PositionClass defaults; posting generate/publish Internal/External/Both) → Candidate
+    (consent-mandatory, resumes, talent pool, anonymization, skills matching) → JobApplication
+    (unique pair, stage machine w/ interview bypass, append-only stage log, screening scores).
+  - *Candidate lifecycle (DONE):* per-criterion **evaluators** (Employee/ExternalPerson/Organization)
+    scoring 0–100 → auto weighted totals + vacancy **ranking**; `Candidate.PersonId` → CorePerson at
+    save (internal candidates reuse the employee's person); typed **candidate documents** w/ the
+    mandatory compliance set (ID/Guarantor/Medical/signed offer-or-contract) gating hire; **hire
+    conversion** = employee on the SAME person + automatic document migration (EmployeeDocument
+    owner Recruitment) + application→Hired + probation tracking; **Talent Pool** page (history +
+    apply-to-vacancy).
+  - *Phase 2 (todo):* interview panels/scheduling/scored feedback (HC101–109), background
+    verification (HC110), offers + comp validation + response tracking (HC111–114).
+  - *Phase 3 (todo):* public career portal (HC093), offer acceptance → onboarding → employee master
+    + probation (HC115–117); email notifications, resume parsing, job-board feeds.
 - **Attendance & Leave (HC030–052), phased:**
   - *Phase 1:* LeaveType, Holiday, `IWorkingCalendar` (working-days excl. weekends/holidays).
   - *Phase 2:* LeaveBalance (ledger) + LeaveRequest on the workflow engine (submit→approve→deduct,
@@ -113,7 +130,8 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 `InitialCreate` → `JobGradeRefactorAndSalaryScale` → `PositionClassSalaryScaleAndAgeFields` →
 `AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
 → `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`
-→ `AddTerminationReinstatement` → `AddWorkforcePlanning`.
+→ `AddTerminationReinstatement` → `AddWorkforcePlanning` → `AddRecruitmentPhase1`
+→ `AddRecruitmentCandidateLifecycle`.
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

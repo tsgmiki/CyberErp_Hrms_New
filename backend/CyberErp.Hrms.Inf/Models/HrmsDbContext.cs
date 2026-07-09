@@ -85,6 +85,14 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<ClearanceDepartmentApprover> ClearanceDepartmentApprover { get; set; }
     public DbSet<WorkforcePlan> WorkforcePlan { get; set; }
     public DbSet<WorkforcePlanLine> WorkforcePlanLine { get; set; }
+    public DbSet<HiringRequest> HiringRequest { get; set; }
+    public DbSet<JobRequisition> JobRequisition { get; set; }
+    public DbSet<RequisitionScreeningCriterion> RequisitionScreeningCriterion { get; set; }
+    public DbSet<Candidate> Candidate { get; set; }
+    public DbSet<JobApplication> JobApplication { get; set; }
+    public DbSet<JobApplicationStageLog> JobApplicationStageLog { get; set; }
+    public DbSet<ApplicationCriterionScore> ApplicationCriterionScore { get; set; }
+    public DbSet<CandidateDocument> CandidateDocument { get; set; }
     public DbSet<Role> Role { get; set; }
     public DbSet<UserRole> UserRole { get; set; }
     public DbSet<Module> Module { get; set; }
@@ -204,6 +212,14 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new ClearanceDepartmentApproverConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanLineConfiguration());
+        modelBuilder.ApplyConfiguration(new HiringRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new JobRequisitionConfiguration());
+        modelBuilder.ApplyConfiguration(new RequisitionScreeningCriterionConfiguration());
+        modelBuilder.ApplyConfiguration(new CandidateConfiguration());
+        modelBuilder.ApplyConfiguration(new JobApplicationConfiguration());
+        modelBuilder.ApplyConfiguration(new JobApplicationStageLogConfiguration());
+        modelBuilder.ApplyConfiguration(new ApplicationCriterionScoreConfiguration());
+        modelBuilder.ApplyConfiguration(new CandidateDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new RoleConfiguration());
         modelBuilder.ApplyConfiguration(new UserRoleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleConfiguration());

@@ -212,6 +212,47 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, DisciplinaryMeasureWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeTerminationWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, WorkforcePlanWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, HiringRequestWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, JobRequisitionWorkflowHandler>();
+
+            // Recruitment & Talent Acquisition — Phase 1 (HC077–HC100 core)
+            services.AddScoped<Features.Core.Recruitment.ISaveHiringRequest, Features.Core.Recruitment.SaveHiringRequest>();
+            services.AddScoped<Features.Core.Recruitment.IGetHiringRequestById, Features.Core.Recruitment.GetHiringRequestById>();
+            services.AddScoped<Features.Core.Recruitment.IGetAllHiringRequests, Features.Core.Recruitment.GetAllHiringRequests>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteHiringRequest, Features.Core.Recruitment.DeleteHiringRequest>();
+            services.AddScoped<Features.Core.Recruitment.ISubmitHiringRequest, Features.Core.Recruitment.SubmitHiringRequest>();
+            services.AddScoped<Features.Core.Recruitment.ICloseHiringRequest, Features.Core.Recruitment.CloseHiringRequest>();
+            services.AddScoped<Features.Core.Recruitment.IGetRecruitmentBudgetMonitor, Features.Core.Recruitment.GetRecruitmentBudgetMonitor>();
+            services.AddScoped<Features.Core.Recruitment.ISaveJobRequisition, Features.Core.Recruitment.SaveJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.IGetJobRequisitionById, Features.Core.Recruitment.GetJobRequisitionById>();
+            services.AddScoped<Features.Core.Recruitment.IGetAllJobRequisitions, Features.Core.Recruitment.GetAllJobRequisitions>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteJobRequisition, Features.Core.Recruitment.DeleteJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.ISubmitJobRequisition, Features.Core.Recruitment.SubmitJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.ISetRequisitionPosting, Features.Core.Recruitment.SetRequisitionPosting>();
+            services.AddScoped<Features.Core.Recruitment.IGenerateRequisitionPosting, Features.Core.Recruitment.GenerateRequisitionPosting>();
+            services.AddScoped<Features.Core.Recruitment.IPostJobRequisition, Features.Core.Recruitment.PostJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.ICloseJobRequisition, Features.Core.Recruitment.CloseJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.ICancelJobRequisition, Features.Core.Recruitment.CancelJobRequisition>();
+            services.AddScoped<Features.Core.Recruitment.ISaveCandidate, Features.Core.Recruitment.SaveCandidate>();
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateById, Features.Core.Recruitment.GetCandidateById>();
+            services.AddScoped<Features.Core.Recruitment.IGetAllCandidates, Features.Core.Recruitment.GetAllCandidates>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteCandidate, Features.Core.Recruitment.DeleteCandidate>();
+            services.AddScoped<Features.Core.Recruitment.ISetCandidateTalentPool, Features.Core.Recruitment.SetCandidateTalentPool>();
+            services.AddScoped<Features.Core.Recruitment.IAnonymizeCandidate, Features.Core.Recruitment.AnonymizeCandidate>();
+            services.AddScoped<Features.Core.Recruitment.IUploadCandidateResume, Features.Core.Recruitment.UploadCandidateResume>();
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateResume, Features.Core.Recruitment.GetCandidateResume>();
+            services.AddScoped<Features.Core.Recruitment.IMatchCandidates, Features.Core.Recruitment.MatchCandidates>();
+            services.AddScoped<Features.Core.Recruitment.ICreateJobApplication, Features.Core.Recruitment.CreateJobApplication>();
+            services.AddScoped<Features.Core.Recruitment.IGetJobApplicationById, Features.Core.Recruitment.GetJobApplicationById>();
+            services.AddScoped<Features.Core.Recruitment.IGetAllJobApplications, Features.Core.Recruitment.GetAllJobApplications>();
+            services.AddScoped<Features.Core.Recruitment.IMoveJobApplicationStage, Features.Core.Recruitment.MoveJobApplicationStage>();
+            services.AddScoped<Features.Core.Recruitment.IScoreJobApplication, Features.Core.Recruitment.ScoreJobApplication>();
+            services.AddScoped<Features.Core.Recruitment.IGetApplicationRanking, Features.Core.Recruitment.GetApplicationRanking>();
+            services.AddScoped<Features.Core.Recruitment.IUploadCandidateDocument, Features.Core.Recruitment.UploadCandidateDocument>();
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateDocuments, Features.Core.Recruitment.GetCandidateDocuments>();
+            services.AddScoped<Features.Core.Recruitment.IDownloadCandidateDocument, Features.Core.Recruitment.DownloadCandidateDocument>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteCandidateDocument, Features.Core.Recruitment.DeleteCandidateDocument>();
+            services.AddScoped<Features.Core.Recruitment.IHireCandidate, Features.Core.Recruitment.HireCandidate>();
 
             // Workforce Planning (HC053–HC076)
             services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();
@@ -227,6 +268,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.WorkforcePlans.ICompareWorkforcePlans, Features.Core.WorkforcePlans.CompareWorkforcePlans>();
             services.AddScoped<Features.Core.WorkforcePlans.IGetApprovedDemand, Features.Core.WorkforcePlans.GetApprovedDemand>();
             services.AddScoped<IGetAllWorkflowInstances, GetAllWorkflowInstances>();
+            services.AddScoped<IGetMyApprovals, GetMyApprovals>();
             services.AddScoped<IGetWorkflowStats, GetWorkflowStats>();
             services.AddScoped<IGetWorkflowActions, GetWorkflowActions>();
             services.AddScoped<ISaveWorkflowDefinition, SaveWorkflowDefinition>();
