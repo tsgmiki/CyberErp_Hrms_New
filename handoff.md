@@ -16,17 +16,235 @@
   generation + dynamic clearance config + approver-driven Dashboard clearance queue + settlement gate;
   migration `AddDynamicClearanceConfig`) → `709ece0` (docs sync) → `2887f96` (employee reinstatement +
   clearance certificate; migration `AddTerminationReinstatement`).
-- **Uncommitted:** Recruitment Phase 1 (§1 item 1, migration `AddRecruitmentPhase1`, applied) + the
-  Dashboard "Approvals" inbox + the budget-parse fix (§1 items 2–3, no migration). Workforce
-  Planning is committed as `346170b`; history through `709ece0` is pushed to origin
-  (`d7058db`→`346170b` local only).
+- Later local commits: `346170b` (Workforce Planning) → `059f3b0` (Recruitment Phase 1 + candidate
+  lifecycle, migrations `AddRecruitmentPhase1` + `AddRecruitmentCandidateLifecycle`, applied). History
+  through `709ece0` is pushed to origin; `d7058db`→`059f3b0` are **local only** (not pushed).
+- **Uncommitted:** recruitment end-to-end hardening (§1 item 1, data migration
+  `SeedRecruitmentNumberSequences` APPLIED) + multi-evaluator criteria + popup redesign (§1 item 2,
+  migration `AddCriterionEvaluators` APPLIED) + weighted criteria/ranking/Hire-Employee menu
+  (§1 item 3, migration `AddCriterionStageScope` APPLIED) + Recruitment Phase 2 (§1 item 4 —
+  interviews/panels/offers, migration `AddRecruitmentInterviewsOffers` APPLIED) + the candidate
+  structured-background increment (§1 item 5; no migration) + the §7.1 DB-review doc updates.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **Recruitment candidate lifecycle — 5 user requirements** (migration
+1. **StageModal score contradiction + error-message artifact** (frontend only, builds clean.
+   **Uncommitted.**): the Move Application Stage form offered a manual "Screening Score (0–100)"
+   field that the backend always rejects on criteria-scored vacancies — it now hides the field on
+   such vacancies (`autoScored = totalCriteriaCount > 0`), shows the current auto-calculated total
+   with an explanatory note (score sheet ★ owns it) and keeps only the remarks input;
+   criteria-less vacancies keep the manual field. Separately, `errorMessageParser` was rewritten
+   to emit PLAIN TEXT (single error verbatim; multiple as numbered "\n"-joined lines) — it used to
+   build `"1 …<br/>"` strings that every consumer rendered as literal text (no consumer uses
+   innerHTML for it); StageModal error line got `whitespace-pre-line`.
+2. **Interview level-gating + panel inheritance from criteria evaluators** (no migration; E2E
+   verified [schedule at Received → 400 citing the Interview level; at Interview → 200];
+   builds clean. **Uncommitted.**):
+   - *Level rule (backend):* `SaveInterview` requires the application AT the Interview stage —
+     the auto-advance side effect was REMOVED (stage moves are deliberate decisions). Feedback,
+     round status changes and viewing stay available from any stage.
+   - *No interviewer re-entry (frontend):* `ScheduleForm` **pre-fills the panel from the vacancy's
+     criteria evaluators** (Interview-level + global; employees → employee panelists, external
+     persons/orgs → named panelists, deduped, first = lead) via `getJobRequisition`; the panel
+     editor is now chip-based and supports **named external panelists** (previously employee-only —
+     external evaluators couldn't even be carried onto a panel). Modal gained
+     `requisitionId`/`applicationStage` props; Schedule + per-round Reschedule buttons render only
+     at the Interview level (explanatory hints elsewhere); row tooltip explains the level rule.
+2. **Action-sequence & criteria-flow refinement + recruitment data reset** (no migration;
+   stage-lock E2E verified [400 citing the offer → withdraw → 200]; builds clean. **Uncommitted.**):
+   - *Offer-driven stage lock (backend):* `MoveJobApplicationStage` now blocks manual moves while
+     ANY offer is in play (Draft/PendingApproval/Approved/Sent/**Accepted**) — 400 naming the
+     offer; previously a Sent offer could be stranded on a manually-Rejected application.
+   - *Row actions reordered to process order:* Score → Interviews → Move Stage → Offers → History.
+     Interviews ALWAYS viewable (modal `readOnly` for final applications — no schedule/score/adopt);
+     Offers viewable from Selected onward + on final apps (modal `canCreate` gates New Offer to
+     Selected/OfferPending); Score hidden at final stages; Move Stage disabled at OfferPending w/
+     explanatory tooltip; every disabled state now explains itself.
+   - *Criteria flow:* **Apply≠Save trap surfaced** — `criteriaDirty` badge "Not saved yet — Save
+     Requisition to persist" until the form saves; button reads Define/Edit/View Criteria by
+     context; empty state gained **Load Standard Template (50/30/20)**.
+   - *Data reset:* new reusable script `backend/scripts/reset-recruitment-data.sql` — emptied ALL
+     recruitment tables (9 candidates, 6 requisitions, 6 requests, 15 apps, 9 interviews, 1 offer),
+     removed candidate-only persons + their edu/exp rows + pre-hire attachments + resume file,
+     cleared recruitment workflow instances, reset HRQ/REQ/CND/OFR counters to 0001. PRESERVED:
+     11 employees + persons, org structure, workflow definitions. DB is at a clean slate for the
+     user's end-to-end test.
+2. **Recruitment end-to-end review & hardening** (data-only migration
+   `SeedRecruitmentNumberSequences`, applied; E2E **16/17 green** [the 1 "miss" = double-submit hit
+   the handler's ValidationException pre-check (400) instead of the domain guard — correct
+   behavior] + a follow-up probe confirming message pass-through; tenant purged. **Uncommitted.**):
+   - *F1 — domain guards → 409:* `ExceptionMiddleware` maps `InvalidOperationException` to 409
+     Conflict w/ the domain message (was a generic 500); removed from `IsTransientException` (Inf)
+     so retry wrappers never re-execute a rule violation. Handler-level ValidationExceptions stay
+     400 — most recruitment handlers double-guard, the 409 catches direct domain transitions
+     (offer send/accept, interview complete, etc.).
+   - *F2/F3/F8/F9 — nothing strands* (new `PipelineDisposition.CloseOutAsync` helper): hire filling
+     the LAST position auto-closes the requisition + Rejects the runner-ups ("Position filled…");
+     Close/Cancel requisition dispositions open applications + withdraws live offers; hire
+     Withdraws the new employee's other active applications; anonymize Withdraws the pipeline
+     BEFORE the PII scrub. All moves stage-logged; Draft/Approved/Sent offers withdrawn
+     (PendingApproval offers stay with their running workflow — see §2).
+   - *F4 — one source of truth:* manual `screeningScore` on stage moves → 400 when the vacancy has
+     weighted criteria (the criterion engine owns the total).
+   - *F7 — offers rank-gated:* `SaveJobOffer` enforces the same eligibility window as hire — no
+     offer to Waitlisted/NotScored/FailsMandatory/OfferRejected candidates (specific 400s).
+   - *F5 — adopt interview scores:* `POST JobApplication/{id}/adopt-interview-scores` copies the
+     consolidated per-criterion averages into the score sheet (weights inherited) + recompute;
+     "Adopt into Ranking" button on the consolidated report. E2E verified 90×60% + 80×40% = 86.
+   - *F10 — unified numbering:* HRQ/REQ/CND moved to `INumberSequenceService`; counters seeded
+     from each tenant's existing max (verified: main tenant Candidate=9, HiringRequest=6…).
+   - *F6/F11 — UI:* stage dropdown no longer offers OfferPending/Hired (offer-driven); Applications
+     toolbar gained a **vacancy filter** (parentId) + **Ranking** shortcut; `RankingModal` extracted
+     to `jobRequisition/rankingModal.tsx` (shared).
+2. **Multi-evaluator criteria + enterprise criteria-popup redesign** (migration
+   `AddCriterionEvaluators`, applied — **hand-reordered Up(): CreateTable + data-copy SQL BEFORE
+   the column drops** (scaffold order lost data); legacy empty-EvaluatorType rows purged. E2E
+   **11/11 green**, tenant purged. **Uncommitted.**):
+   - *Schema:* new `hrms_CriterionEvaluator` (criterion 1─< evaluator; EmployeeId? SET NULL +
+     server-resolved name snapshot; ExternalPerson/Organization free-named). The 3 single-evaluator
+     columns on `hrms_RequisitionScreeningCriterion` are GONE (data migrated into child rows).
+   - *Domain/App:* `CriterionEvaluatorSpec` + `CriterionEvaluator.Create` (rejects None/incomplete);
+     `ScreeningCriterionSpec.Evaluators` list; validator = per-row completeness + **no duplicate
+     employee per criterion**; `BuildCriterionSpecsAsync` batch-resolves ALL employee names in one
+     query; `StampCriteriaTenant` stamps BOTH child levels (aggregate gotcha, 2 deep); reads need
+     `.Include(ScreeningCriteria).ThenInclude(Evaluators)`; `CriterionScoreDto.EvaluatorName` is
+     now a deterministic alphabetical joined-names string (EvaluatorType removed from that DTO).
+   - *Frontend:* `criteriaModal.tsx` fully redesigned (enterprise standard) — card-per-criterion
+     layout w/ labeled fields (weight has % suffix), **evaluator chip panel** (kind icons, removable,
+     inline add row: Employee picker | External/Org name, Enter-to-add, duplicate-employee guard),
+     toolbar (Add pre-fills unassigned weight, **Distribute Evenly**), footer weight progress bar
+     (green/amber/red) gating Apply, empty state. Models: `CriterionEvaluatorModel`,
+     `ScreeningCriterionModel.evaluators[]`; requisition chips show "N evaluators" w/ tooltip.
+   - E2E: 3-evaluator round-trip (2 external + org), zero-evaluator OK, duplicate-employee 400,
+     unknown-employee 404, wholesale replace cascades (0 orphans), joined names in score sheet.
+   ⚠️ Reminder: `kill %job` does NOT kill the dotnet API child — use `Stop-Process -Name
+   CyberErp.Hrms.Api` before rebuilding (file locks).
+2. **Weighted screening criteria, ranking/waitlist & Hire Employee menu** (migration
+   `AddCriterionStageScope` [adds `RequisitionScreeningCriterion.AppliesAtStage`], applied; E2E
+   **20/20 green** on disposable tenant, purged. **Uncommitted.**):
+   1. *Criteria = percentages totaling exactly 100%* — domain (`SetScreeningCriteria`) + validator
+      + UI enforce Σ==100; criteria setup moved to a **popup grid** (`jobRequisition/criteriaModal.tsx`,
+      live Σ badge red/green, Apply gated; the form shows a chip summary card). Per-criterion
+      **Level** scope (All Steps | Screening | Interview | Final Review = `AppliesAtStage?`) +
+      internal/external evaluators (unchanged). **Weights inherited downstream:** score sheets show
+      `weight%` read-only; interview feedback sheet filters to Interview+global criteria; interview
+      consolidated adds `WeightedAverage` (Σ avg×w / Σw).
+   2. *Ranking + waitlist* — `RankingShared` (in JobApplicationHandlers.cs) assigns Rank +
+      HireEligibility (Eligible|Waitlisted|Hired|OfferRejected|OutOfContention|FailsMandatory|
+      NotScored); Eligible window = top (NumberOfPositions − hired) in-play rows; latest offer
+      Declined/Expired ⇒ out of contention ⇒ next waitlisted slides up. `HireCandidate` rank gate
+      (only when the vacancy HAS criteria — legacy vacancies unaffected) with specific 400 messages.
+      RankingModal shows 1st/2nd/3rd medals + eligibility badges + weight% in breakdowns.
+   3. *Hire Employee menu* (`/hireEmployee`, sidebar Recruitment group) — `GET
+      JobApplication/hire-queue` (`HireQueueHandlers.cs`): strictly Eligible+Waitlisted rows of
+      Approved/Posted vacancies, grouped per requisition (hired/positions counter), per-row
+      CanHire/BlockedReason (rank→stage→offer→compliance precedence). **Hire modal MOVED here from
+      the candidate form** (candidate Documents card now shows a pointer note; hire button/modal
+      and related code removed from `candidate/form.tsx`).
+   E2E: 80% total→400 (message cites 100%), stage scope persists, weighted consolidated avg,
+   A=83/1st Eligible vs B=69/2nd Waitlisted, queue canHire flags, waitlisted hire→400 citing
+   waitlist, decline→A OfferRejected + B promoted Eligible, declined-#1 hire→400, promoted-#2
+   hire→200, queue drains to 0.
+   4. *Level-aware score-button visibility (follow-up, E2E 12/12):* the pipeline's score action
+      renders per row iff the CURRENT stage has scoreable criteria — global ("All Steps") criteria
+      always count, level-scoped ones only at their level. Server-computed:
+      `JobApplicationDto.TotalCriteriaCount` + `ScoreableCriteriaCount` on list AND by-id
+      (`GetAllJobApplications` batches criteria stages per requisition). ScoreModal filters its
+      sheet to the same subset + distinguishes "no criteria" from "none at this step". Verified
+      counts across Received(1)→Screening(2)→Interview(2)→Selected(1) with a 50-global/30-Screening/
+      20-Interview criteria set.
+2. **Recruitment Phase 2 — interviews, panels & offers (HC101–HC109, HC111–HC114)** (migration
+   `AddRecruitmentInterviewsOffers`, applied to CERP; E2E 14/15 green on disposable tenant
+   [the 1 "fail" = 81.5 vs 81.50 format artifact], purged. **Uncommitted.**):
+   - *Entities (shapes adopted from the §7.1 DB review):* `hrms_Interview` (rounds, window CHECK)
+     1─< `hrms_InterviewPanelist` (employee SET NULL + name snapshot OR free-text external; lead;
+     attendance) 1─< `hrms_InterviewFeedback` (0–100 CHECK, loose criterion + snapshot);
+     `hrms_JobOffer` (status machine, salary CHECK, filtered unique ACTIVE-offer-per-application
+     index, HiredEmployeeId? no-FK); `hrms_NumberSequence` (PK TenantId+Key, NOT BaseEntity).
+   - *Numbering:* new `INumberSequenceService` (Inf: atomic `UPDATE…OUTPUT` + lazy seed + dup-key
+     retry) — offers use `OFR-####`; §7.1 count+1 race fixed for new numbers.
+   - *Interview slices* (`InterviewHandlers.cs`): schedule w/ panel (names resolved server-side;
+     externals allowed), reschedule/re-panel (Scheduled only), Complete/Cancel/NoShow, per-criterion
+     feedback (auto-Attended), consolidated report (HC109), delete Scheduled-only. First round
+     auto-advances the application to Interview (logged).
+   - *Offer slices* (`JobOfferHandlers.cs`): save (HC113 scale-deviation needs justification),
+     submit → generic workflow `JobOffer` (seeded HR → Approving Authority; auto-approve when
+     undefined; rejection → Draft), send (app → OfferPending), respond Accept/Decline, withdraw,
+     lazy expiry on read (all three release the app → Selected), generate-letter (HC111),
+     delete Draft-only. `JobOfferWorkflowHandler` + seed entry + `WorkflowEntityTypes.JobOffer`.
+   - *Hire integration:* `HireCandidate` now accepts stage Selected OR OfferPending; once ANY offer
+     exists the newest must be ACCEPTED (400 otherwise); hire stamps `offer.AssignHiredEmployee`.
+   - *Frontend:* `jobApplication/interviewsModal.tsx` (rounds, panel editor w/ lead radio, status
+     actions, per-panelist score sheet from the requisition criteria + overall entry, consolidated
+     report w/ bars) + `offerModal.tsx` (draft editor w/ scale pick + live deviation-justification
+     prompt, letter generate/preview, submit/send/respond/withdraw, active-offer gating); two new
+     row actions on the Applications pipeline; `JobOffer` added to `workflowEntityTypeOptions`
+     (HC070 lesson) + `interviewFormatOptions`.
+2. **Candidate structured background + internal flow + Source/Type UI cleanup** (NO migration;
+   E2E-verified on a disposable tenant, then purged. **Uncommitted.**) — improving the Candidate
+   feature step by step:
+   1. *Standardize candidate data (#1):* candidate education/work history now writes the **same
+      person-owned `hrms_EmployeeEducation` / `hrms_EmployeeExperience` rows the employee profile uses**
+      (both keyed on **PersonId**, not EmployeeId). New slice
+      `Features/Core/Recruitment/CandidateBackgroundHandlers.cs`: DTOs take `CandidateId`, resolve
+      `Candidate.PersonId`, reuse the domain `Create`/`Update`. Routes on `CandidateController`:
+      `GET/POST Candidate/{id}/education` + `…/experience`, `DELETE Candidate/education/{id}` +
+      `…/experience/{id}`; DI in `App/DependencyInjection.cs`. **The person IS the hand-off** — hire
+      creates the Employee on that same PersonId, so the rows are already the employee's (verified:
+      candidate.PersonId == education.PersonId == experience.PersonId; zero copy, zero migration).
+   2. *Internal applicant flow (#2):* selecting an internal Employee in the form fetches
+      `GET Employee/{id}` and **prefills + locks** identity (name parts, gender, email, phone). Internal
+      candidates are **read-only** for education/experience (backend guard 400s create/update/delete;
+      GET still works) — the employee master is authoritative.
+   3. *Source/Type UI cleanup (#3):* replaced the confusing `Source` dropdown (which mixed the
+      internal-vs-external *type* with acquisition *channels*) with an **Applicant Type** segmented
+      control → Internal (Employee picker + locked identity) | External (Source Channel dropdown +
+      editable identity). `CandidateSource` enum unchanged; UI derives type = (source===Internal).
+   Frontend: `components/admin/candidate/{form,educationSection,experienceSection}.tsx` (reuse the
+   generic `ChildManager`, now with an optional `readOnly`/`hint` prop), `services/admin/recruitment/index.ts`
+   (`getCandidateEducations`/`save…`/`delete…` + experience), models `CandidateEducationModel`/`…Experience`.
+   Dropped the Education/Experience **textareas** from the form (columns kept — dropping = destructive);
+   `SkillsSummary` stays (drives matching).
+   - *Follow-up fixes (same increment):* (a) **"saved but grid/DB empty" bug — ROOT CAUSE was a
+     `formId` collision**: `FormProvider` defaults its `<form>` DOM id to the hard-coded
+     `"formProvider"`, and a modal FormProvider's Save button lives in the modal FOOTER (outside the
+     form), wired via the HTML `form="<id>"` attribute (`actionBar.tsx` / `submitButton.tsx`). With
+     the main candidate form and the education/experience modal mounted simultaneously, both had
+     `id="formProvider"`, so the modal's Save submitted the FIRST match — the **main candidate form**
+     → `saveCandidate()` ran, showed "Successfully saved", and the education POST never fired (DB
+     empty; backend verified correct via authenticated curl against the user's real instance/tenant).
+     Fix: explicit `formId` (`candidateForm` / `candidateEducationForm` / `candidateExperienceForm`).
+     The employee profile never hit this because its tabs mount ONE FormProvider at a time
+     (`profile.tsx` conditional rendering); every other `showModal` user renders a single provider.
+     Also hardened: sections `await refetch()` after save/delete and surface the list-query error into
+     `ChildManager` (a failing GET used to read silently as "No records yet").
+     (b) **Candidate form UI polish** — restructured into clean titled cards (**Applicant Details**
+     [with the Applicant Type toggle in its header], **Resume & Retention**, **Documents & Compliance**,
+     **Background**), max-width container, name-as-title header with pill status badges.
+     (c) Removed dead template scaffolding (`backgroundSyncService`/`database.ts`/`healthcheck/get.ts`)
+     that pinged a nonexistent `Health/live` endpoint every 5 min (console 404 noise).
+   - *UX iteration 2 (2026-07-10, E2E-verified, tenant purged):* (a) **Employee-style tabs** — the
+     candidate form is now a tabbed profile mirroring `employee/profile.tsx` (tab bar ABOVE the
+     persistent header card): **Applicant Details | Education | Experience** (last two gated until
+     saved). (b) **Switch toggle** replaces the Internal/External segmented buttons — unchecked =
+     External (default), checked = Internal (`role="switch"`). (c) **Background-row attachments** —
+     education/experience rows now take file attachments stored in the SAME `hrms_EmployeeDocument`
+     table the employee profile reads (OwnerType Education/Experience + OwnerId = row id), so they're
+     on the employee's profile at hire automatically. `EmployeeId` (no FK) anchors to the CANDIDATE id
+     until hire; new `EmployeeDocument.AssignEmployee()` + a `HireCandidate` step re-anchors them to
+     the new employee. New slice handlers (Upload/Get/Download/Delete `CandidateBackgroundDocument`,
+     write-guarded: internal/anonymized 400; reads allowed) + routes
+     `GET/POST Candidate/{id}/background-documents` (+`ownerType`/`ownerId`),
+     `GET Candidate/background-documents/{docId}/download`, `DELETE Candidate/background-documents/{docId}`;
+     row deletes cascade attachments (`DocumentStorage.DeleteForOwnerAsync`); DTOs expose
+     `DocumentCount` (paperclip column). Frontend: `candidate/backgroundAttachments.tsx` (mirror of
+     employee `documentAttachments.tsx`) inside the education/experience modals. E2E: upload→list→
+     count→byte-identical download; pre-hire anchor = candidate id; employee-side endpoint 404s for a
+     candidate-only person (no leak); internal upload/delete 400 + read 200; cascade verified.
+2. **Recruitment candidate lifecycle — 5 user requirements** (migration
    `AddRecruitmentCandidateLifecycle`, applied; E2E-verified end-to-end, tenant purged):
    1. *Evaluator scoring:* criteria carry an evaluator (Employee [FK SET NULL + server-resolved
       name] / ExternalPerson / Organization); `hrms_ApplicationCriterionScore` (unique per
@@ -45,7 +263,7 @@
       gates hire (400 lists missing); candidate form shows checklist + badge; Hire modal (number,
       vacant position, nature/contract, probation → status Probation).
    ⚠️ Gotcha: `Candidate.HiredEmployeeId` has NO FK — a second SET NULL path to hrms_Employee trips
-   SQL Server's multiple-cascade-path rule (InternalEmployeeId holds the slot). **Uncommitted.**
+   SQL Server's multiple-cascade-path rule (InternalEmployeeId holds the slot). Committed as `059f3b0`.
 2. **Recruitment & Talent Acquisition — Phase 1, HC077–HC100 core** (migration
    `AddRecruitmentPhase1`, applied; full-pipeline E2E on a disposable tenant, then purged):
    - 6 tables: `hrms_HiringRequest` (need assessment: justification/budget/plan-link; submit gated
@@ -238,6 +456,14 @@
 
 ## 2. Outstanding tasks / backlog
 
+- **Recruitment review — incomplete/accepted items (2026-07-10):**
+  - Offers stuck at **PendingApproval when their vacancy closes**: the disposition helper leaves
+    them to the running workflow (approve/reject from the workflow screen, then withdraw) — a
+    workflow-instance cancel API would close this gap cleanly.
+  - **Hire-queue candidate deep-link** (row → candidate profile) not yet wired; `GetHireQueue`
+    runs per-row compliance queries (fine at admin volume — batch if the queue grows).
+  - Posting window (`OpenUntil`) intentionally does NOT block manual application entry
+    (walk-ins/late registration by HR) — documented in `logic.md`, revisit for the public portal.
 - **Attendance Phase 3:** WorkSchedule/Shift, EmployeeShiftAssignment, attendance capture (check-in/out),
   daily processing (present/late/absent honoring approved leave), timesheet. Make the **weekend definition
   shift/policy-driven** — currently hardcoded Sat/Sun in `WorkingCalendar`.

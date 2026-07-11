@@ -160,6 +160,35 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     }
 
     /// <summary>
+    /// Workflow outcomes for job offers (HC112): approval readies the offer for sending;
+    /// rejection returns it to Draft for correction and resubmission.
+    /// </summary>
+    public class JobOfferWorkflowHandler(
+        IRepository<JobOffer> repository) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.JobOffer, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var offer = await repository.GetAll().FirstOrDefaultAsync(o => o.Id == entityId)
+                ?? throw new NotFoundException(nameof(JobOffer), entityId.ToString());
+            offer.Approve();
+            repository.UpdateAsync(offer);
+            await repository.SaveChangesAsync();
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var offer = await repository.GetAll().FirstOrDefaultAsync(o => o.Id == entityId)
+                ?? throw new NotFoundException(nameof(JobOffer), entityId.ToString());
+            offer.RejectToDraft();
+            repository.UpdateAsync(offer);
+            await repository.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
     /// Workflow outcomes for disciplinary cases: approval confirms the measure (Resolved);
     /// rejection voids the case (Cancelled).
     /// </summary>

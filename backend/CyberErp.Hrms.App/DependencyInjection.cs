@@ -214,6 +214,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, WorkforcePlanWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, HiringRequestWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, JobRequisitionWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, JobOfferWorkflowHandler>();
 
             // Recruitment & Talent Acquisition — Phase 1 (HC077–HC100 core)
             services.AddScoped<Features.Core.Recruitment.ISaveHiringRequest, Features.Core.Recruitment.SaveHiringRequest>();
@@ -253,6 +254,35 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IDownloadCandidateDocument, Features.Core.Recruitment.DownloadCandidateDocument>();
             services.AddScoped<Features.Core.Recruitment.IDeleteCandidateDocument, Features.Core.Recruitment.DeleteCandidateDocument>();
             services.AddScoped<Features.Core.Recruitment.IHireCandidate, Features.Core.Recruitment.HireCandidate>();
+            // Candidate structured background (writes the same person-owned education/experience rows the employee uses)
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateEducations, Features.Core.Recruitment.GetCandidateEducations>();
+            services.AddScoped<Features.Core.Recruitment.ISaveCandidateEducation, Features.Core.Recruitment.SaveCandidateEducation>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteCandidateEducation, Features.Core.Recruitment.DeleteCandidateEducation>();
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateExperiences, Features.Core.Recruitment.GetCandidateExperiences>();
+            services.AddScoped<Features.Core.Recruitment.ISaveCandidateExperience, Features.Core.Recruitment.SaveCandidateExperience>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteCandidateExperience, Features.Core.Recruitment.DeleteCandidateExperience>();
+            services.AddScoped<Features.Core.Recruitment.IUploadCandidateBackgroundDocument, Features.Core.Recruitment.UploadCandidateBackgroundDocument>();
+            services.AddScoped<Features.Core.Recruitment.IGetCandidateBackgroundDocuments, Features.Core.Recruitment.GetCandidateBackgroundDocuments>();
+            services.AddScoped<Features.Core.Recruitment.IDownloadCandidateBackgroundDocument, Features.Core.Recruitment.DownloadCandidateBackgroundDocument>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteCandidateBackgroundDocument, Features.Core.Recruitment.DeleteCandidateBackgroundDocument>();
+            // Recruitment Phase 2 — interviews & panels (HC101–HC109)
+            services.AddScoped<Features.Core.Recruitment.ISaveInterview, Features.Core.Recruitment.SaveInterview>();
+            services.AddScoped<Features.Core.Recruitment.IGetInterviews, Features.Core.Recruitment.GetInterviews>();
+            services.AddScoped<Features.Core.Recruitment.ISetInterviewStatus, Features.Core.Recruitment.SetInterviewStatus>();
+            services.AddScoped<Features.Core.Recruitment.ISubmitInterviewFeedback, Features.Core.Recruitment.SubmitInterviewFeedback>();
+            services.AddScoped<Features.Core.Recruitment.IGetInterviewConsolidated, Features.Core.Recruitment.GetInterviewConsolidated>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteInterview, Features.Core.Recruitment.DeleteInterview>();
+            // Recruitment Phase 2 — offers (HC111–HC114)
+            services.AddScoped<Features.Core.Recruitment.ISaveJobOffer, Features.Core.Recruitment.SaveJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.IGetJobOffers, Features.Core.Recruitment.GetJobOffers>();
+            services.AddScoped<Features.Core.Recruitment.ISubmitJobOffer, Features.Core.Recruitment.SubmitJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.ISendJobOffer, Features.Core.Recruitment.SendJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.IRespondJobOffer, Features.Core.Recruitment.RespondJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.IWithdrawJobOffer, Features.Core.Recruitment.WithdrawJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.IGenerateOfferLetter, Features.Core.Recruitment.GenerateOfferLetter>();
+            services.AddScoped<Features.Core.Recruitment.IDeleteJobOffer, Features.Core.Recruitment.DeleteJobOffer>();
+            services.AddScoped<Features.Core.Recruitment.IGetHireQueue, Features.Core.Recruitment.GetHireQueue>();
+            services.AddScoped<Features.Core.Recruitment.IAdoptInterviewScores, Features.Core.Recruitment.AdoptInterviewScores>();
 
             // Workforce Planning (HC053–HC076)
             services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();

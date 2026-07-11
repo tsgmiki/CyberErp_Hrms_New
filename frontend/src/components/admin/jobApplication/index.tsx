@@ -3,7 +3,19 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { ClipboardList, Plus, History, ArrowRightCircle, Star } from "lucide-react";
+import {
+  ClipboardList,
+  Plus,
+  History,
+  ArrowRightCircle,
+  Star,
+  CalendarClock,
+  BadgeDollarSign,
+  Trophy,
+} from "lucide-react";
+import InterviewsModal from "./interviewsModal";
+import OfferModal from "./offerModal";
+import RankingModal from "../jobRequisition/rankingModal";
 import { EntityListShell, useEntityList } from "@/template";
 import {
   getAllJobApplications,
@@ -154,7 +166,15 @@ function StageModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const options = applicationStageOptions.filter((o) => o.id !== application.stage);
+  // On a vacancy with weighted criteria, the criterion engine OWNS the screening total —
+  // no manual score field is offered (the backend rejects it anyway).
+  const autoScored = (application.totalCriteriaCount ?? 0) > 0;
+
+  // OfferPending / Hired are driven by the offer & hire processes — never manual moves,
+  // so they don't appear as options (the backend rejects them anyway).
+  const options = applicationStageOptions.filter(
+    (o) => o.id !== application.stage && o.id !== "OfferPending" && o.id !== "Hired",
+  );
 
   const confirm = async () => {
     if (!stage) {
@@ -166,7 +186,7 @@ function StageModal({
       id: application.id!,
       stage,
       note: note || undefined,
-      screeningScore: score === "" ? undefined : Number(score),
+      screeningScore: autoScored || score === "" ? undefined : Number(score),
       screeningRemarks: remarks || undefined,
     });
     setBusy(false);
@@ -226,19 +246,14 @@ function StageModal({
           placeholder={t("Logged on the stage history")}
           className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
         />
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-              {t("Screening Score (0–100)")}
-            </label>
-            <input
-              type="text"
-              value={score}
-              onChange={(e) => setScore(e.target.value)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-            />
-          </div>
-          <div>
+        {autoScored ? (
+          <>
+            {/* No manual score on a criteria-scored vacancy — the weighted engine owns the total. */}
+            <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-foreground">
+              {t("This vacancy is scored against weighted criteria — the screening total ({{score}}) is calculated automatically from the score sheet (★).", {
+                score: application.screeningScore ?? "—",
+              })}
+            </p>
             <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
               {t("Screening Remarks")}
             </label>
@@ -248,9 +263,34 @@ function StageModal({
               onChange={(e) => setRemarks(e.target.value)}
               className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
             />
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                {t("Screening Score (0–100)")}
+              </label>
+              <input
+                type="text"
+                value={score}
+                onChange={(e) => setScore(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                {t("Screening Remarks")}
+              </label>
+              <input
+                type="text"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+              />
+            </div>
           </div>
-        </div>
-        {error && <p className="text-xs text-error">{error}</p>}
+        )}
+        {error && <p className="whitespace-pre-line text-xs text-error">{error}</p>}
       </div>
     </Modal>
   );
@@ -276,7 +316,11 @@ function ScoreModal({
     queryFn: () => getJobApplication(applicationId),
   });
 
-  const sheet = data?.criterionScores ?? [];
+  // Level-aware sheet: global criteria are scoreable at every step; level-scoped criteria only
+  // while the application sits at that level (mirrors the backend's ScoreableCriteriaCount).
+  const sheet = (data?.criterionScores ?? []).filter(
+    (c) => !c.appliesAtStage || c.appliesAtStage === data?.stage,
+  );
   const get = (criterionId: string) =>
     entries[criterionId] ?? {
       score: String(sheet.find((c) => c.criterionId === criterionId)?.score ?? ""),
@@ -350,7 +394,9 @@ function ScoreModal({
       {isLoading && <Loading />}
       {!isLoading && sheet.length === 0 && (
         <p className="py-6 text-center text-sm text-muted">
-          {t("The requisition has no screening criteria — define them on the requisition first.")}
+          {(data?.totalCriteriaCount ?? 0) > 0
+            ? t("None of the vacancy's criteria are scored at the {{stage}} step — they belong to other recruitment levels.", { stage: t(data?.stage ?? "") })
+            : t("The requisition has no screening criteria — define them on the requisition first.")}
         </p>
       )}
       {!isLoading && sheet.length > 0 && (
@@ -361,11 +407,18 @@ function ScoreModal({
                 <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
                   {c.criterionName}
                   {c.isMandatory && <span className="ml-1 text-error">*</span>}
-                  <span className="ml-1.5 text-xs font-normal text-muted">×{c.weight}</span>
+                  <span className="ml-1.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                    {c.weight}%
+                  </span>
+                  {c.appliesAtStage && (
+                    <span className="ml-1 rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                      {t(c.appliesAtStage)}
+                    </span>
+                  )}
                 </span>
                 {c.evaluatorName && (
-                  <span className="rounded bg-secondary px-2 py-0.5 text-[11px] text-muted" title={c.evaluatorType}>
-                    {t("Evaluator")}: {c.evaluatorName}
+                  <span className="rounded bg-secondary px-2 py-0.5 text-[11px] text-muted" title={c.evaluatorName}>
+                    {t("Evaluators")}: {c.evaluatorName}
                   </span>
                 )}
                 <input
@@ -451,15 +504,27 @@ function JobApplications() {
   const [stageFor, setStageFor] = useState<JobApplicationModel | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [scoreFor, setScoreFor] = useState<string | null>(null);
+  const [interviewsFor, setInterviewsFor] = useState<JobApplicationModel | null>(null);
+  const [offersFor, setOffersFor] = useState<JobApplicationModel | null>(null);
+  const [rankingFor, setRankingFor] = useState<string | null>(null);
 
   const list = useEntityList({
     queryKey: "jobApplications",
     fetchPage: getAllJobApplications,
   });
 
+  // Vacancy scope: filters the pipeline to one requisition and unlocks its ranking view.
+  const { data: requisitions } = useQuery({
+    queryKey: ["jobRequisitions", "pipeline-lookup"],
+    queryFn: () => getAllJobRequisitions(lookupParam),
+  });
+
   const activeStage = (list.param.status as string) || "";
   const setStage = (status: string) =>
     list.setParam((p) => ({ ...p, status: status || undefined, skip: 0 }) as never);
+  const activeVacancy = (list.param.parentId as string) || "";
+  const setVacancy = (parentId: string) =>
+    list.setParam((p) => ({ ...p, parentId: parentId || undefined, skip: 0 }) as never);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["jobApplications"] });
@@ -517,36 +582,86 @@ function JobApplications() {
         {
           name: "Action",
           label: "Action",
-          render: (_t: unknown, record: JobApplicationModel) => (
-            <span className="inline-flex items-center gap-1">
-              <button
-                type="button"
-                disabled={TERMINAL.includes(record.stage ?? "")}
-                onClick={() => record.id && setScoreFor(record.id)}
-                title={t("Score against the requisition criteria")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-warning hover:text-warning disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Star size={14} />
-              </button>
-              <button
-                type="button"
-                disabled={TERMINAL.includes(record.stage ?? "")}
-                onClick={() => setStageFor(record)}
-                title={t("Move Stage")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <ArrowRightCircle size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => record.id && setHistoryFor(record.id)}
-                title={t("Stage History")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
-              >
-                <History size={14} />
-              </button>
-            </span>
-          ),
+          render: (_t: unknown, record: JobApplicationModel) => {
+            const stage = record.stage ?? "";
+            const terminal = TERMINAL.includes(stage);
+            // Process order: evaluate → interview → decide (stage) → offer → audit (history).
+            return (
+              <span className="inline-flex items-center gap-1">
+                {/* 1. Score — level-aware: global criteria keep it on every stage; level-scoped
+                    criteria surface it only at their level. Nothing scoreable → no button. */}
+                {(record.scoreableCriteriaCount ?? 0) > 0 && !terminal && (
+                  <button
+                    type="button"
+                    onClick={() => record.id && setScoreFor(record.id)}
+                    title={t("Score against the requisition criteria ({{n}} scoreable at this step)", {
+                      n: record.scoreableCriteriaCount,
+                    })}
+                    className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-warning hover:text-warning"
+                  >
+                    <Star size={14} />
+                  </button>
+                )}
+                {/* 2. Interviews — ALWAYS viewable (the record survives the decision);
+                    scheduling/scoring is gated inside the modal for finished applications. */}
+                <button
+                  type="button"
+                  onClick={() => setInterviewsFor(record)}
+                  title={
+                    stage === "Interview"
+                      ? t("Interviews & panel feedback (HC101–HC109)")
+                      : t("Interviews (view — scheduling happens at the Interview level)")
+                  }
+                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-info hover:text-info"
+                >
+                  <CalendarClock size={14} />
+                </button>
+                {/* 3. Move Stage — locked while an offer drives the pipeline (OfferPending) and
+                    at final stages. */}
+                <button
+                  type="button"
+                  disabled={terminal || stage === "OfferPending"}
+                  onClick={() => setStageFor(record)}
+                  title={
+                    stage === "OfferPending"
+                      ? t("The offer drives this application — respond to or withdraw it instead")
+                      : terminal
+                        ? t("A {{stage}} application is final", { stage: t(stage) })
+                        : t("Move Stage")
+                  }
+                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ArrowRightCircle size={14} />
+                </button>
+                {/* 4. Offers — from Selected onward, and viewable on finished applications
+                    (creation is gated inside the modal). */}
+                <button
+                  type="button"
+                  disabled={!["Selected", "OfferPending", "Hired", "Rejected", "Withdrawn"].includes(stage)}
+                  onClick={() => setOffersFor(record)}
+                  title={
+                    ["Selected", "OfferPending"].includes(stage)
+                      ? t("Offers (HC111–HC114)")
+                      : terminal || stage === "Hired"
+                        ? t("Offers (view)")
+                        : t("Offers open once the candidate is Selected")
+                  }
+                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-success hover:text-success disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <BadgeDollarSign size={14} />
+                </button>
+                {/* 5. History — the audit trail, always. */}
+                <button
+                  type="button"
+                  onClick={() => record.id && setHistoryFor(record.id)}
+                  title={t("Stage History")}
+                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+                >
+                  <History size={14} />
+                </button>
+              </span>
+            );
+          },
         },
       ] as DataTableColumnModel[],
     [t],
@@ -561,6 +676,30 @@ function JobApplications() {
           <span className="text-xs font-normal text-muted">— {t("recruitment pipeline (HC098)")}</span>
         </h1>
         <div className="ml-auto flex items-center gap-1">
+          {/* Vacancy scope + its ranking (only meaningful with a vacancy selected) */}
+          <select
+            value={activeVacancy}
+            onChange={(e) => setVacancy(e.target.value)}
+            title={t("Filter the pipeline to one vacancy")}
+            className="h-7 max-w-56 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+          >
+            <option value="">{t("All vacancies")}</option>
+            {(requisitions?.data ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.requisitionNumber} — {r.title}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={!activeVacancy}
+            onClick={() => setRankingFor(activeVacancy)}
+            title={activeVacancy ? t("Candidate ranking & waitlist") : t("Select a vacancy first")}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:border-warning hover:text-warning disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trophy size={13} /> {t("Ranking")}
+          </button>
+          <span className="mx-1 h-4 w-px bg-border" />
           <button
             type="button"
             onClick={() => setStage("")}
@@ -611,6 +750,31 @@ function JobApplications() {
         />
       )}
       {historyFor && <HistoryModal applicationId={historyFor} onClose={() => setHistoryFor(null)} />}
+      {interviewsFor && (
+        <InterviewsModal
+          applicationId={interviewsFor.id!}
+          requisitionId={interviewsFor.requisitionId}
+          applicationStage={interviewsFor.stage}
+          candidateName={`${interviewsFor.candidateName} → ${interviewsFor.requisitionTitle}`}
+          readOnly={TERMINAL.includes(interviewsFor.stage ?? "")}
+          onClose={() => {
+            setInterviewsFor(null);
+            refresh();
+          }}
+        />
+      )}
+      {offersFor && (
+        <OfferModal
+          applicationId={offersFor.id!}
+          candidateName={`${offersFor.candidateName} → ${offersFor.requisitionTitle}`}
+          canCreate={["Selected", "OfferPending"].includes(offersFor.stage ?? "")}
+          onClose={() => {
+            setOffersFor(null);
+            refresh();
+          }}
+        />
+      )}
+      {rankingFor && <RankingModal requisitionId={rankingFor} onClose={() => setRankingFor(null)} />}
       {scoreFor && (
         <ScoreModal
           applicationId={scoreFor}

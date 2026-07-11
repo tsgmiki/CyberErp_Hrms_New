@@ -102,16 +102,36 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(c => c.Id);
 
             builder.Property(c => c.Name).IsRequired().HasMaxLength(300);
-            builder.Property(c => c.EvaluatorType).IsRequired().HasConversion<string>().HasMaxLength(30);
-            builder.Property(c => c.EvaluatorName).HasMaxLength(300);
+            builder.Property(c => c.AppliesAtStage).HasConversion<string>().HasMaxLength(30);
 
-            // The assigned internal evaluator must not block employee deletion.
-            builder.HasOne<Employee>()
-                .WithMany()
-                .HasForeignKey(c => c.EvaluatorEmployeeId)
-                .OnDelete(DeleteBehavior.SetNull);
+            builder.HasMany(c => c.Evaluators)
+                .WithOne()
+                .HasForeignKey(e => e.CriterionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(c => c.Evaluators).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             builder.HasIndex(c => c.RequisitionId);
+        }
+    }
+
+    public class CriterionEvaluatorConfiguration : IEntityTypeConfiguration<CriterionEvaluator>
+    {
+        public void Configure(EntityTypeBuilder<CriterionEvaluator> builder)
+        {
+            builder.ToTable("hrms_CriterionEvaluator", "Core");
+
+            builder.HasKey(e => e.Id);
+
+            builder.Property(e => e.EvaluatorType).IsRequired().HasConversion<string>().HasMaxLength(30);
+            builder.Property(e => e.Name).IsRequired().HasMaxLength(300);
+
+            // The assignment must not block employee deletion (the name snapshot survives).
+            builder.HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(e => e.EmployeeId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            builder.HasIndex(e => e.CriterionId);
         }
     }
 

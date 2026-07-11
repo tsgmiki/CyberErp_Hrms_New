@@ -78,17 +78,27 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     // ---- Job requisitions (HC084–HC088, HC091, HC095) ------------------------------
 
+    /// <summary>One evaluator assigned to a criterion — internal employee or named external.</summary>
+    public class CriterionEvaluatorDto
+    {
+        /// <summary>Employee | ExternalPerson | Organization.</summary>
+        public string EvaluatorType { get; set; } = nameof(CriterionEvaluatorType.Employee);
+        public Guid? EmployeeId { get; set; }
+        /// <summary>External evaluator's name, or the resolved employee name on reads.</summary>
+        public string? Name { get; set; }
+    }
+
     public class ScreeningCriterionDto
     {
         public Guid? Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public bool IsMandatory { get; set; }
+        /// <summary>Percentage of the final ranking score — all criteria must total exactly 100.</summary>
         public int Weight { get; set; } = 1;
-        /// <summary>None | Employee | ExternalPerson | Organization — who scores this criterion.</summary>
-        public string EvaluatorType { get; set; } = nameof(CriterionEvaluatorType.None);
-        public Guid? EvaluatorEmployeeId { get; set; }
-        /// <summary>External evaluator's name, or the resolved employee name on reads.</summary>
-        public string? EvaluatorName { get; set; }
+        /// <summary>The evaluators assigned to score this criterion (any number, mixed kinds).</summary>
+        public List<CriterionEvaluatorDto> Evaluators { get; set; } = [];
+        /// <summary>The recruitment level the criterion is scored at (e.g. Screening, Interview) — null = all steps.</summary>
+        public string? AppliesAtStage { get; set; }
     }
 
     public class JobRequisitionDto
@@ -159,20 +169,38 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             RuleFor(x => x.MinQualifications).MaximumLength(1000);
             RuleFor(x => x.Skills).MaximumLength(1000);
             RuleFor(x => x.MinExperienceYears).GreaterThanOrEqualTo(0).When(x => x.MinExperienceYears.HasValue);
+            // Weights are percentages of the final ranking score — they must account for all of it.
+            RuleFor(x => x.ScreeningCriteria)
+                .Must(list => list.Count == 0 || list.Sum(c => c.Weight) == 100)
+                .WithMessage(x => $"Criterion weights must total exactly 100% (currently {x.ScreeningCriteria.Sum(c => c.Weight)}%).");
             RuleForEach(x => x.ScreeningCriteria).ChildRules(c =>
             {
                 c.RuleFor(x => x.Name).NotEmpty().MaximumLength(300);
                 c.RuleFor(x => x.Weight).InclusiveBetween(1, 100);
-                c.RuleFor(x => x.EvaluatorType)
-                    .Must(v => Enum.TryParse<CriterionEvaluatorType>(v, true, out _))
-                    .WithMessage("EvaluatorType must be None, Employee, ExternalPerson or Organization.");
-                c.RuleFor(x => x.EvaluatorEmployeeId).NotEmpty()
-                    .When(x => string.Equals(x.EvaluatorType, "Employee", StringComparison.OrdinalIgnoreCase))
-                    .WithMessage("Select the employee evaluator.");
-                c.RuleFor(x => x.EvaluatorName).NotEmpty().MaximumLength(300)
-                    .When(x => string.Equals(x.EvaluatorType, "ExternalPerson", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(x.EvaluatorType, "Organization", StringComparison.OrdinalIgnoreCase))
-                    .WithMessage("Name the external evaluator.");
+                c.RuleFor(x => x.AppliesAtStage)
+                    .Must(v => string.IsNullOrEmpty(v) || Enum.TryParse<ApplicationStage>(v, true, out _))
+                    .WithMessage("AppliesAtStage must be a pipeline stage (e.g. Screening, Interview) or empty for all steps.");
+                // A criterion may carry any number of evaluators; each must be concrete + complete.
+                c.RuleFor(x => x.Evaluators)
+                    .Must(list => list
+                        .Where(e => e.EmployeeId.HasValue)
+                        .GroupBy(e => e.EmployeeId!.Value)
+                        .All(g => g.Count() == 1))
+                    .WithMessage("The same employee is assigned to this criterion more than once.");
+                c.RuleForEach(x => x.Evaluators).ChildRules(e =>
+                {
+                    e.RuleFor(x => x.EvaluatorType)
+                        .Must(v => Enum.TryParse<CriterionEvaluatorType>(v, true, out var parsed)
+                                   && parsed != CriterionEvaluatorType.None)
+                        .WithMessage("EvaluatorType must be Employee, ExternalPerson or Organization.");
+                    e.RuleFor(x => x.EmployeeId).NotEmpty()
+                        .When(x => string.Equals(x.EvaluatorType, "Employee", StringComparison.OrdinalIgnoreCase))
+                        .WithMessage("Select the employee evaluator.");
+                    e.RuleFor(x => x.Name).NotEmpty().MaximumLength(300)
+                        .When(x => string.Equals(x.EvaluatorType, "ExternalPerson", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(x.EvaluatorType, "Organization", StringComparison.OrdinalIgnoreCase))
+                        .WithMessage("Name the external evaluator.");
+                });
             });
         }
     }
@@ -344,8 +372,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? CriterionName { get; set; }
         public bool IsMandatory { get; set; }
         public int Weight { get; set; }
-        public string? EvaluatorType { get; set; }
+        /// <summary>Display list of the criterion's assigned evaluators ("A, B, …").</summary>
         public string? EvaluatorName { get; set; }
+        /// <summary>The recruitment level the criterion is scored at — null = all steps.</summary>
+        public string? AppliesAtStage { get; set; }
         public decimal? Score { get; set; }
         public string? Remarks { get; set; }
         public string? ScoredBy { get; set; }
@@ -394,6 +424,15 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public int TotalCriteria { get; set; }
         /// <summary>A mandatory criterion scored below 50 — the candidate fails screening.</summary>
         public bool FailsMandatory { get; set; }
+        /// <summary>1-based position by weighted total (scored candidates only).</summary>
+        public int? Rank { get; set; }
+        /// <summary>
+        /// Eligible | Waitlisted | Hired | OfferRejected | OutOfContention | FailsMandatory | NotScored.
+        /// Only the top-N in-play candidates (N = open positions) are Eligible; a declined/expired
+        /// offer removes the candidate from contention, sliding the next one up from the waitlist.
+        /// </summary>
+        public string? HireEligibility { get; set; }
+        public string? LatestOfferStatus { get; set; }
         public List<CriterionScoreDto> Breakdown { get; set; } = [];
     }
 
@@ -418,6 +457,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public DateTime AppliedAt { get; set; }
         public decimal? ScreeningScore { get; set; }
         public string? ScreeningRemarks { get; set; }
+        /// <summary>Total criteria defined on the vacancy.</summary>
+        public int TotalCriteriaCount { get; set; }
+        /// <summary>
+        /// Criteria scoreable at the application's CURRENT stage: global criteria (no level) always
+        /// count; level-scoped criteria count only while the application sits at that level. Drives
+        /// the visibility of the score button in the pipeline UI.
+        /// </summary>
+        public int ScoreableCriteriaCount { get; set; }
         public List<ApplicationStageLogDto> StageLog { get; set; } = [];
         /// <summary>The requisition's criteria merged with this application's scores (score sheet).</summary>
         public List<CriterionScoreDto> CriterionScores { get; set; } = [];

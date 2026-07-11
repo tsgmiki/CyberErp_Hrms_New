@@ -20,6 +20,8 @@ namespace CyberErp.Hrms.Inf
             services.AddHttpContextAccessor();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
+            // Race-safe per-tenant business numbering (logic.md §7.1 adoption #5)
+            services.AddScoped<INumberSequenceService, NumberSequenceService>();
 
             services.AddScoped<IExceptionHandler, ExceptionHandler>();
             services.AddScoped<ExceptionHandler>();

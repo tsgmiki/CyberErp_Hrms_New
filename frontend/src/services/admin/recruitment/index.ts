@@ -8,10 +8,17 @@ import type {
   RecruitmentBudgetRowModel,
   JobRequisitionModel,
   CandidateModel,
+  CandidateEducationModel,
+  CandidateExperienceModel,
   CandidateMatchModel,
   JobApplicationModel,
   CandidateDocumentModel,
   ApplicationRankingRowModel,
+  EmployeeDocumentModel,
+  InterviewModel,
+  InterviewConsolidatedModel,
+  JobOfferModel,
+  HireQueueRowModel,
 } from "@/models";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -119,6 +126,11 @@ export const saveJobRequisition = (data: JobRequisitionModel) =>
       ...c,
       weight: Number(c.weight) || 1,
       isMandatory: c.isMandatory === true || String(c.isMandatory) === "true",
+      evaluators: (c.evaluators ?? []).map((e) => ({
+        evaluatorType: e.evaluatorType,
+        employeeId: e.employeeId || undefined,
+        name: e.name || undefined,
+      })),
     })),
   });
 export const submitJobRequisition = (id: string) => post(`JobRequisition/${id}/submit`);
@@ -262,6 +274,119 @@ export async function hireCandidate(
   return { ok: true, message: "Candidate hired", employeeId };
 }
 
+/* ---- Candidate structured background (education / experience) --------------------------
+   These write the SAME person-owned rows the employee profile uses. Because the candidate
+   already carries a PersonId, the rows become the employee's automatically at hire — no copy.
+   The endpoints always POST (the handler upserts on the dto's id); read-only for internal. */
+
+const numOrNull = (v: unknown) =>
+  v === undefined || v === null || String(v) === "" ? null : Number(v);
+
+/** POST to a candidate sub-resource (create/update decided server-side by the dto id). */
+async function saveCandidateChild(path: string, data: Record<string, unknown>): Promise<SaveResult> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      const parsed = isValidJson(text) ? JSON.parse(text) : { message: text };
+      return { status: "error", message: errorMessageParser(parsed.errors || parsed), zodErrors: {} };
+    }
+    const parsed = isValidJson(text) ? JSON.parse(text) : {};
+    return { status: "success", message: parsed?.message ?? "Successfully saved", zodErrors: {}, id: parsed?.id };
+  } catch {
+    return { status: "error", message: "Network error", zodErrors: {} };
+  }
+}
+
+export const getCandidateEducations = (candidateId: string) =>
+  api.get<CandidateEducationModel[]>(`Candidate/${candidateId}/education`);
+export const saveCandidateEducation = (candidateId: string, data: CandidateEducationModel) =>
+  saveCandidateChild(`Candidate/${candidateId}/education`, {
+    ...data,
+    graduationYear: numOrNull(data.graduationYear),
+  });
+export const deleteCandidateEducation = createDeleteService("Candidate/education");
+
+export const getCandidateExperiences = (candidateId: string) =>
+  api.get<CandidateExperienceModel[]>(`Candidate/${candidateId}/experience`);
+export const saveCandidateExperience = (candidateId: string, data: CandidateExperienceModel) =>
+  saveCandidateChild(`Candidate/${candidateId}/experience`, {
+    ...data,
+    startDate: data.startDate || null,
+    endDate: data.endDate || null,
+  });
+export const deleteCandidateExperience = createDeleteService("Candidate/experience");
+
+/* Attachments on one education/experience row — same EmployeeDocument storage as the employee
+   profile, so the files follow the row (and the shared person) to the employee at hire. */
+
+export type CandidateBackgroundOwnerType = "Education" | "Experience";
+
+export const getCandidateBackgroundDocuments = (
+  candidateId: string,
+  ownerType: CandidateBackgroundOwnerType,
+  ownerId: string,
+) =>
+  api.get<EmployeeDocumentModel[]>(
+    `Candidate/${candidateId}/background-documents?ownerType=${ownerType}&ownerId=${ownerId}`,
+  );
+
+export async function uploadCandidateBackgroundDocument(
+  candidateId: string,
+  ownerType: CandidateBackgroundOwnerType,
+  ownerId: string,
+  file: File,
+): Promise<{ ok: boolean; message: string }> {
+  const form = new FormData();
+  form.append("ownerType", ownerType);
+  form.append("ownerId", ownerId);
+  form.append("file", file);
+  const res = await fetch(`${API_BASE_URL}/Candidate/${candidateId}/background-documents`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const text = await res.text();
+  let message = res.ok ? "Document uploaded" : "Upload failed";
+  try {
+    const parsed = JSON.parse(text);
+    message = parsed?.errors ? errorMessageParser(parsed.errors) : (parsed?.message ?? message);
+  } catch {
+    if (text) message = text;
+  }
+  return { ok: res.ok, message };
+}
+
+export async function deleteCandidateBackgroundDocument(documentId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/Candidate/background-documents/${documentId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return res.ok;
+}
+
+/** Fetches the file with credentials and triggers a browser download with its filename. */
+export async function downloadCandidateBackgroundDocument(id: string, fileName: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/Candidate/background-documents/${id}/download`, {
+    credentials: "include",
+  });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 /* ---- Evaluator scoring & ranking ---------------------------------------------------- */
 
 export const scoreJobApplication = (dto: {
@@ -271,6 +396,64 @@ export const scoreJobApplication = (dto: {
 
 export const getApplicationRanking = (requisitionId: string) =>
   api.get<ApplicationRankingRowModel[]>(`JobApplication/ranking?requisitionId=${requisitionId}`);
+
+/** The "Hire Employee" queue — fully qualified, ranked applicants (+ waitlist). */
+export const getHireQueue = () => api.get<HireQueueRowModel[]>("JobApplication/hire-queue");
+
+/** Copies the consolidated per-criterion interview averages into the ranking score sheet. */
+export const adoptInterviewScores = (applicationId: string) =>
+  post(`JobApplication/${applicationId}/adopt-interview-scores`);
+
+/* ---- Interviews & panels (HC101–HC109) --------------------------------------------- */
+
+export const getInterviews = (applicationId: string) =>
+  api.get<InterviewModel[]>(`Interview?applicationId=${applicationId}`);
+
+export const getInterviewConsolidated = (applicationId: string) =>
+  api.get<InterviewConsolidatedModel>(`Interview/consolidated?applicationId=${applicationId}`);
+
+/** Create a round, or reschedule/repanel a pending one (server upserts on dto.id). */
+export const saveInterview = (dto: {
+  id?: string;
+  applicationId: string;
+  scheduledStart: string;
+  scheduledEnd: string;
+  format: string;
+  location?: string;
+  meetingLink?: string;
+  notes?: string;
+  panelists: { employeeId?: string; panelistName?: string; isLead?: boolean }[];
+}) => post("Interview", dto);
+
+export const setInterviewStatus = (dto: { id: string; action: "Complete" | "Cancel" | "NoShow"; note?: string }) =>
+  put("Interview/status", dto);
+
+export const submitInterviewFeedback = (dto: {
+  panelistId: string;
+  entries: { criterionId?: string; criterionName?: string; score: number; comments?: string }[];
+}) => put("Interview/feedback", dto);
+
+export const deleteInterview = createDeleteService("Interview");
+
+/* ---- Offers (HC111–HC114) ------------------------------------------------------------ */
+
+export const getJobOffers = (applicationId: string) =>
+  api.get<JobOfferModel[]>(`JobOffer?applicationId=${applicationId}`);
+
+export const saveJobOffer = (data: JobOfferModel) =>
+  saveJson("JobOffer", {
+    ...data,
+    salary: Number(String(data.salary ?? "").replace(/[,\s]/g, "")) || 0,
+  });
+
+export const submitJobOffer = (id: string) => post(`JobOffer/${id}/submit`);
+export const sendJobOffer = (id: string) => post(`JobOffer/${id}/send`);
+export const respondJobOffer = (dto: { id: string; response: "Accept" | "Decline"; note?: string }) =>
+  put("JobOffer/respond", dto);
+export const withdrawJobOffer = (id: string, note?: string) =>
+  post(`JobOffer/${id}/withdraw`, { note: note || null });
+export const generateOfferLetter = (id: string) => api.get<string>(`JobOffer/${id}/generate-letter`);
+export const deleteJobOffer = createDeleteService("JobOffer");
 
 /* ---- Applications (HC098–HC099) --------------------------------------------------- */
 

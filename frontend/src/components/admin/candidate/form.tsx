@@ -6,7 +6,19 @@ import { StatusMessage } from "../../common/statusMessage/status";
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Upload, FileText, Star, ShieldOff, Download, Trash2, BadgeCheck, UserCheck } from "lucide-react";
+import {
+  Upload,
+  FileText,
+  Star,
+  ShieldOff,
+  Download,
+  Trash2,
+  BadgeCheck,
+  UserCheck,
+  UserRound,
+  GraduationCap,
+  BriefcaseBusiness,
+} from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "../../common/loader/loader";
 import {
@@ -20,26 +32,40 @@ import {
   uploadCandidateDocument,
   deleteCandidateDocument,
   candidateDocumentUrl,
-  hireCandidate,
 } from "@/services/admin/recruitment";
 import getAllEmployee from "@/services/admin/employee/getAll";
-import getAllPosition from "@/services/admin/position/getAll";
+import getEmployee from "@/services/admin/employee/get";
+import CandidateEducationSection from "./educationSection";
+import CandidateExperienceSection from "./experienceSection";
 import { parameterInitialData } from "@/constants/initialization";
 import {
   genderOptions,
   candidateSourceOptions,
   candidateDocumentTypeOptions,
   candidateDocumentTypeLabel,
-  employmentNatureOptions,
 } from "@/constants/orgStructure";
 
 const FormProvider = memo(FormProviders);
 const lookupParam = { ...parameterInitialData, take: 100 };
 
+// "Source" mixed the applicant TYPE (internal vs external) with acquisition CHANNELS. We split them:
+// an Applicant Type switch drives everything; "Internal" is a type, the rest are external channels.
+const sourceChannelOptions = candidateSourceOptions.filter((o) => o.id !== "Internal");
+
+type TabKey = "details" | "education" | "experience";
+
+// Same tabbed-profile structure as the Employee feature (employee/profile.tsx).
+const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boolean }[] = [
+  { key: "details", label: "Applicant Details", Icon: UserRound, needsId: false },
+  { key: "education", label: "Education", Icon: GraduationCap, needsId: true },
+  { key: "experience", label: "Experience", Icon: BriefcaseBusiness, needsId: true },
+];
+
 function CandidateForm(props: { id: string; setId: (id: string) => void }) {
   const { id, setId } = props;
   const { t } = useTranslation();
 
+  const [tab, setTab] = useState<TabKey>("details");
   const [formState, setFormState] = useState<any>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<CandidateModel>({ source: "External", consentGiven: false });
@@ -48,18 +74,6 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
   const [poolNotes, setPoolNotes] = useState("");
   const [confirmAnonymize, setConfirmAnonymize] = useState(false);
   const [docType, setDocType] = useState("NationalId");
-  const [showHire, setShowHire] = useState(false);
-  const [hire, setHire] = useState({
-    employeeNumber: "",
-    hireDate: "",
-    positionId: "",
-    employmentNature: "Permanent",
-    contractPeriod: "",
-    isProbation: false,
-    probationEndDate: "",
-    salary: "",
-  });
-  const [hireError, setHireError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const formRef = React.createRef<HTMLFormElement>();
@@ -79,12 +93,6 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
     queryFn: () => getCandidateDocuments(id),
     enabled: typeof id != "undefined" && id != "",
   });
-  const { data: vacantPositions } = useQuery({
-    queryKey: ["positions", "vacant-hire"],
-    queryFn: () => getAllPosition({ ...parameterInitialData, take: 200, isVacant: true } as never),
-    enabled: showHire,
-  });
-
   const anonymized = !!record?.anonymizedAt;
   const hired = !!record?.hiredEmployeeId;
 
@@ -114,6 +122,40 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
   }, []);
   const selectHandler = useCallback((name: string, r: any) => {
     setFormData((p) => ({ ...p, [name]: r.id, [`${name.replace(/Id$/, "")}Name`]: r.name }));
+  }, []);
+
+  // Internal applicants reuse an existing employee's identity (and their person record), so it
+  // must not be re-typed; external applicants own an editable identity + an acquisition channel.
+  const isInternal = formData.source === "Internal";
+  const identityLocked = anonymized || isInternal;
+
+  const setApplicantType = useCallback((type: "internal" | "external") => {
+    if (type === "internal") {
+      setFormData((p) => ({ ...p, source: "Internal" }));
+    } else {
+      // Back to external: default channel, drop the employee link and unlock identity entry.
+      setFormData((p) => ({ ...p, source: "External", internalEmployeeId: undefined, internalEmployeeName: undefined }));
+    }
+  }, []);
+
+  // Selecting the employee prefills + locks the identity from the employee master (requirement #2).
+  const onInternalEmployeeSelect = useCallback(async (_name: string, r: any) => {
+    setFormData((p) => ({ ...p, internalEmployeeId: r.id, internalEmployeeName: r.name, source: "Internal" }));
+    const emp = await getEmployee(r.id);
+    if (emp) {
+      setFormData((p) => ({
+        ...p,
+        internalEmployeeId: r.id,
+        internalEmployeeName: r.name,
+        source: "Internal",
+        firstName: emp.firstName ?? p.firstName,
+        fatherName: emp.fatherName ?? p.fatherName,
+        grandFatherName: emp.grandFatherName ?? p.grandFatherName,
+        gender: emp.gender ?? p.gender,
+        email: emp.email ?? p.email,
+        phoneNumber: emp.phoneNumber ?? p.phoneNumber,
+      }));
+    }
   }, []);
 
   const submitHandler = async (e: any) => {
@@ -178,83 +220,127 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
     refresh();
   };
 
-  const doHire = async () => {
-    setHireError(null);
-    if (!hire.employeeNumber.trim()) {
-      setHireError(t("An employee number is required."));
-      return;
-    }
-    setBusy(true);
-    const res = await hireCandidate(id, {
-      employeeNumber: hire.employeeNumber.trim(),
-      hireDate: hire.hireDate || undefined,
-      positionId: hire.positionId || undefined,
-      salary: hire.salary === "" ? undefined : Number(String(hire.salary).replace(/[,\s]/g, "")),
-      employmentNature: hire.employmentNature,
-      contractPeriod: hire.contractPeriod === "" ? undefined : Number(hire.contractPeriod),
-      isProbation: hire.isProbation,
-      probationEndDate: hire.probationEndDate || undefined,
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setHireError(res.message);
-      return;
-    }
-    setShowHire(false);
-    setActionMessage(t("Hired — employee record created with the candidate's person and documents."));
-    queryClient.invalidateQueries({ queryKey: ["employees"] });
-    queryClient.invalidateQueries({ queryKey: ["jobApplications"] });
-    refresh();
-  };
-
   return (
-    <div className="text-foreground">
+    <div className="mx-auto max-w-5xl space-y-4 text-foreground">
       {pending && <Loading />}
 
+      {/* Tabs — same structure as the employee profile, above the header */}
+      <div className="mx-1 flex flex-wrap gap-1 border-b border-border pb-0">
+        {TABS.map(({ key, label, Icon, needsId }) => {
+          const disabled = needsId && !id;
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={disabled}
+              title={disabled ? t("Save the candidate first") : undefined}
+              onClick={() => setTab(key)}
+              className={`-mb-px flex items-center gap-1.5 rounded-t-lg border-x border-t px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                active
+                  ? "border-border bg-card text-primary"
+                  : "border-transparent text-muted hover:text-foreground"
+              } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+            >
+              <Icon className="h-4 w-4" />
+              {t(label)}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Header — candidate identity line + status badges (persistent across tabs) */}
       {record && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-semibold">{record.candidateNumber}</span>
-          {record.isInTalentPool && (
-            <span className="flex items-center gap-1 rounded bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning">
-              <Star size={12} /> {t("Talent Pool")}
-            </span>
-          )}
-          {anonymized && (
-            <span className="rounded bg-muted/30 px-2 py-0.5 text-xs text-muted">{t("Anonymized")}</span>
-          )}
-          {hired && (
-            <span className="flex items-center gap-1 rounded bg-success/15 px-2 py-0.5 text-xs font-semibold text-success">
-              <BadgeCheck size={12} /> {t("Hired")}
-            </span>
-          )}
-          {record && !hired && !anonymized && (
-            <span
-              className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                record.complianceComplete ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
-              }`}
-              title={
-                record.complianceComplete
-                  ? t("All mandatory compliance documents are on file")
-                  : `${t("Missing")}: ${(record.missingComplianceDocuments ?? []).join(", ")}`
-              }
-            >
-              {record.complianceComplete ? t("Compliance Complete") : t("Compliance Incomplete")}
-            </span>
-          )}
-          {record.consentAt && !anonymized && (
-            <span
-              className="rounded bg-success/15 px-2 py-0.5 text-xs text-success"
-              title={t("Data-processing consent recorded (HC097)")}
-            >
-              {t("Consent")}: {record.consentAt.slice(0, 10)}
-            </span>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold text-foreground">
+              {record.fullName || t("Candidate")}
+            </h2>
+            <p className="text-xs text-muted">{record.candidateNumber}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {record.isInTalentPool && (
+              <span className="flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-semibold text-warning">
+                <Star size={12} /> {t("Talent Pool")}
+              </span>
+            )}
+            {anonymized && (
+              <span className="rounded-full bg-muted/30 px-2.5 py-0.5 text-xs text-muted">{t("Anonymized")}</span>
+            )}
+            {hired && (
+              <span className="flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-0.5 text-xs font-semibold text-success">
+                <BadgeCheck size={12} /> {t("Hired")}
+              </span>
+            )}
+            {record && !hired && !anonymized && (
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  record.complianceComplete ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+                }`}
+                title={
+                  record.complianceComplete
+                    ? t("All mandatory compliance documents are on file")
+                    : `${t("Missing")}: ${(record.missingComplianceDocuments ?? []).join(", ")}`
+                }
+              >
+                {record.complianceComplete ? t("Compliance Complete") : t("Compliance Incomplete")}
+              </span>
+            )}
+            {record.consentAt && !anonymized && (
+              <span
+                className="rounded-full bg-success/15 px-2.5 py-0.5 text-xs text-success"
+                title={t("Data-processing consent recorded (HC097)")}
+              >
+                {t("Consent")}: {record.consentAt.slice(0, 10)}
+              </span>
+            )}
+          </div>
         </div>
       )}
+
+      {tab === "details" && (
+      <>
+      {/* Card: Applicant Details */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">{t("Applicant Details")}</h3>
+            <p className="text-xs text-muted">
+              {isInternal
+                ? t("Identity is taken from the employee record — no re-entry (HC090).")
+                : t("Enter the applicant's details and how they reached us.")}
+            </p>
+          </div>
+          {/* Applicant Type — one switch decides internal-vs-external (replaces the confusing
+              "Source" list that mixed applicant type with acquisition channels).
+              Unchecked = External (default) · checked = Internal. */}
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
+            <span className={!isInternal ? "text-foreground" : "text-muted"}>{t("External")}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isInternal}
+              aria-label={t("Internal applicant")}
+              disabled={anonymized || hired}
+              onClick={() => setApplicantType(isInternal ? "external" : "internal")}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                isInternal ? "bg-primary" : "bg-muted/40"
+              }`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  isInternal ? "translate-x-5" : ""
+                }`}
+              />
+            </button>
+            <span className={isInternal ? "text-foreground" : "text-muted"}>{t("Internal")}</span>
+          </label>
+        </div>
 
       <FormProvider
         ref={formRef}
         form={{
+          formId: "candidateForm",
           columnsNo: 2,
           submitHandler,
           labelWidth: "w-[35%]",
@@ -262,58 +348,56 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
           SubmitButton: (anonymized ? "none" : "top") as "top",
           submitBtnTitle: "Save Candidate",
           components: [
+            // Internal applicants: pick the employee, identity prefills + locks from the employee master.
+            ...(isInternal
+              ? [
+                  {
+                    name: "internalEmployeeId", label: "Employee", required: true, type: "dropDown" as const,
+                    onSelect: onInternalEmployeeSelect, value: formData.internalEmployeeId,
+                    displayValue: formData.internalEmployeeName, disabled: anonymized,
+                    placeholder: "Select the internal employee applying",
+                    data: (employees?.data ?? []).map((e) => ({ id: e.id, name: e.fullName ?? e.employeeNumber })) as never,
+                  },
+                ]
+              : [
+                  // External applicants: choose the acquisition channel.
+                  {
+                    name: "source", label: "Source Channel", required: true, type: "dropDown" as const, onSelect: selectHandler,
+                    value: formData.source,
+                    displayValue: sourceChannelOptions.find((o) => o.id === formData.source)?.name,
+                    disabled: anonymized, data: sourceChannelOptions as never,
+                  },
+                ]),
             {
               name: "firstName", label: "First Name", required: true, type: "text",
-              value: formData.firstName, onChange: changeHandler, disabled: anonymized,
+              value: formData.firstName, onChange: changeHandler, disabled: identityLocked,
               error: formState?.zodErrors?.firstName,
             },
             {
               name: "fatherName", label: "Father Name", type: "text",
-              value: formData.fatherName, onChange: changeHandler, disabled: anonymized,
+              value: formData.fatherName, onChange: changeHandler, disabled: identityLocked,
             },
             {
               name: "grandFatherName", label: "Grandfather Name", type: "text",
-              value: formData.grandFatherName, onChange: changeHandler, disabled: anonymized,
+              value: formData.grandFatherName, onChange: changeHandler, disabled: identityLocked,
             },
             {
               name: "gender", label: "Gender", type: "dropDown", onSelect: selectHandler,
-              value: formData.gender, displayValue: formData.gender, disabled: anonymized,
+              value: formData.gender, displayValue: formData.gender, disabled: identityLocked,
               data: genderOptions as never,
             },
             {
               name: "email", label: "Email", type: "text",
-              value: formData.email, onChange: changeHandler, disabled: anonymized,
+              value: formData.email, onChange: changeHandler, disabled: identityLocked,
               error: formState?.zodErrors?.email,
             },
             {
               name: "phoneNumber", label: "Phone", type: "text",
-              value: formData.phoneNumber, onChange: changeHandler, disabled: anonymized,
-            },
-            {
-              name: "source", label: "Source", required: true, type: "dropDown", onSelect: selectHandler,
-              value: formData.source,
-              displayValue: candidateSourceOptions.find((o) => o.id === formData.source)?.name,
-              disabled: anonymized, data: candidateSourceOptions as never,
-            },
-            {
-              name: "internalEmployeeId", label: "Internal Employee", type: "dropDown",
-              onSelect: selectHandler, value: formData.internalEmployeeId,
-              displayValue: formData.internalEmployeeName, disabled: anonymized,
-              placeholder: "Required for Internal source (HC090)",
-              data: (employees?.data ?? []).map((e) => ({ id: e.id, name: e.fullName ?? e.employeeNumber })) as never,
+              value: formData.phoneNumber, onChange: changeHandler, disabled: identityLocked,
             },
             {
               name: "yearsOfExperience", label: "Years of Experience", type: "text",
               value: formData.yearsOfExperience, onChange: changeHandler, disabled: anonymized,
-            },
-            {
-              name: "educationSummary", label: "Education", type: "textarea", colSpan: "full",
-              placeholder: "Degrees, institutions, graduation years (parsed from the resume later — HC094)",
-              value: formData.educationSummary, onChange: changeHandler, disabled: anonymized,
-            },
-            {
-              name: "experienceSummary", label: "Experience", type: "textarea", colSpan: "full",
-              value: formData.experienceSummary, onChange: changeHandler, disabled: anonymized,
             },
             {
               name: "skillsSummary", label: "Skills (comma-separated)", type: "text", colSpan: "full",
@@ -326,7 +410,7 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
 
       {/* Consent (HC097) — captured at creation, mandatory */}
       {!record && (
-        <label className="mt-2 flex items-start gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
+        <label className="mt-3 flex items-start gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm">
           <input
             type="checkbox"
             checked={formData.consentGiven === true}
@@ -339,10 +423,16 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
           </span>
         </label>
       )}
+      </div>
+      {/* end Applicant Details card */}
 
-      {/* Resume + talent pool + retention actions */}
+      {/* Card: Resume & Retention */}
       {record && !anonymized && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h3 className="mb-3 border-b border-border pb-2 text-sm font-semibold text-foreground">
+            {t("Resume & Retention")}
+          </h3>
+          <div className="flex flex-wrap items-center gap-2">
           <input ref={fileInputRef} type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={onResumePicked} />
           <button
             type="button"
@@ -394,19 +484,20 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
             <ShieldOff size={14} /> {t("Anonymize")}
           </button>
           {actionMessage && <span className="text-xs text-muted">{actionMessage}</span>}
+          </div>
         </div>
       )}
 
-      {/* Documents & compliance (requirements #3/#5): typed attachments; the mandatory set gates hire */}
+      {/* Card: Documents & compliance (requirements #3/#5): typed attachments; the mandatory set gates hire */}
       {record && !anonymized && (
-        <div className="mt-3 rounded-lg border border-border bg-card p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold">
-              {t("Documents")}{" "}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+            <h3 className="text-sm font-semibold text-foreground">
+              {t("Documents & Compliance")}{" "}
               <span className="text-xs font-normal text-muted">
                 ({t("migrated to the employee record automatically at hire")})
               </span>
-            </h4>
+            </h3>
             {!hired && (
               <div className="flex items-center gap-2">
                 <select
@@ -471,161 +562,41 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
             </div>
           ))}
           {!hired && (
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                disabled={busy || !record.complianceComplete}
-                onClick={() => {
-                  setHireError(null);
-                  setShowHire(true);
-                }}
-                title={
-                  record.complianceComplete
-                    ? t("Creates the employee on the candidate's person record and migrates all documents")
-                    : t("Complete the mandatory compliance documents first")
-                }
-                className="inline-flex items-center gap-1.5 rounded-md bg-success px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <UserCheck size={14} /> {t("Hire as Employee")}
-              </button>
-              <span className="text-[11px] text-muted">
-                {t("Requires an application at the Selected stage.")}
-              </span>
-            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted">
+              <UserCheck size={13} />
+              {t("Hiring happens from the Hire Employee menu — only ranked, hire-eligible applicants appear there.")}
+            </p>
           )}
         </div>
       )}
 
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+      </>
+      )}
+      {/* end Details tab */}
 
-      {/* Hire modal — employee created on the SAME person record (requirement #2) */}
-      {showHire && (
-        <Modal
-          visible
-          size="md"
-          title={t("Hire as Employee")}
-          description={record?.fullName}
-          onClose={() => setShowHire(false)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => setShowHire(false)}
-                className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
-              >
-                {t("Cancel")}
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={doHire}
-                className="inline-flex items-center gap-1.5 rounded-md bg-success px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
-              >
-                <UserCheck size={15} /> {t("Confirm Hire")}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-2 text-sm">
-            <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-foreground">
-              {t("The employee is created on the candidate's existing person record — no re-entry. All attached documents (and the resume) migrate to the employee history automatically.")}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-                  {t("Employee Number")} <span className="text-error">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={hire.employeeNumber}
-                  onChange={(e) => setHire((p) => ({ ...p, employeeNumber: e.target.value }))}
-                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Hire Date")}</label>
-                <input
-                  type="date"
-                  value={hire.hireDate}
-                  onChange={(e) => setHire((p) => ({ ...p, hireDate: e.target.value }))}
-                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                />
-              </div>
-            </div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Position (vacant)")}</label>
-            <select
-              value={hire.positionId}
-              onChange={(e) => setHire((p) => ({ ...p, positionId: e.target.value }))}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-            >
-              <option value="">{t("Assign later (onboarding)")}</option>
-              {(vacantPositions?.data ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.positionClassTitle ?? ""}
-                </option>
-              ))}
-            </select>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Nature")}</label>
-                <select
-                  value={hire.employmentNature}
-                  onChange={(e) => setHire((p) => ({ ...p, employmentNature: e.target.value }))}
-                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                >
-                  {employmentNatureOptions.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-              </div>
-              {hire.employmentNature === "Contract" ? (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-                    {t("Contract (Months)")} <span className="text-error">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={hire.contractPeriod}
-                    onChange={(e) => setHire((p) => ({ ...p, contractPeriod: e.target.value }))}
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Salary")}</label>
-                  <input
-                    type="text"
-                    value={hire.salary}
-                    onChange={(e) => setHire((p) => ({ ...p, salary: e.target.value }))}
-                    className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                  />
-                </div>
-              )}
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={hire.isProbation}
-                onChange={(e) => setHire((p) => ({ ...p, isProbation: e.target.checked }))}
-              />
-              {t("Start probation tracking")}
-            </label>
-            {hire.isProbation && (
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-                  {t("Probation End Date")} <span className="text-error">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={hire.probationEndDate}
-                  onChange={(e) => setHire((p) => ({ ...p, probationEndDate: e.target.value }))}
-                  className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                />
-              </div>
-            )}
-            {hireError && <p className="text-xs text-error">{hireError}</p>}
-          </div>
-        </Modal>
+      {/* Education / Experience tabs — the SAME person-owned rows the employee profile uses, so at
+          hire they hand off to the employee automatically (shared PersonId). Read-only for internal
+          applicants (the employee master is authoritative). */}
+      {tab === "education" && id && (
+        <div>
+          <p className="mx-1 mb-2 text-xs text-muted">
+            {isInternal
+              ? t("Education is maintained on the employee record and shown here read-only.")
+              : t("Captured here, this data transfers to the employee record automatically when the candidate is hired.")}
+          </p>
+          <CandidateEducationSection candidateId={id} readOnly={isInternal} />
+        </div>
+      )}
+      {tab === "experience" && id && (
+        <div>
+          <p className="mx-1 mb-2 text-xs text-muted">
+            {isInternal
+              ? t("Experience is maintained on the employee record and shown here read-only.")
+              : t("Captured here, this data transfers to the employee record automatically when the candidate is hired.")}
+          </p>
+          <CandidateExperienceSection candidateId={id} readOnly={isInternal} />
+        </div>
       )}
 
       {confirmAnonymize && (

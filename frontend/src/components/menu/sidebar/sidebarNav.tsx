@@ -121,6 +121,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/jobRequisition", label: "Job Requisitions", Icon: Megaphone },
       { to: "/candidate", label: "Candidates", Icon: Users },
       { to: "/jobApplication", label: "Applications", Icon: ClipboardList },
+      { to: "/hireEmployee", label: "Hire Employee", Icon: UserCheck },
       { to: "/talentPool", label: "Talent Pool", Icon: Star },
     ],
   },

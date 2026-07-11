@@ -12,7 +12,6 @@ import {
   Megaphone,
   XCircle,
   Plus,
-  Trash2,
   Wand2,
   Users,
   Trophy,
@@ -30,15 +29,14 @@ import {
   setRequisitionPosting,
   getAllHiringRequests,
   matchCandidates,
-  getApplicationRanking,
 } from "@/services/admin/recruitment";
 import getAllWorkLocation from "@/services/admin/workLocation/getAll";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import CriteriaModal from "./criteriaModal";
+import RankingModal from "./rankingModal";
 import { parameterInitialData } from "@/constants/initialization";
 import {
   plannedEmploymentTypeOptions,
   postingChannelOptions,
-  criterionEvaluatorTypeOptions,
 } from "@/constants/orgStructure";
 
 const FormProvider = memo(FormProviders);
@@ -54,83 +52,6 @@ const STATUS_TONE: Record<string, string> = {
   Rejected: "bg-error/15 text-error",
 };
 
-/** Auto-calculated weighted candidate ranking for this vacancy (evaluator scores). */
-function RankingModal({ requisitionId, onClose }: { requisitionId: string; onClose: () => void }) {
-  const { t } = useTranslation();
-  const { data, isLoading } = useQuery({
-    queryKey: ["applicationRanking", requisitionId],
-    queryFn: () => getApplicationRanking(requisitionId),
-  });
-
-  return (
-    <Modal
-      visible
-      size="xl"
-      title={t("Candidate Ranking")}
-      description={t("Weighted evaluator scores per criterion — totals auto-calculated.")}
-      onClose={onClose}
-      footer={
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
-        >
-          {t("Close")}
-        </button>
-      }
-    >
-      {isLoading && <Loading />}
-      {!isLoading && (data ?? []).length === 0 && (
-        <p className="py-6 text-center text-sm text-muted">{t("No applications on this vacancy yet.")}</p>
-      )}
-      {!isLoading && (data ?? []).length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-table-header">
-                <th className="px-3 py-2 font-semibold">#</th>
-                <th className="px-3 py-2 font-semibold">{t("Candidate")}</th>
-                <th className="px-3 py-2 font-semibold">{t("Stage")}</th>
-                <th className="px-3 py-2 font-semibold">{t("Criteria Scored")}</th>
-                <th className="px-3 py-2 font-semibold">{t("Breakdown")}</th>
-                <th className="px-3 py-2 text-right font-semibold">{t("Total")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data ?? []).map((r, i) => (
-                <tr key={r.applicationId} className="border-b border-border/60">
-                  <td className="px-3 py-2 font-bold tabular-nums text-primary">{i + 1}</td>
-                  <td className="px-3 py-2">
-                    <span className="block font-medium text-foreground">{r.candidateName}</span>
-                    <span className="block text-xs text-muted">{r.candidateNumber}</span>
-                    {r.failsMandatory && (
-                      <span className="mt-0.5 inline-block rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">
-                        {t("FAILS MANDATORY CRITERION")}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted">{t(r.stage)}</td>
-                  <td className="px-3 py-2 tabular-nums text-muted">
-                    {r.scoredCriteria}/{r.totalCriteria}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted">
-                    {r.breakdown
-                      .filter((b) => b.score !== null && b.score !== undefined)
-                      .map((b) => `${b.criterionName}: ${b.score}`)
-                      .join(" · ") || "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right text-base font-bold tabular-nums text-primary">
-                    {r.totalScore ?? "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Modal>
-  );
-}
 
 /** Ranked internal/talent-pool matches for this vacancy (HC090). */
 function MatchModal({ requisitionId, onClose }: { requisitionId: string; onClose: () => void }) {
@@ -213,6 +134,10 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
     postingChannel: "Internal",
   });
   const [criteria, setCriteria] = useState<ScreeningCriterionModel[]>([]);
+  const [showCriteria, setShowCriteria] = useState(false);
+  // Apply (in the popup) stages the criteria locally — they persist with Save Requisition.
+  // The dirty flag keeps that visible so applied-but-unsaved criteria are never silently lost.
+  const [criteriaDirty, setCriteriaDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showMatches, setShowMatches] = useState(false);
@@ -234,11 +159,6 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
     queryKey: ["workLocations", lookupParam],
     queryFn: () => getAllWorkLocation(lookupParam),
   });
-  const { data: employees } = useQuery({
-    queryKey: ["employees", lookupParam],
-    queryFn: () => getAllEmployee(lookupParam),
-  });
-
   const readOnly = !!record && record.status !== "Draft" && record.status !== "Rejected";
   const postingEditable = !!record && record.status !== "Closed" && record.status !== "Cancelled";
 
@@ -246,11 +166,13 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
     if (typeof record != "undefined" && record != null) {
       setFormData(record);
       setCriteria(record.screeningCriteria ?? []);
+      setCriteriaDirty(false);
     }
   }, [record]);
 
   useEffect(() => {
     if (formState.status == "success") {
+      setCriteriaDirty(false);
       queryClient.invalidateQueries({ queryKey: ["jobRequisitions"] });
       if (!formData.id && formState.id) {
         setId(formState.id);
@@ -316,8 +238,6 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
       }),
     );
 
-  const setCriterion = (i: number, patch: Partial<ScreeningCriterionModel>) =>
-    setCriteria((p) => p.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
 
   return (
     <div className="text-foreground">
@@ -401,105 +321,83 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
         }}
       />
 
-      {/* Screening criteria (HC095) */}
+      {/* Screening criteria (HC095) — summary card; editing happens in the popup grid */}
       <div className="mt-3 rounded-lg border border-border bg-card p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <h4 className="text-sm font-semibold">{t("Screening Criteria")} <span className="text-xs font-normal text-muted">(HC095)</span></h4>
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => setCriteria((p) => [...p, { name: "", isMandatory: false, weight: 1 }])}
-              className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
-            >
-              <Plus size={13} /> {t("Add Criterion")}
-            </button>
-          )}
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold">
+            {t("Screening Criteria")} <span className="text-xs font-normal text-muted">(HC095)</span>
+            {criteria.length > 0 && (
+              <span
+                className={`ml-2 rounded px-2 py-0.5 text-xs font-bold tabular-nums ${
+                  criteria.reduce((s, c) => s + (Number(c.weight) || 0), 0) === 100
+                    ? "bg-success/15 text-success"
+                    : "bg-error/15 text-error"
+                }`}
+              >
+                Σ {criteria.reduce((s, c) => s + (Number(c.weight) || 0), 0)}%
+              </span>
+            )}
+            {/* Apply ≠ Save: applied criteria stay local until the requisition is saved. */}
+            {criteriaDirty && (
+              <span className="ml-2 rounded bg-warning/15 px-2 py-0.5 text-xs font-semibold text-warning">
+                {t("Not saved yet — Save Requisition to persist")}
+              </span>
+            )}
+          </h4>
+          <button
+            type="button"
+            onClick={() => setShowCriteria(true)}
+            className="inline-flex items-center gap-1 rounded border border-border px-2.5 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+          >
+            <Plus size={13} />{" "}
+            {readOnly ? t("View Criteria") : criteria.length === 0 ? t("Define Criteria") : t("Edit Criteria")}
+          </button>
         </div>
-        {criteria.length === 0 && (
+        {criteria.length === 0 ? (
           <p className="text-xs text-muted">{t("No criteria — applicants are screened on the job specification only.")}</p>
-        )}
-        {criteria.map((c, i) => (
-          <div key={i} className="mb-1.5 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              disabled={readOnly}
-              value={c.name}
-              onChange={(e) => setCriterion(i, { name: e.target.value })}
-              placeholder={t("e.g. Relevant degree, IFRS certification…")}
-              className="h-8 min-w-44 flex-1 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60"
-            />
-            <label className="flex items-center gap-1 text-xs text-muted">
-              <input
-                type="checkbox"
-                disabled={readOnly}
-                checked={c.isMandatory === true}
-                onChange={(e) => setCriterion(i, { isMandatory: e.target.checked })}
-              />
-              {t("Mandatory")}
-            </label>
-            <input
-              type="text"
-              disabled={readOnly}
-              value={c.weight}
-              onChange={(e) => setCriterion(i, { weight: Number(e.target.value) || 1 })}
-              title={t("Weight")}
-              className="h-8 w-12 rounded-md border border-border bg-background px-2 text-right text-xs text-foreground disabled:opacity-60"
-            />
-            {/* Evaluator assignment: internal employee, external person, or organization */}
-            <select
-              disabled={readOnly}
-              value={c.evaluatorType ?? "None"}
-              onChange={(e) =>
-                setCriterion(i, {
-                  evaluatorType: e.target.value,
-                  evaluatorEmployeeId: undefined,
-                  evaluatorName: undefined,
-                })
-              }
-              title={t("Evaluator")}
-              className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60"
-            >
-              {criterionEvaluatorTypeOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-            {c.evaluatorType === "Employee" && (
-              <select
-                disabled={readOnly}
-                value={c.evaluatorEmployeeId ?? ""}
-                onChange={(e) => setCriterion(i, { evaluatorEmployeeId: e.target.value || undefined })}
-                className="h-8 max-w-44 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60"
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {criteria.map((c, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary/50 px-2.5 py-1 text-xs text-foreground"
               >
-                <option value="">{t("Select employee…")}</option>
-                {(employees?.data ?? []).map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.fullName ?? emp.employeeNumber}</option>
-                ))}
-              </select>
-            )}
-            {(c.evaluatorType === "ExternalPerson" || c.evaluatorType === "Organization") && (
-              <input
-                type="text"
-                disabled={readOnly}
-                value={c.evaluatorName ?? ""}
-                onChange={(e) => setCriterion(i, { evaluatorName: e.target.value })}
-                placeholder={
-                  c.evaluatorType === "Organization" ? t("Organization name…") : t("Evaluator name…")
-                }
-                className="h-8 w-44 rounded-md border border-border bg-background px-2 text-xs text-foreground disabled:opacity-60"
-              />
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => setCriteria((p) => p.filter((_, idx) => idx !== i))}
-                className="rounded p-1 text-muted hover:bg-error/10 hover:text-error"
-              >
-                <Trash2 size={13} />
-              </button>
-            )}
+                <span className="font-medium">{c.name}</span>
+                <span className="font-bold tabular-nums text-primary">{c.weight}%</span>
+                {c.appliesAtStage && (
+                  <span className="rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold text-info">
+                    {t(c.appliesAtStage)}
+                  </span>
+                )}
+                {c.isMandatory && <span className="text-error" title={t("Mandatory")}>*</span>}
+                {(c.evaluators?.length ?? 0) > 0 && (
+                  <span
+                    className="text-[10px] text-muted"
+                    title={(c.evaluators ?? []).map((e) => e.name).join(", ")}
+                  >
+                    · {c.evaluators!.length === 1
+                      ? c.evaluators![0].name
+                      : t("{{n}} evaluators", { n: c.evaluators!.length })}
+                  </span>
+                )}
+              </span>
+            ))}
           </div>
-        ))}
+        )}
       </div>
+
+      {showCriteria && (
+        <CriteriaModal
+          initial={criteria}
+          readOnly={readOnly}
+          onClose={() => setShowCriteria(false)}
+          onApply={(rows) => {
+            setCriteria(rows);
+            setCriteriaDirty(true);
+            setShowCriteria(false);
+          }}
+        />
+      )}
 
       {/* Posting designer (HC088/HC091) — editable until closed */}
       {id && (

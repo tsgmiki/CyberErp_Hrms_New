@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -22,13 +23,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     internal static class RecruitmentShared
     {
-        /// <summary>Sequential document numbering (tenant-scoped; unique index backstops races).</summary>
-        internal static async Task<string> NextNumberAsync<T>(IRepository<T> repository, string prefix)
-            where T : Dom.Entities.BaseEntity
-        {
-            var count = await repository.GetAll().CountAsync();
-            return $"{prefix}-{count + 1:D4}";
-        }
+        /// <summary>
+        /// Race-safe sequential document numbering via the per-tenant atomic counter
+        /// (logic.md §7.1 adoption #5) — replaced the count+1 approach, which double-allocated
+        /// under concurrent creates. Existing tenants' counters were seeded from their current max.
+        /// </summary>
+        internal static async Task<string> NextNumberAsync(INumberSequenceService sequence, string key, string prefix)
+            => $"{prefix}-{await sequence.NextAsync(key):D4}";
 
         /// <summary>Vacant seats for a unit × role — the establishment limit hiring is checked against (HC082).</summary>
         internal static Task<int> VacantSeatsAsync(IRepository<Position> positions, Guid unitId, Guid classId) =>
@@ -43,6 +44,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<PositionClass> positionClassRepository,
         IRepository<WorkforcePlan> workforcePlanRepository,
+        INumberSequenceService numberSequence,
         IWorkflowGate workflowGate,
         IValidator<SaveHiringRequestDto> validator,
         ILogger<SaveHiringRequest> logger) : ISaveHiringRequest
@@ -80,7 +82,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 return entity.Id;
             }
 
-            var number = await RecruitmentShared.NextNumberAsync(repository, "HRQ");
+            var number = await RecruitmentShared.NextNumberAsync(numberSequence, "HiringRequest", "HRQ");
             var created = HiringRequest.Create(number, dto.OrganizationUnitId, dto.PositionClassId,
                 dto.NumberOfPositions, employmentType, dto.Justification, dto.JobRequirements,
                 dto.ExpectedStartDate, dto.TimelineRemarks, dto.EstimatedBudget, dto.WorkforcePlanId);

@@ -131,12 +131,19 @@ public class JobRequisition : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
-    /// <summary>Replaces the screening criteria (HC095) — only while editable.</summary>
+    /// <summary>
+    /// Replaces the screening criteria (HC095) — only while editable. Weights are PERCENTAGES of
+    /// the final ranking score, so a non-empty set must total exactly 100%.
+    /// </summary>
     public void SetScreeningCriteria(IEnumerable<ScreeningCriterionSpec> criteria)
     {
         EnsureEditable();
+        var specs = criteria.ToList();
+        if (specs.Count > 0 && specs.Sum(s => s.Weight) != 100)
+            throw new ArgumentException(
+                $"Criterion weights must total exactly 100% (currently {specs.Sum(s => s.Weight)}%).", nameof(criteria));
         _screeningCriteria.Clear();
-        foreach (var spec in criteria)
+        foreach (var spec in specs)
             _screeningCriteria.Add(RequisitionScreeningCriterion.Create(Id, spec));
         base.Update();
     }
@@ -241,18 +248,23 @@ public enum CriterionEvaluatorType
     Organization = 3     // an external organization / institution
 }
 
+/// <summary>One evaluator assignment inside a <see cref="ScreeningCriterionSpec"/>.</summary>
+public record CriterionEvaluatorSpec(
+    CriterionEvaluatorType EvaluatorType,
+    Guid? EmployeeId = null,
+    string? Name = null);
+
 /// <summary>Input spec for one screening criterion (see <see cref="JobRequisition.SetScreeningCriteria"/>).</summary>
 public record ScreeningCriterionSpec(
     string Name,
     bool IsMandatory,
     int Weight,
-    CriterionEvaluatorType EvaluatorType = CriterionEvaluatorType.None,
-    Guid? EvaluatorEmployeeId = null,
-    string? EvaluatorName = null);
+    IReadOnlyList<CriterionEvaluatorSpec>? Evaluators = null,
+    ApplicationStage? AppliesAtStage = null);
 
 /// <summary>
-/// One HR-defined screening criterion of a requisition (HC095), optionally assigned to a specific
-/// evaluator — an internal employee, an external person, or an organization — who scores the
+/// One HR-defined screening criterion of a requisition (HC095). A criterion may carry ANY number
+/// of assigned evaluators — internal employees, external persons, or organizations — who score the
 /// applicants on it; the weighted criterion scores roll up into the application's total.
 /// </summary>
 public class RequisitionScreeningCriterion : BaseEntity
@@ -263,11 +275,12 @@ public class RequisitionScreeningCriterion : BaseEntity
     public bool IsMandatory { get; private set; }
     /// <summary>Relative weight for the total-score calculation.</summary>
     public int Weight { get; private set; } = 1;
-    public CriterionEvaluatorType EvaluatorType { get; private set; } = CriterionEvaluatorType.None;
-    /// <summary>The assigned internal evaluator (when <see cref="EvaluatorType"/> is Employee).</summary>
-    public Guid? EvaluatorEmployeeId { get; private set; }
-    /// <summary>Display name of an external person / organization evaluator (or a resolved employee snapshot).</summary>
-    public string? EvaluatorName { get; private set; }
+    /// <summary>The recruitment level the criterion is scored at — null = global (all steps).</summary>
+    public ApplicationStage? AppliesAtStage { get; private set; }
+
+    private readonly List<CriterionEvaluator> _evaluators = [];
+    /// <summary>The evaluators assigned to score this criterion (any number, mixed kinds).</summary>
+    public IReadOnlyCollection<CriterionEvaluator> Evaluators => _evaluators;
 
     private RequisitionScreeningCriterion() : base() { }
 
@@ -277,21 +290,51 @@ public class RequisitionScreeningCriterion : BaseEntity
             throw new ArgumentException("Criterion name cannot be empty.", nameof(spec));
         if (spec.Weight < 1)
             throw new ArgumentException("Criterion weight must be at least 1.", nameof(spec));
-        if (spec.EvaluatorType == CriterionEvaluatorType.Employee && !spec.EvaluatorEmployeeId.HasValue)
-            throw new ArgumentException("An employee evaluator needs the employee reference.", nameof(spec));
-        if (spec.EvaluatorType is CriterionEvaluatorType.ExternalPerson or CriterionEvaluatorType.Organization
-            && string.IsNullOrWhiteSpace(spec.EvaluatorName))
-            throw new ArgumentException("An external evaluator needs a name.", nameof(spec));
 
-        return new RequisitionScreeningCriterion
+        var criterion = new RequisitionScreeningCriterion
         {
             RequisitionId = requisitionId,
             Name = spec.Name,
             IsMandatory = spec.IsMandatory,
             Weight = spec.Weight,
+            AppliesAtStage = spec.AppliesAtStage
+        };
+        foreach (var evaluator in spec.Evaluators ?? [])
+            criterion._evaluators.Add(CriterionEvaluator.Create(criterion.Id, evaluator));
+        return criterion;
+    }
+}
+
+/// <summary>
+/// One evaluator assigned to a screening criterion — an internal employee (link SET NULL + name
+/// snapshot) or a named external person / organization. A criterion may carry any number.
+/// </summary>
+public class CriterionEvaluator : BaseEntity
+{
+    public Guid CriterionId { get; private set; }
+    public CriterionEvaluatorType EvaluatorType { get; private set; }
+    /// <summary>The internal employee (SET NULL on employee deletion — the name survives).</summary>
+    public Guid? EmployeeId { get; private set; }
+    /// <summary>Display name: resolved employee snapshot, or the external person / organization.</summary>
+    public string Name { get; private set; } = string.Empty;
+
+    private CriterionEvaluator() : base() { }
+
+    public static CriterionEvaluator Create(Guid criterionId, CriterionEvaluatorSpec spec)
+    {
+        if (spec.EvaluatorType == CriterionEvaluatorType.None)
+            throw new ArgumentException("An evaluator assignment needs a concrete kind.", nameof(spec));
+        if (spec.EvaluatorType == CriterionEvaluatorType.Employee && !spec.EmployeeId.HasValue)
+            throw new ArgumentException("An employee evaluator needs the employee reference.", nameof(spec));
+        if (string.IsNullOrWhiteSpace(spec.Name))
+            throw new ArgumentException("An evaluator needs a display name.", nameof(spec));
+
+        return new CriterionEvaluator
+        {
+            CriterionId = criterionId,
             EvaluatorType = spec.EvaluatorType,
-            EvaluatorEmployeeId = spec.EvaluatorType == CriterionEvaluatorType.Employee ? spec.EvaluatorEmployeeId : null,
-            EvaluatorName = spec.EvaluatorName
+            EmployeeId = spec.EvaluatorType == CriterionEvaluatorType.Employee ? spec.EmployeeId : null,
+            Name = spec.Name.Trim()
         };
     }
 }

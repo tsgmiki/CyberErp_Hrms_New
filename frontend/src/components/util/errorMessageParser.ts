@@ -1,80 +1,54 @@
-export default function errorMessageParser(error?: any) {
-  let message = "";
-  if (typeof error == "string" && error != "") {
-    message = error;
-    return message;
+/**
+ * Flattens API error payloads into a human-readable PLAIN-TEXT message.
+ * Every consumer renders the result as text (status lines, toasts, modal errors) — never as
+ * HTML — so no markup and no "1 …<br/>" artifacts. A single error is returned verbatim;
+ * multiple errors join as numbered lines.
+ */
+function joinMessages(messages: string[]): string {
+  const clean = messages.map((m) => String(m).trim()).filter(Boolean);
+  if (clean.length === 0) return "";
+  if (clean.length === 1) return clean[0];
+  return clean.map((m, i) => `${i + 1}. ${m}`).join("\n");
+}
+
+/** Collects the messages out of an ASP.NET Core `errors` dictionary ({ field: [msg] | msg }). */
+function flattenErrorsObject(errors: Record<string, unknown>): string[] {
+  const messages: string[] = [];
+  for (const key of Object.keys(errors)) {
+    const value = errors[key];
+    if (Array.isArray(value)) {
+      for (const msg of value) messages.push(String(msg));
+    } else if (value != null) {
+      messages.push(String(value));
+    }
+  }
+  return messages;
+}
+
+export default function errorMessageParser(error?: any): string {
+  if (typeof error === "string" && error !== "") return error;
+  if (!error) return "";
+
+  // Axios-style wrapper: error.response.data.{errors|detail|title}
+  if (typeof error.response !== "undefined") {
+    const data = error?.response?.data;
+    if (data?.errors && typeof data.errors === "object")
+      return joinMessages(flattenErrorsObject(data.errors));
+    if (data?.detail) return String(data.detail);
+    if (data?.title) return String(data.title);
+    return "";
   }
 
-  if (error && typeof error.response != "undefined") {
-    const errorsData = error?.response?.data;
-    
-    // Handle ASP.NET Core validation error format
-    if (errorsData?.errors && typeof errorsData.errors === "object") {
-      const errors = errorsData.errors;
-      const keys = Object.keys(errors);
-      let messageStr = "";
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        const errorMessages = errors[key];
-        if (Array.isArray(errorMessages)) {
-          // Format field name from JSON path (e.g., "$.documentUrl" -> "documentUrl")
-          const fieldName = key.startsWith("$.") ? key.slice(2) : key;
-          for (const errorMsg of errorMessages) {
-            messageStr += `${fieldName}: ${errorMsg}<br/>`;
-          }
-        } else {
-          messageStr += `${i + 1}. ${errorMessages}<br/>`;
-        }
-      }
-      message = messageStr;
-    } else if (errorsData?.detail) {
-      message = errorsData.detail;
-    } else if (errorsData?.title) {
-      message = errorsData.title;
-    } else {
-      const errors = errorsData?.errors;
-      if (errors) {
-        const keys = Object.keys(errors);
-        let messageStr = "";
-        for (let i = 0; i < keys.length; i++) {
-          messageStr =
-            messageStr + (i + 1).toString() + " " + errors[keys[i]] + "<br/>";
-        }
-        message = messageStr;
-      }
-    }
-  } else if (error && typeof error.message != "undefined") {
-    message = error.message;
-  } else if (error && error.errors && typeof error.errors === "object") {
-    // Handle ASP.NET Core validation error format directly (no response wrapper)
-    const errors = error.errors;
-    const keys = Object.keys(errors);
-    let messageStr = "";
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
-      const errorMessages = errors[key];
-      if (Array.isArray(errorMessages)) {
-        // Format field name from JSON path (e.g., "$.documentUrl" -> "documentUrl")
-        const fieldName = key.startsWith("$.") ? key.slice(2) : key;
-        for (const errorMsg of errorMessages) {
-          messageStr += `${fieldName}: ${errorMsg}<br/>`;
-        }
-      } else {
-        messageStr += `${i + 1}. ${errorMessages}<br/>`;
-      }
-    }
-    message = messageStr;
-  } else if (error && error.title) {
-    // Handle ASP.NET Core error with title directly
-    message = error.title;
-  } else if (error) {
-    const keys = Object.keys(error);
-    let messageStr = "";
-    for (let i = 0; i < keys.length; i++) {
-      messageStr =
-        messageStr + (i + 1).toString() + " " + error[keys[i]] + "<br/>";
-    }
-    message = messageStr;
-  }
-  return message;
+  if (typeof error.message !== "undefined") return String(error.message);
+
+  // ASP.NET Core validation payload passed directly ({ errors: { field: [msg] } })
+  if (error.errors && typeof error.errors === "object")
+    return joinMessages(flattenErrorsObject(error.errors));
+
+  if (error.title) return String(error.title);
+
+  // A bare errors dictionary ({ field: [msg] | msg })
+  if (typeof error === "object") return joinMessages(flattenErrorsObject(error));
+
+  return String(error);
 }

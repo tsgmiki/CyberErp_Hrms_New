@@ -34,6 +34,10 @@ namespace CyberErp.Hrms.Api.Middleware
                 NotFoundException => (int)HttpStatusCode.NotFound,
                 ValidationException => (int)HttpStatusCode.BadRequest,
                 HrmsException => (int)HttpStatusCode.BadRequest,
+                // Domain state-machine guards ("a Sent offer can no longer be edited") throw
+                // InvalidOperationException — that's a business-rule conflict the caller must see,
+                // NOT a server fault (it used to surface as a generic 500).
+                InvalidOperationException => (int)HttpStatusCode.Conflict,
                 _ => (int)HttpStatusCode.InternalServerError
             };
 

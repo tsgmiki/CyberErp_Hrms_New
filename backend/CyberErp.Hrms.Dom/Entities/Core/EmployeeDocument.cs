@@ -28,6 +28,19 @@ public class EmployeeDocument : BaseEntity, IAggregateRoot
 
     private EmployeeDocument() : base() { }
 
+    /// <summary>
+    /// Re-anchors the access scope to a (new) employee. Used at hire: documents attached to a
+    /// candidate's education/experience rows are anchored to the candidate id until the person
+    /// becomes an employee, then move under the employee's scope.
+    /// </summary>
+    public void AssignEmployee(Guid employeeId)
+    {
+        if (employeeId == Guid.Empty)
+            throw new ArgumentException("Employee is required.", nameof(employeeId));
+        EmployeeId = employeeId;
+        Update();
+    }
+
     public static EmployeeDocument Create(
         Guid employeeId,
         EmployeeDocumentOwner ownerType,

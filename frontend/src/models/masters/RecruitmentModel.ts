@@ -35,15 +35,25 @@ export interface RecruitmentBudgetRowModel {
   openRequisitions: number;
 }
 
+/** One evaluator assigned to a criterion — internal employee or named external. */
+export interface CriterionEvaluatorModel {
+  /** Employee | ExternalPerson | Organization */
+  evaluatorType: string;
+  employeeId?: string;
+  /** External evaluator's name, or the resolved employee name on reads. */
+  name?: string;
+}
+
 export interface ScreeningCriterionModel {
   id?: string;
   name: string;
   isMandatory: boolean;
+  /** Percentage of the final ranking score — all criteria must total exactly 100. */
   weight: number;
-  /** None | Employee | ExternalPerson | Organization — who scores this criterion. */
-  evaluatorType?: string;
-  evaluatorEmployeeId?: string;
-  evaluatorName?: string;
+  /** The evaluators assigned to score this criterion (any number, mixed kinds). */
+  evaluators?: CriterionEvaluatorModel[];
+  /** Recruitment level (e.g. Screening, Interview) — empty = all steps. */
+  appliesAtStage?: string;
 }
 
 /** One evaluator's score of one criterion (score sheet row). */
@@ -52,8 +62,9 @@ export interface CriterionScoreModel {
   criterionName?: string;
   isMandatory: boolean;
   weight: number;
-  evaluatorType?: string;
+  /** Display list of the criterion's assigned evaluators ("A, B, …"). */
   evaluatorName?: string;
+  appliesAtStage?: string;
   score?: number;
   remarks?: string;
   scoredBy?: string;
@@ -71,7 +82,34 @@ export interface ApplicationRankingRowModel {
   scoredCriteria: number;
   totalCriteria: number;
   failsMandatory: boolean;
+  /** 1-based position by weighted total (scored candidates only). */
+  rank?: number;
+  /** Eligible | Waitlisted | Hired | OfferRejected | OutOfContention | FailsMandatory | NotScored */
+  hireEligibility?: string;
+  latestOfferStatus?: string;
   breakdown: CriterionScoreModel[];
+}
+
+/** One hire-ready (or waitlisted) applicant on the "Hire Employee" screen. */
+export interface HireQueueRowModel {
+  requisitionId: string;
+  requisitionNumber?: string;
+  requisitionTitle?: string;
+  numberOfPositions: number;
+  hiredCount: number;
+  applicationId: string;
+  candidateId: string;
+  candidateNumber?: string;
+  candidateName?: string;
+  stage: string;
+  totalScore?: number;
+  rank?: number;
+  hireEligibility: string;
+  latestOfferStatus?: string;
+  complianceComplete: boolean;
+  missingComplianceDocuments: string[];
+  canHire: boolean;
+  blockedReason?: string;
 }
 
 /** A file attached to a candidate (credentials + mandatory compliance set). */
@@ -151,6 +189,32 @@ export interface CandidateModel extends AbstractModel {
   complianceComplete?: boolean;
 }
 
+/**
+ * Candidate education — the SAME person-owned row the employee profile uses.
+ * Written against the candidate's PersonId so it becomes the employee's automatically at hire.
+ */
+export interface CandidateEducationModel extends AbstractModel {
+  candidateId?: string;
+  educationLevel?: string;
+  institution?: string;
+  fieldOfStudy?: string;
+  qualification?: string;
+  graduationYear?: number;
+  remark?: string;
+  documentCount?: number;
+}
+
+/** Candidate work experience — the same person-owned row the employee profile uses. */
+export interface CandidateExperienceModel extends AbstractModel {
+  candidateId?: string;
+  organization?: string;
+  jobTitle?: string;
+  startDate?: string;
+  endDate?: string;
+  responsibilities?: string;
+  documentCount?: number;
+}
+
 /** One ranked internal-matching result for a vacancy (HC090). */
 export interface CandidateMatchModel {
   candidateId: string;
@@ -162,6 +226,85 @@ export interface CandidateMatchModel {
   matchScore: number;
   matchedSkills: string[];
   meetsExperience: boolean;
+}
+
+/** One panelist's per-criterion score of an interview round (HC106/HC109). */
+export interface InterviewFeedbackModel {
+  criterionId?: string;
+  criterionName?: string;
+  score: number;
+  comments?: string;
+  submittedAt?: string;
+}
+
+export interface InterviewPanelistModel {
+  id?: string;
+  employeeId?: string;
+  panelistName?: string;
+  isLead?: boolean;
+  attendance?: string;
+  feedback?: InterviewFeedbackModel[];
+  averageScore?: number;
+}
+
+/** One interview round of an application (HC101–HC108). */
+export interface InterviewModel {
+  id?: string;
+  applicationId?: string;
+  round?: number;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  format?: string; // InPerson | Video | Phone | Panel | TechnicalTest
+  status?: string; // Scheduled | Completed | Cancelled | NoShow
+  location?: string;
+  meetingLink?: string;
+  notes?: string;
+  panelists?: InterviewPanelistModel[];
+  averageScore?: number;
+}
+
+export interface InterviewCriterionSummaryModel {
+  criterionId?: string;
+  criterionName: string;
+  /** Weight (%) inherited from the requisition criterion (0 for overall entries). */
+  weight: number;
+  average: number;
+  scores: number;
+}
+
+/** HC109 — consolidated evaluation of one application across all rounds. */
+export interface InterviewConsolidatedModel {
+  applicationId: string;
+  rounds: number;
+  panelistCount: number;
+  scoredPanelists: number;
+  overallAverage?: number;
+  /** Weighted by the requisition criteria weights (inherited, not re-entered). */
+  weightedAverage?: number;
+  criteria: InterviewCriterionSummaryModel[];
+  interviews: InterviewModel[];
+}
+
+/** Formal employment offer (HC111–HC114). */
+export interface JobOfferModel {
+  id?: string;
+  offerNumber?: string;
+  applicationId?: string;
+  hiringManagerEmployeeId?: string;
+  hiringManagerName?: string;
+  salary?: number;
+  salaryScaleId?: string;
+  salaryScaleAmount?: number;
+  salaryJustification?: string;
+  proposedStartDate?: string;
+  expiryDate?: string;
+  status?: string; // Draft | PendingApproval | Approved | Sent | Accepted | Declined | Withdrawn | Expired
+  sentAt?: string;
+  respondedAt?: string;
+  responseNote?: string;
+  letterText?: string;
+  hiredEmployeeId?: string;
+  awaitingWorkflow?: boolean;
 }
 
 export interface ApplicationStageLogModel {
@@ -183,6 +326,13 @@ export interface JobApplicationModel extends AbstractModel {
   appliedAt?: string;
   screeningScore?: number;
   screeningRemarks?: string;
+  /** Total criteria defined on the vacancy. */
+  totalCriteriaCount?: number;
+  /**
+   * Criteria scoreable at the application's CURRENT stage — global criteria always count,
+   * level-scoped ones only while the application sits at that level. Drives score-button visibility.
+   */
+  scoreableCriteriaCount?: number;
   stageLog?: ApplicationStageLogModel[];
   /** The requisition's criteria merged with this application's scores (score sheet). */
   criterionScores?: CriterionScoreModel[];

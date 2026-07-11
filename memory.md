@@ -53,6 +53,14 @@ migration + frontend, verified end-to-end against the live DB before moving on.
 8. **Frontend is templated:** `src/template/` (`useEntityCrudModule`, `EntityModuleShell`,
    `EntityListShell`, `useEntityList`, `createPagedQuery`, `createEntityGetById`, `createSaveService`,
    `createDeleteService`). Build new admin modules from it — do not hand-roll CRUD.
+9. **One database, one migration pipeline — reaffirmed 2026-07-10** after reviewing (and rejecting
+   as-is) an externally-proposed standalone `RecruitmentModule` DB: separate DBs make cross-module
+   FKs impossible (comments ≠ constraints) and drop tenancy; BIGINT keys, numbering triggers, and
+   bespoke approval/pipeline tables were rejected (the generic workflow engine + stage log stay the
+   only approval/stage mechanisms). Adopted from it for Phase 2: interview trio + offer entity
+   shapes, DB range CHECKs, `(TenantId, Status)` composite indexes, and a per-tenant atomic counter
+   to replace race-prone `count+1` numbering before the public portal. Full decision record:
+   `logic.md` §7.1.
 
 ## 4. Current application state (as of this doc's last update)
 
@@ -113,10 +121,51 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
     conversion** = employee on the SAME person + automatic document migration (EmployeeDocument
     owner Recruitment) + application→Hired + probation tracking; **Talent Pool** page (history +
     apply-to-vacancy).
-  - *Phase 2 (todo):* interview panels/scheduling/scored feedback (HC101–109), background
-    verification (HC110), offers + comp validation + response tracking (HC111–114).
-  - *Phase 3 (todo):* public career portal (HC093), offer acceptance → onboarding → employee master
-    + probation (HC115–117); email notifications, resume parsing, job-board feeds.
+  - *Candidate structured background (DONE, no migration):* candidate education/work history now
+    writes the **same person-owned `hrms_EmployeeEducation`/`hrms_EmployeeExperience` rows the employee
+    profile uses** (both keyed on **PersonId**). Because hire creates the Employee on the candidate's
+    same PersonId, the data hands off **automatically — zero copy** (`CandidateBackgroundHandlers.cs`,
+    `Candidate/{id}/education|experience`). Internal candidates are **read-only** (employee master is
+    authoritative). Form UI: **Applicant Type** toggle (Internal → employee picker + locked identity
+    prefilled from `GET Employee/{id}`; External → Source Channel) replaces the confusing `Source`
+    field; Education/Experience textareas dropped (columns kept), structured `ChildManager` sections added.
+  - *Phase 2 (DONE — interviews & offers, migration `AddRecruitmentInterviewsOffers`):* interview
+    rounds (multiple per application, no stage-gate) with panels (employees or named externals,
+    lead flag, attendance) and per-criterion 0–100 feedback → consolidated report (HC101–HC109);
+    first round auto-advances the pipeline to Interview. Formal offers (HC111–HC114): `OFR-####`
+    from the new race-safe per-tenant `hrms_NumberSequence` counter; Draft→approval workflow
+    (`JobOffer`)→Sent→Accepted/Declined/lazy-Expired/Withdrawn; one ACTIVE offer per application
+    (filtered unique index); HC113 scale-deviation requires justification; the offer drives the
+    pipeline (send→OfferPending, decline/withdraw/expiry→release to Selected) and gates hire
+    (newest offer must be Accepted; hire stamps the offer with the employee). DB CHECKs per §7.1.
+  - *Weighted criteria & ranked hiring (DONE, migration `AddCriterionStageScope`):* criteria are
+    **percentages that must total exactly 100%** (domain+validator+popup-grid UI), optionally
+    scoped per recruitment level (`AppliesAtStage`), weights inherited by score sheets and the
+    interview consolidated report (WeightedAverage). Ranking assigns 1st/2nd/3rd + a top-N
+    **hire-eligibility window** (N = positions − hired); the rest are **waitlisted** and slide up
+    automatically when a higher-ranked candidate's offer is declined/expired; `HireCandidate`
+    enforces the window (criteria-less vacancies keep legacy behavior). New **Hire Employee menu**
+    (`/hireEmployee`, hire-queue endpoint) — the hire conversion moved there from the candidate form;
+    it lists strictly the qualified/ranked applicants with per-row CanHire/BlockedReason.
+    **Score-button rule:** global ("All Steps") criteria keep the score action on every pipeline
+    step; level-scoped criteria surface it ONLY at their level — server-computed
+    (`ScoreableCriteriaCount` on the application DTOs), and the score sheet filters to the same
+    subset. **Multiple evaluators per criterion** (migration `AddCriterionEvaluators`):
+    `hrms_CriterionEvaluator` child rows (employee SET NULL + name snapshot, or named
+    external person/organization; no duplicates per criterion); the criteria popup is a
+    card-per-criterion designer with an evaluator chip panel, weight progress bar and
+    Distribute-Evenly. See `logic.md` §7.0.
+  - *End-to-end review hardening (2026-07-10):* **nothing strands** — vacancy fill auto-closes the
+    requisition + dispositions the runner-ups; close/cancel dispositions open applications and
+    withdraws live offers; hire withdraws the employee's other applications; anonymize withdraws
+    the pipeline before the scrub (`PipelineDisposition` helper). **Offers are rank-gated** like
+    hires; **manual screening scores rejected** on criteria-scored vacancies (one source of truth);
+    **interview results adopt into the ranking** in one click (adopt-interview-scores);
+    **domain guards → 409** (never 500, never retried); **HRQ/REQ/CND numbering** moved to the
+    atomic counter (seeded from existing maxima). Details: `logic.md` §7 "Pipeline lifecycle rules".
+  - *Phase 3 (todo):* background verification (HC110), public career portal (HC093), onboarding
+    checklist (HC115–117 beyond hire conversion); email notifications, resume parsing (HC094),
+    job-board feeds (HC092).
 - **Attendance & Leave (HC030–052), phased:**
   - *Phase 1:* LeaveType, Holiday, `IWorkingCalendar` (working-days excl. weekends/holidays).
   - *Phase 2:* LeaveBalance (ledger) + LeaveRequest on the workflow engine (submit→approve→deduct,
@@ -131,7 +180,8 @@ tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = glob
 `AddLeaveSetup` → `AddLeaveRequestsAndBalances` → `IntegrateFiscalYearLeave` → `AddEmployeeEmploymentTerms`
 → `AddEmployeeSalaryScale` → `RemoveEmployeeJobGradeId` → `AddDynamicClearanceConfig`
 → `AddTerminationReinstatement` → `AddWorkforcePlanning` → `AddRecruitmentPhase1`
-→ `AddRecruitmentCandidateLifecycle`.
+→ `AddRecruitmentCandidateLifecycle` → `AddRecruitmentInterviewsOffers` → `AddCriterionStageScope`
+→ `AddCriterionEvaluators` → `SeedRecruitmentNumberSequences` (data-only).
 
 **Not yet built:** Attendance Phase 3 (shifts, capture, daily processing, timesheet), Phase 4
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave encashment.

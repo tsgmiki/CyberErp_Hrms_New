@@ -1,6 +1,7 @@
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -93,6 +94,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<Candidate> repository,
         IRepository<Employee> employeeRepository,
         IRepository<Person> personRepository,
+        INumberSequenceService numberSequence,
         IValidator<SaveCandidateDto> validator,
         ILogger<SaveCandidate> logger) : ISaveCandidate
     {
@@ -161,7 +163,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 return entity.Id;
             }
 
-            var number = await RecruitmentShared.NextNumberAsync(repository, "CND");
+            var number = await RecruitmentShared.NextNumberAsync(numberSequence, "Candidate", "CND");
             var created = Candidate.Create(number, dto.FirstName, source, dto.ConsentGiven,
                 dto.FatherName, dto.GrandFatherName, dto.Email, dto.PhoneNumber, gender,
                 dto.InternalEmployeeId, dto.EducationSummary, dto.ExperienceSummary,
@@ -319,7 +321,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class AnonymizeCandidate(
         IRepository<Candidate> repository,
+        IRepository<JobApplication> applicationRepository,
+        IRepository<JobApplicationStageLog> stageLogRepository,
+        IRepository<JobOffer> offerRepository,
         IConfiguration configuration,
+        ICurrentUserService currentUser,
         ILogger<AnonymizeCandidate> logger) : IAnonymizeCandidate
     {
         public async Task AnonymizeAsync(Guid id)
@@ -328,6 +334,16 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 ?? throw new NotFoundException(nameof(Candidate), id.ToString());
             if (c.AnonymizedAt.HasValue)
                 throw new ValidationException("id", "The candidate is already anonymized.");
+
+            // The erasure right ends the person's participation: active applications are withdrawn
+            // and live offers pulled BEFORE the scrub — no anonymous ghost stays in the pipeline.
+            var applications = await applicationRepository.GetAll()
+                .Include(a => a.StageLog)
+                .Where(a => a.CandidateId == id)
+                .ToListAsync();
+            await PipelineDisposition.CloseOutAsync(applicationRepository, stageLogRepository,
+                offerRepository, applications, ApplicationStage.Withdrawn,
+                "Candidate anonymized (data-erasure request)", currentUser.GetCurrentUserName());
 
             // The stored resume is personal data — remove the file with the record's PII (HC097).
             if (!string.IsNullOrEmpty(c.ResumeFileName))
@@ -339,7 +355,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             c.Anonymize();
             repository.UpdateAsync(c);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Anonymized Candidate {Id}", id);
+            logger.LogInformation("Anonymized Candidate {Id} ({Apps} active application(s) withdrawn)",
+                id, applications.Count(a => PipelineDisposition.IsActive(a.Stage)));
         }
     }
 

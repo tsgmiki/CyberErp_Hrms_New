@@ -77,6 +77,24 @@ export const workflowEntityTypeOptions = [
   { id: "WorkforcePlan", name: "Workforce Plan" },
   { id: "HiringRequest", name: "Hiring Need" },
   { id: "JobRequisition", name: "Job Requisition" },
+  { id: "JobOffer", name: "Job Offer" },
+];
+
+/** Recruitment levels a screening criterion can be scoped to (empty id = all steps). */
+export const criterionStageOptions = [
+  { id: "", name: "All Steps" },
+  { id: "Screening", name: "Screening" },
+  { id: "Interview", name: "Interview" },
+  { id: "Selected", name: "Final Review" },
+];
+
+/** Interview round formats (HC101). */
+export const interviewFormatOptions = [
+  { id: "InPerson", name: "In Person" },
+  { id: "Video", name: "Video Call" },
+  { id: "Phone", name: "Phone" },
+  { id: "Panel", name: "Panel" },
+  { id: "TechnicalTest", name: "Technical Test" },
 ];
 
 /** Termination kinds. */

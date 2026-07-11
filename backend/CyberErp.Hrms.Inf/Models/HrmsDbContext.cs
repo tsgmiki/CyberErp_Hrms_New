@@ -88,11 +88,17 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<HiringRequest> HiringRequest { get; set; }
     public DbSet<JobRequisition> JobRequisition { get; set; }
     public DbSet<RequisitionScreeningCriterion> RequisitionScreeningCriterion { get; set; }
+    public DbSet<CriterionEvaluator> CriterionEvaluator { get; set; }
     public DbSet<Candidate> Candidate { get; set; }
     public DbSet<JobApplication> JobApplication { get; set; }
     public DbSet<JobApplicationStageLog> JobApplicationStageLog { get; set; }
     public DbSet<ApplicationCriterionScore> ApplicationCriterionScore { get; set; }
     public DbSet<CandidateDocument> CandidateDocument { get; set; }
+    public DbSet<Interview> Interview { get; set; }
+    public DbSet<InterviewPanelist> InterviewPanelist { get; set; }
+    public DbSet<InterviewFeedback> InterviewFeedback { get; set; }
+    public DbSet<JobOffer> JobOffer { get; set; }
+    public DbSet<NumberSequence> NumberSequence { get; set; }
     public DbSet<Role> Role { get; set; }
     public DbSet<UserRole> UserRole { get; set; }
     public DbSet<Module> Module { get; set; }
@@ -215,11 +221,17 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new HiringRequestConfiguration());
         modelBuilder.ApplyConfiguration(new JobRequisitionConfiguration());
         modelBuilder.ApplyConfiguration(new RequisitionScreeningCriterionConfiguration());
+        modelBuilder.ApplyConfiguration(new CriterionEvaluatorConfiguration());
         modelBuilder.ApplyConfiguration(new CandidateConfiguration());
         modelBuilder.ApplyConfiguration(new JobApplicationConfiguration());
         modelBuilder.ApplyConfiguration(new JobApplicationStageLogConfiguration());
         modelBuilder.ApplyConfiguration(new ApplicationCriterionScoreConfiguration());
         modelBuilder.ApplyConfiguration(new CandidateDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new InterviewConfiguration());
+        modelBuilder.ApplyConfiguration(new InterviewPanelistConfiguration());
+        modelBuilder.ApplyConfiguration(new InterviewFeedbackConfiguration());
+        modelBuilder.ApplyConfiguration(new JobOfferConfiguration());
+        modelBuilder.ApplyConfiguration(new NumberSequenceConfiguration());
         modelBuilder.ApplyConfiguration(new RoleConfiguration());
         modelBuilder.ApplyConfiguration(new UserRoleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleConfiguration());

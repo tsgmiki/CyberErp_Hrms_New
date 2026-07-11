@@ -158,8 +158,93 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetCandidateDocuments getDocumentsHandler,
         IDownloadCandidateDocument downloadDocumentHandler,
         IDeleteCandidateDocument deleteDocumentHandler,
-        IHireCandidate hireHandler) : BaseController
+        IHireCandidate hireHandler,
+        IGetCandidateEducations getEducationsHandler,
+        ISaveCandidateEducation saveEducationHandler,
+        IDeleteCandidateEducation deleteEducationHandler,
+        IGetCandidateExperiences getExperiencesHandler,
+        ISaveCandidateExperience saveExperienceHandler,
+        IDeleteCandidateExperience deleteExperienceHandler,
+        IUploadCandidateBackgroundDocument uploadBackgroundDocumentHandler,
+        IGetCandidateBackgroundDocuments getBackgroundDocumentsHandler,
+        IDownloadCandidateBackgroundDocument downloadBackgroundDocumentHandler,
+        IDeleteCandidateBackgroundDocument deleteBackgroundDocumentHandler) : BaseController
     {
+        // ---- Structured background (education / experience) -------------------------
+        // These write the SAME person-owned rows the employee profile uses, so at hire the
+        // new employee sees them automatically (shared PersonId). Read-only for internal
+        // candidates — their records are maintained on the employee master.
+
+        [HttpGet("{id:guid}/education")]
+        public Task<List<CandidateEducationDto>> GetEducations(Guid id)
+            => getEducationsHandler.GetAsync(id);
+
+        [HttpPost("{id:guid}/education")]
+        public async Task<IActionResult> SaveEducation(Guid id, [FromBody] SaveCandidateEducationDto dto)
+        {
+            dto.CandidateId = id;
+            var educationId = await saveEducationHandler.SaveAsync(dto);
+            return Ok(new { message = "Saved successfully", id = educationId });
+        }
+
+        [HttpDelete("education/{educationId:guid}")]
+        public async Task<IActionResult> DeleteEducation(Guid educationId)
+        {
+            await deleteEducationHandler.DeleteAsync(educationId);
+            return Ok(new { message = "Deleted successfully" });
+        }
+
+        [HttpGet("{id:guid}/experience")]
+        public Task<List<CandidateExperienceDto>> GetExperiences(Guid id)
+            => getExperiencesHandler.GetAsync(id);
+
+        [HttpPost("{id:guid}/experience")]
+        public async Task<IActionResult> SaveExperience(Guid id, [FromBody] SaveCandidateExperienceDto dto)
+        {
+            dto.CandidateId = id;
+            var experienceId = await saveExperienceHandler.SaveAsync(dto);
+            return Ok(new { message = "Saved successfully", id = experienceId });
+        }
+
+        [HttpDelete("experience/{experienceId:guid}")]
+        public async Task<IActionResult> DeleteExperience(Guid experienceId)
+        {
+            await deleteExperienceHandler.DeleteAsync(experienceId);
+            return Ok(new { message = "Deleted successfully" });
+        }
+
+        /// <summary>Files attached to one education/experience row (they follow the row to the employee at hire).</summary>
+        [HttpGet("{id:guid}/background-documents")]
+        public Task<List<CyberErp.Hrms.App.Features.Core.Employees.EmployeeDocumentDto>> GetBackgroundDocuments(
+            Guid id, [FromQuery] string ownerType, [FromQuery] Guid ownerId)
+            => getBackgroundDocumentsHandler.GetAsync(id, ownerType, ownerId);
+
+        [HttpPost("{id:guid}/background-documents")]
+        [RequestSizeLimit(11 * 1024 * 1024)]
+        public async Task<IActionResult> UploadBackgroundDocument(
+            Guid id, [FromForm] string ownerType, [FromForm] Guid ownerId, IFormFile file)
+        {
+            if (file is null) return BadRequest(new { message = "No file uploaded." });
+            await using var stream = file.OpenReadStream();
+            var documentId = await uploadBackgroundDocumentHandler.UploadAsync(
+                id, ownerType, ownerId, stream, file.FileName, file.ContentType, file.Length);
+            return Ok(new { message = "Document uploaded", id = documentId });
+        }
+
+        [HttpGet("background-documents/{documentId:guid}/download")]
+        public async Task<IActionResult> DownloadBackgroundDocument(Guid documentId)
+        {
+            var (content, contentType, fileName) = await downloadBackgroundDocumentHandler.GetAsync(documentId);
+            return File(content, contentType, fileName);
+        }
+
+        [HttpDelete("background-documents/{documentId:guid}")]
+        public async Task<IActionResult> DeleteBackgroundDocument(Guid documentId)
+        {
+            await deleteBackgroundDocumentHandler.DeleteAsync(documentId);
+            return Ok(new { message = "Document deleted" });
+        }
+
         /// <summary>The candidate's attached files (credentials + mandatory compliance set).</summary>
         [HttpGet("{id:guid}/documents")]
         public Task<List<CandidateDocumentDto>> GetDocuments(Guid id)
@@ -268,6 +353,125 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
     }
 
+    /// <summary>Interview scheduling, panels and scored feedback (HC101–HC109).</summary>
+    public class InterviewController(
+        ISaveInterview saveHandler,
+        IGetInterviews getHandler,
+        ISetInterviewStatus statusHandler,
+        ISubmitInterviewFeedback feedbackHandler,
+        IGetInterviewConsolidated consolidatedHandler,
+        IDeleteInterview deleteHandler) : BaseController
+    {
+        /// <summary>All rounds of one application (panels + feedback + averages).</summary>
+        [HttpGet]
+        public Task<List<InterviewDto>> Get([FromQuery] Guid applicationId)
+            => getHandler.GetAsync(applicationId);
+
+        /// <summary>The consolidated evaluation report across all rounds (HC109).</summary>
+        [HttpGet("consolidated")]
+        public Task<InterviewConsolidatedDto> GetConsolidated([FromQuery] Guid applicationId)
+            => consolidatedHandler.GetAsync(applicationId);
+
+        /// <summary>Schedules a round (create) or reschedules/repanels a pending one (update).</summary>
+        [HttpPost]
+        public Task<Guid> Save([FromBody] SaveInterviewDto dto)
+            => saveHandler.SaveAsync(dto);
+
+        /// <summary>Complete | Cancel | NoShow.</summary>
+        [HttpPut("status")]
+        public async Task<IActionResult> SetStatus([FromBody] SetInterviewStatusDto dto)
+        {
+            await statusHandler.SetAsync(dto);
+            return Ok(new { message = "Interview updated" });
+        }
+
+        /// <summary>One panelist's per-criterion scores (attendance auto-marks Attended).</summary>
+        [HttpPut("feedback")]
+        public async Task<IActionResult> SubmitFeedback([FromBody] SubmitInterviewFeedbackDto dto)
+        {
+            await feedbackHandler.SubmitAsync(dto);
+            return Ok(new { message = "Feedback recorded" });
+        }
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            await deleteHandler.DeleteAsync(id);
+            return Ok(new { message = "Deleted successfully" });
+        }
+    }
+
+    /// <summary>Formal offers: approval workflow, letter, response tracking (HC111–HC114).</summary>
+    public class JobOfferController(
+        ISaveJobOffer saveHandler,
+        IGetJobOffers getHandler,
+        ISubmitJobOffer submitHandler,
+        ISendJobOffer sendHandler,
+        IRespondJobOffer respondHandler,
+        IWithdrawJobOffer withdrawHandler,
+        IGenerateOfferLetter letterHandler,
+        IDeleteJobOffer deleteHandler) : BaseController
+    {
+        /// <summary>The offers of one application (newest first; lazy-expires lapsed ones).</summary>
+        [HttpGet]
+        public Task<List<JobOfferDto>> Get([FromQuery] Guid applicationId)
+            => getHandler.GetAsync(applicationId);
+
+        /// <summary>Standard offer-letter text assembled server-side (HC111).</summary>
+        [HttpGet("{id:guid}/generate-letter")]
+        public Task<string> GenerateLetter(Guid id)
+            => letterHandler.GenerateAsync(id);
+
+        [HttpPost]
+        public Task<Guid> Create([FromBody] SaveJobOfferDto dto)
+            => saveHandler.SaveAsync(dto);
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] SaveJobOfferDto dto)
+        {
+            await saveHandler.SaveAsync(dto);
+            return Ok(new { message = "Updated successfully" });
+        }
+
+        /// <summary>Draft → approval workflow (HC112); approves directly when none is configured.</summary>
+        [HttpPost("{id:guid}/submit")]
+        public async Task<IActionResult> Submit(Guid id)
+        {
+            await submitHandler.SubmitAsync(id);
+            return Ok(new { message = "Offer submitted" });
+        }
+
+        /// <summary>Approved → Sent; the application moves to OfferPending (logged).</summary>
+        [HttpPost("{id:guid}/send")]
+        public async Task<IActionResult> Send(Guid id)
+        {
+            await sendHandler.SendAsync(id);
+            return Ok(new { message = "Offer sent" });
+        }
+
+        /// <summary>Records the candidate's response: Accept | Decline (HC114).</summary>
+        [HttpPut("respond")]
+        public async Task<IActionResult> Respond([FromBody] RespondJobOfferDto dto)
+        {
+            await respondHandler.RespondAsync(dto);
+            return Ok(new { message = "Response recorded" });
+        }
+
+        [HttpPost("{id:guid}/withdraw")]
+        public async Task<IActionResult> Withdraw(Guid id, [FromBody] Dictionary<string, string?>? body)
+        {
+            await withdrawHandler.WithdrawAsync(id, body?.GetValueOrDefault("note"));
+            return Ok(new { message = "Offer withdrawn" });
+        }
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            await deleteHandler.DeleteAsync(id);
+            return Ok(new { message = "Deleted successfully" });
+        }
+    }
+
     /// <summary>Application pipeline (HC098–HC099): candidate × requisition with stage machine + log.</summary>
     public class JobApplicationController(
         ICreateJobApplication createHandler,
@@ -275,8 +479,23 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllJobApplications getAllHandler,
         IMoveJobApplicationStage moveHandler,
         IScoreJobApplication scoreHandler,
-        IGetApplicationRanking rankingHandler) : BaseController
+        IGetApplicationRanking rankingHandler,
+        IGetHireQueue hireQueueHandler,
+        IAdoptInterviewScores adoptHandler) : BaseController
     {
+        /// <summary>Copies the consolidated per-criterion interview averages into the score sheet.</summary>
+        [HttpPost("{id:guid}/adopt-interview-scores")]
+        public async Task<IActionResult> AdoptInterviewScores(Guid id)
+        {
+            var adopted = await adoptHandler.AdoptAsync(id);
+            return Ok(new { message = $"{adopted} interview criterion average(s) adopted into the ranking" });
+        }
+
+        /// <summary>The "Hire Employee" queue — fully qualified, ranked applicants (+ waitlist).</summary>
+        [HttpGet("hire-queue")]
+        public Task<List<HireQueueRowDto>> GetHireQueue()
+            => hireQueueHandler.GetAsync();
+
         /// <summary>Paged pipeline (?status=Stage, ?parentId=requisitionId, ?categoryId=candidateId).</summary>
         [HttpGet]
         public Task<PaginatedResponse<JobApplicationDto>> GetAll([FromQuery] GetAllRequest request)

@@ -21,6 +21,10 @@ interface Props<T extends { id?: string }> {
   onAdd: () => void;
   onEdit: (record: T) => void;
   onDelete: (id: string) => void;
+  /** View-only: hides the add button and the per-row action column. */
+  readOnly?: boolean;
+  /** Optional note shown under the header (e.g. why the table is read-only). */
+  hint?: string;
 }
 
 /** Small in-profile table for employee child collections (education, experience, family). */
@@ -34,20 +38,27 @@ function ChildManager<T extends { id?: string }>({
   onAdd,
   onEdit,
   onDelete,
+  readOnly = false,
+  hint,
 }: Props<T>) {
   const { t } = useTranslation();
 
   return (
     <div className="m-1 rounded-lg border border-border bg-card">
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-foreground">{t(title)}</h3>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90"
-        >
-          <Plus className="h-3.5 w-3.5" /> {t(addLabel)}
-        </button>
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{t(title)}</h3>
+          {hint && <p className="text-xs text-muted">{t(hint)}</p>}
+        </div>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90"
+          >
+            <Plus className="h-3.5 w-3.5" /> {t(addLabel)}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -72,7 +83,7 @@ function ChildManager<T extends { id?: string }>({
                     {t(c.label)}
                   </th>
                 ))}
-                <th className="px-4 py-2 text-right font-semibold">{t("Action")}</th>
+                {!readOnly && <th className="px-4 py-2 text-right font-semibold">{t("Action")}</th>}
               </tr>
             </thead>
             <tbody>
@@ -83,17 +94,19 @@ function ChildManager<T extends { id?: string }>({
                       {c.render ? c.render(row[c.name], row) : String(row[c.name] ?? "")}
                     </td>
                   ))}
-                  <td className="px-4 py-1.5 text-right">
-                    <GridAction
-                      id={row.id || ""}
-                      record={row}
-                      showAdd={false}
-                      showEdit
-                      showDelete
-                      editHandler={() => onEdit(row)}
-                      deleteHandler={() => row.id && onDelete(row.id)}
-                    />
-                  </td>
+                  {!readOnly && (
+                    <td className="px-4 py-1.5 text-right">
+                      <GridAction
+                        id={row.id || ""}
+                        record={row}
+                        showAdd={false}
+                        showEdit
+                        showDelete
+                        editHandler={() => onEdit(row)}
+                        deleteHandler={() => row.id && onDelete(row.id)}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

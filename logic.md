@@ -384,7 +384,31 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   **probation tracking** via IsProbation + end date → status Probation); moves the application →
   Hired (logged); `Candidate.MarkHired` archives + links `HiredEmployeeId` (no FK — SQL Server
   multiple-cascade-path limit; InternalEmployeeId holds the SET NULL slot). Hired candidates can't
-  be anonymized (their identity lives on as the employee).
+  be anonymized (their identity lives on as the employee). **UI (Source/Type cleanup):** the confusing
+  `Source` dropdown (which mixed the internal-vs-external *type* with acquisition *channels*) is replaced
+  by an **Applicant Type** segmented control — **Internal** shows an Employee picker that prefills + **locks**
+  identity from `GET Employee/{id}` (source=`Internal`), **External** shows a **Source Channel** dropdown
+  (External/JobBoard/SocialMedia/Referral/WalkIn) with editable identity. The stored `CandidateSource` enum
+  is unchanged; the UI derives type = (source===`Internal`).
+- **Structured background (education & experience) — the person IS the hand-off:** the candidate's
+  education/work history is captured in the **same `hrms_EmployeeEducation` / `hrms_EmployeeExperience`
+  tables the employee profile uses** — those rows are keyed on **`PersonId`, not `EmployeeId`**. New
+  candidate-scoped handlers (`CandidateBackgroundHandlers.cs`) resolve `personId` from `Candidate.PersonId`
+  and read/write those aggregates via their existing domain `Create`/`Update`. Because hire creates the
+  Employee on that **same** PersonId, the rows are already the employee's — **zero migration, zero copy**
+  (verified E2E: candidate.PersonId == education.PersonId == experience.PersonId). Endpoints:
+  `GET/POST Candidate/{id}/education` + `…/experience`, `DELETE Candidate/education/{id}` + `…/experience/{id}`.
+  **Internal candidates are read-only** here (their person's records belong to the employee master — the
+  guard 400s on create/update/delete, GET still works). The free-text `EducationSummary`/`ExperienceSummary`
+  columns remain (dropping = destructive) but are **removed from the form**; `SkillsSummary` stays (drives
+  matching). No schema migration in this increment. **Row attachments:** education/experience rows take
+  file attachments in the SAME `hrms_EmployeeDocument` table the employee profile reads (OwnerType +
+  OwnerId = row id) via `Candidate/{id}/background-documents` (+ download/delete by document id) — so
+  they are on the employee's profile at hire automatically. `EmployeeDocument.EmployeeId` (no FK) anchors
+  to the CANDIDATE id until hire; `HireCandidate` re-anchors those rows to the new employee via
+  `EmployeeDocument.AssignEmployee()`. Deleting a row cascades its attachments. The candidate form is a
+  **tabbed profile** like the employee's (Applicant Details | Education | Experience, tab bar above the
+  persistent header) with an applicant-type **switch** (unchecked = External, checked = Internal).
 - **Candidate documents & automated migration:** `hrms_CandidateDocument` (typed, binary inline like
   EmployeeDocument, ≤5MB) — upload/list/download/delete under `Candidate/{id}/documents`. **At hire,
   every document (plus the disk-stored resume) migrates automatically** to `hrms_EmployeeDocument`
@@ -400,11 +424,196 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   skills search, All/TalentPool/Archived filters, per-candidate **application history**
   (`GET JobApplication?categoryId={candidateId}`), hired badge, and one-click **Apply to Vacancy**
   onto any open requisition.
+- **Interviews & panels (Phase 2, HC101–HC109)** — migration `AddRecruitmentInterviewsOffers`,
+  entity shapes adopted from the §7.1 review: `hrms_Interview` (round ordinal — multiple rounds are
+  first-class, NO unique stage-gate; window CHECK end>start; Scheduled→Completed/Cancelled/NoShow)
+  1─< `hrms_InterviewPanelist` (EmployeeId? SET NULL + name snapshot, or free-text external
+  panelist; lead flag; attendance Pending→Confirmed/Attended/Missed) 1─< `hrms_InterviewFeedback`
+  (0–100 CHECK, per-criterion loose FK + name snapshot like ApplicationCriterionScore; null
+  criterion = overall entry). **Interviews are the Interview LEVEL's activity**: scheduling (and
+  rescheduling) requires the application to sit AT the Interview stage — moving it there is a
+  deliberate pipeline decision, never a side effect (the earlier auto-advance was removed,
+  2026-07-11). Records stay viewable from any stage; completing/cancelling an old round remains
+  possible after the application moves on. **The panel PRE-FILLS from the vacancy's criteria
+  evaluators** (Interview-level + global; employee evaluators → employee panelists, external
+  persons/organizations → named panelists, deduplicated, first one lead) — interviewers are
+  defined ONCE on the criteria and inherited, adjustable but never re-typed. Feedback submission
+  auto-marks the panelist Attended. `GET Interview/consolidated?applicationId=` = HC109 report
+  (per-criterion averages across rounds, per-panelist totals, overall + weighted averages;
+  cancelled rounds excluded). Scheduled rounds can be rescheduled/re-panelled/deleted at the
+  Interview level; held ones are record (cancel only).
+- **Offers (Phase 2, HC111–HC114)** — `hrms_JobOffer`: tenant-scoped `OFR-####` numbering from the
+  NEW race-safe `hrms_NumberSequence` counter (§7.1 adoption #5: atomic UPDATE…OUTPUT via
+  `INumberSequenceService`, replaces count+1 for new numbers); lifecycle Draft → Submit →
+  PendingApproval (generic workflow `JobOffer`, seeded HR → Approving Authority; auto-approves when
+  no definition) → Approved → Sent → Accepted | Declined | Expired, Withdrawn from any pre-final
+  state; rejection returns to Draft for resubmission. **One ACTIVE offer per application**
+  (filtered unique index on Draft/PendingApproval/Approved/Sent + handler check). **HC113 salary
+  validation:** offer carries `SalaryScaleId?`; a salary deviating from the scale amount requires a
+  written `SalaryJustification` (400 otherwise). **The offer drives the pipeline:** Send moves the
+  application → OfferPending (logged); Decline/Withdraw/lazy **Expiry** (sent offer past its date
+  lapses on read) release it back to Selected. **Hire gate:** once any offer exists for the
+  application, `HireCandidate` requires the newest one ACCEPTED (hire also accepts stage
+  OfferPending, stamps `offer.HiredEmployeeId` — no FK, cascade-path limit). `GET
+  JobOffer/{id}/generate-letter` builds the standard letter text server-side (HC111, editable
+  Draft-only, frozen at send). UI: Interviews + Offers modals on the Applications pipeline.
+- **Pipeline lifecycle rules (end-to-end review, 2026-07-10)** — nothing in the pipeline is ever
+  STRANDED (`PipelineDisposition.CloseOutAsync`: moves active applications to a final stage with a
+  logged note and withdraws their live Draft/Approved/Sent offers; PendingApproval offers stay with
+  their running workflow):
+  1. **Vacancy fill auto-close:** when a hire fills the LAST open position, the requisition
+     auto-closes and the remaining active applicants are Rejected ("Position filled — vacancy …
+     closed"). No vacancy stays open with a pipeline nobody can hire from.
+  2. **Close/Cancel cleans up:** closing or cancelling a requisition dispositions its open
+     applications (Rejected, reason logged) and withdraws live offers — a candidate can never
+     accept an offer for a vacancy that no longer exists.
+  3. **Hire withdraws siblings:** the new employee's active applications on OTHER vacancies are
+     Withdrawn ("Hired on vacancy …").
+  4. **Anonymize withdraws first:** the erasure right ends participation — active applications are
+     Withdrawn and live offers pulled BEFORE the PII scrub (no anonymous ghost mid-pipeline).
+- **One source of truth for the screening score:** on a vacancy WITH weighted criteria, the
+  criterion engine owns `ScreeningScore` — manual scores on stage moves are rejected (400), and
+  the Move Stage form **doesn't offer the field at all** on such vacancies (it shows the current
+  auto-calculated total and keeps only the remarks input; criteria-less vacancies keep the manual
+  field). UI and API tell the same story.
+- **Offer-driven stage lock:** once ANY offer is in play (Draft / PendingApproval / Approved /
+  Sent / Accepted), manual stage moves are blocked (400 naming the offer) — the offer drives the
+  pipeline; declined/expired/withdrawn offers release the application automatically. The UI
+  disables Move Stage at OfferPending with an explanatory tooltip.
+- **Action-button sequence (Applications row, process order):** Score → Interviews → Move Stage →
+  Offers → History. Interviews are ALWAYS viewable (the record outlives the decision; the modal is
+  read-only for final applications); Offers are viewable from Selected onward and on final
+  applications (creation gated to Selected/OfferPending in the modal AND the backend); Score hides
+  entirely at final stages; History is always available.
+- **Criteria authoring flow:** Apply in the criteria popup STAGES the set locally — persisting
+  happens with Save Requisition; the summary card shows a "Not saved yet" badge until then (the
+  Apply≠Save trap is surfaced, never silent). Button reads Define / Edit / View Criteria by
+  context; the empty state offers a one-click standard template (Written Exam 50 mandatory /
+  Interview 30 @Interview / Document Review 20 @Screening).
+- **Offers are rank-gated like hires:** on a scored vacancy, an offer can only be created for an
+  ELIGIBLE candidate (never waitlisted / unscored / mandatory-failing / offer-rejected) — the
+  system never issues an offer the hire gate would refuse.
+- **Interview results adopt into the ranking (no double entry):**
+  `POST JobApplication/{id}/adopt-interview-scores` copies the consolidated per-criterion interview
+  averages into the application's criterion scores (weights inherited; overall impressions stay
+  commentary) and recomputes the weighted total — the "Adopt into Ranking" button on the
+  consolidated report.
+- **Domain rule violations are 409, never 500:** `ExceptionMiddleware` maps
+  `InvalidOperationException` (every domain state-machine guard) to **409 Conflict** carrying the
+  domain message; it is also no longer classified transient/retryable. Handler-level
+  `ValidationException` pre-checks stay 400.
+- **All recruitment numbering is race-safe:** HRQ/REQ/CND joined OFR on the per-tenant atomic
+  counter (`hrms_NumberSequence`); existing tenants' counters were seeded from their current max
+  (data migration `SeedRecruitmentNumberSequences`).
 - **Notifications** (HC079/HC087/HC099/HC100): in-app via status chips + the Dashboard approvals
   inbox; e-mail (incl. the configurable acknowledgement, HC100) is the documented hook — no SMTP
-  infrastructure exists. **Deferred to Phase 2/3:** interviews & panels (HC101–HC109), background
-  verification (HC110), offer letters/workflow (HC111–HC114), public career portal (HC093),
-  onboarding checklist (HC115–116 beyond the hire conversion now in place), job-board feeds (HC092).
+  infrastructure exists. The posting window (`OpenUntil`) deliberately does NOT block manual
+  application entry — HR may register late/walk-in applicants; requisition status is the gate.
+  **Deferred to Phase 3:** background verification (HC110), public career portal (HC093),
+  onboarding checklist (HC115–116 beyond the hire conversion now in place), job-board feeds
+  (HC092), resume parsing (HC094).
+
+### 7.0 Weighted screening criteria, ranking & the Hire Employee flow (2026-07-10)
+
+- **Criteria are percentages (migration `AddCriterionStageScope`):** each requisition criterion's
+  `Weight` is a % of the final ranking score; a non-empty set must total **exactly 100%** — enforced
+  in the domain (`SetScreeningCriteria`), the validator, and the popup criteria grid (live Σ badge,
+  Apply disabled otherwise). Criteria may be **global or scoped to one recruitment level**
+  (`AppliesAtStage?`: null = all steps; Screening / Interview / Selected). **Weights are
+  INHERITED downstream:** the screening score sheet and the interview feedback sheet display them
+  read-only; the interview consolidated report adds a `WeightedAverage`
+  (Σ criterionAvg × weight / Σ weight) alongside the plain average. The interview feedback sheet
+  shows only Interview-level + global criteria.
+- **Multiple evaluators per criterion (migration `AddCriterionEvaluators`):** a criterion carries
+  ANY number of evaluators via the child table **`hrms_CriterionEvaluator`** (criterion 1─<
+  evaluator; `EmployeeId?` SET NULL + server-resolved name snapshot for internal evaluators;
+  free-text name for `ExternalPerson` / `Organization`). The migration was **hand-reordered** to
+  copy the old single-evaluator columns into child rows BEFORE dropping them (scaffolded order
+  lost data); legacy empty-type rows were purged. Rules: an evaluator row must be a concrete kind
+  (no `None`); the same employee may appear once per criterion (validator 400); evaluator children
+  are two levels deep in the requisition aggregate — `StampCriteriaTenant` stamps both levels
+  (tenant gotcha). Zero evaluators = "scored by HR". Downstream reads (`CriterionScoreDto`
+  score sheets, ranking breakdown) expose a deterministic alphabetical **joined-names** display
+  string; requisition reads need `.Include(ScreeningCriteria).ThenInclude(Evaluators)`.
+  **Popup UI (enterprise standard):** the criteria designer is a card-per-criterion grid — name /
+  weight (with % suffix) / level / mandatory on the first row, an **evaluator chip panel** on the
+  second (removable chips with kind icons + inline add row: kind → employee picker or name);
+  toolbar has Add Criterion (pre-fills the unassigned weight) and **Distribute Evenly**; the footer
+  shows a live weight progress bar (green =100 / amber under / red over) and gates Apply.
+- **Ranking & waitlist (`RankingShared`):** `GET JobApplication/ranking?requisitionId=` assigns
+  1-based **Rank** (weighted-total order) and **HireEligibility**: the top *N in-play* candidates
+  are `Eligible` (N = NumberOfPositions − hired); the rest are `Waitlisted`. Out of play =
+  stage Rejected/Withdrawn/Hired, fails-mandatory, unscored, or **latest offer Declined/Expired**
+  (`OfferRejected`) — a declined offer automatically slides the next waitlisted candidate into the
+  window. `HireCandidate` enforces the gate whenever the vacancy has criteria: only `Eligible`
+  candidates can be hired (a 1-position vacancy → only the #1 ranked; after #1 declines, #2).
+  Requisitions WITHOUT criteria keep the legacy behavior (no rank gate).
+- **Score-button visibility rule (level-aware UI):** the "Score against the requisition criteria"
+  action on the Applications pipeline renders per row based on the application's CURRENT stage:
+  **global criteria (`AppliesAtStage` = null / "All Steps") keep the button visible and enabled on
+  every pipeline step; level-scoped criteria surface it ONLY while the application sits at that
+  level.** The backend computes this — `JobApplicationDto.ScoreableCriteriaCount` (+
+  `TotalCriteriaCount`) on both the list and by-id endpoints: `count(criteria where AppliesAtStage
+  is null OR == current stage)`. The UI renders the button iff `scoreableCriteriaCount > 0`
+  (terminal stages still disable it), and the **score sheet filters to the same subset** — scoring a
+  level-scoped criterion is only possible at its level. When criteria exist but none apply at the
+  current step, the sheet explains they belong to other recruitment levels. Scores accumulate
+  across steps: the weighted total spans everything scored so far, whichever step recorded it.
+- **Hire Employee menu (`/hireEmployee`):** `GET JobApplication/hire-queue` lists STRICTLY the
+  fully qualified, ranked applicants (Eligible + Waitlisted) of open Approved/Posted vacancies,
+  grouped per requisition with hired/positions counters, rank medals, compliance status, and a
+  per-row `CanHire`/`BlockedReason`. The **"Hire as Employee" action moved here** from the
+  candidate form (which now shows a pointer note); the hire modal (employee number, vacant
+  position, nature, probation) is otherwise unchanged.
+
+### 7.1 Recruitment DB architecture review — decisions (2026-07-10)
+
+An externally-proposed standalone `RecruitmentModule` database (separate .mdf, `Recruitment` schema,
+BIGINT identity keys, INSTEAD-OF-INSERT numbering triggers, bespoke approval + pipeline-step tables)
+was reviewed and **rejected as-is**; selected ideas were adopted. Rationale (binding for Phase 2+):
+
+**Rejected — and why:**
+1. **Separate database**: SQL Server FKs cannot cross databases → every link to `CorePerson`/
+   `hrms_Employee` becomes a comment, not a constraint (and its `PersonID BIGINT` cannot even
+   type-match our `uniqueidentifier` PKs). One DB, one EF migration pipeline stays the rule.
+2. **No TenantId**: the design is single-tenant; CERP is Finbuckle multi-tenant in a shared DB.
+   Every recruitment table keeps `TenantId` — non-negotiable.
+3. **BIGINT keys**: rejected for consistency with `BaseEntity`/Guid across the whole product.
+4. **Bespoke `RequisitionApproval`**: the generic workflow engine remains the ONLY approval
+   mechanism (its `UNIQUE(RequisitionID, ApprovalLevel)` would also break resubmission loops).
+5. **`PipelineStep`/`ApplicationProgress` stage-gate**: `UNIQUE(ApplicationID, StepID)` forbids
+   re-entering a stage (second interview round, re-screening) — our stage machine + append-only
+   `hrms_JobApplicationStageLog` already satisfy HC098–HC102 without that defect.
+6. **Numbering triggers**: EF Core 7+ `OUTPUT`-clause conflicts (`.HasTrigger()` burden), and the
+   INSTEAD-OF trigger silently drops any column not re-listed in it. Also the script's
+   `GenerateRequisitionNumber()` UDF is invalid SQL — `NEXT VALUE FOR` is illegal in scalar UDFs
+   (verified: **Msg 11719**). Numbering stays app-layer and tenant-scoped.
+7. **Soft-delete + ON DELETE CASCADE together**: contradictory; we keep RESTRICT + archival status
+   semantics (and respect SQL Server's multiple-cascade-path limits — cf. `HiredEmployeeId` no-FK).
+8. **`UNIQUE(PersonID, PostingID)`**: one pipeline per person per VACANCY is the rule — uniqueness
+   stays requisition-scoped (`hrms_JobApplication` unique (CandidateId, RequisitionId)).
+
+**Adopted (into our conventions, Phase 2 targets):**
+1. **Interview trio shape** — `hrms_Interview` (schedule/format/status) 1─< `hrms_InterviewPanelist`
+   (lead flag, attendance) 1─< `hrms_InterviewFeedback` (per-criterion score+comments, FK'ing
+   `hrms_RequisitionScreeningCriterion` — NOT a free-text criterion name) for HC101–HC109.
+2. **Offer entity shape** — `hrms_JobOffer` (tenant-scoped number, Draft→Sent→Accepted/Declined/
+   Withdrawn/Expired, expiry + response tracking, hiring manager, `HiredEmployeeId?` handoff feeding
+   the existing person-based `HireCandidate`); salary validated against the salary scale (HC113).
+3. **DB-level range CHECK constraints** as defense-in-depth on new Phase 2 tables (interview
+   end > start; feedback score 0–100; offer salary > 0) — FluentValidation guards only the API
+   path. (An expiry-vs-start CHECK was considered and dropped: the response deadline legitimately
+   precedes the employment start date.)
+4. **`(TenantId, Status)`-leading composite indexes** on hot recruitment tables
+   (`hrms_JobRequisition`, `hrms_JobApplication` + (RequisitionId, Stage), `hrms_Candidate`) in the
+   Phase 2 migration — the tenant filter leads every query, so EF's per-FK indexes alone don't cover.
+5. **Numbering race fix before the public portal (HC093)**: `count+1` numbering is race-prone under
+   concurrent creates (unique index turns the race into an error today). Replace with a per-tenant
+   counter row updated atomically (`UPDATE … SET Value += 1 OUTPUT inserted.Value`) + retry.
+
+**Deferred, not rejected:** a separate `JobPosting` table (multiple channel-specific postings per
+requisition, per-channel windows/URLs) — revisit with job-board feeds (HC092, Phase 3); today
+HC088's Internal/External/Both posting on the requisition satisfies requirements.
 
 ## 8. Database entity relationships (key foreign keys)
 
@@ -439,11 +648,17 @@ Planning:  hrms_WorkforcePlan ── StartFiscalYearId → Core.FiscalYear, Orga
 Recruit:   hrms_HiringRequest ── OrganizationUnitId, PositionClassId (Restrict); WorkforcePlanId? (no FK)
            hrms_JobRequisition ── HiringRequestId (Restrict), OrganizationUnitId, PositionClassId,
                                   WorkLocationId?, SalaryScaleId? ── 1─< hrms_RequisitionScreeningCriterion
-                                  (criterion.EvaluatorEmployeeId? → hrms_Employee SET NULL)
+                                  ── 1─< hrms_CriterionEvaluator (EmployeeId? → hrms_Employee SET NULL)
            hrms_Candidate ── InternalEmployeeId? → hrms_Employee (SET NULL), PersonId? → CorePerson (Restrict),
                              HiredEmployeeId? (no FK — cascade-path limit) ── 1─< hrms_CandidateDocument (Cascade)
            hrms_JobApplication ── CandidateId, RequisitionId (Restrict; unique pair)
                                   1─< hrms_JobApplicationStageLog, 1─< hrms_ApplicationCriterionScore
+           hrms_Interview ── ApplicationId (Cascade) ── 1─< hrms_InterviewPanelist (EmployeeId? SET NULL)
+                                                        ── 1─< hrms_InterviewFeedback (criterion loose)
+           hrms_JobOffer ── ApplicationId (Restrict), HiringManagerEmployeeId? (SET NULL),
+                            SalaryScaleId? (Restrict), HiredEmployeeId? (no FK);
+                            unique ACTIVE offer per application (filtered index)
+           hrms_NumberSequence ── PK (TenantId, Key) — atomic per-tenant counters (no BaseEntity)
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).

@@ -18,6 +18,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public interface IMoveJobApplicationStage { Task MoveAsync(MoveApplicationStageDto dto); }
     public interface IScoreJobApplication { Task ScoreAsync(ScoreApplicationDto dto); }
     public interface IGetApplicationRanking { Task<List<ApplicationRankingRowDto>> GetAsync(Guid requisitionId); }
+    public interface IAdoptInterviewScores { Task<int> AdoptAsync(Guid applicationId); }
 
     internal static class ApplicationShared
     {
@@ -103,6 +104,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class MoveJobApplicationStage(
         IRepository<JobApplication> repository,
         IRepository<JobApplicationStageLog> logRepository,
+        IRepository<JobRequisition> requisitionRepository,
+        IRepository<JobOffer> offerRepository,
         ICurrentUserService currentUser,
         IValidator<MoveApplicationStageDto> validator,
         ILogger<MoveJobApplicationStage> logger) : IMoveJobApplicationStage
@@ -127,8 +130,34 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             if (application.Stage == stage)
                 throw new ValidationException("stage", $"The application is already at the {stage} stage.");
 
+            // SEQUENCE RULE: once an offer is in play (live or accepted), the OFFER drives the
+            // pipeline — a manual move would strand it (e.g. a Sent offer on a Rejected
+            // application). Respond to / withdraw the offer first; declined, expired and
+            // withdrawn offers release the application automatically.
+            var drivingOffer = await offerRepository.GetAll()
+                .Where(o => o.ApplicationId == dto.Id &&
+                    (o.Status == OfferStatus.Draft || o.Status == OfferStatus.PendingApproval ||
+                     o.Status == OfferStatus.Approved || o.Status == OfferStatus.Sent ||
+                     o.Status == OfferStatus.Accepted))
+                .OrderByDescending(o => o.CreatedAt)
+                .Select(o => new { o.OfferNumber, o.Status })
+                .FirstOrDefaultAsync();
+            if (drivingOffer is not null)
+                throw new ValidationException("stage",
+                    $"Offer {drivingOffer.OfferNumber} ({drivingOffer.Status}) drives this application — " +
+                    "respond to it or withdraw it before moving the stage manually.");
+
             if (dto.ScreeningScore.HasValue || !string.IsNullOrWhiteSpace(dto.ScreeningRemarks))
+            {
+                // One source of truth: on a vacancy with weighted criteria, the criterion engine
+                // OWNS the screening total — a manually typed score would be silently overwritten
+                // by the next recompute (and could corrupt the hire-eligibility ranking).
+                if (dto.ScreeningScore.HasValue && await requisitionRepository.GetAll()
+                        .AnyAsync(q => q.Id == application.RequisitionId && q.ScreeningCriteria.Any()))
+                    throw new ValidationException("screeningScore",
+                        "This vacancy is scored against weighted criteria — record scores on the score sheet; the total is calculated automatically.");
                 application.RecordScreening(dto.ScreeningScore, dto.ScreeningRemarks);
+            }
 
             var before = application.StageLog.Select(l => l.Id).ToHashSet();
             application.MoveToStage(stage, dto.Note, currentUser.GetCurrentUserName());
@@ -197,19 +226,138 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
-    // ---- Ranking: auto-calculated weighted totals per vacancy (requirement #1) ----------------
+    // ---- Adopt interview results into the ranking (no double entry) -----------------------
+
+    /// <summary>
+    /// Copies the consolidated per-criterion interview averages into the application's criterion
+    /// scores in one click — panelist feedback flows into the weighted ranking without anyone
+    /// retyping numbers. Criterion-linked feedback only; overall impressions stay commentary.
+    /// </summary>
+    public class AdoptInterviewScores(
+        IRepository<JobApplication> repository,
+        IRepository<ApplicationCriterionScore> scoreRepository,
+        IGetInterviewConsolidated consolidatedHandler,
+        ICurrentUserService currentUser,
+        ILogger<AdoptInterviewScores> logger) : IAdoptInterviewScores
+    {
+        public async Task<int> AdoptAsync(Guid applicationId)
+        {
+            var application = await repository.GetAll()
+                    .Include(a => a.CriterionScores)
+                    .FirstOrDefaultAsync(a => a.Id == applicationId)
+                ?? throw new NotFoundException(nameof(JobApplication), applicationId.ToString());
+            if (application.Stage is ApplicationStage.Rejected or ApplicationStage.Withdrawn or ApplicationStage.Hired)
+                throw new ValidationException("applicationId", $"A {application.Stage} application can no longer be scored.");
+
+            var consolidated = await consolidatedHandler.GetAsync(applicationId);
+            var adoptable = consolidated.Criteria.Where(c => c.CriterionId.HasValue).ToList();
+            if (adoptable.Count == 0)
+                throw new ValidationException("applicationId",
+                    "No criterion-linked interview feedback to adopt yet — panelists score named criteria first.");
+
+            var before = application.CriterionScores.Select(s => s.Id).ToHashSet();
+            foreach (var c in adoptable)
+                application.ScoreCriterion(c.CriterionId!.Value, c.Average, Math.Max(1, c.Weight),
+                    $"Adopted from the interview consolidated report ({c.Scores} score(s))",
+                    currentUser.GetCurrentUserName());
+            application.RecomputeScreeningScore();
+
+            foreach (var score in application.CriterionScores.Where(s => !before.Contains(s.Id)))
+            {
+                if (string.IsNullOrEmpty(score.TenantId))
+                    score.TenantId = application.TenantId;
+                await scoreRepository.AddAsync(score);
+            }
+            repository.UpdateAsync(application);
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Adopted {Count} interview criterion average(s) into Application {Id} (total {Total})",
+                adoptable.Count, applicationId, application.ScreeningScore);
+            return adoptable.Count;
+        }
+    }
+
+    // ---- Ranking + waitlist: weighted totals → 1st/2nd/3rd, top-N eligibility ------------------
+
+    internal static class RankingShared
+    {
+        /// <summary>A declined or lapsed offer takes the candidate out of contention.</summary>
+        internal static readonly OfferStatus[] RejectedOffers = [OfferStatus.Declined, OfferStatus.Expired];
+
+        /// <summary>
+        /// Assigns 1-based ranks (scored rows, weighted-total order) and the hire-eligibility
+        /// window: only the top N in-play candidates are Eligible (N = positions minus hires);
+        /// the rest are Waitlisted. A candidate whose latest offer was declined/expired drops out
+        /// of contention, sliding the next waitlisted candidate up automatically.
+        /// </summary>
+        internal static void AssignRanksAndEligibility(
+            List<ApplicationRankingRowDto> rows, int numberOfPositions,
+            IReadOnlyDictionary<Guid, OfferStatus> latestOfferByApplication)
+        {
+            var rank = 0;
+            foreach (var r in rows.Where(r => r.TotalScore.HasValue))
+                r.Rank = ++rank;
+
+            foreach (var r in rows)
+                if (latestOfferByApplication.TryGetValue(r.ApplicationId, out var status))
+                    r.LatestOfferStatus = status.ToString();
+
+            var openSlots = Math.Max(0, numberOfPositions - rows.Count(r => r.Stage == nameof(ApplicationStage.Hired)));
+
+            bool OfferRejected(ApplicationRankingRowDto r) =>
+                latestOfferByApplication.TryGetValue(r.ApplicationId, out var s) && RejectedOffers.Contains(s);
+
+            var inPlay = rows.Where(r =>
+                    r.TotalScore.HasValue && !r.FailsMandatory &&
+                    r.Stage is not (nameof(ApplicationStage.Rejected) or nameof(ApplicationStage.Withdrawn) or nameof(ApplicationStage.Hired)) &&
+                    !OfferRejected(r))
+                .ToList();   // preserves weighted-total order
+            for (var i = 0; i < inPlay.Count; i++)
+                inPlay[i].HireEligibility = i < openSlots ? "Eligible" : "Waitlisted";
+
+            foreach (var r in rows.Where(r => r.HireEligibility is null))
+                r.HireEligibility =
+                    r.Stage == nameof(ApplicationStage.Hired) ? "Hired" :
+                    r.Stage is nameof(ApplicationStage.Rejected) or nameof(ApplicationStage.Withdrawn) ? "OutOfContention" :
+                    OfferRejected(r) ? "OfferRejected" :
+                    r.FailsMandatory ? "FailsMandatory" :
+                    "NotScored";
+        }
+
+        /// <summary>The newest offer per application (drives contention + display).</summary>
+        internal static async Task<Dictionary<Guid, OfferStatus>> LatestOffersAsync(
+            IRepository<JobOffer> offers, IReadOnlyCollection<Guid> applicationIds)
+        {
+            var rows = await offers.GetAll()
+                .Where(o => applicationIds.Contains(o.ApplicationId))
+                .Select(o => new { o.ApplicationId, o.Status, o.CreatedAt })
+                .ToListAsync();
+            return rows
+                .GroupBy(o => o.ApplicationId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(o => o.CreatedAt).First().Status);
+        }
+    }
 
     public class GetApplicationRanking(
         IRepository<JobApplication> repository,
         IRepository<JobRequisition> requisitionRepository,
-        IRepository<Candidate> candidateRepository) : IGetApplicationRanking
+        IRepository<Candidate> candidateRepository,
+        IRepository<JobOffer> offerRepository) : IGetApplicationRanking
     {
         public async Task<List<ApplicationRankingRowDto>> GetAsync(Guid requisitionId)
         {
+            var requisition = await requisitionRepository.GetAll()
+                    .Where(q => q.Id == requisitionId)
+                    .Select(q => new { q.NumberOfPositions })
+                    .FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(JobRequisition), requisitionId.ToString());
             var criteria = await requisitionRepository.GetAll()
                 .Where(q => q.Id == requisitionId)
                 .SelectMany(q => q.ScreeningCriteria)
-                .Select(c => new { c.Id, c.Name, c.IsMandatory, c.Weight, c.EvaluatorType, c.EvaluatorName })
+                .Select(c => new
+                {
+                    c.Id, c.Name, c.IsMandatory, c.Weight, c.AppliesAtStage,
+                    EvaluatorNames = c.Evaluators.OrderBy(e => e.Name).Select(e => e.Name).ToList()
+                })
                 .ToListAsync();
             var criteriaById = criteria.ToDictionary(c => c.Id);
 
@@ -224,7 +372,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 .Select(c => new { c.Id, c.CandidateNumber, c.FirstName, c.FatherName, c.GrandFatherName })
                 .ToDictionaryAsync(c => c.Id, c => c);
 
-            return applications
+            var rows = applications
                 .Select(a =>
                 {
                     var scoresByCriterion = a.CriterionScores.ToDictionary(s => s.CriterionId);
@@ -237,8 +385,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                             CriterionName = c.Name,
                             IsMandatory = c.IsMandatory,
                             Weight = c.Weight,
-                            EvaluatorType = c.EvaluatorType.ToString(),
-                            EvaluatorName = c.EvaluatorName,
+                            EvaluatorName = c.EvaluatorNames.Count > 0 ? string.Join(", ", c.EvaluatorNames) : null,
+                            AppliesAtStage = c.AppliesAtStage.HasValue ? c.AppliesAtStage.Value.ToString() : null,
                             Score = s?.Score,
                             Remarks = s?.Remarks,
                             ScoredBy = s?.ScoredBy,
@@ -265,6 +413,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 })
                 .OrderByDescending(r => r.TotalScore ?? -1)
                 .ToList();
+
+            var latestOffers = await RankingShared.LatestOffersAsync(
+                offerRepository, applications.Select(a => a.Id).ToList());
+            RankingShared.AssignRanksAndEligibility(rows, requisition.NumberOfPositions, latestOffers);
+            return rows;
         }
     }
 
@@ -303,7 +456,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var criteria = await requisitionRepository.GetAll()
                 .Where(q => q.Id == a.RequisitionId)
                 .SelectMany(q => q.ScreeningCriteria)
-                .Select(c => new { c.Id, c.Name, c.IsMandatory, c.Weight, c.EvaluatorType, c.EvaluatorName })
+                .Select(c => new
+                {
+                    c.Id, c.Name, c.IsMandatory, c.Weight, c.AppliesAtStage,
+                    EvaluatorNames = c.Evaluators.OrderBy(e => e.Name).Select(e => e.Name).ToList()
+                })
                 .ToListAsync();
             var scoresByCriterion = a.CriterionScores.ToDictionary(s => s.CriterionId);
             dto.CriterionScores = criteria.Select(c =>
@@ -315,14 +472,16 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     CriterionName = c.Name,
                     IsMandatory = c.IsMandatory,
                     Weight = c.Weight,
-                    EvaluatorType = c.EvaluatorType.ToString(),
-                    EvaluatorName = c.EvaluatorName,
+                    EvaluatorName = c.EvaluatorNames.Count > 0 ? string.Join(", ", c.EvaluatorNames) : null,
+                    AppliesAtStage = c.AppliesAtStage.HasValue ? c.AppliesAtStage.Value.ToString() : null,
                     Score = s?.Score,
                     Remarks = s?.Remarks,
                     ScoredBy = s?.ScoredBy,
                     ScoredAt = s?.ScoredAt
                 };
             }).ToList();
+            dto.TotalCriteriaCount = criteria.Count;
+            dto.ScoreableCriteriaCount = criteria.Count(c => c.AppliesAtStage == null || c.AppliesAtStage == a.Stage);
             return dto;
         }
     }
@@ -377,14 +536,29 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 })
                 .ToListAsync();
 
+            // Criterion level-scopes per requisition: the UI shows the score button only when the
+            // application's CURRENT stage has scoreable criteria (global ones always count).
+            var requisitionIds = rows.Select(x => x.Application.RequisitionId).Distinct().ToList();
+            var criteriaStages = (await requisitionRepository.GetAll()
+                    .Where(q => requisitionIds.Contains(q.Id))
+                    .SelectMany(q => q.ScreeningCriteria)
+                    .Select(c => new { c.RequisitionId, c.AppliesAtStage })
+                    .ToListAsync())
+                .GroupBy(c => c.RequisitionId)
+                .ToDictionary(g => g.Key, g => g.Select(c => c.AppliesAtStage).ToList());
+
             var data = rows.Select(x =>
             {
                 var name = x.Candidate is null
                     ? null
                     : string.Join(" ", new[] { x.Candidate.FirstName, x.Candidate.FatherName, x.Candidate.GrandFatherName }
                         .Where(p => !string.IsNullOrWhiteSpace(p)));
-                return ApplicationShared.ToDto(x.Application, x.Candidate?.CandidateNumber, name,
+                var dto = ApplicationShared.ToDto(x.Application, x.Candidate?.CandidateNumber, name,
                     x.Requisition?.RequisitionNumber, x.Requisition?.Title, includeLog: false);
+                var stages = criteriaStages.GetValueOrDefault(x.Application.RequisitionId) ?? [];
+                dto.TotalCriteriaCount = stages.Count;
+                dto.ScoreableCriteriaCount = stages.Count(st => st is null || st == x.Application.Stage);
+                return dto;
             }).ToList();
 
             return new PaginatedResponse<JobApplicationDto> { Total = total, Data = data };

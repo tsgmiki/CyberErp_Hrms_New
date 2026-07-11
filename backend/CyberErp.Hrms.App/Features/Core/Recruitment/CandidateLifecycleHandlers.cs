@@ -115,6 +115,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<EmployeeDocument> employeeDocumentRepository,
         IRepository<Position> positionRepository,
         IRepository<SalaryScale> salaryScaleRepository,
+        IRepository<JobOffer> offerRepository,
+        IRepository<JobRequisition> requisitionRepository,
+        IGetApplicationRanking rankingHandler,
         IConfiguration configuration,
         ICurrentUserService currentUser,
         IValidator<HireCandidateDto> validator,
@@ -145,14 +148,44 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 throw new ValidationException("documents",
                     $"Mandatory compliance documents are missing: {string.Join(", ", missing)}.");
 
-            // The hire executes a SELECTED application (final decision recorded on the pipeline).
+            // The hire executes a SELECTED application — or one at OfferPending when the offer
+            // process drives it (Phase 2, HC111–HC114).
             var application = await applicationRepository.GetAll()
                     .Include(a => a.StageLog)
-                    .Where(a => a.CandidateId == dto.Id && a.Stage == ApplicationStage.Selected)
+                    .Where(a => a.CandidateId == dto.Id &&
+                        (a.Stage == ApplicationStage.Selected || a.Stage == ApplicationStage.OfferPending))
                     .OrderByDescending(a => a.AppliedAt)
                     .FirstOrDefaultAsync()
                 ?? throw new ValidationException("id",
                     "The candidate has no application at the Selected stage — complete the selection first.");
+
+            // Offer gate (HC114): once the formal offer process is used, hire requires acceptance.
+            var latestOffer = await offerRepository.GetAll()
+                .Where(o => o.ApplicationId == application.Id)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
+            if (latestOffer is not null && latestOffer.Status != OfferStatus.Accepted)
+                throw new ValidationException("id",
+                    $"The latest offer ({latestOffer.OfferNumber}) is {latestOffer.Status} — an ACCEPTED offer is required to hire.");
+
+            // Ranking gate: when the vacancy is scored against weighted criteria, only the top-N
+            // eligible candidates can be hired (N = open positions); the rest are waitlisted and
+            // slide up only when a higher-ranked candidate drops out (offer declined/expired).
+            var rankingRows = await rankingHandler.GetAsync(application.RequisitionId);
+            var myRow = rankingRows.FirstOrDefault(r => r.ApplicationId == application.Id);
+            if (myRow is not null && myRow.TotalCriteria > 0 && myRow.HireEligibility != "Eligible")
+                throw new ValidationException("id", myRow.HireEligibility switch
+                {
+                    "Waitlisted" =>
+                        $"The candidate is ranked #{myRow.Rank} and WAITLISTED — only the top {rankingRows.Count(r => r.HireEligibility == "Eligible")} eligible candidate(s) can be hired for this vacancy.",
+                    "NotScored" =>
+                        "The candidate has not been scored against the vacancy's weighted criteria — complete the evaluation first.",
+                    "FailsMandatory" =>
+                        "The candidate failed a mandatory criterion and cannot be hired for this vacancy.",
+                    "OfferRejected" =>
+                        "The candidate rejected the offer for this vacancy and is out of contention.",
+                    _ => $"The candidate is not hire-eligible for this vacancy ({myRow.HireEligibility})."
+                });
 
             if (await employeeRepository.GetAll().AnyAsync(e => e.EmployeeNumber == dto.EmployeeNumber))
                 throw new DuplicateException(nameof(Employee), nameof(dto.EmployeeNumber), dto.EmployeeNumber);
@@ -203,6 +236,19 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     employee.Id, EmployeeDocumentOwner.Recruitment, employee.Id,
                     d.FileName, d.ContentType, d.Content));
 
+            // Education/experience attachments were anchored to the candidate id while the person
+            // was only a candidate — re-anchor them to the new employee so the employee-side
+            // document guards recognize them (the rows themselves follow the shared person).
+            var backgroundDocs = await employeeDocumentRepository.GetAll()
+                .Where(d => d.EmployeeId == dto.Id &&
+                            (d.OwnerType == EmployeeDocumentOwner.Education || d.OwnerType == EmployeeDocumentOwner.Experience))
+                .ToListAsync();
+            foreach (var d in backgroundDocs)
+            {
+                d.AssignEmployee(employee.Id);
+                employeeDocumentRepository.UpdateAsync(d);
+            }
+
             // The resume file (stored on disk) migrates too.
             if (!string.IsNullOrEmpty(candidate.ResumeFileName))
             {
@@ -229,6 +275,49 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             candidate.MarkHired(employee.Id);
             candidateRepository.UpdateAsync(candidate);
+
+            // The accepted offer records the employee its acceptance became (HC114 handoff).
+            if (latestOffer is not null && latestOffer.Status == OfferStatus.Accepted)
+            {
+                latestOffer.AssignHiredEmployee(employee.Id);
+                offerRepository.UpdateAsync(latestOffer);
+            }
+
+            // Vacancy fill tracking: when this hire fills the LAST open position, the requisition
+            // auto-closes and the remaining active applicants are dispositioned (logged) — no
+            // vacancy stays open with a pipeline nobody can hire from.
+            var requisition = await requisitionRepository.GetAll()
+                .FirstOrDefaultAsync(q => q.Id == application.RequisitionId);
+            if (requisition is not null)
+            {
+                var hiredCount = await applicationRepository.GetAll()
+                    .CountAsync(a => a.RequisitionId == requisition.Id && a.Stage == ApplicationStage.Hired) + 1;
+                if (hiredCount >= requisition.NumberOfPositions &&
+                    requisition.Status is RequisitionStatus.Approved or RequisitionStatus.Posted)
+                {
+                    requisition.Close();
+                    requisitionRepository.UpdateAsync(requisition);
+                    var remaining = await applicationRepository.GetAll()
+                        .Include(a => a.StageLog)
+                        .Where(a => a.RequisitionId == requisition.Id && a.Id != application.Id)
+                        .ToListAsync();
+                    await PipelineDisposition.CloseOutAsync(applicationRepository, stageLogRepository,
+                        offerRepository, remaining, ApplicationStage.Rejected,
+                        $"Position filled — vacancy {requisition.RequisitionNumber} closed",
+                        currentUser.GetCurrentUserName());
+                }
+            }
+
+            // The new employee's OTHER active applications (other vacancies) are withdrawn —
+            // nobody keeps interviewing someone who has already joined.
+            var otherApplications = await applicationRepository.GetAll()
+                .Include(a => a.StageLog)
+                .Where(a => a.CandidateId == candidate.Id && a.Id != application.Id)
+                .ToListAsync();
+            await PipelineDisposition.CloseOutAsync(applicationRepository, stageLogRepository,
+                offerRepository, otherApplications, ApplicationStage.Withdrawn,
+                $"Hired on vacancy {requisition?.RequisitionNumber ?? application.RequisitionId.ToString()}",
+                currentUser.GetCurrentUserName());
 
             // The assigned seat is now occupied.
             await EmployeeShared.MarkPositionOccupiedAsync(dto.PositionId, positionRepository);

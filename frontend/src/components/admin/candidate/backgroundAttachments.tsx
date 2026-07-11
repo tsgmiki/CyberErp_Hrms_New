@@ -1,0 +1,163 @@
+"use client";
+import { useCallback, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Paperclip, Upload, Download, Trash2, FileText } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import Loading from "../../common/loader/loader";
+import {
+  getCandidateBackgroundDocuments,
+  uploadCandidateBackgroundDocument,
+  deleteCandidateBackgroundDocument,
+  downloadCandidateBackgroundDocument,
+  type CandidateBackgroundOwnerType,
+} from "@/services/admin/recruitment";
+import type { EmployeeDocumentModel } from "@/models";
+
+interface Props {
+  candidateId: string;
+  ownerType: CandidateBackgroundOwnerType;
+  ownerId: string;
+  /** Internal candidates view the employee's attachments read-only. */
+  readOnly?: boolean;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Files attached to one candidate education/experience record. Stored in the SAME document table
+ * the employee profile reads, so at hire they are already on the employee's record (shared person).
+ */
+function BackgroundAttachments({ candidateId, ownerType, ownerId, readOnly }: Props) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const queryKey = ["candidateBackgroundDocuments", ownerType, ownerId];
+  const { data: docs, isLoading } = useQuery({
+    queryKey,
+    queryFn: () => getCandidateBackgroundDocuments(candidateId, ownerType, ownerId),
+    enabled: !!ownerId,
+  });
+
+  const refreshParentCount = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: [ownerType === "Education" ? "candidateEducations" : "candidateExperiences", candidateId],
+    });
+  }, [queryClient, ownerType, candidateId]);
+
+  const onPick = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      e.target.value = "";
+      if (!files.length) return;
+      setBusy(true);
+      setError(null);
+      for (const file of files) {
+        const res = await uploadCandidateBackgroundDocument(candidateId, ownerType, ownerId, file);
+        if (!res.ok) {
+          setError(res.message);
+          break;
+        }
+      }
+      setBusy(false);
+      queryClient.invalidateQueries({ queryKey });
+      refreshParentCount();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [candidateId, ownerType, ownerId, queryClient, refreshParentCount],
+  );
+
+  const onDelete = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      await deleteCandidateBackgroundDocument(id);
+      setBusy(false);
+      queryClient.invalidateQueries({ queryKey });
+      refreshParentCount();
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, refreshParentCount],
+  );
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-card p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+          <Paperclip size={15} /> {t("Attachments")}
+          <span className="text-xs font-normal text-muted">
+            ({t("transferred to the employee record at hire")})
+          </span>
+        </h4>
+        {!readOnly && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.jpg,.jpeg,.png,.webp,.gif"
+              onChange={onPick}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => inputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+            >
+              <Upload size={14} /> {t("Upload")}
+            </button>
+          </>
+        )}
+      </div>
+
+      {error && <p className="mb-2 text-xs text-error">{error}</p>}
+      {isLoading && <Loading />}
+
+      {!isLoading && (docs?.length ?? 0) === 0 && (
+        <p className="py-3 text-center text-xs text-muted">{t("No attachments yet.")}</p>
+      )}
+
+      <ul className="space-y-1">
+        {(docs ?? []).map((doc: EmployeeDocumentModel) => (
+          <li
+            key={doc.id}
+            className="flex items-center gap-2 rounded-md border border-border/60 px-2.5 py-1.5 text-sm"
+          >
+            <FileText size={15} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 truncate text-foreground" title={doc.fileName}>
+              {doc.fileName}
+            </span>
+            <span className="shrink-0 text-xs text-muted">{formatSize(doc.fileSize)}</span>
+            <button
+              type="button"
+              title={t("Download")}
+              onClick={() => downloadCandidateBackgroundDocument(doc.id, doc.fileName)}
+              className="shrink-0 rounded p-1 text-primary hover:bg-primary/10"
+            >
+              <Download size={15} />
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                title={t("Delete")}
+                disabled={busy}
+                onClick={() => onDelete(doc.id)}
+                className="shrink-0 rounded p-1 text-error hover:bg-error/10 disabled:opacity-50"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default BackgroundAttachments;

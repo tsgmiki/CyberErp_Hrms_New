@@ -17,6 +17,7 @@ public static class WorkflowEntityTypes
     public const string WorkforcePlan = "WorkforcePlan";
     public const string HiringRequest = "HiringRequest";
     public const string JobRequisition = "JobRequisition";
+    public const string JobOffer = "JobOffer";
 }
 
 /// <summary>

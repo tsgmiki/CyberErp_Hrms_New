@@ -2,6 +2,7 @@ using System.Text;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -26,12 +27,18 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     internal static class RequisitionShared
     {
-        /// <summary>The repository stamps only aggregate roots — cascade-inserted criteria copy it here.</summary>
+        /// <summary>The repository stamps only aggregate roots — cascade-inserted criteria (and
+        /// their evaluator children) copy it here.</summary>
         internal static void StampCriteriaTenant(JobRequisition requisition)
         {
             foreach (var c in requisition.ScreeningCriteria)
+            {
                 if (string.IsNullOrEmpty(c.TenantId))
                     c.TenantId = requisition.TenantId;
+                foreach (var e in c.Evaluators)
+                    if (string.IsNullOrEmpty(e.TenantId))
+                        e.TenantId = c.TenantId;
+            }
         }
 
         internal static JobRequisitionDto ToDto(
@@ -79,9 +86,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         Name = c.Name,
                         IsMandatory = c.IsMandatory,
                         Weight = c.Weight,
-                        EvaluatorType = c.EvaluatorType.ToString(),
-                        EvaluatorEmployeeId = c.EvaluatorEmployeeId,
-                        EvaluatorName = c.EvaluatorName
+                        Evaluators = c.Evaluators.OrderBy(e => e.Name).Select(e => new CriterionEvaluatorDto
+                        {
+                            EvaluatorType = e.EvaluatorType.ToString(),
+                            EmployeeId = e.EmployeeId,
+                            Name = e.Name
+                        }).ToList(),
+                        AppliesAtStage = c.AppliesAtStage?.ToString()
                     })
                     .ToList()
             };
@@ -98,20 +109,23 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<WorkLocation> workLocationRepository,
         IRepository<SalaryScale> salaryScaleRepository,
         IRepository<Employee> employeeRepository,
+        INumberSequenceService numberSequence,
         IWorkflowGate workflowGate,
         IValidator<SaveJobRequisitionDto> validator,
         ILogger<SaveJobRequisition> logger) : ISaveJobRequisition
     {
         /// <summary>
-        /// Builds criterion specs, resolving employee-evaluator display names server-side (never
-        /// trusting client text) and validating the referenced employees exist.
+        /// Builds criterion specs, resolving employee-evaluator display names server-side in one
+        /// batch across ALL criteria (never trusting client text) and validating the referenced
+        /// employees exist. A criterion may carry any number of evaluators.
         /// </summary>
         private async Task<List<ScreeningCriterionSpec>> BuildCriterionSpecsAsync(SaveJobRequisitionDto dto)
         {
             var employeeIds = dto.ScreeningCriteria
-                .Where(c => string.Equals(c.EvaluatorType, "Employee", StringComparison.OrdinalIgnoreCase)
-                    && c.EvaluatorEmployeeId.HasValue)
-                .Select(c => c.EvaluatorEmployeeId!.Value)
+                .SelectMany(c => c.Evaluators)
+                .Where(e => string.Equals(e.EvaluatorType, "Employee", StringComparison.OrdinalIgnoreCase)
+                    && e.EmployeeId.HasValue)
+                .Select(e => e.EmployeeId!.Value)
                 .Distinct()
                 .ToList();
             var employeeNames = await employeeRepository.GetAll()
@@ -126,15 +140,22 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var specs = new List<ScreeningCriterionSpec>();
             foreach (var c in dto.ScreeningCriteria)
             {
-                var type = Enum.Parse<CriterionEvaluatorType>(c.EvaluatorType, true);
-                string? name = c.EvaluatorName;
-                if (type == CriterionEvaluatorType.Employee)
+                var evaluators = new List<CriterionEvaluatorSpec>();
+                foreach (var e in c.Evaluators)
                 {
-                    if (!c.EvaluatorEmployeeId.HasValue || !employeeNames.TryGetValue(c.EvaluatorEmployeeId.Value, out name))
-                        throw new NotFoundException(nameof(Employee), c.EvaluatorEmployeeId?.ToString() ?? "(none)");
+                    var type = Enum.Parse<CriterionEvaluatorType>(e.EvaluatorType, true);
+                    var name = e.Name;
+                    if (type == CriterionEvaluatorType.Employee)
+                    {
+                        if (!e.EmployeeId.HasValue || !employeeNames.TryGetValue(e.EmployeeId.Value, out name))
+                            throw new NotFoundException(nameof(Employee), e.EmployeeId?.ToString() ?? "(none)");
+                    }
+                    evaluators.Add(new CriterionEvaluatorSpec(type, e.EmployeeId, name));
                 }
-                specs.Add(new ScreeningCriterionSpec(c.Name, c.IsMandatory, c.Weight, type,
-                    c.EvaluatorEmployeeId, name));
+                var appliesAt = string.IsNullOrEmpty(c.AppliesAtStage)
+                    ? (ApplicationStage?)null
+                    : Enum.Parse<ApplicationStage>(c.AppliesAtStage, true);
+                specs.Add(new ScreeningCriterionSpec(c.Name, c.IsMandatory, c.Weight, evaluators, appliesAt));
             }
             return specs;
         }
@@ -180,7 +201,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.JobRequisition, dto.Id.Value);
 
                 var entity = await repository.GetAll()
-                        .Include(q => q.ScreeningCriteria)
+                        .Include(q => q.ScreeningCriteria).ThenInclude(c => c.Evaluators)
                         .FirstOrDefaultAsync(q => q.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(JobRequisition), dto.Id.Value.ToString());
                 if (entity.Status is not (RequisitionStatus.Draft or RequisitionStatus.Rejected))
@@ -204,7 +225,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             await EnsureWithinRequestAsync(request, dto.NumberOfPositions, null);
 
-            var number = await RecruitmentShared.NextNumberAsync(repository, "REQ");
+            var number = await RecruitmentShared.NextNumberAsync(numberSequence, "JobRequisition", "REQ");
             var created = JobRequisition.Create(number, request.Id, request.OrganizationUnitId,
                 request.PositionClassId, dto.NumberOfPositions, employmentType, title, description,
                 qualifications, experience, skills, dto.WorkLocationId, salaryScaleId);
@@ -372,6 +393,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class CloseJobRequisition(
         IRepository<JobRequisition> repository,
+        IRepository<JobApplication> applicationRepository,
+        IRepository<JobApplicationStageLog> stageLogRepository,
+        IRepository<JobOffer> offerRepository,
+        ICurrentUserService currentUser,
         ILogger<CloseJobRequisition> logger) : ICloseJobRequisition
     {
         public async Task CloseAsync(Guid id)
@@ -383,14 +408,29 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             q.Close();
             repository.UpdateAsync(q);
+
+            // Nothing is stranded: open applications are dispositioned, live offers withdrawn.
+            var openApplications = await applicationRepository.GetAll()
+                .Include(a => a.StageLog)
+                .Where(a => a.RequisitionId == id)
+                .ToListAsync();
+            await PipelineDisposition.CloseOutAsync(applicationRepository, stageLogRepository, offerRepository,
+                openApplications, ApplicationStage.Rejected,
+                $"Vacancy {q.RequisitionNumber} closed", currentUser.GetCurrentUserName());
+
             await repository.SaveChangesAsync();
-            logger.LogInformation("Closed JobRequisition {Id}", id);
+            logger.LogInformation("Closed JobRequisition {Id} ({Open} open application(s) dispositioned)",
+                id, openApplications.Count(a => PipelineDisposition.IsActive(a.Stage)));
         }
     }
 
     public class CancelJobRequisition(
         IRepository<JobRequisition> repository,
+        IRepository<JobApplication> applicationRepository,
+        IRepository<JobApplicationStageLog> stageLogRepository,
+        IRepository<JobOffer> offerRepository,
         IWorkflowGate workflowGate,
+        ICurrentUserService currentUser,
         ILogger<CancelJobRequisition> logger) : ICancelJobRequisition
     {
         public async Task CancelAsync(Guid id)
@@ -404,6 +444,15 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             q.Cancel();
             repository.UpdateAsync(q);
+
+            var openApplications = await applicationRepository.GetAll()
+                .Include(a => a.StageLog)
+                .Where(a => a.RequisitionId == id)
+                .ToListAsync();
+            await PipelineDisposition.CloseOutAsync(applicationRepository, stageLogRepository, offerRepository,
+                openApplications, ApplicationStage.Rejected,
+                $"Vacancy {q.RequisitionNumber} cancelled", currentUser.GetCurrentUserName());
+
             await repository.SaveChangesAsync();
             logger.LogInformation("Cancelled JobRequisition {Id}", id);
         }
@@ -424,7 +473,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public async Task<JobRequisitionDto> GetAsync(Guid id)
         {
             var q = await repository.GetAll()
-                    .Include(x => x.ScreeningCriteria)
+                    .Include(x => x.ScreeningCriteria).ThenInclude(c => c.Evaluators)
                     .FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
 

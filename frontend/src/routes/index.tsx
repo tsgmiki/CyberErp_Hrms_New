@@ -46,6 +46,7 @@ const JobRequisitionPage = memo(lazy(() => import("@/pages/admin/jobRequisition"
 const CandidatePage = memo(lazy(() => import("@/pages/admin/candidate")));
 const JobApplicationPage = memo(lazy(() => import("@/pages/admin/jobApplication")));
 const TalentPoolPage = memo(lazy(() => import("@/pages/admin/talentPool")));
+const HireEmployeePage = memo(lazy(() => import("@/pages/admin/hireEmployee")));
 export default function AppRoutes() {
   return (
     <Routes>
@@ -106,6 +107,7 @@ export default function AppRoutes() {
         <Route path="candidate" element={<CandidatePage />} />
         <Route path="jobApplication" element={<JobApplicationPage />} />
         <Route path="talentPool" element={<TalentPoolPage />} />
+        <Route path="hireEmployee" element={<HireEmployeePage />} />
        </Route>
     </Routes>
   );
