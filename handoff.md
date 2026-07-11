@@ -22,8 +22,8 @@
   interviews/panels/offers, ranked hiring + Hire Employee menu, multi-evaluator criteria,
   pipeline-lifecycle hardening, level-gated interviews, reset script; migrations
   `AddRecruitmentInterviewsOffers` → `AddCriterionStageScope` → `AddCriterionEvaluators` →
-  `SeedRecruitmentNumberSequences`, all applied to CERP). History through `709ece0` is pushed to
-  origin; `d7058db`→`077e531` are **local only** (not pushed).
+  `SeedRecruitmentNumberSequences`, all applied to CERP). **Everything is pushed to origin**
+  (`feature/hrms-buildout` in sync as of 2026-07-11).
 - **Uncommitted:** nothing (this docs-sync edit only). Untracked: `~$ Management.docx` (Office
   lock file — do not commit; consider gitignoring `~$*`).
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
