@@ -17,14 +17,15 @@
   migration `AddDynamicClearanceConfig`) → `709ece0` (docs sync) → `2887f96` (employee reinstatement +
   clearance certificate; migration `AddTerminationReinstatement`).
 - Later local commits: `346170b` (Workforce Planning) → `059f3b0` (Recruitment Phase 1 + candidate
-  lifecycle, migrations `AddRecruitmentPhase1` + `AddRecruitmentCandidateLifecycle`, applied). History
-  through `709ece0` is pushed to origin; `d7058db`→`059f3b0` are **local only** (not pushed).
-- **Uncommitted:** recruitment end-to-end hardening (§1 item 1, data migration
-  `SeedRecruitmentNumberSequences` APPLIED) + multi-evaluator criteria + popup redesign (§1 item 2,
-  migration `AddCriterionEvaluators` APPLIED) + weighted criteria/ranking/Hire-Employee menu
-  (§1 item 3, migration `AddCriterionStageScope` APPLIED) + Recruitment Phase 2 (§1 item 4 —
-  interviews/panels/offers, migration `AddRecruitmentInterviewsOffers` APPLIED) + the candidate
-  structured-background increment (§1 item 5; no migration) + the §7.1 DB-review doc updates.
+  lifecycle, migrations `AddRecruitmentPhase1` + `AddRecruitmentCandidateLifecycle`, applied) →
+  `077e531` (**Recruitment Phase 2 + enterprise hardening** — everything in §1 items 1–9:
+  interviews/panels/offers, ranked hiring + Hire Employee menu, multi-evaluator criteria,
+  pipeline-lifecycle hardening, level-gated interviews, reset script; migrations
+  `AddRecruitmentInterviewsOffers` → `AddCriterionStageScope` → `AddCriterionEvaluators` →
+  `SeedRecruitmentNumberSequences`, all applied to CERP). History through `709ece0` is pushed to
+  origin; `d7058db`→`077e531` are **local only** (not pushed).
+- **Uncommitted:** nothing (this docs-sync edit only). Untracked: `~$ Management.docx` (Office
+  lock file — do not commit; consider gitignoring `~$*`).
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
