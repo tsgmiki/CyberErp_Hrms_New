@@ -1,6 +1,8 @@
 import { api } from "@/utils/apiClient";
 import { createPagedQuery } from "@/template/createPagedQuery";
+import { createSaveService } from "@/template/createSaveService";
 import { createDeleteService } from "@/template/createDeleteService";
+import { CandidateEducationSchema, CandidateExperienceSchema } from "@/components/util/validation";
 import errorMessageParser from "@/components/util/errorMessageParser";
 import isValidJson from "@/components/util/validateJson";
 import type {
@@ -8,8 +10,8 @@ import type {
   RecruitmentBudgetRowModel,
   JobRequisitionModel,
   CandidateModel,
-  CandidateEducationModel,
-  CandidateExperienceModel,
+  EmployeeEducationModel,
+  EmployeeExperienceModel,
   CandidateMatchModel,
   JobApplicationModel,
   CandidateDocumentModel,
@@ -281,47 +283,28 @@ export async function hireCandidate(
    already carries a PersonId, the rows become the employee's automatically at hire — no copy.
    The endpoints always POST (the handler upserts on the dto's id); read-only for internal. */
 
-const numOrNull = (v: unknown) =>
-  v === undefined || v === null || String(v) === "" ? null : Number(v);
-
-/** POST to a candidate sub-resource (create/update decided server-side by the dto id). */
-async function saveCandidateChild(path: string, data: Record<string, unknown>): Promise<SaveResult> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/${path}`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    const text = await response.text();
-    if (!response.ok) {
-      const parsed = isValidJson(text) ? JSON.parse(text) : { message: text };
-      return { status: "error", message: errorMessageParser(parsed.errors || parsed), zodErrors: {} };
-    }
-    const parsed = isValidJson(text) ? JSON.parse(text) : {};
-    return { status: "success", message: parsed?.message ?? "Successfully saved", zodErrors: {}, id: parsed?.id };
-  } catch {
-    return { status: "error", message: "Network error", zodErrors: {} };
-  }
-}
-
+// Candidate edu/exp use the SAME shared form components as the Employee module. Saving therefore uses
+// the same createSaveService + FormData path (so dynamic custom fields and the isExternal/isGovernmental
+// toggles gather identically); `method:"POST"` targets the candidate upsert endpoint, and the candidate
+// schemas omit employeeId (the owner rides in the URL). Records return the shared Employee model shape.
 export const getCandidateEducations = (candidateId: string) =>
-  api.get<CandidateEducationModel[]>(`Candidate/${candidateId}/education`);
-export const saveCandidateEducation = (candidateId: string, data: CandidateEducationModel) =>
-  saveCandidateChild(`Candidate/${candidateId}/education`, {
-    ...data,
-    graduationYear: numOrNull(data.graduationYear),
-  });
+  api.get<EmployeeEducationModel[]>(`Candidate/${candidateId}/education`);
+export const saveCandidateEducation = (candidateId: string, fd: FormData) =>
+  createSaveService(`Candidate/${candidateId}/education`, CandidateEducationSchema, {
+    integerFields: ["graduationYear"],
+    customFields: true,
+    method: "POST",
+  })(fd);
 export const deleteCandidateEducation = createDeleteService("Candidate/education");
 
 export const getCandidateExperiences = (candidateId: string) =>
-  api.get<CandidateExperienceModel[]>(`Candidate/${candidateId}/experience`);
-export const saveCandidateExperience = (candidateId: string, data: CandidateExperienceModel) =>
-  saveCandidateChild(`Candidate/${candidateId}/experience`, {
-    ...data,
-    startDate: data.startDate || null,
-    endDate: data.endDate || null,
-  });
+  api.get<EmployeeExperienceModel[]>(`Candidate/${candidateId}/experience`);
+export const saveCandidateExperience = (candidateId: string, fd: FormData) =>
+  createSaveService(`Candidate/${candidateId}/experience`, CandidateExperienceSchema, {
+    booleanFields: ["isExternal", "isGovernmental"],
+    customFields: true,
+    method: "POST",
+  })(fd);
 export const deleteCandidateExperience = createDeleteService("Candidate/experience");
 
 /* Attachments on one education/experience row — same EmployeeDocument storage as the employee

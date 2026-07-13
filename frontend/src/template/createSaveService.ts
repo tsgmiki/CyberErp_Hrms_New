@@ -26,6 +26,9 @@ export function createSaveService(
     numberFields?: string[];
     /** Gather `cf_`-prefixed fields (dynamic custom fields, HC021) into a nested `customFields` dict. */
     customFields?: boolean;
+    /** Force the HTTP method instead of POST-create / PUT-update — e.g. an upsert endpoint that only
+     * accepts POST (the record id still rides in the body so the server decides create vs update). */
+    method?: "POST" | "PUT";
   },
 ) {
   const path = resource.replace(/^\//, "").replace(/\/$/, "");
@@ -88,7 +91,7 @@ export function createSaveService(
 
     try {
       const response = await fetch(`${API_BASE_URL}/${path}`, {
-        method: isUpdate ? "PUT" : "POST",
+        method: options?.method ?? (isUpdate ? "PUT" : "POST"),
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

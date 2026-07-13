@@ -39,6 +39,31 @@
 
 ## 1. Most recent changes (latest first)
 
+00. **Employee & Candidate Education/Experience unified via a SHARED component (BE+FE, NO migration).**
+    The two modules now render the SAME section components, so the forms are identical and custom
+    fields defined once reflect in both. **Uncommitted.**
+    - **Shared FE components** `components/common/personBackground/{educationSection,experienceSection}.tsx`
+      + `types.ts` (`BackgroundDataSource<T>` adapter: ownerId/queryKey/list/save/remove/ownerIdField/
+      renderAttachments/readOnly/hint). The employee (`admin/employee/*`) and candidate
+      (`admin/candidate/*`) section files are now **thin wrappers** passing their adapter — the fields,
+      columns, External/Governmental toggle rows, custom fields (HC021) and attachments live once.
+    - **Custom fields reflect automatically:** definitions are OwnerType-scoped (Education/Experience),
+      not module-scoped, so the shared `useCustomFields("Education"/"Experience")` shows the same fields
+      in both, and values live on the same person-owned record. Candidate handlers
+      (`CandidateBackgroundHandlers.cs`) gained `CustomFields` on the 4 DTOs + `ICustomFieldService`
+      Apply/GetForOwners/Delete (mirroring the employee handlers).
+    - **Candidate Experience now identical:** DTOs gained `IsExternal`/`IsGovernmental`; the save
+      **honors them** (stopped forcing `isExternal:true`); Get projects them; the External/Internal/Gov
+      badge column + toggle-row UI now render for candidates too.
+    - **Save unified on `createSaveService`+FormData:** candidate save switched off the bespoke
+      `saveCandidateChild` JSON helper to `createSaveService(\`Candidate/{id}/education|experience\`, …,
+      { customFields:true, method:"POST" })` — added a **`method` override** to `createSaveService` so
+      it can force POST to the candidate upsert endpoint (no backend route change). New candidate zod
+      schemas (no employeeId, which rides in the URL). Candidate get services now return the shared
+      `EmployeeEducationModel`/`EmployeeExperienceModel`.
+    - E2E 14/14 (shared def reflects on candidate edu+exp, isExternal honored incl. false, governmental,
+      required→400, unknown→400). Both build; test tenants purged.
+
 0. **SMTP credentials moved to .NET user-secrets (config/ops, no code change).** `Email:UserName` /
    `Email:Password` are now in user-secrets (UserSecretsId `5d5ac854-…` on `CyberErp.Hrms.Api`, loaded
    automatically in Development) — set them with `dotnet user-secrets set "Email:UserName" <v>` /

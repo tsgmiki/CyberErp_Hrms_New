@@ -193,31 +193,8 @@ export interface CandidateModel extends AbstractModel {
   complianceComplete?: boolean;
 }
 
-/**
- * Candidate education — the SAME person-owned row the employee profile uses.
- * Written against the candidate's PersonId so it becomes the employee's automatically at hire.
- */
-export interface CandidateEducationModel extends AbstractModel {
-  candidateId?: string;
-  educationLevel?: string;
-  institution?: string;
-  fieldOfStudy?: string;
-  qualification?: string;
-  graduationYear?: number;
-  remark?: string;
-  documentCount?: number;
-}
-
-/** Candidate work experience — the same person-owned row the employee profile uses. */
-export interface CandidateExperienceModel extends AbstractModel {
-  candidateId?: string;
-  organization?: string;
-  jobTitle?: string;
-  startDate?: string;
-  endDate?: string;
-  responsibilities?: string;
-  documentCount?: number;
-}
+// Candidate education/experience are the SAME person-owned rows as the employee profile, so they use
+// the shared EmployeeEducation/ExperienceModel types — see components/common/personBackground.
 
 /** One ranked internal-matching result for a vacancy (HC090). */
 export interface CandidateMatchModel {

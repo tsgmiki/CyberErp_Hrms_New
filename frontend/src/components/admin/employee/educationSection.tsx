@@ -1,141 +1,28 @@
 "use client";
-import FormProviders from "@/components/common/formProvider/formProvider";
-import { memo, useCallback, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslation } from "react-i18next";
-import { Paperclip } from "lucide-react";
+import { memo, useMemo } from "react";
 import type { EmployeeEducationModel } from "@/models";
 import { getEducations, saveEducation, deleteEducation } from "@/services/admin/employee/children";
-import ChildManager, { type ChildColumn } from "./childManager";
+import EducationSection from "@/components/common/personBackground/educationSection";
+import type { BackgroundDataSource } from "@/components/common/personBackground/types";
 import DocumentAttachments from "./documentAttachments";
-import { useCustomFields } from "./customFieldsHook";
-import { StatusMessage } from "../../common/statusMessage/status";
 
-const FormProvider = memo(FormProviders);
-
-const docCountCell = (v: unknown) => {
-  const n = Number(v) || 0;
-  return n > 0 ? (
-    <span className="inline-flex items-center gap-1 text-xs text-foreground">
-      <Paperclip size={12} /> {n}
-    </span>
-  ) : (
-    "—"
+/** Employee education — the SAME shared Education section the Candidate module uses. */
+function EmployeeEducationSection({ employeeId }: { employeeId: string }) {
+  const ds: BackgroundDataSource<EmployeeEducationModel> = useMemo(
+    () => ({
+      ownerId: employeeId,
+      queryKey: ["employeeEducations", employeeId],
+      list: () => getEducations(employeeId),
+      save: (fd) => saveEducation(fd),
+      remove: (id) => deleteEducation(id),
+      ownerIdField: { name: "employeeId", value: employeeId },
+      renderAttachments: (recordId) => (
+        <DocumentAttachments employeeId={employeeId} ownerType="Education" ownerId={recordId} />
+      ),
+    }),
+    [employeeId],
   );
-};
-
-const COLUMNS: ChildColumn<EmployeeEducationModel>[] = [
-  { name: "educationLevel", label: "Level" },
-  { name: "institution", label: "Institution" },
-  { name: "fieldOfStudy", label: "Field of Study" },
-  { name: "qualification", label: "Qualification" },
-  { name: "graduationYear", label: "Graduation Year" },
-  { name: "documentCount", label: "Documents", render: docCountCell },
-];
-
-function EducationSection({ employeeId }: { employeeId: string }) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<EmployeeEducationModel | null>(null);
-  const [formState, setFormState] = useState<any>({});
-  const [formData, setFormData] = useState<EmployeeEducationModel>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const customFields = useCustomFields("Education");
-
-  const queryKey = ["employeeEducations", employeeId];
-  const { data: rows, isLoading } = useQuery({
-    queryKey,
-    queryFn: () => getEducations(employeeId),
-  });
-
-  const { mutate: remove } = useMutation({
-    mutationFn: (id: string) => deleteEducation(id),
-    onSuccess: (r: any) => {
-      if (r?.status === "error") return setError(r.message);
-      setError(null);
-      queryClient.invalidateQueries({ queryKey });
-    },
-  });
-
-  const open = (record: EmployeeEducationModel | null) => {
-    setEditing(record);
-    setFormData(record ?? {});
-    customFields.hydrate(record?.customFields);
-    setFormState({});
-    setShowForm(true);
-  };
-
-  const changeHandler = useCallback((e: any) => {
-    const { name, value } = e.target;
-    setFormData((p) => ({ ...p, [name]: value }));
-  }, []);
-
-  const submitHandler = async (e: any) => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    setIsSaving(true);
-    const result = await saveEducation(fd);
-    setFormState(result);
-    setIsSaving(false);
-    if (result.status === "success") {
-      queryClient.invalidateQueries({ queryKey });
-      setShowForm(false);
-    }
-  };
-
-  return (
-    <>
-      <ChildManager
-        title="Educational Background"
-        addLabel="Add Education"
-        columns={COLUMNS}
-        rows={rows}
-        isLoading={isLoading}
-        error={error}
-        onAdd={() => open(null)}
-        onEdit={open}
-        onDelete={(id) => remove(id)}
-      />
-      {showForm && (
-        <FormProvider
-          form={{
-            columnsNo: 2,
-            submitHandler,
-            fieldLayout: "auth",
-            isPending: isSaving,
-            SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Education" : "Add Education",
-            description: "Academic qualifications and certifications.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
-            submitBtnTitle: "Save",
-            components: [
-              { name: "educationLevel", label: "Education Level", placeholder: "e.g. BSc, MSc, Certification", required: true, value: formData.educationLevel, onChange: changeHandler, error: formState?.zodErrors?.educationLevel, type: "text" },
-              { name: "institution", label: "Institution", required: true, value: formData.institution, onChange: changeHandler, error: formState?.zodErrors?.institution, type: "text" },
-              { name: "fieldOfStudy", label: "Field of Study", value: formData.fieldOfStudy, onChange: changeHandler, type: "text" },
-              { name: "qualification", label: "Qualification", value: formData.qualification, onChange: changeHandler, type: "text" },
-              { name: "graduationYear", label: "Graduation Year", value: formData.graduationYear, onChange: changeHandler, inputType: "number", type: "text" },
-              { name: "remark", label: "Remark", value: formData.remark, onChange: changeHandler, type: "textarea", colSpan: "full" },
-              ...customFields.components,
-              { name: "employeeId", value: employeeId, type: "hidden" },
-              { name: "id", value: formData.id, type: "hidden" },
-            ],
-          }}
-        >
-          <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
-          {formData.id ? (
-            <DocumentAttachments employeeId={employeeId} ownerType="Education" ownerId={formData.id} />
-          ) : (
-            <p className="mt-3 text-xs text-muted">{t("Save the record first to attach documents.")}</p>
-          )}
-        </FormProvider>
-      )}
-    </>
-  );
+  return <EducationSection ds={ds} />;
 }
 
-export default EducationSection;
+export default memo(EmployeeEducationSection);

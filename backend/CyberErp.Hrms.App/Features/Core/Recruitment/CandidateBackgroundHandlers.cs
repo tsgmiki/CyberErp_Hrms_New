@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -22,6 +23,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public int? GraduationYear { get; set; }
         public string? Remark { get; set; }
         public int DocumentCount { get; set; }
+        /// <summary>Dynamic custom-field values (HC021, OwnerType=Education) — shared with the employee form.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveCandidateEducationDto
@@ -34,6 +37,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? Qualification { get; set; }
         public int? GraduationYear { get; set; }
         public string? Remark { get; set; }
+        /// <summary>Submitted values for the Education form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveCandidateEducationDtoValidator : AbstractValidator<SaveCandidateEducationDto>
@@ -56,7 +61,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public string? Responsibilities { get; set; }
+        public bool IsExternal { get; set; }
+        public bool IsGovernmental { get; set; }
         public int DocumentCount { get; set; }
+        /// <summary>Dynamic custom-field values (HC021, OwnerType=Experience) — shared with the employee form.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveCandidateExperienceDto
@@ -68,6 +77,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public string? Responsibilities { get; set; }
+        public bool IsExternal { get; set; }
+        public bool IsGovernmental { get; set; }
+        /// <summary>Submitted values for the Experience form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveCandidateExperienceDtoValidator : AbstractValidator<SaveCandidateExperienceDto>
@@ -175,12 +188,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class GetCandidateEducations(
         IRepository<EmployeeEducation> repository,
         IRepository<Candidate> candidateRepository,
-        IRepository<EmployeeDocument> documentRepository) : IGetCandidateEducations
+        IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields) : IGetCandidateEducations
     {
         public async Task<List<CandidateEducationDto>> GetAsync(Guid candidateId)
         {
             var personId = await CandidateBackgroundGuard.ResolvePersonAsync(candidateRepository, candidateId, forWrite: false);
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.PersonId == personId)
                 .OrderByDescending(x => x.GraduationYear)
                 .Select(x => new CandidateEducationDto
@@ -197,12 +211,20 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Education && d.OwnerId == x.Id)
                 })
                 .ToListAsync();
+
+            // Same OwnerType=Education pool the employee form reads → definitions & values are shared.
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Education, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+            return list;
         }
     }
 
     public class SaveCandidateEducation(
         IRepository<EmployeeEducation> repository,
         IRepository<Candidate> candidateRepository,
+        ICustomFieldService customFields,
         IValidator<SaveCandidateEducationDto> validator,
         ILogger<SaveCandidateEducation> logger) : ISaveCandidateEducation
     {
@@ -218,6 +240,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     ?? throw new NotFoundException(nameof(EmployeeEducation), dto.Id.Value.ToString());
                 entity.Update(dto.EducationLevel, dto.Institution, dto.FieldOfStudy, dto.Qualification, dto.GraduationYear, dto.Remark);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Education, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated candidate education {Id}", entity.Id);
                 return entity.Id;
@@ -226,6 +249,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var created = EmployeeEducation.Create(personId, dto.EducationLevel, dto.Institution,
                 dto.FieldOfStudy, dto.Qualification, dto.GraduationYear, dto.Remark);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Education, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created candidate education {Id} on Person {PersonId}", created.Id, personId);
             return created.Id;
@@ -236,6 +260,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<EmployeeEducation> repository,
         IRepository<Candidate> candidateRepository,
         IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteCandidateEducation> logger) : IDeleteCandidateEducation
     {
         public async Task DeleteAsync(Guid id)
@@ -246,8 +271,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             // Reject deletes on an internal candidate's shared record (employee master owns it).
             await CandidateBackgroundGuard.EnsurePersonWritableAsync(candidateRepository, entity.PersonId);
 
-            // Attached documents cascade with the record (no FK — polymorphic owner).
+            // Attached documents and custom-field values cascade with the record (polymorphic, no FK).
             await DocumentStorage.DeleteForOwnerAsync(documentRepository, EmployeeDocumentOwner.Education, id);
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Education, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted candidate education {Id}", id);
@@ -259,12 +285,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class GetCandidateExperiences(
         IRepository<EmployeeExperience> repository,
         IRepository<Candidate> candidateRepository,
-        IRepository<EmployeeDocument> documentRepository) : IGetCandidateExperiences
+        IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields) : IGetCandidateExperiences
     {
         public async Task<List<CandidateExperienceDto>> GetAsync(Guid candidateId)
         {
             var personId = await CandidateBackgroundGuard.ResolvePersonAsync(candidateRepository, candidateId, forWrite: false);
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.PersonId == personId)
                 .OrderByDescending(x => x.StartDate)
                 .Select(x => new CandidateExperienceDto
@@ -276,16 +303,25 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     StartDate = x.StartDate,
                     EndDate = x.EndDate,
                     Responsibilities = x.Responsibilities,
+                    IsExternal = x.IsExternal,
+                    IsGovernmental = x.IsGovernmental,
                     DocumentCount = documentRepository.GetAll()
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Experience && d.OwnerId == x.Id)
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Experience, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+            return list;
         }
     }
 
     public class SaveCandidateExperience(
         IRepository<EmployeeExperience> repository,
         IRepository<Candidate> candidateRepository,
+        ICustomFieldService customFields,
         IValidator<SaveCandidateExperienceDto> validator,
         ILogger<SaveCandidateExperience> logger) : ISaveCandidateExperience
     {
@@ -299,18 +335,21 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value && x.PersonId == personId)
                     ?? throw new NotFoundException(nameof(EmployeeExperience), dto.Id.Value.ToString());
-                // Candidate prior jobs are EXTERNAL experience (another employer).
+                // Identical to the employee Experience form — the user-set external/governmental flags are honored.
                 entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities,
-                    isExternal: true, isGovernmental: entity.IsGovernmental);
+                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated candidate experience {Id}", entity.Id);
                 return entity.Id;
             }
 
             var created = EmployeeExperience.Create(personId, dto.Organization, dto.JobTitle,
-                dto.StartDate, dto.EndDate, dto.Responsibilities, isExternal: true);
+                dto.StartDate, dto.EndDate, dto.Responsibilities,
+                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created candidate experience {Id} on Person {PersonId}", created.Id, personId);
             return created.Id;
@@ -321,6 +360,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<EmployeeExperience> repository,
         IRepository<Candidate> candidateRepository,
         IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteCandidateExperience> logger) : IDeleteCandidateExperience
     {
         public async Task DeleteAsync(Guid id)
@@ -331,6 +371,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             await CandidateBackgroundGuard.EnsurePersonWritableAsync(candidateRepository, entity.PersonId);
 
             await DocumentStorage.DeleteForOwnerAsync(documentRepository, EmployeeDocumentOwner.Experience, id);
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Experience, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted candidate experience {Id}", id);

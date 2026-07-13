@@ -1338,6 +1338,16 @@ export const EmployeeExperienceSchema = z.object({
   organization: z.string().min(1, "Organization is Required").max(300),
   jobTitle: z.string().min(1, "Job Title is Required").max(200),
 });
+// Candidate education/experience use the SAME shared form; the owner (candidateId) rides in the URL,
+// so these mirror the employee schemas without the employeeId field.
+export const CandidateEducationSchema = z.object({
+  educationLevel: z.string().min(1, "Education Level is Required").max(100),
+  institution: z.string().min(1, "Institution is Required").max(300),
+});
+export const CandidateExperienceSchema = z.object({
+  organization: z.string().min(1, "Organization is Required").max(300),
+  jobTitle: z.string().min(1, "Job Title is Required").max(200),
+});
 export const EmployeeDependentSchema = z.object({
   employeeId: z.string().min(1),
   fullName: z.string().min(1, "Full Name is Required").max(200),

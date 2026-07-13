@@ -88,8 +88,6 @@ export type {
   CandidateDocumentModel,
   JobRequisitionModel,
   CandidateModel,
-  CandidateEducationModel,
-  CandidateExperienceModel,
   CandidateMatchModel,
   ApplicationStageLogModel,
   BulkMoveResultModel,
