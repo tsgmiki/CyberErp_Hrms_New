@@ -39,6 +39,15 @@
 
 ## 1. Most recent changes (latest first)
 
+0. **SMTP credentials moved to .NET user-secrets (config/ops, no code change).** `Email:UserName` /
+   `Email:Password` are now in user-secrets (UserSecretsId `5d5ac854-…` on `CyberErp.Hrms.Api`, loaded
+   automatically in Development) — set them with `dotnet user-secrets set "Email:UserName" <v>` /
+   `"Email:Password" <v>` from `backend/CyberErp.Hrms.Api`. Committed `appsettings.json` keeps the
+   non-secret Email structure with **empty** UserName/Password placeholders (real values come from
+   user-secrets locally, env vars elsewhere). The Gmail app password that had been sitting in
+   `appsettings.json` was scrubbed before it ever hit git history. **The earlier §1 buildout is now
+   committed** (`23a2169` on `feature/hrms-buildout`).
+
 1. **Dynamic Form / Tab Builder (SAP/Dynamics-style custom tabs) — new reusable subsystem**
    (BE+FE; migrations `AddDynamicForms` + `IndexDynamicFormRecordCreatedAt` **applied to CERP**; both
    build; E2E 22/22 + paging 6/6 then purged. **Uncommitted.**)
