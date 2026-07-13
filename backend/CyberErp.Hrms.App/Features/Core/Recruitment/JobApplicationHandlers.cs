@@ -16,9 +16,22 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public interface IGetJobApplicationById { Task<JobApplicationDto> GetAsync(Guid id); }
     public interface IGetAllJobApplications { Task<PaginatedResponse<JobApplicationDto>> GetAsync(GetAllRequest request); }
     public interface IMoveJobApplicationStage { Task MoveAsync(MoveApplicationStageDto dto); }
+    public interface IBulkMoveApplicationStage { Task<BulkMoveResultDto> MoveAsync(BulkMoveApplicationStageDto dto); }
     public interface IScoreJobApplication { Task ScoreAsync(ScoreApplicationDto dto); }
     public interface IGetApplicationRanking { Task<List<ApplicationRankingRowDto>> GetAsync(Guid requisitionId); }
     public interface IAdoptInterviewScores { Task<int> AdoptAsync(Guid applicationId); }
+    public interface IGetEvaluatorContext { Task<EvaluatorContextDto> GetAsync(); }
+
+    /// <summary>What the current login may evaluate — drives the UI's evaluator-scoped view.</summary>
+    public class EvaluatorContextDto
+    {
+        /// <summary>True when the current user is an employee assigned as a criterion evaluator.</summary>
+        public bool IsConstrainedEvaluator { get; set; }
+        /// <summary>The criteria this evaluator may score (empty when unconstrained).</summary>
+        public List<Guid> AssignedCriterionIds { get; set; } = [];
+        /// <summary>The requisitions whose applicants this evaluator may see/score.</summary>
+        public List<Guid> AssignedRequisitionIds { get; set; } = [];
+    }
 
     internal static class ApplicationShared
     {
@@ -117,7 +130,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var stage = Enum.Parse<ApplicationStage>(dto.Stage, true);
             // Offer/Hired transitions belong to the offer & onboarding stage of the module.
-            if (stage is ApplicationStage.OfferPending or ApplicationStage.Hired)
+            if (stage is ApplicationStage.OfferPending or ApplicationStage.OfferAccepted or ApplicationStage.Hired)
                 throw new ValidationException("stage", "Offer and hire stages are driven by the offer process.");
 
             var application = await repository.GetAll()
@@ -176,10 +189,108 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     // ---- Evaluator scoring: per-criterion scores → auto total (requirement #1) --------------
 
+    /// <summary>
+    /// Shared rules that guard criterion scoring: WHEN scores may change (evaluation is locked once
+    /// the applicant is Selected or beyond) and WHO may change them (an employee who is assigned as
+    /// a criterion evaluator may only score the criteria assigned to them).
+    /// </summary>
+    internal static class EvaluationGuard
+    {
+        /// <summary>The pipeline stages during which an application is still being evaluated.</summary>
+        internal static readonly ApplicationStage[] EvaluatableStages =
+        [
+            ApplicationStage.Received, ApplicationStage.Screening,
+            ApplicationStage.Shortlisted, ApplicationStage.Interview
+        ];
+
+        /// <summary>Scores lock once the evaluation is concluded (Selected → decision made).</summary>
+        internal static void EnsureEvaluatable(ApplicationStage stage)
+        {
+            if (!EvaluatableStages.Contains(stage))
+                throw new ValidationException("id",
+                    $"The evaluation is complete — a {stage} applicant's scores are locked and can no longer be changed.");
+        }
+
+        /// <summary>The employee behind the current login (null when the account has no employee link).</summary>
+        internal static async Task<Guid?> CurrentEmployeeIdAsync(IRepository<User> users, Guid? userId)
+        {
+            if (!userId.HasValue) return null;
+            return await users.GetAll()
+                .Where(u => u.Id == userId.Value)
+                .Select(u => u.EmployeeId)
+                .FirstOrDefaultAsync();
+        }
+
+        /// <summary>
+        /// What the current login is allowed to evaluate. A "constrained evaluator" is a logged-in
+        /// employee who is assigned as a criterion evaluator ANYWHERE — they may only see/score the
+        /// applicants of the requisitions they are assigned to, and only their own criteria. Anyone
+        /// else (no employee link, or an employee never assigned as an evaluator) is unconstrained.
+        /// </summary>
+        internal sealed record EvaluatorContext(
+            Guid? EmployeeId,
+            bool IsConstrained,
+            HashSet<Guid> AssignedCriterionIds,
+            HashSet<Guid> AssignedRequisitionIds);
+
+        internal static async Task<EvaluatorContext> GetContextAsync(
+            IRepository<User> users,
+            IRepository<CriterionEvaluator> evaluators,
+            IRepository<JobRequisition> requisitions,
+            Guid? userId)
+        {
+            var employeeId = await CurrentEmployeeIdAsync(users, userId);
+            if (!employeeId.HasValue) return new(null, false, [], []);
+
+            var criterionIds = (await evaluators.GetAll()
+                .Where(ev => ev.EmployeeId == employeeId.Value)
+                .Select(ev => ev.CriterionId)
+                .ToListAsync()).ToHashSet();
+            if (criterionIds.Count == 0) return new(employeeId, false, [], []);
+
+            var requisitionIds = (await requisitions.GetAll()
+                .SelectMany(q => q.ScreeningCriteria)
+                .Where(c => criterionIds.Contains(c.Id))
+                .Select(c => c.RequisitionId)
+                .ToListAsync()).ToHashSet();
+
+            return new(employeeId, true, criterionIds, requisitionIds);
+        }
+
+        /// <summary>
+        /// Enforces evaluator ownership: if the current employee is an assigned criterion evaluator
+        /// ANYWHERE, they may only score the criteria they are personally assigned to — scoring any
+        /// other criterion is rejected. Callers who are not employees, or employees never assigned
+        /// as an evaluator (HR / admins), are unconstrained.
+        /// </summary>
+        internal static async Task EnsureMayScoreAsync(
+            IRepository<CriterionEvaluator> evaluators,
+            Guid? currentEmployeeId,
+            IReadOnlyCollection<Guid> criterionIdsBeingScored)
+        {
+            if (!currentEmployeeId.HasValue) return;
+
+            var isEvaluator = await evaluators.GetAll().AnyAsync(ev => ev.EmployeeId == currentEmployeeId.Value);
+            if (!isEvaluator) return;   // an employee, but not an evaluator → acts as HR (unconstrained)
+
+            var mine = await evaluators.GetAll()
+                .Where(ev => ev.EmployeeId == currentEmployeeId.Value && criterionIdsBeingScored.Contains(ev.CriterionId))
+                .Select(ev => ev.CriterionId)
+                .ToListAsync();
+            var mineSet = mine.ToHashSet();
+
+            if (criterionIdsBeingScored.Any(id => !mineSet.Contains(id)))
+                throw new ValidationException("scores",
+                    "You may only score the criteria you are assigned to as an evaluator for this applicant.");
+        }
+    }
+
     public class ScoreJobApplication(
         IRepository<JobApplication> repository,
         IRepository<ApplicationCriterionScore> scoreRepository,
         IRepository<JobRequisition> requisitionRepository,
+        IRepository<User> userRepository,
+        IRepository<CriterionEvaluator> evaluatorRepository,
         ICurrentUserService currentUser,
         IValidator<ScoreApplicationDto> validator,
         ILogger<ScoreJobApplication> logger) : IScoreJobApplication
@@ -193,8 +304,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     .Include(a => a.CriterionScores)
                     .FirstOrDefaultAsync(a => a.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(JobApplication), dto.Id.ToString());
-            if (application.Stage is ApplicationStage.Rejected or ApplicationStage.Withdrawn or ApplicationStage.Hired)
-                throw new ValidationException("id", $"A {application.Stage} application can no longer be scored.");
+            // Score locking: once the applicant is Selected or beyond, the evaluation is concluded.
+            EvaluationGuard.EnsureEvaluatable(application.Stage);
 
             // Scores land on the requisition's own criteria (weights snapshotted at scoring time).
             var criteria = await requisitionRepository.GetAll()
@@ -202,6 +313,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 .SelectMany(q => q.ScreeningCriteria)
                 .Select(c => new { c.Id, c.Weight })
                 .ToDictionaryAsync(c => c.Id, c => c.Weight);
+
+            // Evaluator ownership: an assigned employee-evaluator may only score their own criteria.
+            var currentEmployeeId = await EvaluationGuard.CurrentEmployeeIdAsync(userRepository, currentUser.GetCurrentUserId());
+            await EvaluationGuard.EnsureMayScoreAsync(
+                evaluatorRepository, currentEmployeeId, dto.Scores.Select(s => s.CriterionId).ToList());
 
             var actedBy = currentUser.GetCurrentUserName();
             var before = application.CriterionScores.Select(s => s.Id).ToHashSet();
@@ -226,6 +342,109 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
+    // ---- Bulk stage move (mass processing: per-item outcomes, one transaction) ---------------
+
+    /// <summary>
+    /// Moves many applications in one action. Each application is checked against the SAME rules
+    /// as a single move (final stages, offer-driven lock, already-there) — movable ones move in
+    /// one transaction, the rest are reported back with the reason, never failing the batch.
+    /// Bulk moves carry no screening scores (the score sheet owns those).
+    /// </summary>
+    public class BulkMoveApplicationStage(
+        IRepository<JobApplication> repository,
+        IRepository<JobApplicationStageLog> logRepository,
+        IRepository<JobOffer> offerRepository,
+        IRepository<Candidate> candidateRepository,
+        ICurrentUserService currentUser,
+        IValidator<BulkMoveApplicationStageDto> validator,
+        ILogger<BulkMoveApplicationStage> logger) : IBulkMoveApplicationStage
+    {
+        public async Task<BulkMoveResultDto> MoveAsync(BulkMoveApplicationStageDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var stage = Enum.Parse<ApplicationStage>(dto.Stage, true);
+            if (stage is ApplicationStage.OfferPending or ApplicationStage.OfferAccepted or ApplicationStage.Hired)
+                throw new ValidationException("stage", "Offer and hire stages are driven by the offer process.");
+
+            var ids = dto.Ids.Distinct().ToList();
+            var applications = await repository.GetAll()
+                .Include(a => a.StageLog)
+                .Where(a => ids.Contains(a.Id))
+                .ToListAsync();
+            var byId = applications.ToDictionary(a => a.Id);
+
+            // Offer-driven lock, resolved in one batch: any live/accepted offer freezes its application.
+            var lockedBy = (await offerRepository.GetAll()
+                    .Where(o => ids.Contains(o.ApplicationId) &&
+                        (o.Status == OfferStatus.Draft || o.Status == OfferStatus.PendingApproval ||
+                         o.Status == OfferStatus.Approved || o.Status == OfferStatus.Sent ||
+                         o.Status == OfferStatus.Accepted))
+                    .Select(o => new { o.ApplicationId, o.OfferNumber, o.Status, o.CreatedAt })
+                    .ToListAsync())
+                .GroupBy(o => o.ApplicationId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(o => o.CreatedAt).First());
+
+            var actedBy = currentUser.GetCurrentUserName();
+            var result = new BulkMoveResultDto();
+            foreach (var id in ids)
+            {
+                if (!byId.TryGetValue(id, out var application))
+                {
+                    result.Skipped.Add(new BulkMoveSkippedDto { ApplicationId = id, Reason = "Application not found." });
+                    continue;
+                }
+                string? reason =
+                    application.Stage is ApplicationStage.Rejected or ApplicationStage.Withdrawn or ApplicationStage.Hired
+                        ? $"A {application.Stage} application is final."
+                    : application.Stage == stage
+                        ? $"Already at the {stage} stage."
+                    : lockedBy.TryGetValue(id, out var offer)
+                        ? $"Offer {offer.OfferNumber} ({offer.Status}) drives this application."
+                    : null;
+                if (reason is not null)
+                {
+                    result.Skipped.Add(new BulkMoveSkippedDto { ApplicationId = id, Reason = reason });
+                    continue;
+                }
+
+                var before = application.StageLog.Select(l => l.Id).ToHashSet();
+                application.MoveToStage(stage, dto.Note, actedBy);
+                foreach (var log in application.StageLog.Where(l => !before.Contains(l.Id)))
+                {
+                    if (string.IsNullOrEmpty(log.TenantId)) log.TenantId = application.TenantId;
+                    await logRepository.AddAsync(log);
+                }
+                repository.UpdateAsync(application);
+                result.Moved++;
+            }
+
+            if (result.Moved > 0)
+                await repository.SaveChangesAsync();   // the movable subset commits as one unit
+
+            // Names on the skip report so the user sees WHO was held back, not just ids.
+            var skippedAppIds = result.Skipped.Select(s => s.ApplicationId).ToList();
+            var names = await repository.GetAll()
+                .Where(a => skippedAppIds.Contains(a.Id))
+                .Select(a => new
+                {
+                    a.Id,
+                    Name = candidateRepository.GetAll()
+                        .Where(c => c.Id == a.CandidateId)
+                        .Select(c => c.FirstName + " " + (c.FatherName ?? ""))
+                        .FirstOrDefault()
+                })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+            foreach (var s in result.Skipped)
+                s.CandidateName = names.GetValueOrDefault(s.ApplicationId)?.Trim();
+
+            logger.LogInformation("Bulk stage move → {Stage}: {Moved} moved, {Skipped} skipped",
+                stage, result.Moved, result.Skipped.Count);
+            return result;
+        }
+    }
+
     // ---- Adopt interview results into the ranking (no double entry) -----------------------
 
     /// <summary>
@@ -236,6 +455,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class AdoptInterviewScores(
         IRepository<JobApplication> repository,
         IRepository<ApplicationCriterionScore> scoreRepository,
+        IRepository<User> userRepository,
+        IRepository<CriterionEvaluator> evaluatorRepository,
         IGetInterviewConsolidated consolidatedHandler,
         ICurrentUserService currentUser,
         ILogger<AdoptInterviewScores> logger) : IAdoptInterviewScores
@@ -246,14 +467,21 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     .Include(a => a.CriterionScores)
                     .FirstOrDefaultAsync(a => a.Id == applicationId)
                 ?? throw new NotFoundException(nameof(JobApplication), applicationId.ToString());
-            if (application.Stage is ApplicationStage.Rejected or ApplicationStage.Withdrawn or ApplicationStage.Hired)
-                throw new ValidationException("applicationId", $"A {application.Stage} application can no longer be scored.");
+            // Same lock as direct scoring: adoption is blocked once evaluation is concluded.
+            EvaluationGuard.EnsureEvaluatable(application.Stage);
 
             var consolidated = await consolidatedHandler.GetAsync(applicationId);
             var adoptable = consolidated.Criteria.Where(c => c.CriterionId.HasValue).ToList();
             if (adoptable.Count == 0)
                 throw new ValidationException("applicationId",
                     "No criterion-linked interview feedback to adopt yet — panelists score named criteria first.");
+
+            // Evaluator ownership: adoption writes criterion scores, so a constrained evaluator may
+            // only adopt when every adopted criterion is one they are assigned to (else it's an HR
+            // action). Closes the bypass around the direct-scoring gate.
+            var currentEmployeeId = await EvaluationGuard.CurrentEmployeeIdAsync(userRepository, currentUser.GetCurrentUserId());
+            await EvaluationGuard.EnsureMayScoreAsync(
+                evaluatorRepository, currentEmployeeId, adoptable.Select(c => c.CriterionId!.Value).ToList());
 
             var before = application.CriterionScores.Select(s => s.Id).ToHashSet();
             foreach (var c in adoptable)
@@ -276,6 +504,29 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
+    /// <summary>
+    /// The current login's evaluator scope — the frontend uses it to show an assigned evaluator only
+    /// their own criteria on the score sheet, and to reflect that they see only their applicants.
+    /// </summary>
+    public class GetEvaluatorContext(
+        IRepository<User> userRepository,
+        IRepository<CriterionEvaluator> evaluatorRepository,
+        IRepository<JobRequisition> requisitionRepository,
+        ICurrentUserService currentUser) : IGetEvaluatorContext
+    {
+        public async Task<EvaluatorContextDto> GetAsync()
+        {
+            var ctx = await EvaluationGuard.GetContextAsync(
+                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+            return new EvaluatorContextDto
+            {
+                IsConstrainedEvaluator = ctx.IsConstrained,
+                AssignedCriterionIds = [.. ctx.AssignedCriterionIds],
+                AssignedRequisitionIds = [.. ctx.AssignedRequisitionIds]
+            };
+        }
+    }
+
     // ---- Ranking + waitlist: weighted totals → 1st/2nd/3rd, top-N eligibility ------------------
 
     internal static class RankingShared
@@ -284,35 +535,64 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         internal static readonly OfferStatus[] RejectedOffers = [OfferStatus.Declined, OfferStatus.Expired];
 
         /// <summary>
-        /// Assigns 1-based ranks (scored rows, weighted-total order) and the hire-eligibility
-        /// window: only the top N in-play candidates are Eligible (N = positions minus hires);
-        /// the rest are Waitlisted. A candidate whose latest offer was declined/expired drops out
-        /// of contention, sliding the next waitlisted candidate up automatically.
+        /// Assigns the ranking and hire-eligibility for a vacancy, WITHOUT any hidden tie-break:
+        /// <list type="bullet">
+        /// <item>Rank is standard-competition (ties SHARE a rank; the next distinct score skips) —
+        /// so equal scores are shown as equal, never arbitrarily ordered.</item>
+        /// <item>Eligibility is tie-safe: a candidate is Eligible when FEWER than the open-position
+        /// count strictly outrank them on score. When a tie straddles the last open slot, EVERY
+        /// tied candidate becomes co-eligible — the engine refuses to break a genuine tie on merit;
+        /// HR makes the final call. The fill-auto-close + hire gate still cap actual hires at the
+        /// open positions.</item>
+        /// </list>
+        /// A candidate whose latest offer was declined/expired drops out of contention, which lets
+        /// the next scored tier (or tied group) move up automatically.
         /// </summary>
         internal static void AssignRanksAndEligibility(
             List<ApplicationRankingRowDto> rows, int numberOfPositions,
             IReadOnlyDictionary<Guid, OfferStatus> latestOfferByApplication)
         {
-            var rank = 0;
-            foreach (var r in rows.Where(r => r.TotalScore.HasValue))
-                r.Rank = ++rank;
-
             foreach (var r in rows)
                 if (latestOfferByApplication.TryGetValue(r.ApplicationId, out var status))
                     r.LatestOfferStatus = status.ToString();
 
-            var openSlots = Math.Max(0, numberOfPositions - rows.Count(r => r.Stage == nameof(ApplicationStage.Hired)));
-
             bool OfferRejected(ApplicationRankingRowDto r) =>
                 latestOfferByApplication.TryGetValue(r.ApplicationId, out var s) && RejectedOffers.Contains(s);
+
+            // Standard competition rank over scored rows: rank = 1 + (# rows scoring strictly
+            // higher). Computed as ONE sort + a walk over the score groups — O(N log N), not a
+            // per-row recount (the naive O(N²) version dominated request time on large vacancies).
+            var scored = rows.Where(r => r.TotalScore.HasValue)
+                .OrderByDescending(r => r.TotalScore).ToList();
+            var processed = 0;
+            foreach (var tier in scored.GroupBy(r => r.TotalScore))
+            {
+                var rank = processed + 1;              // ties share; the next tier skips
+                foreach (var r in tier) r.Rank = rank;
+                processed += tier.Count();
+            }
+
+            var openSlots = Math.Max(0, numberOfPositions - rows.Count(r => r.Stage == nameof(ApplicationStage.Hired)));
 
             var inPlay = rows.Where(r =>
                     r.TotalScore.HasValue && !r.FailsMandatory &&
                     r.Stage is not (nameof(ApplicationStage.Rejected) or nameof(ApplicationStage.Withdrawn) or nameof(ApplicationStage.Hired)) &&
                     !OfferRejected(r))
-                .ToList();   // preserves weighted-total order
-            for (var i = 0; i < inPlay.Count; i++)
-                inPlay[i].HireEligibility = i < openSlots ? "Eligible" : "Waitlisted";
+                .OrderByDescending(r => r.TotalScore)
+                .ToList();
+            // Same group-walk: everyone in a score tier shares `strictlyAhead`, so a tie at the
+            // cut-off is co-eligible — semantics identical to the per-row count, at O(N log N).
+            var strictlyAhead = 0;
+            foreach (var tier in inPlay.GroupBy(r => r.TotalScore))
+            {
+                var tierRows = tier.ToList();
+                foreach (var r in tierRows)
+                {
+                    r.HireEligibility = strictlyAhead < openSlots ? "Eligible" : "Waitlisted";
+                    r.Tied = tierRows.Count > 1;
+                }
+                strictlyAhead += tierRows.Count;
+            }
 
             foreach (var r in rows.Where(r => r.HireEligibility is null))
                 r.HireEligibility =
@@ -327,13 +607,72 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         internal static async Task<Dictionary<Guid, OfferStatus>> LatestOffersAsync(
             IRepository<JobOffer> offers, IReadOnlyCollection<Guid> applicationIds)
         {
-            var rows = await offers.GetAll()
+            var rows = await offers.GetAll().AsNoTracking()
                 .Where(o => applicationIds.Contains(o.ApplicationId))
                 .Select(o => new { o.ApplicationId, o.Status, o.CreatedAt })
                 .ToListAsync();
             return rows
                 .GroupBy(o => o.ApplicationId)
                 .ToDictionary(g => g.Key, g => g.OrderByDescending(o => o.CreatedAt).First().Status);
+        }
+
+        /// <summary>
+        /// Page-scale eligibility: HireEligibility + Rank for EVERY application of the given
+        /// requisitions from THREE set-based projection queries (no tracking, no per-criterion
+        /// breakdown, no candidate hydration) + the shared assignment logic. The applications list
+        /// runs this on every page load, so its cost must not scale with vacancy size the way the
+        /// full ranking read (per-criterion breakdown per applicant) does.
+        /// </summary>
+        internal static async Task<Dictionary<Guid, (string? Eligibility, int? Rank)>> ComputeEligibilityAsync(
+            IRepository<JobApplication> applications,
+            IRepository<JobRequisition> requisitions,
+            IRepository<ApplicationCriterionScore> scores,
+            IRepository<JobOffer> offers,
+            IReadOnlyCollection<Guid> requisitionIds)
+        {
+            if (requisitionIds.Count == 0) return [];
+
+            var positions = await requisitions.GetAll().AsNoTracking()
+                .Where(q => requisitionIds.Contains(q.Id))
+                .Select(q => new { q.Id, q.NumberOfPositions })
+                .ToDictionaryAsync(q => q.Id, q => q.NumberOfPositions);
+
+            // The stored weighted total (ScreeningScore) is the ranking input — no need to reload
+            // and re-aggregate the criterion-score rows here.
+            var lite = await applications.GetAll().AsNoTracking()
+                .Where(a => requisitionIds.Contains(a.RequisitionId))
+                .Select(a => new { a.Id, a.RequisitionId, a.Stage, a.ScreeningScore })
+                .ToListAsync();
+
+            var mandatoryCriterionIds = await requisitions.GetAll().AsNoTracking()
+                .Where(q => requisitionIds.Contains(q.Id))
+                .SelectMany(q => q.ScreeningCriteria)
+                .Where(c => c.IsMandatory)
+                .Select(c => c.Id)
+                .ToListAsync();
+            var failsMandatory = mandatoryCriterionIds.Count == 0
+                ? []
+                : (await scores.GetAll().AsNoTracking()
+                    .Where(s => mandatoryCriterionIds.Contains(s.CriterionId) && s.Score < 50)
+                    .Select(s => s.ApplicationId)
+                    .ToListAsync()).ToHashSet();
+
+            var latestOffers = await LatestOffersAsync(offers, lite.Select(a => a.Id).ToList());
+
+            var result = new Dictionary<Guid, (string?, int?)>();
+            foreach (var vacancy in lite.GroupBy(a => a.RequisitionId))
+            {
+                var rows = vacancy.Select(a => new ApplicationRankingRowDto
+                {
+                    ApplicationId = a.Id,
+                    Stage = a.Stage.ToString(),
+                    TotalScore = a.ScreeningScore,
+                    FailsMandatory = failsMandatory.Contains(a.Id)
+                }).ToList();
+                AssignRanksAndEligibility(rows, positions.GetValueOrDefault(vacancy.Key, 1), latestOffers);
+                foreach (var r in rows) result[r.ApplicationId] = (r.HireEligibility, r.Rank);
+            }
+            return result;
         }
     }
 
@@ -361,7 +700,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 .ToListAsync();
             var criteriaById = criteria.ToDictionary(c => c.Id);
 
+            // Read-only hydration: no change tracking — on a large vacancy this is thousands of
+            // application + score entities that would otherwise all enter the change tracker.
             var applications = await repository.GetAll()
+                .AsNoTracking()
                 .Include(a => a.CriterionScores)
                 .Where(a => a.RequisitionId == requisitionId)
                 .ToListAsync();
@@ -404,6 +746,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                             : string.Join(" ", new[] { candidate.FirstName, candidate.FatherName, candidate.GrandFatherName }
                                 .Where(p => !string.IsNullOrWhiteSpace(p))),
                         Stage = a.Stage.ToString(),
+                        AppliedAt = a.AppliedAt,
                         TotalScore = a.ScreeningScore,
                         ScoredCriteria = a.CriterionScores.Count(s => criteriaById.ContainsKey(s.CriterionId)),
                         TotalCriteria = criteria.Count,
@@ -411,7 +754,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         Breakdown = breakdown
                     };
                 })
+                // Deterministic, reproducible order — NO hidden DB/insertion tie-break: highest
+                // weighted total first, then (for equal scores) earliest application, then the
+                // candidate number as a final stable business-key fallback. This decides only the
+                // DISPLAY order; eligibility among ties is co-eligible (see AssignRanksAndEligibility).
                 .OrderByDescending(r => r.TotalScore ?? -1)
+                .ThenBy(r => r.AppliedAt)
+                .ThenBy(r => r.CandidateNumber)
                 .ToList();
 
             var latestOffers = await RankingShared.LatestOffersAsync(
@@ -489,7 +838,12 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class GetAllJobApplications(
         IRepository<JobApplication> repository,
         IRepository<Candidate> candidateRepository,
-        IRepository<JobRequisition> requisitionRepository) : IGetAllJobApplications
+        IRepository<JobRequisition> requisitionRepository,
+        IRepository<ApplicationCriterionScore> scoreRepository,
+        IRepository<JobOffer> offerRepository,
+        IRepository<User> userRepository,
+        IRepository<CriterionEvaluator> evaluatorRepository,
+        ICurrentUserService currentUser) : IGetAllJobApplications
     {
         public async Task<PaginatedResponse<JobApplicationDto>> GetAsync(GetAllRequest request)
         {
@@ -497,6 +851,16 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // Evaluator visibility: an assigned criterion evaluator only sees THEIR OWN applicants —
+            // the applications of the requisitions they are assigned to. HR / unlinked users see all.
+            var evaluatorContext = await EvaluationGuard.GetContextAsync(
+                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+            if (evaluatorContext.IsConstrained)
+            {
+                var reqIds = evaluatorContext.AssignedRequisitionIds;
+                query = query.Where(a => reqIds.Contains(a.RequisitionId));
+            }
 
             if (!string.IsNullOrWhiteSpace(request.Status) &&
                 Enum.TryParse<ApplicationStage>(request.Status, true, out var stage))
@@ -547,6 +911,16 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 .GroupBy(c => c.RequisitionId)
                 .ToDictionary(g => g.Key, g => g.Select(c => c.AppliesAtStage).ToList());
 
+            // Per-row hire/offer eligibility from the vacancy ranking (criteria-scored vacancies
+            // only): the Offer button activates ONLY for Eligible applicants — the UI mirrors the
+            // server-side rank gate instead of discovering it as a 400 after filling the form.
+            // Computed via the LIGHTWEIGHT set-based path — the previous full-ranking call per
+            // requisition hydrated every applicant's criterion breakdown on every page load and
+            // dominated list latency on large vacancies.
+            var eligibilityByApplication = await RankingShared.ComputeEligibilityAsync(
+                repository, requisitionRepository, scoreRepository, offerRepository,
+                requisitionIds.Where(id => (criteriaStages.GetValueOrDefault(id)?.Count ?? 0) > 0).ToList());
+
             var data = rows.Select(x =>
             {
                 var name = x.Candidate is null
@@ -558,6 +932,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 var stages = criteriaStages.GetValueOrDefault(x.Application.RequisitionId) ?? [];
                 dto.TotalCriteriaCount = stages.Count;
                 dto.ScoreableCriteriaCount = stages.Count(st => st is null || st == x.Application.Stage);
+                if (eligibilityByApplication.TryGetValue(x.Application.Id, out var e))
+                {
+                    dto.HireEligibility = e.Eligibility;
+                    dto.Rank = e.Rank;
+                }
                 return dto;
             }).ToList();
 

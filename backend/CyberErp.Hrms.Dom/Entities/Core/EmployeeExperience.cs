@@ -11,6 +11,11 @@ public class EmployeeExperience : BaseEntity, IAggregateRoot, IAuditable
     public DateTime? StartDate { get; private set; }
     public DateTime? EndDate { get; private set; }
     public string? Responsibilities { get; private set; }
+    /// <summary>True for a prior job at ANOTHER employer (manually entered); false for an
+    /// internal role auto-registered from an employee movement.</summary>
+    public bool IsExternal { get; private set; }
+    /// <summary>True when the role was at a governmental organization (affects experience credit rules).</summary>
+    public bool IsGovernmental { get; private set; }
 
     private EmployeeExperience() : base() { }
 
@@ -20,7 +25,9 @@ public class EmployeeExperience : BaseEntity, IAggregateRoot, IAuditable
         string jobTitle,
         DateTime? startDate = null,
         DateTime? endDate = null,
-        string? responsibilities = null)
+        string? responsibilities = null,
+        bool isExternal = false,
+        bool isGovernmental = false)
     {
         if (personId == Guid.Empty)
             throw new ArgumentException("Person is required.", nameof(personId));
@@ -38,7 +45,9 @@ public class EmployeeExperience : BaseEntity, IAggregateRoot, IAuditable
             JobTitle = jobTitle,
             StartDate = startDate,
             EndDate = endDate,
-            Responsibilities = responsibilities
+            Responsibilities = responsibilities,
+            IsExternal = isExternal,
+            IsGovernmental = isGovernmental
         };
     }
 
@@ -47,7 +56,9 @@ public class EmployeeExperience : BaseEntity, IAggregateRoot, IAuditable
         string jobTitle,
         DateTime? startDate,
         DateTime? endDate,
-        string? responsibilities)
+        string? responsibilities,
+        bool isExternal,
+        bool isGovernmental)
     {
         if (string.IsNullOrWhiteSpace(organization))
             throw new ArgumentException("Organization cannot be empty.", nameof(organization));
@@ -61,6 +72,8 @@ public class EmployeeExperience : BaseEntity, IAggregateRoot, IAuditable
         StartDate = startDate;
         EndDate = endDate;
         Responsibilities = responsibilities;
+        IsExternal = isExternal;
+        IsGovernmental = isGovernmental;
         base.Update();
     }
 }

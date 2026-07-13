@@ -24,6 +24,8 @@ export function createSaveService(
     integerFields?: string[];
     /** Coerce to a number before sending (invalid/empty → dropped). */
     numberFields?: string[];
+    /** Gather `cf_`-prefixed fields (dynamic custom fields, HC021) into a nested `customFields` dict. */
+    customFields?: boolean;
   },
 ) {
   const path = resource.replace(/^\//, "").replace(/\/$/, "");
@@ -46,6 +48,19 @@ export function createSaveService(
 
     const body: Record<string, unknown> = { ...formDataObj };
     if (!isUpdate) delete body.id;
+
+    // Gather dynamic custom fields (HC021) into a nested dict BEFORE the empty-drop below, so blank
+    // values survive as "" for the backend's required-field validation. `cf_bloodType` → customFields.bloodType.
+    if (options?.customFields) {
+      const cf: Record<string, string> = {};
+      for (const key of Object.keys(body)) {
+        if (key.startsWith("cf_")) {
+          cf[key.slice(3)] = body[key] == null ? "" : String(body[key]);
+          delete body[key];
+        }
+      }
+      body.customFields = cf;
+    }
 
     for (const field of options?.booleanFields ?? []) {
       if (field in body) body[field] = body[field] === "true" || body[field] === "on" || body[field] === true;

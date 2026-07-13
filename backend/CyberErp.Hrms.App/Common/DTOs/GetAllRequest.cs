@@ -60,6 +60,12 @@ namespace CyberErp.Hrms.App.Common.DTOs
 
         /// <summary>Filters records (e.g. leave requests/balances) to a single employee.</summary>
         public Guid? EmployeeId { get; set; }
+
+        /// <summary>Filters custom-field definitions to a single owner form (Employee/Education/…).</summary>
+        public string? OwnerType { get; set; }
+
+        /// <summary>Filters dynamic forms to a single owning module (e.g. "Employee").</summary>
+        public string? Module { get; set; }
     }
 }
 

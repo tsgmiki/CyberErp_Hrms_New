@@ -9,7 +9,10 @@ import {
   ArrowLeftRight,
   Gavel,
   UserX,
+  LayoutGrid,
 } from "lucide-react";
+import { useDynamicForms } from "@/components/common/dynamicForm/useDynamicForms";
+import DynamicFormSection from "@/components/common/dynamicForm/DynamicFormSection";
 
 const MasterForm = memo(lazy(() => import("./masterForm")));
 const EducationSection = memo(lazy(() => import("./educationSection")));
@@ -50,8 +53,10 @@ interface Props {
 /** Tabbed employee profile (ERP-standard): master data + child collections per tab. */
 function EmployeeProfile({ id, setId, onBack, orgUnitId, orgUnitName }: Props) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<TabKey>("personal");
+  // `tab` is a string so it can also hold a dynamic form id (custom tabs live alongside the fixed ones).
+  const [tab, setTab] = useState<string>("personal");
   const hasId = !!id;
+  const { data: dynamicForms } = useDynamicForms("Employee");
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -77,6 +82,28 @@ function EmployeeProfile({ id, setId, onBack, orgUnitId, orgUnitName }: Props) {
             </button>
           );
         })}
+        {/* User-defined custom tabs (Form Builder) — always need a saved employee. */}
+        {(dynamicForms ?? []).map((f) => {
+          const disabled = !hasId;
+          const active = tab === f.id;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              disabled={disabled}
+              title={disabled ? t("Save the employee first") : undefined}
+              onClick={() => setTab(f.id!)}
+              className={`-mb-px flex items-center gap-1.5 rounded-t-lg border-x border-t px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                active
+                  ? "border-border bg-card text-primary"
+                  : "border-transparent text-muted hover:text-foreground"
+              } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              {t(f.label ?? f.name ?? "")}
+            </button>
+          );
+        })}
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto pt-2">
@@ -97,6 +124,13 @@ function EmployeeProfile({ id, setId, onBack, orgUnitId, orgUnitName }: Props) {
         {tab === "movements" && hasId && <MovementSection employeeId={id} />}
         {tab === "discipline" && hasId && <DisciplineSection employeeId={id} />}
         {tab === "termination" && hasId && <TerminationSection employeeId={id} />}
+        {/* Active custom tab content */}
+        {hasId &&
+          (dynamicForms ?? [])
+            .filter((f) => f.id === tab)
+            .map((f) => (
+              <DynamicFormSection key={f.id} form={f} ownerType="Employee" ownerId={id} />
+            ))}
       </div>
     </div>
   );

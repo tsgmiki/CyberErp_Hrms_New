@@ -24,15 +24,406 @@
   `AddRecruitmentInterviewsOffers` → `AddCriterionStageScope` → `AddCriterionEvaluators` →
   `SeedRecruitmentNumberSequences`, all applied to CERP). **Everything is pushed to origin**
   (`feature/hrms-buildout` in sync as of 2026-07-11).
-- **Uncommitted:** nothing (this docs-sync edit only). Untracked: `~$ Management.docx` (Office
-  lock file — do not commit; consider gitignoring `~$*`).
+- **Uncommitted:** §1 items 1–16 (Dynamic Form/Tab Builder + paging + attachment fields w/ per-field pools [BE+FE, migrations `AddDynamicForms` + `IndexDynamicFormRecordCreatedAt` + `AddEmployeeDocumentOwnerField` applied]; custom-field engine extended to all 6 child forms [BE+FE, migration `GeneralizeCustomFieldsToChildForms` applied]; Experience IsExternal visible+editable & checkbox styling matched to Employee form [BE+FE, no migration, needs API restart]; employee child-form redesign [FE only, no migration]; movement SalaryScale + experience flags w/ migration `MovementSalaryScaleAndExperienceFlags`; employee-form redesign + IsManagerial [no migration]; performance pass w/ migration `AddPerformanceIndexes`; Hangfire background e-mail [packages + auto-created HangFire schema, no EF migration]; tied-score ranking fix [no migration]; strict evaluator enforcement [no migration]; User↔Employee FK restructure w/ migration
+  `ReverseUserEmployeeRelationship`; evaluator permissions + score locking + hire auto-populate w/
+  migration `AddEmployeeUserLink`; offer bug-fixes + offer-letter template w/ migration
+  `AddOfferLetterTemplate`; offer refinement w/ QuestPDF + auto PDF delivery; interview e-mails +
+  e-mail infrastructure; bulk stage moves) + these doc updates. Migrations `AddOfferLetterTemplate`,
+  `AddEmployeeUserLink`, `ReverseUserEmployeeRelationship` are applied to CERP. NOTE: `AddEmployeeUserLink`
+  (which added Employee.UserId) is now effectively undone by the reverse migration — both are in
+  history; a fresh DB replays add-then-drop, which is fine. Untracked: `~$ Management.docx` (Office lock file — do not commit; consider
+  gitignoring `~$*`).
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
 
-1. **StageModal score contradiction + error-message artifact** (frontend only, builds clean.
+1. **Dynamic Form / Tab Builder (SAP/Dynamics-style custom tabs) — new reusable subsystem**
+   (BE+FE; migrations `AddDynamicForms` + `IndexDynamicFormRecordCreatedAt` **applied to CERP**; both
+   build; E2E 22/22 + paging 6/6 then purged. **Uncommitted.**)
+   - **Perf hardening (server-side paging):** `GetRecordsAsync` returns `PaginatedResponse` (skip/take)
+     — the server bounds the fetch + JSON parse to one page; record index extended to
+     `(DynamicFormId,OwnerType,OwnerId,CreatedAt)` so ordered pagination is index-supported (no sort).
+     `getRecords(…,param)` is paged; `keepPreviousData` for smooth transitions.
+   - **UI consistency (2026-07-13):** the record grid renders with the **same building blocks as the
+     fixed employee child tabs** — shared `ChildManager` table + modal `FormProvider` + the standard
+     `Pagination` component (shown only when a form exceeds one page, so small collections look exactly
+     like Education/Experience). This **replaced** an interim `DataTableProvider isVirtual` render whose
+     heavy VirtualDataTable chrome looked nothing like the rest of the app. Paging is preserved (page
+     size 15 bounds fetch+DOM); explicit windowing was dropped as unnecessary at page scale.
+   - **Attachment fields (2026-07-13, NO migration):** a new **`Attachment`** field type (Form Builder
+     only — `dynamicFormFieldTypeOptions`) reuses the EXISTING `EmployeeDocument` subsystem exactly like
+     Education/Experience. `EmployeeFieldDataType.Attachment` + `EmployeeDocumentOwner.DynamicFormRecord`
+     (both string-stored enums → no schema change). `EmployeeDocument` Upload/Get handlers gained a
+     DynamicFormRecord case (guarded via the record's employee). `DynamicFormService`: Attachment fields
+     excluded from Data validation/storage; record delete cascade-deletes its docs
+     (`DocumentStorage.DeleteForOwnerAsync`); record DTO gained `DocumentCount` (paperclip grid column).
+     FE `DynamicFormSection` splits Attachment fields → the shared `DocumentAttachments` panel (edit-mode
+     only, "Save first" hint on new) + a paperclip count column. E2E 12/12 (upload/list/count/download/
+     bad-type-400/guard-404/cascade). ⚠ coupling: the module-agnostic `DynamicFormService` now depends on
+     `EmployeeDocument` (employee-specific) — acceptable for the Employee-scoped v1.
+   - **Per-field attachment pools (2026-07-13, migration `AddEmployeeDocumentOwnerField`):** each
+     Attachment field now has its OWN file pool. Added nullable `EmployeeDocument.OwnerField` (the
+     dynamic-form field name; null for education/experience). Upload/Get/count all scope by
+     `(OwnerType,OwnerId,OwnerField)`; controller + `documents.ts` thread an `ownerField`; record delete
+     still cascades ALL fields (delete is by OwnerType+OwnerId). Record DTO `DocumentCount`→
+     `DocumentCounts` (dict field→count, one grouped query/page). FE renders one `DocumentAttachments`
+     panel per Attachment field (`ownerField`+`title` props) + per-field paperclip counts. E2E 15/15
+     (2 isolated pools, no cross-contamination, per-field counts, scoped delete, full cascade, Education
+     regression).
+   - **Storage = JSON document column, NOT EAV** (perf decision): 3 tables `hrms_DynamicForm` (tab def)
+     → `hrms_DynamicFormField` (schema, reuses `EmployeeFieldDataType`) + `hrms_DynamicFormRecord`
+     (one row/record, values in a single `Data nvarchar(max)` JSON `{field:value}`). Hot path (list a
+     form's records for one owner) = **single indexed range scan** on `(DynamicFormId,OwnerType,OwnerId)`.
+   - **Reusable/module-agnostic:** keyed on string `Module` + polymorphic `OwnerType`/`OwnerId` (same
+     pattern as HC021 values / EmployeeDocument). Other modules just render `<DynamicTabs module=…/>`
+     and define forms with that `Module`.
+   - **Backend** slice `App/Features/Core/DynamicForms/`: `IDynamicFormService` (GetActiveForms/GetAll/
+     GetById/SaveForm/DeleteForm + record Get/Save/Delete). Record save validates `Data` against the
+     form's active fields (unknown→400, required→400) then stores compact JSON via System.Text.Json.
+     Form save mirrors the `ClearanceDepartment` children pattern (child-field **TenantId stamp** +
+     explicit AddAsync on update; old fields deleted first). Delete-form guard: 400 if records exist.
+     2 controllers (`DynamicFormController` + `DynamicFormRecordController`). Repos = open-generic
+     `IRepository<>`; service registered in App DI.
+   - **Frontend** generic components `components/common/dynamicForm/`: `DynamicFormSection`
+     (metadata-driven generalization of `childManager` — grid from `ShowInList` fields + FormProvider
+     modal via the now-generalized `buildCustomFieldComponents(RenderableFieldDef[])`, bespoke JSON
+     save from `values` state), `useDynamicForms(module)` (React-Query cached), `DynamicTabs` (standalone
+     bar for other modules). Services `services/admin/dynamicForm/index.ts`.
+   - **Employee integration:** `profile.tsx` — `tab` widened to string; custom tabs appended to the tab
+     bar from `useDynamicForms("Employee")`, each rendering `<DynamicFormSection ownerType="Employee">`.
+   - **Admin "Form Builder"** screen `/formBuilder` (System group): `EntityModuleShell` + list
+     (`getAllForms`) + a hand-rolled editor (tab meta + repeatable field-row editor). Route + sidebar added.
+   - **Note (v1 scope):** the generic record service is NOT branch-visibility-filtered (records aren't
+     `IBranchScoped`) — tenant-isolated only; branch scoping is a future refinement. `GetAllRequest`
+     gained `Module`; `ParameterModel` gained `module`.
+2. **Custom-field engine (HC021) extended from the Employee form to ALL 6 employee child forms**
+   (Education, Experience, Family, Movement, Discipline, Termination). Backend + frontend; migration
+   `GeneralizeCustomFieldsToChildForms` **applied to CERP**; both halves build; E2E-verified then purged.
+   **Uncommitted.**
+   - **Domain:** new enum `EmployeeFieldOwnerType` (Employee/Education/Experience/Dependent/Movement/
+     Discipline/Termination) + `OwnerType` on `EmployeeFieldDefinition`. `EmployeeFieldValue` made
+     **polymorphic**: `EmployeeId`→`OwnerId` + `OwnerType`, **cascade FK dropped** (like
+     `EmployeeDocument`) — each owner's delete handler now cleans up its values.
+   - **Shared service** `ICustomFieldService`/`CustomFieldService` (`Features/Core/EmployeeFields/`):
+     `ApplyAsync`/`GetValuesAsync`/`GetValuesForOwnersAsync`(bulk, avoids N+1)/`DeleteForOwnerAsync`.
+     **ApplyAsync stages only** (no SaveChanges) so record+values commit atomically in one txn (the
+     record's `Id` exists pre-save via `BaseEntity` ctor). `EmployeeHandlers` refactored onto it
+     (+value cleanup on employee delete, since the cascade FK is gone).
+   - **Child slices:** each Save/Get/Delete handler gained `CustomFields` on its DTOs +
+     ApplyAsync(create&update)/GetValuesForOwnersAsync(list)/DeleteForOwnerAsync(delete). Definitions
+     scoped by `OwnerType`: unique `(TenantId,OwnerType,Name)`; `EmployeeField` GetAll takes
+     `?ownerType=`; name-dup check scoped by owner.
+   - **Frontend:** admin "Employee Fields" screen → **"Custom Fields"** with an **"Applies To"**
+     dropdown + column (`fieldOwnerTypeOptions`/`ownerTypeLabel`, "Dependent"→"Family"). Shared
+     `buildCustomFieldComponents` (extracted from `masterForm`, which now reuses it) + `useCustomFields`
+     hook drive every child form: fetch scoped defs → render `cf_`-prefixed fields into the
+     FormProvider grid (with an "Additional Information" divider) → `createSaveService({customFields:
+     true})` gathers `cf_*` FormData keys into a nested `customFields` dict. Works because DropDownField
+     posts a hidden named input. Models gained `customFields`.
+   - **Gotcha:** the new `OwnerType` columns backfill existing rows to `'Employee'` via the migration's
+     `defaultValue` (hand-set from `""`) so pre-existing Employee custom fields keep working.
+   - **Follow-up fix:** the Employee master form's `activeFieldParam` was still fetching defs with NO
+     `ownerType`, so every form's fields leaked onto the Employee form — added `ownerType: "Employee"`
+     (`masterForm.tsx`). The 3 def consumers now: masterForm→Employee, child forms→their owner (hook),
+     admin list→unscoped (shows all, by design).
+2. **Experience form: IsExternal now visible+editable + checkbox styling matched to Employee form**
+   (backend + frontend; **no migration** — `IsExternal` column already exists. **Uncommitted.**
+   ⚠️ **Requires API restart** to pick up the backend change — DLLs were locked by a running VS/IIS
+   Express instance at build time, so only the OLD backend is live until restarted.):
+   - `EmployeeExperienceHandlers.cs`: `SaveEmployeeExperienceDto` gained `IsExternal`; the Save
+     handler now uses `dto.IsExternal` on both Create and Update instead of hard-coding `true`. The
+     movement auto-registration path (`EmployeeMovementHandlers`, internal=false) is unchanged.
+   - `experienceSection.tsx`: replaced the generic `type:"checkbox"` (which looked nothing like the
+     Employee form) with a single `type:"custom"` field rendering TWO Employee-form-style **toggle
+     rows** (border + icon + title + helper — copied from `masterForm.tsx`'s managerial toggle) for
+     **External employment** (`Building2` icon) and **Governmental organization** (`Landmark`). The
+     `<input name="isExternal/isGovernmental">` post through the form's FormData. New entries default
+     `isExternal:true` (set in `open(null)`). Info note reworded (External is now a toggle).
+   - `children.ts`: `saveExperience` booleanFields now `["isExternal","isGovernmental"]`.
+   - Pattern note: to inject bespoke markup into a FormProvider grid, use `type:"custom"` +
+     `customChildren` + `colSpan:"full"` (CustomField renders children as-is, no FieldShell/label).
+2. **Employee child-form redesign (Education/Experience/Family/Movement/Discipline/Termination)**
+   (frontend only, no migration; builds clean. **Uncommitted.**):
+   - Added opt-in **`FormModel.fieldLayout`** (typed `FormComponentModel["layout"]` — NOT FieldLayout,
+     which includes "horizontal" the component type excludes) applied in BOTH FormProvider grid
+     mappings as `formColumn.layout ?? form.fieldLayout` (article path) — non-opt-in forms unchanged.
+   - The 6 modal forms swapped `labelWidth:"w-[35%]"` (horizontal labels) → `fieldLayout:"auth"`
+     (clean label-above-input, tiles 2-up because the auth FieldShell's `col-span-full` is inert in
+     FormFieldRenderer's `min-w-0` cell) + a one-line modal `description`. Matches the earlier master
+     form's field style for consistency.
+   - Fixed `CheckBoxField`: a SINGLE checkbox showed its label twice (shell + inline) — now
+     `hideLabel` when single (group keeps the shell label as its title). Improves all single checkboxes.
+2. **Employee Movement → SalaryScale + salary rules + auto-experience; Experience IsExternal/IsGovernmental**
+   (migration `MovementSalaryScaleAndExperienceFlags` applied to CERP; E2E candbg27 all green.
+   **Uncommitted.**):
+   - SCHEMA: `hrms_EmployeeMovement` From/ToJobGradeId → From/ToSalaryScaleId (⚠ hand-edited migration:
+     scaffolder RENAMED grade→scale which would carry grade-ids into the FK → changed to DROP+ADD
+     null); FK `ToSalaryScaleId → coreSalaryScale` (Restrict) + index; From is a snapshot (no FK).
+     `hrms_EmployeeExperience` +IsExternal +IsGovernmental (bit, default 0).
+   - Salary rule (domain Guard + validator): a Transfer may NOT set ToSalary or ToSalaryScaleId —
+     pay changes only on Promotion/Demotion. E2E: transfer+salary → 400.
+   - `Employee.ApplyMovement` now applies `salaryScaleId` (Promotion/Demotion); execute uses it. E2E:
+     promotion→execute set employee scale=S2 + salary=9000.
+   - Auto-experience on execute (`ExecuteEmployeeMovement.RegisterInternalExperienceAsync`): records
+     the FROM role as INTERNAL experience (IsExternal=false; org=CompanyProfile name ?? "Internal";
+     title=from-position ?? "Employee"; start=prior movement/hire, end=effective date). Added
+     EmployeeExperience + CompanyProfile repos. E2E: 1 internal row auto-created.
+   - Experience: manual save (employee + candidate) forces IsExternal=true; IsGovernmental from DTO.
+     E2E: manual row isExternal=true, isGovernmental=true.
+   - FE: movement form grade→scale filter (getAllSalaryScale scoped to grade) + auto-fill toSalary;
+     scale/salary shown ONLY for Promotion/Demotion; MovementChange + model use salaryScaleName;
+     saveMovement numberFields[toSalary]. Experience form: IsGovernmental checkbox (booleanFields) +
+     External/Internal/Gov badges + "external" note. Models updated.
+2. **Employee form redesign + IsManagerial field** (no migration — `IsManagerial` column already
+   existed on `hrms_Employee`, just never wired to the form; E2E candbg26 create true→read true,
+   update false→read false, DB col=0. **Uncommitted.**):
+   - Backend: `IsManagerial` added to Create/Update EmployeeDto + read `EmployeeDto` + projection;
+     `entity.SetManagerial(dto.IsManagerial)` in both create + update handlers. (`Employee.SetManagerial`
+     already existed.)
+   - Frontend: `EmployeeModel.isManagerial`, `save.ts` coerces it to a real boolean (like
+     isProbation), `EmployeeSchema` gains the optional field.
+   - `masterForm.tsx` REWRITTEN — dropped the flat FormProvider grid for a card-per-section layout
+     (identity header w/ photo + live name preview + status/managerial/probation badges; sticky
+     Save bar with `type=submit form=employeeMasterForm`; SectionCards Personal/Contact/
+     Identification/Employment/Additional). REUSES the shared `FormFieldRenderer` per field with
+     `layout:"auth"` (label-above-input) — keeps the searchable position/salary-scale DropDowns and
+     validation. ⚠ Key insight: the auth-layout FieldShell has `col-span-full` but it's INERT
+     inside FormFieldRenderer's `min-w-0` cell wrapper, so fields still tile 2-up in a
+     `grid sm:grid-cols-2`; pass `colSpan:"full"` for full-width (location textarea + managerial row).
+   - Managerial control is a hand-rolled prominent checkbox row (accent checkbox + icon + helper
+     text), bound via `onChange e.target.checked`; header badge reflects it live.
+2. **Large-scale performance pass** (migration `AddPerformanceIndexes` applied to CERP; measured
+   before/after on a SQL-seeded 2,000-applicant vacancy [clone-template trick: create 1 via API,
+   dynamic-SQL multiply ×1999 excluding rowversion/computed cols]; scripts `perf-seed.sh` /
+   `perf-measure.sh` in scratchpad. **Uncommitted.**):
+   - RESULTS: list 1.1–3.0 s → **0.13–0.19 s**; ranking 0.44 s → 0.23 s; hire-queue 1.3 s → 0.32 s;
+     ranking payload 1.28 MB → 248 KB (brotli).
+   - `RankingShared.ComputeEligibilityAsync` — NEW set-based eligibility (3 no-tracking projection
+     queries over ALL page requisitions; uses stored ScreeningScore + mandatory-fail set + latest
+     offers) feeding the SAME AssignRanksAndEligibility → identical values; GetAllJobApplications
+     no longer calls the full ranking per requisition (dropped IGetApplicationRanking dep, added
+     score/offer repos).
+   - `AssignRanksAndEligibility` O(N²)→O(N log N): sort once + walk score tiers (competition rank
+     accumulator; per-tier strictlyAhead; Tied = tier size>1). Semantics unchanged (E2E values
+     verified: 10-way tie at top all rank 1/Eligible with 3 positions).
+   - AsNoTracking: ranking hydration (Include CriterionScores), LatestOffersAsync, eligibility
+     queries, hire-queue docs. ⚠ `Repository.GetAll()` TRACKS by default — opt out on read paths.
+   - Hire-queue compliance docs: one batched query per vacancy pool (was per-candidate N+1).
+   - Indexes: JobApplication (TenantId, AppliedAt); JobOffer (ApplicationId, CreatedAt) [the
+     existing ApplicationId index is FILTERED to active statuses — couldn't serve latest-offer scans].
+   - Api: `AddHrmsResponseCompression` (Brotli+gzip, Fastest, EnableForHttps) + UseResponseCompression
+     first in pipeline (in HangfireConfiguration.cs file).
+   - FE: QueryClient defaults staleTime 30 s / refetchOnWindowFocus false / retry 1 (main.tsx).
+   - **Module-by-module audit (follow-up request):** Employee / Dashboard / Termination /
+     EmployeeField / DocumentTemplate / OrganizationUnit / Position / PositionClass reviewed
+     handler-by-handler. VERDICT: already projection-based paged queries with batched lookups
+     (dashboard KPIs use take:1 count probes; probation/retirement widgets are SARGable
+     projections; MyApprovals + WorkflowStats batched/grouped; org tree = single projection +
+     in-memory build; termination list = single roundtrip w/ correlated latest-case subquery).
+     Two real fixes applied: **DocumentTemplate list projection no longer ships
+     Body/HeaderHtml/FooterHtml** (tens of KB per row; editor loads by id — new `ListProjection`,
+     Body = "" for contract compat) and **GetEmployeeTerminations AsNoTracking**. All module
+     endpoints smoke-tested 200 (candbg25); template byId still returns the full body. These
+     modules also inherit the GLOBAL wins: response compression, React Query staleTime, and the
+     existing indexes already cover their sorts ((TenantId, EmployeeNumber) unique etc.).
+2. **Hangfire background e-mail dispatch** (packages Hangfire.AspNetCore/SqlServer 1.8.23 [Api] +
+   Hangfire.Core [Inf]; NO EF migration — Hangfire auto-creates 11 tables in CERP schema
+   `HangFire`; E2E candbg22/23 green. **Uncommitted.**):
+   - *Design — compose in-request, send in background:* `IEmailService` → NEW `QueuedEmailService`
+     (Inf): cheap guards in-request (no recipient / Email:Enabled=false → false, nothing enqueued —
+     preserves offer stays-Approved semantics), else enqueues `EmailDispatchJob` with the FULL
+     payload (attachments as List<EmailAttachment>, byte[]→base64 in job args) and returns true =
+     "durably queued". Job is tenant-free by design (background jobs have no Finbuckle context) —
+     all tenant-scoped composition (candidate/letter/PDF) stays in the request.
+   - *Job:* `EmailDispatchJob` (Inf) resolves `SmtpEmailService` (now registered as itself), throws
+     on failed send → `[AutomaticRetry(5, delays 60/300/900/3600/7200s)]`; re-checks Enabled at
+     dispatch (config drift = drop, not retry). SEMANTIC CHANGE: approved offers mark **Sent on
+     enqueue** (durable retries) instead of on synchronous delivery; controller Send message reworded
+     ("queued for delivery").
+   - *Config:* `Configuration/HangfireConfiguration.cs` — `AddHrmsBackgroundJobs` (chained in
+     Program.cs before AddInfrastractureServices): SqlServerStorage w/ SlidingInvisibilityTimeout=5m
+     + QueuePollInterval=Zero + UseRecommendedIsolationLevel + DisableGlobalLocks +
+     CommandBatchMaxTimeout=5m; server WorkerCount=Clamp(cores,2,4). Dashboard `/hangfire` in
+     `UseHrmsMiddlewarePipeline` after UseAuthorization; `IDashboardAsyncAuthorizationFilter` must
+     `AuthenticateAsync("Cookies")` EXPLICITLY (default scheme is JWT → `User` never populated from
+     the cookie outside controllers; plain IsAuthenticated check 401'd even when logged in).
+   - E2E: 11 HangFire tables; anonymous /hangfire 401, cookie-authed 200; interview schedule 200 in
+     0.43 s with e-mail delivered by job; offer submit → Sent immediately + PDF e-mail by job;
+     HangFire.Job states: Succeeded=2.
+2. **Tied-score ranking fix — no hidden tie-break, co-eligible ties** (no migration; E2E candbg21
+   green. **Uncommitted.**). ROOT CAUSE: `GetApplicationRanking` sorted only by
+   `OrderByDescending(TotalScore)` (stable) → tied rows kept the arbitrary DB/`Guid`-PK return
+   order, and `AssignRanksAndEligibility` handed out Rank 1,2,3 + top-N Eligible in that order, so
+   one tied applicant was silently Eligible and the rest Waitlisted. FIX in `RankingShared.AssignRanksAndEligibility`:
+   - Standard-competition **Rank** (`1 + #strictly-higher`; ties share a rank).
+   - **Tie-safe eligibility:** Eligible ⟺ `strictlyAhead < openSlots` (order-independent) → a tie at
+     the cut-off makes ALL tied members co-eligible; HR picks (fill-close/hire-gate still cap hires).
+   - Deterministic **display** order in `GetApplicationRanking`: TotalScore desc → AppliedAt asc →
+     CandidateNumber (no arbitrary DB order). Added `AppliedAt` + `Tied` to `ApplicationRankingRowDto`.
+   - FE: `ApplicationRankingRowModel` +appliedAt/tied; RankingModal "TIED" badge + co-eligible banner
+     + updated description.
+   - E2E candbg21: 1 pos/3×80 → all rank 1, tied, Eligible; 90/80/70 → only 90 Eligible; 2 pos/90/80/80
+     → 90 + both 80 co-eligible. Note: could let HR over-offer to multiple co-eligible tied candidates
+     (pre-existing multi-eligible concern; hire fill-close caps actual hires) — flagged, not expanded.
+2. **Evaluator permissions made STRICT (visibility + adopt gate + score-sheet restriction)** (no
+   migration; E2E candbg20 green. **Uncommitted.**). The prior increment only blocked at write-time
+   and was invisible in the UI, so an evaluator still SAW every applicant → felt unenforced. Now:
+   - `EvaluationGuard.GetContextAsync(users, evaluators, requisitions, userId)` → EvaluatorContext
+     (employeeId, IsConstrained, AssignedCriterionIds, AssignedRequisitionIds). Constrained = a
+     logged-in employee assigned as a `CriterionEvaluator` anywhere.
+   - **Read filter:** `GetAllJobApplications` now injects User/CriterionEvaluator/CurrentUser and
+     filters the pipeline to the evaluator's assigned requisitions — they see ONLY their applicants.
+     E2E: evaluator list = [their R1 applicant only]; HR list = both.
+   - **Adopt bypass closed:** `AdoptInterviewScores` now runs `EnsureMayScoreAsync` over the adopted
+     criteria (was write-gate-free).
+   - **UI:** new `GET JobApplication/evaluator-context` (`IGetEvaluatorContext`/`GetEvaluatorContext`,
+     DI registered) → frontend `getEvaluatorContext`; ScoreModal gets `restrictToCriteria` (shows
+     only the evaluator's criteria); "Evaluator view" chip on the Applications header.
+   - ⚠ STILL requires the User↔Employee link (User form → "Linked Employee"). Unlinked account =
+     HR (unconstrained). This is almost certainly why the user saw "not working" — the evaluator's
+     login wasn't linked to their employee. Flag this to the user.
+   - E2E candbg20: evaluator-context isConstrained=true/1 req/1 criterion; own criterion 200,
+     unassigned 400; list filtered.
+2. **User↔Employee relationship restructure — FK moved to User, User.BranchId/IsHeadOffice
+   removed** (migration `ReverseUserEmployeeRelationship`, applied to CERP; E2E candbg17/19 green.
+   **Uncommitted.**):
+   - Reversed the link the previous increment added: dropped `Employee.UserId`; added nullable
+     **`User.EmployeeId`** with a real FK → `hrms_Employee` (SET NULL). `User.LinkEmployee`;
+     removed `Employee.LinkUserAccount`. ⚠ Hand-edited the scaffolded migration: EF tried to
+     RENAME BranchId→EmployeeId — changed to DROP BranchId + ADD fresh null EmployeeId (a rename
+     would have carried branch-ids into the FK and broken it).
+   - **Removed `User.BranchId` + `User.IsHeadOffice` columns** + `MarkAsHeadOffice`/`AssignBranch`
+     (and the two `RegisterRepository` calls). Branch scope + head-office are now **derived at
+     login** (`LoginRepository`): branchId = linked employee's BranchId; isHeadOffice = (no branch).
+     The `BranchId`/`IsHeadOffice` cookies + `UserResult` fields are unchanged downstream, so
+     `CurrentUserService` / branch isolation still work. E2E: branch-employee user → isHeadOffice
+     false + branchId set; owner (no employee) → head office.
+   - Evaluator resolution now via `User.EmployeeId` (EvaluationGuard). `SaveUserDto`/UserDto +
+     user-management handlers carry EmployeeId; **user form** gained a "Linked Employee" dropdown;
+     employee-form login dropdown removed; EmployeeModel.userId removed, UserModel.employeeId added.
+     E2E: evaluator scores own C1=200, unassigned C2=400 through the reversed FK.
+   - ⚠ Head-office derivation decision (NOT explicitly confirmed with user): unlinked / no-branch
+     account = head office (global); this preserves the tenant owner's global visibility but means
+     a plain /User-created account (previously IsHeadOffice=false) is now head-office until linked
+     to a branch employee. Flag if a stricter default is wanted.
+2. **Recruitment review: evaluator permissions + score locking + hire auto-populate** (migration
+   `AddEmployeeUserLink` — one nullable `Employee.UserId` column + index, applied to CERP; E2E
+   candbg16 all green. **Uncommitted.**):
+   - **Evaluator permissions:** NEW `Employee.UserId` login-account link (`Employee.LinkUserAccount`;
+     on Create/Update employee DTO + a "Login Account (for evaluators)" dropdown in the employee
+     master form; exposed on `EmployeeDto`). `EvaluationGuard.EnsureMayScoreAsync` in
+     `ScoreJobApplication`: resolve current user → employee; if that employee is an assigned
+     `CriterionEvaluator` anywhere, they may only score criteria whose evaluator set includes them —
+     else 400. Unlinked / non-evaluator users (HR) unconstrained. Decision (asked): "only assigned
+     evaluators constrained." E2E: evaluator scores own C1=200, unassigned C2=400, HR scores both=200.
+   - **Score locking:** `EvaluationGuard.EnsureEvaluatable` — scoring/adopt allowed only at
+     Received/Screening/Shortlisted/Interview; locked at Selected+ (decision made). Replaces the old
+     Rejected/Withdrawn/Hired-only guard in `ScoreJobApplication` + `AdoptInterviewScores`. FE score
+     button gated on `EVALUATABLE` stages. Decision (asked): "lock when Selected or beyond." E2E:
+     score after Selected = 400 "evaluation is complete … locked."
+   - **Hire auto-populate:** `HireCandidate` derives salaryScaleId (DTO ?? offer ?? requisition),
+     salary (DTO ?? offer ?? scale amount), and position (DTO ?? a vacant position of the
+     requisition's PositionClass, preferring its unit) — DTO values still override. `MarkPositionOccupied`
+     uses the RESOLVED position. FE Hire modal prefills salary from the accepted offer + relabels the
+     position picker "Auto — from the vacancy's role". E2E: hire with no position/salary → employee
+     got salary 6500 (offer, not 5000 scale) + auto-picked vacant position + scale.
+   - ⚠ `Employee.UserId` is opt-in: enforcement only bites once HR links evaluator employees to
+     their login accounts; until then everyone is unconstrained (by design).
+2. **Offer bug-fixes (3) + customizable offer-letter PDF template** (migration
+   `AddOfferLetterTemplate` — CompanyProfile letterhead columns + `hrms_OfferLetterTemplate`;
+   QuestPDF renderer reworked; E2E candbg14/candbg15 all green. **Uncommitted.**):
+   - **Bug — application stuck at "Offer Pending" after accept:** new non-terminal stage
+     `ApplicationStage.OfferAccepted = 9` (string enum, no schema change). `RespondJobOffer` accept
+     path moves OfferPending → OfferAccepted (`OfferShared.MoveToOfferAcceptedAsync`). Wired every
+     touchpoint: hire handler (`CandidateLifecycleHandlers`) + hire-queue (`HireQueueHandlers`
+     pool/stageOk) accept it as hire-ready; move-TO guards (`JobApplicationHandlers` single+bulk)
+     block it; `SaveJobOffer` refuses a new offer at it; FE STAGE_TONE + Move-Stage disabled +
+     offer button view-only + `isMovable` exclude it. E2E: accept → stage OfferAccepted; hire
+     queue shows it blocked only on missing docs (NOT a stage block).
+   - **Bug — `New Offer` reappeared after acceptance:** offerModal now shows an "accepted — ready
+     to hire" note when any offer is Accepted (was: Accepted left the ACTIVE set so the button
+     returned). Backed by `SaveJobOffer` 400 at OfferAccepted. E2E: new-offer POST → 400.
+   - **Bug — e-mail not actually sending:** Gmail (authenticated relay) rejects a `From` that is
+     not the login mailbox; `SmtpEmailService` swallowed the SmtpException → silent fail. Fix:
+     when `UserName` is an e-mail ≠ `FromAddress`, send AS the login and set the branded address as
+     **Reply-To** (`LooksLikeEmail` guard leaves SendGrid-style `apikey` logins alone). NOTE:
+     couldn't send a live Gmail test (sandbox blocks external mail) — verified via the pickup-dir
+     path + reasoning; user can confirm real delivery via `! ` command. appsettings has live Gmail
+     creds (Enabled=true) — approved offers now really e-mail; suggested moving the app password to
+     user-secrets.
+   - **Feature — customizable offer-letter PDF template (HC111):** `CompanyProfile` gained
+     CompanyName/ContactAddress/ContactPhone/ContactEmail (letterhead; logo reused from
+     `DocumentTemplate/logo`); new `OfferLetterTemplate` singleton (tokenized Body + signatory,
+     default provided). `IOfferLetterComposer` merges 10 tokens (CandidateName/Position/Salary/
+     StartDate/ExpiryDate/OfferNumber/EmploymentType/UnitName/CompanyName/Today) →
+     `QuestPdfService.RenderOfferLetter` draws letterhead+body+signatory. `GenerateOfferLetter`,
+     stored LetterText, and the e-mailed PDF all flow through the composer (one source of truth).
+     New `OfferLetterTemplateController` (GET/PUT template, GET/PUT company, GET merge-fields, POST
+     preview→PDF). FE admin page *Recruitment → Offer Letter Template* (company fields + logo
+     upload + token-palette body editor + live Preview PDF); route + sidebar added. E2E: template
+     saved, merge-fields=10, preview `%PDF-` 49 KB, generate-letter merges all 4 dynamic vars w/ no
+     stray `{{tokens}}`, approved offer e-mails a 48 KB PDF attachment.
+2. **Offer logic refinement: eligibility-gated Offer button, vacancy-derived defaults, manager
+   hierarchy, auto PDF delivery on approval** (no migration; QuestPDF added to Inf; E2E candbg13
+   verified end-to-end: list eligibility A=Eligible#1/B=Waitlisted#2 → defaults return scale
+   G7/S1=5000 + manager resolved from PARENT unit → offer for waitlisted B 400s → offer for A
+   without scale/manager auto-populates both → submit auto-approves → offer **Sent**, application
+   **OfferPending**, one .eml with a valid 45 KB `OFR-0001.pdf` (`%PDF-` magic) → re-send 409.
+   **Uncommitted.**):
+   - *Offer button (the "3 applicants all offerable" bug):* the server rank gate existed but the
+     list carried no eligibility → UI enabled everyone. `GetAllJobApplications` now batch-computes
+     per-row `HireEligibility` + `Rank` via `IGetApplicationRanking` (criteria vacancies only);
+     eligibility chip under the stage chip; Offer button active ONLY for Eligible (disabled with
+     the specific reason; finished apps keep view). `OfferModal` gets `blockReason`.
+   - *Defaults:* `GET JobOffer/defaults?applicationId=` (`GetOfferDefaults`) → unit/position,
+     position pay point (requisition scale ?? position-class scale, label+amount), manager from
+     `OfferShared.ResolveUnitManagerAsync` (active IsManagerial employee with a position in the
+     unit; else walk ParentId ≤10; returns the answering unit). Form opens pre-populated: scale
+     LOCKED to the position's pay point (free dropdown only when none), salary pre-filled, manager
+     preselected with resolution source ("Manager of parent unit X…"). `SaveJobOffer` applies the
+     same defaults server-side when a create omits scale/manager.
+   - *Auto PDF delivery:* `IPdfService`/`QuestPdfService` (QuestPDF Community, A4 letter);
+     `IEmailService.SendAsync` gained `EmailAttachment[]`; `IOfferDelivery` (`EmailOfferAsync` +
+     `TryAutoSendAsync`) hooks BOTH final-approval paths (`JobOfferWorkflowHandler.OnApprovedAsync`
+     + `SubmitJobOffer` auto-approve): ensures a letter (generates + attaches HC111 standard via
+     new `JobOffer.AttachLetter`, frozen after Sent), renders PDF, e-mails; on success MarkSent +
+     app→OfferPending ("approved and e-mailed"); on failure stays Approved. Manual Send = retry
+     (also e-mails; `ISendJobOffer` returns bool; controller message says delivered-or-not, shown
+     as an info banner in the modal). `OfferShared.MoveToOfferPendingAsync` extracted/shared.
+   - ⚠️ `IsManagerial` is not settable via the employee create/update API (only consumed) — the
+     E2E flags it via SQL; a UI/API toggle is a small gap if the manager hierarchy should be
+     self-service.
+2. **Automatic interview e-mails + first e-mail infrastructure** (no migration; E2E via
+   `Email__PickupDirectory` .eml delivery: schedule→invitation, time-change reschedule→
+   "Rescheduled" w/ old→new times, panel-only edit→NO mail, cancel→cancellation, no-email
+   candidate→skipped gracefully; decoded .eml verified (MIME-encoded subjects/base64 bodies due
+   to em/en-dashes — grep the DECODED content in tests). **Uncommitted.**):
+   - *Infrastructure:* `IEmailService` (App) + `SmtpEmailService` (Inf, System.Net.Mail — no new
+     deps): `Email` config section (Enabled=false default → logged no-op; Host/Port/EnableSsl/
+     UserName/Password; FromAddress/FromName; `PickupDirectory` → .eml files for dev/test).
+     NEVER throws; 15s timeout; registered in Inf DI; section added to appsettings.json.
+   - *Triggers:* `IInterviewNotifier` (Recruitment) — invitation on `SaveInterview` create,
+     rescheduled-notice when ScheduledStart/End actually CHANGE on update, cancellation on
+     `SetInterviewStatus` cancel; all AFTER SaveChanges, internally try/caught; resolves
+     application → candidate (Email/name) + requisition title; no-address = logged skip.
+   - Production note: for real delivery set `Email:Enabled=true` + relay settings (or keep
+     PickupDirectory for staging); an outbox/queue is the future hardening step for volume.
+2. **Bulk stage moves (mass processing)** (no migration; E2E verified [mixed batch of 5 →
+   moved=2, skips: offer-locked "Offer OFR-0001 (Draft) drives…", final "Rejected … is final",
+   unknown "not found"; OfferPending destination → 400; shared note logged per app].
+   **Uncommitted.**):
+   - *Backend:* `PUT JobApplication/stage/bulk` (`BulkMoveApplicationStage`, max 200 ids) —
+     per-item outcomes (SAP mass-processing style): each app checked against the SAME single-move
+     rules (final stages, offer-driven lock incl. Accepted, already-there); the movable subset
+     saves as ONE transaction; skips return `{applicationId, candidateName, reason}`; batched
+     offer-lock + candidate-name queries.
+   - *Frontend:* checkbox selection column on the Applications pipeline (final/offer-driven rows
+     unselectable w/ tooltip), "Move N Selected" + Clear toolbar actions, `BulkStageModal`
+     (stage select excluding OfferPending/Hired + shared note → moved/skipped result report),
+     selection cleared + list refreshed on Done.
+2. **StageModal score contradiction + error-message artifact** (frontend only, builds clean.
    **Uncommitted.**): the Move Application Stage form offered a manual "Screening Score (0–100)"
    field that the backend always rejects on criteria-scored vacancies — it now hides the field on
    such vacancies (`autoScored = totalCriteriaCount > 0`), shows the current auto-calculated total

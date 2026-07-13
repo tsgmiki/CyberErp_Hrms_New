@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public Guid? RelatedEmployeeId { get; set; }
         public string? RelatedEmployeeName { get; set; }
         public string? Remark { get; set; }
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeDependentDto
@@ -36,6 +39,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public bool IsDependent { get; set; }
         public Guid? RelatedEmployeeId { get; set; }
         public string? Remark { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeDependentDtoValidator : AbstractValidator<SaveEmployeeDependentDto>
@@ -60,6 +65,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class SaveEmployeeDependent(
         IRepository<EmployeeDependent> repository,
         IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields,
         IValidator<SaveEmployeeDependentDto> validator,
         ILogger<SaveEmployeeDependent> logger) : ISaveEmployeeDependent
     {
@@ -85,6 +91,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 entity.Update(dto.FullName, dto.Relationship, dto.DateOfBirth, dto.PhoneNumber,
                     dto.Address, dto.IsDependent, dto.RelatedEmployeeId, dto.Remark);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Dependent, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated EmployeeDependent {Id}", entity.Id);
                 return entity.Id;
@@ -93,6 +100,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var created = EmployeeDependent.Create(personId, dto.FullName, dto.Relationship,
                 dto.DateOfBirth, dto.PhoneNumber, dto.Address, dto.IsDependent, dto.RelatedEmployeeId, dto.Remark);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Dependent, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeDependent {Id}", created.Id);
             return created.Id;
@@ -102,6 +110,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class DeleteEmployeeDependent(
         IRepository<EmployeeDependent> repository,
         IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployeeDependent> logger) : IDeleteEmployeeDependent
     {
         public async Task DeleteAsync(Guid id)
@@ -110,6 +119,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(EmployeeDependent), id.ToString());
             await EmployeeGuard.EnsurePersonVisibleAsync(employeeRepository, entity.PersonId);
 
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Dependent, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeDependent {Id}", id);
@@ -118,14 +128,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class GetEmployeeDependents(
         IRepository<EmployeeDependent> repository,
-        IRepository<Employee> employeeRepository) : IGetEmployeeDependents
+        IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields) : IGetEmployeeDependents
     {
         public async Task<List<EmployeeDependentDto>> GetAsync(Guid employeeId)
         {
             var personId = await EmployeeGuard.ResolvePersonIdAsync(employeeRepository, employeeId);
 
             // Left-join the related employee's person for internal relationships (HC020).
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.PersonId == personId)
                 .OrderBy(x => x.FullName)
                 .Select(x => new EmployeeDependentDto
@@ -148,6 +159,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     Remark = x.Remark
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Dependent, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
+            return list;
         }
     }
 }

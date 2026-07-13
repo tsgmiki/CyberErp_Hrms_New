@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public int? GraduationYear { get; set; }
         public string? Remark { get; set; }
         public int DocumentCount { get; set; }
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeEducationDto
@@ -32,6 +35,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public string? Qualification { get; set; }
         public int? GraduationYear { get; set; }
         public string? Remark { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeEducationDtoValidator : AbstractValidator<SaveEmployeeEducationDto>
@@ -84,6 +89,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class SaveEmployeeEducation(
         IRepository<EmployeeEducation> repository,
         IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields,
         IValidator<SaveEmployeeEducationDto> validator,
         ILogger<SaveEmployeeEducation> logger) : ISaveEmployeeEducation
     {
@@ -100,6 +106,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ?? throw new NotFoundException(nameof(EmployeeEducation), dto.Id.Value.ToString());
                 entity.Update(dto.EducationLevel, dto.Institution, dto.FieldOfStudy, dto.Qualification, dto.GraduationYear, dto.Remark);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Education, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated EmployeeEducation {Id}", entity.Id);
                 return entity.Id;
@@ -108,6 +115,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var created = EmployeeEducation.Create(personId, dto.EducationLevel, dto.Institution,
                 dto.FieldOfStudy, dto.Qualification, dto.GraduationYear, dto.Remark);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Education, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeEducation {Id}", created.Id);
             return created.Id;
@@ -118,6 +126,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeEducation> repository,
         IRepository<Employee> employeeRepository,
         IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployeeEducation> logger) : IDeleteEmployeeEducation
     {
         public async Task DeleteAsync(Guid id)
@@ -126,8 +135,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(EmployeeEducation), id.ToString());
             await EmployeeGuard.EnsurePersonVisibleAsync(employeeRepository, entity.PersonId);
 
-            // Attached documents cascade with the record (no FK — polymorphic owner).
+            // Attached documents and custom-field values cascade with the record (polymorphic, no FK).
             await DocumentStorage.DeleteForOwnerAsync(documentRepository, EmployeeDocumentOwner.Education, id);
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Education, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeEducation {Id}", id);
@@ -137,13 +147,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class GetEmployeeEducations(
         IRepository<EmployeeEducation> repository,
         IRepository<Employee> employeeRepository,
-        IRepository<EmployeeDocument> documentRepository) : IGetEmployeeEducations
+        IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields) : IGetEmployeeEducations
     {
         public async Task<List<EmployeeEducationDto>> GetAsync(Guid employeeId)
         {
             var personId = await EmployeeGuard.ResolvePersonIdAsync(employeeRepository, employeeId);
 
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.PersonId == personId)
                 .OrderByDescending(x => x.GraduationYear)
                 .Select(x => new EmployeeEducationDto
@@ -160,6 +171,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Education && d.OwnerId == x.Id)
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Education, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
+            return list;
         }
     }
 }

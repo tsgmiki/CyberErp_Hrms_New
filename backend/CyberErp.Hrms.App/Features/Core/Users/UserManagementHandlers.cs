@@ -20,6 +20,8 @@ namespace CyberErp.Hrms.App.Features.Core.Users
         public string UserName { get; set; } = string.Empty;
         /// <summary>Required on create; optional on update (blank = keep the current password).</summary>
         public string? Password { get; set; }
+        /// <summary>The employee this login belongs to (null = system/owner; drives branch scope).</summary>
+        public Guid? EmployeeId { get; set; }
     }
 
     public class SaveUserDtoValidator : AbstractValidator<SaveUserDto>
@@ -66,6 +68,7 @@ namespace CyberErp.Hrms.App.Features.Core.Users
                     ?? throw new NotFoundException(nameof(User), dto.Id.Value.ToString());
 
                 entity.Update(dto.FullName, dto.Email, dto.PhoneNumber, dto.UserName);
+                entity.LinkEmployee(dto.EmployeeId);
                 // Only rotate the password when a new one is supplied.
                 if (!string.IsNullOrWhiteSpace(dto.Password))
                     entity.UpdateCredentials(dto.UserName, authentication.EncryptPassword(dto.Password));
@@ -79,6 +82,7 @@ namespace CyberErp.Hrms.App.Features.Core.Users
             var created = User.Create(
                 dto.FullName, dto.Email, dto.PhoneNumber, dto.UserName,
                 authentication.EncryptPassword(dto.Password!));
+            created.LinkEmployee(dto.EmployeeId);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created User {Id} ({UserName})", created.Id, created.UserName);
@@ -98,7 +102,8 @@ namespace CyberErp.Hrms.App.Features.Core.Users
                 FullName = u.FullName,
                 UserName = u.UserName,
                 Email = u.Email,
-                PhoneNumber = u.PhoneNumber
+                PhoneNumber = u.PhoneNumber,
+                EmployeeId = u.EmployeeId
                 // Password is never returned.
             };
         }

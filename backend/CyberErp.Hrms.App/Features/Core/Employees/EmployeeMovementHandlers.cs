@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -20,21 +21,23 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
         public Guid? FromPositionId { get; set; }
         public string? FromPositionName { get; set; }
-        public Guid? FromJobGradeId { get; set; }
-        public string? FromJobGradeName { get; set; }
+        public Guid? FromSalaryScaleId { get; set; }
+        public string? FromSalaryScaleName { get; set; }
         public decimal? FromSalary { get; set; }
         public string? FromBranchName { get; set; }
 
         public Guid? ToPositionId { get; set; }
         public string? ToPositionName { get; set; }
-        public Guid? ToJobGradeId { get; set; }
-        public string? ToJobGradeName { get; set; }
+        public Guid? ToSalaryScaleId { get; set; }
+        public string? ToSalaryScaleName { get; set; }
         public decimal? ToSalary { get; set; }
         public string? ToBranchName { get; set; }
 
         public string? Reason { get; set; }
         public string? Remark { get; set; }
         public DateTime? ExecutedAt { get; set; }
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeMovementDto
@@ -44,14 +47,19 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public string MovementType { get; set; } = nameof(Dom.Entities.Core.MovementType.Transfer);
         public DateTime EffectiveDate { get; set; }
         public Guid? ToPositionId { get; set; }
-        public Guid? ToJobGradeId { get; set; }
+        public Guid? ToSalaryScaleId { get; set; }
         public decimal? ToSalary { get; set; }
         public string? Reason { get; set; }
         public string? Remark { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeMovementDtoValidator : AbstractValidator<SaveEmployeeMovementDto>
     {
+        private static bool IsTransfer(SaveEmployeeMovementDto x) =>
+            string.Equals(x.MovementType, nameof(Dom.Entities.Core.MovementType.Transfer), StringComparison.OrdinalIgnoreCase);
+
         public SaveEmployeeMovementDtoValidator()
         {
             RuleFor(x => x.EmployeeId).NotEmpty();
@@ -60,13 +68,18 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .Must(v => Enum.TryParse<MovementType>(v, true, out _))
                 .WithMessage("MovementType must be one of: Transfer, Promotion, Demotion.");
             RuleFor(x => x.ToPositionId).NotEmpty()
-                .When(x => string.Equals(x.MovementType, nameof(Dom.Entities.Core.MovementType.Transfer), StringComparison.OrdinalIgnoreCase))
+                .When(IsTransfer)
                 .WithMessage("A transfer requires a target position.");
+            // Salary rule: a Transfer may not change the salary or pay scale.
+            RuleFor(x => x.ToSalary).Empty().When(IsTransfer)
+                .WithMessage("A transfer cannot change the salary — record a Promotion or Demotion for pay changes.");
+            RuleFor(x => x.ToSalaryScaleId).Empty().When(IsTransfer)
+                .WithMessage("A transfer cannot change the salary scale — record a Promotion or Demotion for pay changes.");
             RuleFor(x => x)
-                .Must(x => x.ToPositionId.HasValue || x.ToJobGradeId.HasValue || x.ToSalary.HasValue)
-                .When(x => !string.Equals(x.MovementType, nameof(Dom.Entities.Core.MovementType.Transfer), StringComparison.OrdinalIgnoreCase))
-                .WithMessage("A promotion/demotion must change at least the position, grade or salary.")
-                .OverridePropertyName("toJobGradeId");
+                .Must(x => x.ToPositionId.HasValue || x.ToSalaryScaleId.HasValue || x.ToSalary.HasValue)
+                .When(x => !IsTransfer(x))
+                .WithMessage("A promotion/demotion must change at least the position, salary scale or salary.")
+                .OverridePropertyName("toSalaryScaleId");
             RuleFor(x => x.ToSalary).GreaterThanOrEqualTo(0).When(x => x.ToSalary.HasValue);
         }
     }
@@ -100,9 +113,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeMovement> repository,
         IRepository<Employee> employeeRepository,
         IRepository<Position> positionRepository,
-        IRepository<JobGrade> jobGradeRepository,
+        IRepository<SalaryScale> salaryScaleRepository,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         IValidator<SaveEmployeeMovementDto> validator,
         ILogger<SaveEmployeeMovement> logger) : ISaveEmployeeMovement
     {
@@ -116,8 +130,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .Select(e => new
                 {
                     e.PositionId, e.Salary, e.BranchId, e.EmployeeNumber,
-                    // Current grade for the From-snapshot is derived from the salary scale.
-                    FromJobGradeId = e.SalaryScale != null ? (Guid?)e.SalaryScale.JobGradeId : null,
+                    // The From-snapshot freezes the employee's current pay point (salary scale).
+                    FromSalaryScaleId = e.SalaryScaleId,
                     FirstName = e.Person != null ? e.Person.FirstName : string.Empty,
                     LastName = e.Person != null ? e.Person.GrandFatherName : string.Empty
                 })
@@ -126,8 +140,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             if (dto.ToPositionId.HasValue)
                 await MovementShared.EnsureTargetPositionAvailableAsync(positionRepository, dto.ToPositionId.Value, employee.PositionId);
-            if (dto.ToJobGradeId.HasValue && !await jobGradeRepository.GetAll().AnyAsync(g => g.Id == dto.ToJobGradeId.Value))
-                throw new NotFoundException(nameof(JobGrade), dto.ToJobGradeId.Value.ToString());
+            if (dto.ToSalaryScaleId.HasValue && !await salaryScaleRepository.GetAll().AnyAsync(s => s.Id == dto.ToSalaryScaleId.Value))
+                throw new NotFoundException(nameof(SalaryScale), dto.ToSalaryScaleId.Value.ToString());
 
             var type = Enum.Parse<MovementType>(dto.MovementType, true);
 
@@ -139,8 +153,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     throw new ValidationException("status", "Only pending movements can be edited.");
                 await workflowGate.EnsureNoRunningAsync("EmployeeMovement", entity.Id);
 
-                entity.Update(type, dto.EffectiveDate, dto.ToPositionId, dto.ToJobGradeId, dto.ToSalary, dto.Reason, dto.Remark);
+                entity.Update(type, dto.EffectiveDate, dto.ToPositionId, dto.ToSalaryScaleId, dto.ToSalary, dto.Reason, dto.Remark);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Movement, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated EmployeeMovement {Id}", entity.Id);
                 return entity.Id;
@@ -149,10 +164,11 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             // The From* snapshot freezes the employee's placement at recording time.
             var created = EmployeeMovement.Create(
                 dto.EmployeeId, type, dto.EffectiveDate,
-                employee.PositionId, employee.FromJobGradeId, employee.Salary, employee.BranchId,
-                dto.ToPositionId, dto.ToJobGradeId, dto.ToSalary,
+                employee.PositionId, employee.FromSalaryScaleId, employee.Salary, employee.BranchId,
+                dto.ToPositionId, dto.ToSalaryScaleId, dto.ToSalary,
                 dto.Reason, dto.Remark);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Movement, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeMovement {Id} ({Type}) for Employee {EmployeeId}", created.Id, type, dto.EmployeeId);
 
@@ -171,6 +187,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeMovement> repository,
         IRepository<Employee> employeeRepository,
         IRepository<Position> positionRepository,
+        IRepository<EmployeeExperience> experienceRepository,
+        IRepository<CompanyProfile> companyRepository,
         IWorkflowGate workflowGate,
         ILogger<ExecuteEmployeeMovement> logger) : IExecuteEmployeeMovement
     {
@@ -204,9 +222,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .FirstOrDefaultAsync();
             }
 
-            // Grade is derived from the salary scale, so a movement records the grade change for history
-            // but does not mutate the employee's grade here (reassign the salary scale to change grade).
-            employee.ApplyMovement(changePosition, movement.ToPositionId, newBranchId, movement.ToSalary);
+            // Applies the target position/branch and, for a promotion/demotion, the new pay point
+            // (salary scale — the grade derives from it) and salary.
+            employee.ApplyMovement(changePosition, movement.ToPositionId, newBranchId, movement.ToSalary, movement.ToSalaryScaleId);
             employeeRepository.UpdateAsync(employee);
 
             if (changePosition)
@@ -215,11 +233,53 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 await EmployeeShared.MarkPositionOccupiedAsync(movement.ToPositionId, positionRepository);
             }
 
+            // Experience tracking: executing a movement automatically records the role the employee
+            // is LEAVING as an INTERNAL experience entry (IsExternal = false) on their person record.
+            await RegisterInternalExperienceAsync(movement, employee);
+
             movement.MarkExecuted(newBranchId);
             repository.UpdateAsync(movement);
             await repository.SaveChangesAsync();
             logger.LogInformation("Executed EmployeeMovement {Id} ({Type}) for Employee {EmployeeId}",
                 movement.Id, movement.MovementType, movement.EmployeeId);
+        }
+
+        /// <summary>
+        /// Auto-registers the FROM role as internal experience — organization = the company name,
+        /// job title = the prior position, ending on the movement's effective date. Robust with
+        /// fallbacks so it never fails the execution; the row is added to the same unit of work.
+        /// </summary>
+        private async Task RegisterInternalExperienceAsync(EmployeeMovement movement, Employee employee)
+        {
+            if (employee.PersonId == Guid.Empty) return;
+
+            var fromTitle = movement.FromPositionId.HasValue
+                ? await positionRepository.GetAllWithoutTenantFilter()
+                    .Where(p => p.Id == movement.FromPositionId.Value)
+                    .Select(p => p.PositionClass != null ? p.PositionClass.Title : p.Code)
+                    .FirstOrDefaultAsync()
+                : null;
+            var companyName = await companyRepository.GetAll()
+                .Select(c => c.CompanyName)
+                .FirstOrDefaultAsync();
+            // Start of the from-role = the previous completed movement's effective date, else hire date.
+            var priorEffective = await repository.GetAll()
+                .Where(m => m.EmployeeId == movement.EmployeeId && m.Status == MovementStatus.Completed
+                            && m.Id != movement.Id && m.EffectiveDate <= movement.EffectiveDate)
+                .OrderByDescending(m => m.EffectiveDate)
+                .Select(m => (DateTime?)m.EffectiveDate)
+                .FirstOrDefaultAsync();
+
+            var experience = EmployeeExperience.Create(
+                employee.PersonId,
+                organization: string.IsNullOrWhiteSpace(companyName) ? "Internal" : companyName!,
+                jobTitle: string.IsNullOrWhiteSpace(fromTitle) ? "Employee" : fromTitle!,
+                startDate: priorEffective ?? employee.HireDate,
+                endDate: movement.EffectiveDate,
+                responsibilities: $"Internal {movement.MovementType} recorded on {movement.EffectiveDate:yyyy-MM-dd}.",
+                isExternal: false,
+                isGovernmental: false);
+            await experienceRepository.AddAsync(experience);
         }
     }
 
@@ -252,6 +312,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeMovement> repository,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployeeMovement> logger) : IDeleteEmployeeMovement
     {
         public async Task DeleteAsync(Guid id)
@@ -264,6 +325,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (movement.Status == MovementStatus.Completed)
                 throw new ValidationException("status", "Executed movements are part of the employee's history and cannot be deleted.");
 
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Movement, id);
             repository.Delete(movement);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeMovement {Id}", id);
@@ -275,8 +337,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeMovement> repository,
         IRepository<Employee> employeeRepository,
         IRepository<Position> positionRepository,
-        IRepository<JobGrade> jobGradeRepository,
-        IRepository<Branch> branchRepository) : IGetEmployeeMovements
+        IRepository<SalaryScale> salaryScaleRepository,
+        IRepository<Branch> branchRepository,
+        ICustomFieldService customFields) : IGetEmployeeMovements
     {
         public async Task<List<EmployeeMovementDto>> GetAsync(Guid employeeId)
         {
@@ -285,10 +348,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             // Name lookups use the unfiltered sets: display-by-id is safe and keeps historical
             // cross-branch snapshots readable (same approach as RelatedEmployeeName).
             var positions = positionRepository.GetAllWithoutTenantFilter();
-            var grades = jobGradeRepository.GetAllWithoutTenantFilter();
+            // The scale display = "<grade> / <step>" (its pay point identity).
+            var scales = salaryScaleRepository.GetAllWithoutTenantFilter()
+                .Select(s => new { s.Id, Name = (s.JobGrade != null ? s.JobGrade.Name : "") + (s.Step != null ? " / " + s.Step.Name : "") });
             var branches = branchRepository.GetAllWithoutTenantFilter();
 
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.EmployeeId == employeeId)
                 .OrderByDescending(x => x.EffectiveDate)
                 .Select(x => new EmployeeMovementDto
@@ -301,15 +366,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     FromPositionId = x.FromPositionId,
                     FromPositionName = positions.Where(p => p.Id == x.FromPositionId)
                         .Select(p => p.Code + (p.PositionClass != null ? " — " + p.PositionClass.Title : "")).FirstOrDefault(),
-                    FromJobGradeId = x.FromJobGradeId,
-                    FromJobGradeName = grades.Where(g => g.Id == x.FromJobGradeId).Select(g => g.Name).FirstOrDefault(),
+                    FromSalaryScaleId = x.FromSalaryScaleId,
+                    FromSalaryScaleName = scales.Where(s => s.Id == x.FromSalaryScaleId).Select(s => s.Name).FirstOrDefault(),
                     FromSalary = x.FromSalary,
                     FromBranchName = branches.Where(b => b.Id == x.FromBranchId).Select(b => b.Name).FirstOrDefault(),
                     ToPositionId = x.ToPositionId,
                     ToPositionName = positions.Where(p => p.Id == x.ToPositionId)
                         .Select(p => p.Code + (p.PositionClass != null ? " — " + p.PositionClass.Title : "")).FirstOrDefault(),
-                    ToJobGradeId = x.ToJobGradeId,
-                    ToJobGradeName = grades.Where(g => g.Id == x.ToJobGradeId).Select(g => g.Name).FirstOrDefault(),
+                    ToSalaryScaleId = x.ToSalaryScaleId,
+                    ToSalaryScaleName = scales.Where(s => s.Id == x.ToSalaryScaleId).Select(s => s.Name).FirstOrDefault(),
                     ToSalary = x.ToSalary,
                     ToBranchName = branches.Where(b => b.Id == x.ToBranchId).Select(b => b.Name).FirstOrDefault(),
                     Reason = x.Reason,
@@ -317,6 +382,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ExecutedAt = x.ExecutedAt
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Movement, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
+            return list;
         }
     }
 }

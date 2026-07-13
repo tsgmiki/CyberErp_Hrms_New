@@ -13,6 +13,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(d => d.Id);
 
             builder.Property(d => d.OwnerType).IsRequired().HasConversion<string>().HasMaxLength(30);
+            builder.Property(d => d.OwnerField).HasMaxLength(100);   // sub-scope (dynamic-form field name)
             builder.Property(d => d.FileName).IsRequired().HasMaxLength(300);
             builder.Property(d => d.ContentType).IsRequired().HasMaxLength(200);
             builder.Property(d => d.Content).IsRequired();          // varbinary(max)

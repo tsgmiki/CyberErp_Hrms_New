@@ -38,6 +38,8 @@ export default interface EmployeeModel extends AbstractModel {
   salaryScaleStep?: string;
   salaryScaleAmount?: number;
   salary?: number;
+  /** Managerial staff receive the managerial annual-leave entitlement and may head units. */
+  isManagerial?: boolean;
 
   positionId?: string;
   positionCode?: string;
@@ -61,6 +63,8 @@ export interface EmployeeEducationModel extends AbstractModel {
   graduationYear?: number;
   remark?: string;
   documentCount?: number;
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }
 
 export interface EmployeeExperienceModel extends AbstractModel {
@@ -70,7 +74,12 @@ export interface EmployeeExperienceModel extends AbstractModel {
   startDate?: string;
   endDate?: string;
   responsibilities?: string;
+  /** True = prior job at another employer; auto-set true for manual entries. */
+  isExternal?: boolean;
+  isGovernmental?: boolean;
   documentCount?: number;
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }
 
 /** A file attached to an education/experience record (HC017/HC018). */
@@ -90,19 +99,24 @@ export interface EmployeeMovementModel extends AbstractModel {
   effectiveDate?: string;
   fromPositionId?: string;
   fromPositionName?: string;
-  fromJobGradeId?: string;
-  fromJobGradeName?: string;
+  fromSalaryScaleId?: string;
+  fromSalaryScaleName?: string;
   fromSalary?: number;
   fromBranchName?: string;
   toPositionId?: string;
   toPositionName?: string;
-  toJobGradeId?: string;
-  toJobGradeName?: string;
+  toSalaryScaleId?: string;
+  toSalaryScaleName?: string;
   toSalary?: number;
+  /** Client-only: the grade chosen to filter salary scales (not persisted). */
+  jobGradeId?: string;
+  jobGradeName?: string;
   toBranchName?: string;
   reason?: string;
   remark?: string;
   executedAt?: string;
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }
 
 /** One departmental clearance item of a termination case. */
@@ -180,6 +194,8 @@ export interface EmployeeTerminationModel extends AbstractModel {
   settledAt?: string;
   awaitingWorkflow?: boolean;
   clearances?: TerminationClearanceModel[];
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }
 
 /** Disciplinary case record. */
@@ -192,6 +208,8 @@ export interface DisciplinaryMeasureModel extends AbstractModel {
   status?: string; // Open | UnderReview | Resolved | Cancelled
   effectiveDate?: string;
   resolution?: string;
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }
 
 export interface EmployeeDependentModel extends AbstractModel {
@@ -205,4 +223,6 @@ export interface EmployeeDependentModel extends AbstractModel {
   relatedEmployeeId?: string;
   relatedEmployeeName?: string;
   remark?: string;
+  /** Dynamic custom-field values (HC021), keyed by field name. */
+  customFields?: Record<string, string | null>;
 }

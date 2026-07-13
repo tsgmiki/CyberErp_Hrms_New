@@ -18,7 +18,9 @@ import type {
   InterviewModel,
   InterviewConsolidatedModel,
   JobOfferModel,
+  OfferDefaultsModel,
   HireQueueRowModel,
+  BulkMoveResultModel,
 } from "@/models";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -394,6 +396,16 @@ export const scoreJobApplication = (dto: {
   scores: { criterionId: string; score: number; remarks?: string }[];
 }) => put("JobApplication/scores", dto);
 
+export interface EvaluatorContextModel {
+  isConstrainedEvaluator: boolean;
+  assignedCriterionIds: string[];
+  assignedRequisitionIds: string[];
+}
+
+/** The current user's evaluator scope — an assigned evaluator sees/scores only their own criteria. */
+export const getEvaluatorContext = () =>
+  api.get<EvaluatorContextModel>("JobApplication/evaluator-context");
+
 export const getApplicationRanking = (requisitionId: string) =>
   api.get<ApplicationRankingRowModel[]>(`JobApplication/ranking?requisitionId=${requisitionId}`);
 
@@ -440,6 +452,10 @@ export const deleteInterview = createDeleteService("Interview");
 export const getJobOffers = (applicationId: string) =>
   api.get<JobOfferModel[]>(`JobOffer?applicationId=${applicationId}`);
 
+/** Vacancy-derived defaults for a new offer: position scale + amount, unit-hierarchy manager. */
+export const getOfferDefaults = (applicationId: string) =>
+  api.get<OfferDefaultsModel>(`JobOffer/defaults?applicationId=${applicationId}`);
+
 export const saveJobOffer = (data: JobOfferModel) =>
   saveJson("JobOffer", {
     ...data,
@@ -468,3 +484,17 @@ export const moveApplicationStage = (dto: {
   screeningScore?: number;
   screeningRemarks?: string;
 }) => put("JobApplication/stage", dto);
+
+/** Mass stage move — movable applications move; the rest come back with reasons. */
+export async function bulkMoveApplicationStage(dto: {
+  ids: string[];
+  stage: string;
+  note?: string;
+}): Promise<{ ok: boolean; message: string; result?: BulkMoveResultModel }> {
+  try {
+    const result = await api.put<BulkMoveResultModel>("JobApplication/stage/bulk", dto);
+    return { ok: true, message: "", result };
+  } catch (e) {
+    return { ok: false, message: errorMessageParser(e) || (e as Error).message };
+  }
+}

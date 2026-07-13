@@ -9,5 +9,7 @@ export default interface UserModel extends Name, AbstractModel {
   userName?: string;
   isAdmin: boolean;
   emailConfirmed: boolean;
-  
+  /** The employee this login belongs to (null = system/owner). Drives branch scope + evaluator permissions. */
+  employeeId?: string;
+  employeeName?: string;
 }

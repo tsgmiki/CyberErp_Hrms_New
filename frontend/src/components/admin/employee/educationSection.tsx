@@ -8,6 +8,7 @@ import type { EmployeeEducationModel } from "@/models";
 import { getEducations, saveEducation, deleteEducation } from "@/services/admin/employee/children";
 import ChildManager, { type ChildColumn } from "./childManager";
 import DocumentAttachments from "./documentAttachments";
+import { useCustomFields } from "./customFieldsHook";
 import { StatusMessage } from "../../common/statusMessage/status";
 
 const FormProvider = memo(FormProviders);
@@ -41,6 +42,7 @@ function EducationSection({ employeeId }: { employeeId: string }) {
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<EmployeeEducationModel>({});
   const [isSaving, setIsSaving] = useState(false);
+  const customFields = useCustomFields("Education");
 
   const queryKey = ["employeeEducations", employeeId];
   const { data: rows, isLoading } = useQuery({
@@ -60,6 +62,7 @@ function EducationSection({ employeeId }: { employeeId: string }) {
   const open = (record: EmployeeEducationModel | null) => {
     setEditing(record);
     setFormData(record ?? {});
+    customFields.hydrate(record?.customFields);
     setFormState({});
     setShowForm(true);
   };
@@ -100,12 +103,13 @@ function EducationSection({ employeeId }: { employeeId: string }) {
           form={{
             columnsNo: 2,
             submitHandler,
-            labelWidth: "w-[35%]",
+            fieldLayout: "auth",
             isPending: isSaving,
             SubmitButton: "top",
             showModal: true,
             modalVisible: true,
             modalTitle: editing ? "Edit Education" : "Add Education",
+            description: "Academic qualifications and certifications.",
             modalSize: "lg",
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
@@ -116,6 +120,7 @@ function EducationSection({ employeeId }: { employeeId: string }) {
               { name: "qualification", label: "Qualification", value: formData.qualification, onChange: changeHandler, type: "text" },
               { name: "graduationYear", label: "Graduation Year", value: formData.graduationYear, onChange: changeHandler, inputType: "number", type: "text" },
               { name: "remark", label: "Remark", value: formData.remark, onChange: changeHandler, type: "textarea", colSpan: "full" },
+              ...customFields.components,
               { name: "employeeId", value: employeeId, type: "hidden" },
               { name: "id", value: formData.id, type: "hidden" },
             ],

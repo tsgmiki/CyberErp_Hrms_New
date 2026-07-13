@@ -78,12 +78,16 @@ export interface ApplicationRankingRowModel {
   candidateNumber?: string;
   candidateName?: string;
   stage: string;
+  /** Application date — the documented tie-break basis (earliest first). */
+  appliedAt?: string;
   totalScore?: number;
   scoredCriteria: number;
   totalCriteria: number;
   failsMandatory: boolean;
-  /** 1-based position by weighted total (scored candidates only). */
+  /** Standard-competition rank (ties SHARE a rank: 1,1,1,4…). */
   rank?: number;
+  /** True when another in-contention candidate has the exact same weighted total. */
+  tied?: boolean;
   /** Eligible | Waitlisted | Hired | OfferRejected | OutOfContention | FailsMandatory | NotScored */
   hireEligibility?: string;
   latestOfferStatus?: string;
@@ -307,6 +311,29 @@ export interface JobOfferModel {
   awaitingWorkflow?: boolean;
 }
 
+/** Vacancy-derived defaults for a new offer (position scale + unit-hierarchy manager). */
+export interface OfferDefaultsModel {
+  requisitionId: string;
+  requisitionTitle?: string;
+  organizationUnitId: string;
+  unitName?: string;
+  positionClassId: string;
+  positionTitle?: string;
+  salaryScaleId?: string;
+  salaryScaleAmount?: number;
+  salaryScaleLabel?: string;
+  hiringManagerEmployeeId?: string;
+  hiringManagerName?: string;
+  /** The unit whose manager answered — the vacancy's unit or an ancestor. */
+  managerResolvedFromUnit?: string;
+}
+
+/** Mass stage move outcome — per-item reporting, never all-or-nothing. */
+export interface BulkMoveResultModel {
+  moved: number;
+  skipped: { applicationId: string; candidateName?: string; reason: string }[];
+}
+
 export interface ApplicationStageLogModel {
   stage: string;
   note?: string;
@@ -333,6 +360,14 @@ export interface JobApplicationModel extends AbstractModel {
    * level-scoped ones only while the application sits at that level. Drives score-button visibility.
    */
   scoreableCriteriaCount?: number;
+  /**
+   * Hire/offer eligibility from the vacancy ranking (Eligible | Waitlisted | NotScored |
+   * FailsMandatory | OfferRejected | Hired | OutOfContention); undefined when the vacancy has no
+   * weighted criteria. The Offer button activates only for Eligible applicants.
+   */
+  hireEligibility?: string;
+  /** 1-based weighted-total rank within the vacancy. */
+  rank?: number;
   stageLog?: ApplicationStageLogModel[];
   /** The requisition's criteria merged with this application's scores (score sheet). */
   criterionScores?: CriterionScoreModel[];

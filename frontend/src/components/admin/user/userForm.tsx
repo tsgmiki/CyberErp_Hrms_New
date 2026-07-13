@@ -7,7 +7,11 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveUserService from "@/services/admin/user/save";
 import getUser from "@/services/admin/user/get";
+import getAllEmployee from "@/services/admin/employee/getAll";
+import { parameterInitialData } from "@/constants/initialization";
 import Loading from "../../common/loader/loader";
+
+const employeeLookup = { ...parameterInitialData, take: 200 };
 
 import Tabs from "@/components/common/tabs";
 const UserRole = memo(lazy(() => import("../userRole")));
@@ -28,6 +32,20 @@ function UserForm(props: { id: string; setUserId: (id: string) => void }) {
     queryFn: () => getUser(id),
     enabled: typeof id != "undefined" && id != "",
   });
+
+  // Employees — for linking this login account to an employee (owns the FK; drives branch scope).
+  const { data: employees, isLoading: employeesLoading } = useQuery({
+    queryKey: ["employees", employeeLookup],
+    queryFn: () => getAllEmployee(employeeLookup),
+  });
+  const employeeOptions = [
+    { id: "", name: "— None (system / head office) —" },
+    ...(employees?.data ?? []).map((e) => ({ id: e.id, name: `${e.fullName ?? e.employeeNumber}` })),
+  ];
+  const linkedEmployeeName = employeeOptions.find((e) => e.id === formData.employeeId)?.name;
+  const selectHandler = useCallback((name: string, r: any) => {
+    setFormData((prev) => ({ ...prev, [name]: r.id }));
+  }, []);
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -132,6 +150,18 @@ function UserForm(props: { id: string; setUserId: (id: string) => void }) {
               onChange: changeHandler,
               error: !formData.id && formState?.zodErrors?.password,
               type: "password",
+            },
+            {
+              // The User owns the relationship to Employee; linking here scopes the user to that
+              // employee's branch at login and enables evaluator permissions for them.
+              name: "employeeId",
+              label: "Linked Employee",
+              type: "dropDown",
+              onSelect: selectHandler,
+              value: formData.employeeId,
+              displayValue: linkedEmployeeName,
+              isLoading: employeesLoading,
+              data: employeeOptions as never,
             },
 
             {

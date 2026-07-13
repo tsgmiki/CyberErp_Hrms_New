@@ -58,6 +58,11 @@ export type {
 } from "./masters/EmployeeModel";
 export type { default as EmployeeFieldModel } from "./masters/EmployeeFieldModel";
 export type {
+  default as DynamicFormModel,
+  DynamicFormFieldModel,
+  DynamicFormRecordModel,
+} from "./masters/DynamicFormModel";
+export type {
   default as DocumentTemplateModel,
   MergeFieldModel,
   GeneratedDocumentModel,
@@ -87,6 +92,7 @@ export type {
   CandidateExperienceModel,
   CandidateMatchModel,
   ApplicationStageLogModel,
+  BulkMoveResultModel,
   JobApplicationModel,
   InterviewModel,
   InterviewPanelistModel,
@@ -94,6 +100,7 @@ export type {
   InterviewConsolidatedModel,
   InterviewCriterionSummaryModel,
   JobOfferModel,
+  OfferDefaultsModel,
   HireQueueRowModel,
 } from "./masters/RecruitmentModel";
 export type {

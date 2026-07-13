@@ -38,6 +38,8 @@ export default async function saveEmployee(
   }
   // The probation flag comes off a Yes/No dropdown as "true"/"false"; JSON must send a real boolean.
   body.isProbation = body.isProbation === true || body.isProbation === "true";
+  // The managerial flag is a checkbox — normalize to a real boolean for the API.
+  body.isManagerial = body.isManagerial === true || body.isManagerial === "true";
   // IsTerminated is controlled by the termination flow, never by the profile form.
   delete body.isTerminated;
   // Job grade is derived from the salary scale — the dropdown is a client-side filter only, never

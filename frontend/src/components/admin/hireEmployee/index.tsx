@@ -1,11 +1,11 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { UserCheck, Award, RefreshCw } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
-import { getHireQueue, hireCandidate } from "@/services/admin/recruitment";
+import { getHireQueue, hireCandidate, getJobOffers } from "@/services/admin/recruitment";
 import getAllPosition from "@/services/admin/position/getAll";
 import type { HireQueueRowModel } from "@/models";
 import { parameterInitialData } from "@/constants/initialization";
@@ -42,6 +42,21 @@ function HireModal({
     queryKey: ["positions", "vacant-hire"],
     queryFn: () => getAllPosition({ ...parameterInitialData, take: 200, isVacant: true } as never),
   });
+
+  // Auto-populate the salary from the candidate's offer (the agreed figure) — HR may override.
+  // Position + salary are also resolved server-side from the offer/requisition when left blank.
+  const { data: offers } = useQuery({
+    queryKey: ["jobOffers", row.applicationId],
+    queryFn: () => getJobOffers(row.applicationId),
+  });
+  const offerSalary = useMemo(() => {
+    const list = offers ?? [];
+    const accepted = list.find((o) => o.status === "Accepted");
+    return (accepted ?? list[0])?.salary;
+  }, [offers]);
+  useEffect(() => {
+    if (offerSalary != null) setHire((p) => (p.salary === "" ? { ...p, salary: String(offerSalary) } : p));
+  }, [offerSalary]);
 
   const confirm = async () => {
     setError(null);
@@ -93,6 +108,9 @@ function HireModal({
         <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-foreground">
           {t("The employee is created on the candidate's existing person record — no re-entry. All attached documents (and the resume) migrate to the employee history automatically.")}
         </p>
+        <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted">
+          {t("Position and salary auto-populate from the offer and job requisition — leave them as-is unless you need to override.")}
+        </p>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
@@ -121,7 +139,7 @@ function HireModal({
           onChange={(e) => setHire((p) => ({ ...p, positionId: e.target.value }))}
           className={inputCls}
         >
-          <option value="">{t("Assign later (onboarding)")}</option>
+          <option value="">{t("Auto — from the vacancy's role")}</option>
           {(vacantPositions?.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.code} — {p.positionClassTitle ?? ""}

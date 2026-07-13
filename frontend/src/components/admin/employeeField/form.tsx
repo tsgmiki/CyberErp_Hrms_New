@@ -10,6 +10,8 @@ import getEmployeeField from "@/services/admin/employeeField/get";
 import Loading from "../../common/loader/loader";
 import {
   fieldDataTypeOptions,
+  fieldOwnerTypeOptions,
+  ownerTypeLabel,
   yesNoOptions,
   activeStatusOptions,
   activeId,
@@ -77,6 +79,12 @@ function EmployeeFieldForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            {
+              name: "ownerType", label: "Applies To", required: true, type: "dropDown", onSelect: selectHandler,
+              value: formData.ownerType ?? "Employee",
+              displayValue: ownerTypeLabel(formData.ownerType ?? "Employee"),
+              error: formState?.zodErrors?.ownerType, data: fieldOwnerTypeOptions as never,
+            },
             { name: "label", label: "Label", placeholder: "e.g. Blood Type", required: true, value: formData.label, onChange: changeHandler, error: formState?.zodErrors?.label, type: "text" },
             { name: "name", label: "Field Key", placeholder: "e.g. bloodType", required: true, value: formData.name, onChange: changeHandler, error: formState?.zodErrors?.name, type: "text" },
             {

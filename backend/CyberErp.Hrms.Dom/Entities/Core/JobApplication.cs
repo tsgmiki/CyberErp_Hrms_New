@@ -16,7 +16,13 @@ public enum ApplicationStage
     OfferPending = 5,
     Hired = 6,
     Rejected = 7,
-    Withdrawn = 8
+    Withdrawn = 8,
+    /// <summary>
+    /// The candidate accepted the offer and is awaiting the hire conversion. Entered automatically
+    /// when an offer is Accepted (HC114); the offer still drives the pipeline (manual moves blocked)
+    /// and the hire flow converts it to <see cref="Hired"/>. Not a terminal stage.
+    /// </summary>
+    OfferAccepted = 9
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Employees.DTOs;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -59,6 +60,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             SalaryScaleStep = e.SalaryScale != null && e.SalaryScale.Step != null ? e.SalaryScale.Step.Name : null,
             SalaryScaleAmount = e.SalaryScale != null ? e.SalaryScale.Salary : (decimal?)null,
             Salary = e.Salary,
+            IsManagerial = e.IsManagerial,
             PositionId = e.PositionId,
             PositionCode = e.Position != null ? e.Position.Code : null,
             PositionClassTitle = e.Position != null && e.Position.PositionClass != null ? e.Position.PositionClass.Title : null,
@@ -116,55 +118,6 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 throw new NotFoundException(nameof(SalaryScale), dto.SalaryScaleId.Value.ToString());
         }
 
-        /// <summary>
-        /// Custom-field engine (HC021): validates submitted values against the active definitions
-        /// (unknown names rejected, required fields enforced) and upserts one value row per field.
-        /// A null dictionary leaves stored values untouched (partial API clients).
-        /// </summary>
-        internal static async Task ApplyCustomFieldsAsync(
-            Guid employeeId,
-            Dictionary<string, string?>? submitted,
-            IRepository<EmployeeFieldDefinition> definitions,
-            IRepository<EmployeeFieldValue> values)
-        {
-            if (submitted is null) return;
-
-            var activeDefs = await definitions.GetAll()
-                .Where(d => d.IsActive)
-                .ToListAsync();
-            var defsByName = activeDefs.ToDictionary(d => d.Name, StringComparer.OrdinalIgnoreCase);
-
-            var unknown = submitted.Keys.Where(k => !defsByName.ContainsKey(k)).ToList();
-            if (unknown.Count > 0)
-                throw new ValidationException("customFields", $"Unknown employee field(s): {string.Join(", ", unknown)}");
-
-            foreach (var def in activeDefs.Where(d => d.IsRequired))
-            {
-                submitted.TryGetValue(def.Name, out var v);
-                if (string.IsNullOrWhiteSpace(v))
-                    throw new ValidationException(def.Name, $"'{def.Label}' is required.");
-            }
-
-            var existing = await values.GetAll()
-                .Where(v => v.EmployeeId == employeeId)
-                .ToListAsync();
-
-            foreach (var (name, value) in submitted)
-            {
-                var def = defsByName[name];
-                var row = existing.FirstOrDefault(v => v.FieldDefinitionId == def.Id);
-                if (row is null)
-                {
-                    await values.AddAsync(EmployeeFieldValue.Create(employeeId, def.Id, value));
-                }
-                else if (row.Value != value)
-                {
-                    row.SetValue(value);
-                    values.UpdateAsync(row);
-                }
-            }
-        }
-
         /// <summary>Marks a position occupied (not vacant) because an employee was just assigned to it.</summary>
         internal static async Task MarkPositionOccupiedAsync(Guid? positionId, IRepository<Position> positions)
         {
@@ -204,8 +157,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Person> personRepository,
         IRepository<Position> positionRepository,
         IRepository<SalaryScale> salaryScaleRepository,
-        IRepository<EmployeeFieldDefinition> fieldDefinitionRepository,
-        IRepository<EmployeeFieldValue> fieldValueRepository,
+        ICustomFieldService customFields,
         IValidator<CreateEmployeeDto> validator,
         ILogger<CreateEmployee> logger) : ICreateEmployee
     {
@@ -238,9 +190,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 dto.HireDate, dto.PositionId, salary, branchId,
                 Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate,
                 dto.SalaryScaleId);
+            entity.SetManagerial(dto.IsManagerial);
             await repository.AddAsync(entity);
 
-            await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Employee, entity.Id, dto.CustomFields);
 
             // The assigned position is now occupied.
             await EmployeeShared.MarkPositionOccupiedAsync(dto.PositionId, positionRepository);
@@ -258,8 +211,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Person> personRepository,
         IRepository<Position> positionRepository,
         IRepository<SalaryScale> salaryScaleRepository,
-        IRepository<EmployeeFieldDefinition> fieldDefinitionRepository,
-        IRepository<EmployeeFieldValue> fieldValueRepository,
+        ICustomFieldService customFields,
         IValidator<UpdateEmployeeDto> validator,
         ILogger<UpdateEmployee> logger) : IUpdateEmployee
     {
@@ -297,9 +249,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 dto.HireDate, dto.PositionId, salary, branchId,
                 Enum.Parse<EmploymentNature>(dto.EmploymentNature), dto.ContractPeriod, dto.IsProbation, dto.ProbationEndDate,
                 dto.SalaryScaleId);
+            entity.SetManagerial(dto.IsManagerial);
             repository.UpdateAsync(entity);
 
-            await EmployeeShared.ApplyCustomFieldsAsync(entity.Id, dto.CustomFields, fieldDefinitionRepository, fieldValueRepository);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Employee, entity.Id, dto.CustomFields);
 
             // Keep position vacancy in sync when the placement changed: the vacated position may
             // reopen, and the newly assigned position becomes occupied.
@@ -320,6 +273,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> repository,
         IRepository<EmployeeDependent> dependentRepository,
         IRepository<Position> positionRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployee> logger) : IDeleteEmployee
     {
         public async Task DeleteAsync(Guid id)
@@ -328,12 +282,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(Employee), id.ToString());
             var positionId = entity.PositionId;
 
-            // Children (education/experience/dependents/field values) cascade with the employee,
-            // but other employees' family entries may point here (internal relationships, HC020).
+            // Education/experience/dependents cascade with the employee, but other employees' family
+            // entries may point here (internal relationships, HC020).
             if (await dependentRepository.GetAll().AnyAsync(d => d.RelatedEmployeeId == id))
                 throw new ValidationException(nameof(id),
                     "Other employees' family records reference this employee. Remove those references first.");
 
+            // Custom-field values are polymorphic (no cascade FK) — remove them explicitly.
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Employee, id);
             repository.Delete(entity);
 
             // The vacated position reopens unless another employee still holds it.
@@ -348,8 +304,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class GetEmployeeById(
         IRepository<Employee> repository,
-        IRepository<EmployeeFieldValue> fieldValueRepository,
-        IRepository<EmployeeFieldDefinition> fieldDefinitionRepository) : IGetEmployeeById
+        ICustomFieldService customFields) : IGetEmployeeById
     {
         public async Task<EmployeeDto> GetAsync(Guid id)
         {
@@ -360,12 +315,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(Employee), id.ToString());
             EmployeeShared.SetFullName(dto);
 
-            dto.CustomFields = await fieldValueRepository.GetAll()
-                .Where(v => v.EmployeeId == id)
-                .Join(fieldDefinitionRepository.GetAll(),
-                    v => v.FieldDefinitionId, d => d.Id,
-                    (v, d) => new { d.Name, v.Value })
-                .ToDictionaryAsync(x => x.Name, x => x.Value);
+            dto.CustomFields = await customFields.GetValuesAsync(EmployeeFieldOwnerType.Employee, id);
 
             return dto;
         }

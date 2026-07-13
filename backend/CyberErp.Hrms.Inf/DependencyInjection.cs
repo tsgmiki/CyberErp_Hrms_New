@@ -22,6 +22,14 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<ICurrentUserService, CurrentUserService>();
             // Race-safe per-tenant business numbering (logic.md §7.1 adoption #5)
             services.AddScoped<INumberSequenceService, NumberSequenceService>();
+            // Outbound e-mail (Email config section): the app enqueues (QueuedEmailService — cheap
+            // guards, returns immediately); the Hangfire EmailDispatchJob performs the SMTP send
+            // off the request path via SmtpEmailService, with automatic retries on failure.
+            services.AddScoped<SmtpEmailService>();
+            services.AddScoped<EmailDispatchJob>();
+            services.AddScoped<IEmailService, QueuedEmailService>();
+            // PDF letter rendering (QuestPDF) — stateless, safe as a singleton
+            services.AddSingleton<IPdfService, QuestPdfService>();
 
             services.AddScoped<IExceptionHandler, ExceptionHandler>();
             services.AddScoped<ExceptionHandler>();

@@ -33,13 +33,15 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
 
     // Placement snapshot when the action was recorded.
     public Guid? FromPositionId { get; private set; }
-    public Guid? FromJobGradeId { get; private set; }
+    /// <summary>The pay point (salary scale) the employee held at recording time — the grade derives from it.</summary>
+    public Guid? FromSalaryScaleId { get; private set; }
     public decimal? FromSalary { get; private set; }
     public Guid? FromBranchId { get; private set; }
 
     // Intended placement. Null = leave unchanged (except Transfer, which requires a position).
     public Guid? ToPositionId { get; private set; }
-    public Guid? ToJobGradeId { get; private set; }
+    /// <summary>The target pay point (salary scale, FK to coreSalaryScale). Only set on Promotion/Demotion.</summary>
+    public Guid? ToSalaryScaleId { get; private set; }
     public decimal? ToSalary { get; private set; }
     /// <summary>Resolved from the target position at execution (isolation follows the position).</summary>
     public Guid? ToBranchId { get; private set; }
@@ -54,13 +56,13 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
         Guid employeeId,
         MovementType movementType,
         DateTime effectiveDate,
-        Guid? fromPositionId, Guid? fromJobGradeId, decimal? fromSalary, Guid? fromBranchId,
-        Guid? toPositionId, Guid? toJobGradeId, decimal? toSalary,
+        Guid? fromPositionId, Guid? fromSalaryScaleId, decimal? fromSalary, Guid? fromBranchId,
+        Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary,
         string? reason = null, string? remark = null)
     {
         if (employeeId == Guid.Empty)
             throw new ArgumentException("Employee is required.", nameof(employeeId));
-        Guard(movementType, toPositionId, toJobGradeId, toSalary);
+        Guard(movementType, toPositionId, toSalaryScaleId, toSalary);
 
         return new EmployeeMovement
         {
@@ -68,11 +70,11 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
             MovementType = movementType,
             EffectiveDate = effectiveDate,
             FromPositionId = fromPositionId,
-            FromJobGradeId = fromJobGradeId,
+            FromSalaryScaleId = fromSalaryScaleId,
             FromSalary = fromSalary,
             FromBranchId = fromBranchId,
             ToPositionId = toPositionId,
-            ToJobGradeId = toJobGradeId,
+            ToSalaryScaleId = toSalaryScaleId,
             ToSalary = toSalary,
             Reason = reason,
             Remark = remark
@@ -83,15 +85,15 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
     public void Update(
         MovementType movementType,
         DateTime effectiveDate,
-        Guid? toPositionId, Guid? toJobGradeId, decimal? toSalary,
+        Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary,
         string? reason, string? remark)
     {
         EnsurePending();
-        Guard(movementType, toPositionId, toJobGradeId, toSalary);
+        Guard(movementType, toPositionId, toSalaryScaleId, toSalary);
         MovementType = movementType;
         EffectiveDate = effectiveDate;
         ToPositionId = toPositionId;
-        ToJobGradeId = toJobGradeId;
+        ToSalaryScaleId = toSalaryScaleId;
         ToSalary = toSalary;
         Reason = reason;
         Remark = remark;
@@ -120,12 +122,16 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
             throw new InvalidOperationException($"A {Status} movement can no longer be modified.");
     }
 
-    private static void Guard(MovementType type, Guid? toPositionId, Guid? toJobGradeId, decimal? toSalary)
+    private static void Guard(MovementType type, Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary)
     {
         if (type == MovementType.Transfer && !toPositionId.HasValue)
             throw new ArgumentException("A transfer requires a target position.", nameof(toPositionId));
-        if (type != MovementType.Transfer && !toPositionId.HasValue && !toJobGradeId.HasValue && !toSalary.HasValue)
-            throw new ArgumentException("A promotion/demotion must change at least the position, grade or salary.", nameof(toJobGradeId));
+        // Salary rule: pay (salary / pay-point scale) may only change on a Promotion or Demotion —
+        // a Transfer moves the employee without altering their compensation.
+        if (type == MovementType.Transfer && (toSalaryScaleId.HasValue || toSalary.HasValue))
+            throw new ArgumentException("A transfer cannot change the salary or pay scale — use a Promotion or Demotion for pay changes.", nameof(toSalary));
+        if (type != MovementType.Transfer && !toPositionId.HasValue && !toSalaryScaleId.HasValue && !toSalary.HasValue)
+            throw new ArgumentException("A promotion/demotion must change at least the position, salary scale or salary.", nameof(toSalaryScaleId));
         if (toSalary is < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(toSalary));
     }

@@ -8,7 +8,25 @@ public enum EmployeeFieldDataType
     Number = 1,
     Date = 2,
     Boolean = 3,
-    Select = 4
+    Select = 4,
+    /// <summary>File attachments (dynamic forms only). Values live in EmployeeDocument, not the field value.</summary>
+    Attachment = 5
+}
+
+/// <summary>
+/// Which form/record a custom field definition (and its values) belongs to. Lets the same dynamic-field
+/// engine (HC021) serve the main Employee form and every employee child form. The value name matches the
+/// owning entity; the UI labels <see cref="Dependent"/> as "Family".
+/// </summary>
+public enum EmployeeFieldOwnerType
+{
+    Employee = 0,
+    Education = 1,
+    Experience = 2,
+    Dependent = 3,
+    Movement = 4,
+    Discipline = 5,
+    Termination = 6
 }
 
 /// <summary>
@@ -19,7 +37,10 @@ public enum EmployeeFieldDataType
 /// </summary>
 public class EmployeeFieldDefinition : BaseEntity, IAggregateRoot, IAuditable
 {
-    /// <summary>Stable machine key (unique per tenant), e.g. "bloodType".</summary>
+    /// <summary>Which form/record this field applies to (Employee or a child form). Names are unique per
+    /// (tenant, owner type), so each form has its own field namespace.</summary>
+    public EmployeeFieldOwnerType OwnerType { get; private set; } = EmployeeFieldOwnerType.Employee;
+    /// <summary>Stable machine key (unique per tenant + owner type), e.g. "bloodType".</summary>
     public string Name { get; private set; } = string.Empty;
     public string Label { get; private set; } = string.Empty;
     public EmployeeFieldDataType DataType { get; private set; }
@@ -35,6 +56,7 @@ public class EmployeeFieldDefinition : BaseEntity, IAggregateRoot, IAuditable
         string name,
         string label,
         EmployeeFieldDataType dataType,
+        EmployeeFieldOwnerType ownerType = EmployeeFieldOwnerType.Employee,
         string? options = null,
         bool isRequired = false,
         bool isActive = true,
@@ -49,6 +71,7 @@ public class EmployeeFieldDefinition : BaseEntity, IAggregateRoot, IAuditable
 
         return new EmployeeFieldDefinition
         {
+            OwnerType = ownerType,
             Name = name,
             Label = label,
             DataType = dataType,
@@ -63,6 +86,7 @@ public class EmployeeFieldDefinition : BaseEntity, IAggregateRoot, IAuditable
         string name,
         string label,
         EmployeeFieldDataType dataType,
+        EmployeeFieldOwnerType ownerType,
         string? options,
         bool isRequired,
         bool isActive,
@@ -75,6 +99,7 @@ public class EmployeeFieldDefinition : BaseEntity, IAggregateRoot, IAuditable
         if (dataType == EmployeeFieldDataType.Select && string.IsNullOrWhiteSpace(options))
             throw new ArgumentException("Select fields require options.", nameof(options));
 
+        OwnerType = ownerType;
         Name = name;
         Label = label;
         DataType = dataType;

@@ -22,11 +22,13 @@ import {
   getJobApplication,
   createJobApplication,
   moveApplicationStage,
+  bulkMoveApplicationStage,
   getAllCandidates,
   getAllJobRequisitions,
   scoreJobApplication,
+  getEvaluatorContext,
 } from "@/services/admin/recruitment";
-import type { JobApplicationModel } from "@/models";
+import type { JobApplicationModel, BulkMoveResultModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
@@ -43,12 +45,47 @@ const STAGE_TONE: Record<string, string> = {
   Interview: "bg-warning/15 text-warning",
   Selected: "bg-success/15 text-success",
   OfferPending: "bg-warning/15 text-warning",
+  OfferAccepted: "bg-success/15 text-success",
   Hired: "bg-success/15 text-success",
   Rejected: "bg-error/15 text-error",
   Withdrawn: "bg-muted/30 text-muted",
 };
 
 const TERMINAL = ["Rejected", "Withdrawn", "Hired"];
+// Stages during which an application is still being evaluated — scoring locks once it leaves them
+// (Selected or beyond = evaluation concluded), mirroring the server-side score lock.
+const EVALUATABLE = ["Received", "Screening", "Shortlisted", "Interview"];
+
+/** Ranking eligibility chip tones (scored vacancies only). */
+const ELIGIBILITY_TONE: Record<string, string> = {
+  Eligible: "bg-success/15 text-success",
+  Waitlisted: "bg-warning/15 text-warning",
+  NotScored: "bg-muted/30 text-muted",
+  FailsMandatory: "bg-error/15 text-error",
+  OfferRejected: "bg-error/15 text-error",
+};
+
+/** Why an applicant cannot receive an offer right now (mirrors the server-side rank gate). */
+const offerBlockReason = (eligibility?: string, rank?: number): string | null => {
+  switch (eligibility) {
+    case undefined:
+    case null:
+    case "Eligible":
+      return null;
+    case "Waitlisted":
+      return rank
+        ? `Waitlisted at rank #${rank} — offers go to the eligible top-ranked candidate(s) first`
+        : "Waitlisted — offers go to the eligible top-ranked candidate(s) first";
+    case "NotScored":
+      return "Not scored against the vacancy's weighted criteria yet — complete the evaluation first";
+    case "FailsMandatory":
+      return "Failed a mandatory criterion — cannot receive an offer for this vacancy";
+    case "OfferRejected":
+      return "Already rejected an offer for this vacancy — out of contention";
+    default:
+      return `Not offer-eligible (${eligibility})`;
+  }
+};
 
 /** Register a new application: candidate × posted/approved requisition (HC098). */
 function NewApplicationModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -299,10 +336,13 @@ function StageModal({
 /** Evaluator score sheet: per-criterion scores → auto-calculated weighted total. */
 function ScoreModal({
   applicationId,
+  restrictToCriteria,
   onClose,
   onDone,
 }: {
   applicationId: string;
+  /** When set (constrained evaluator), only these criterion ids are shown/scoreable. */
+  restrictToCriteria?: Set<string>;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -318,8 +358,12 @@ function ScoreModal({
 
   // Level-aware sheet: global criteria are scoreable at every step; level-scoped criteria only
   // while the application sits at that level (mirrors the backend's ScoreableCriteriaCount).
+  // An assigned evaluator additionally sees ONLY the criteria assigned to them (backend rejects
+  // scoring any other criterion), so the sheet never invites a submission that would be refused.
   const sheet = (data?.criterionScores ?? []).filter(
-    (c) => !c.appliesAtStage || c.appliesAtStage === data?.stage,
+    (c) =>
+      (!c.appliesAtStage || c.appliesAtStage === data?.stage) &&
+      (!restrictToCriteria || restrictToCriteria.has(c.criterionId)),
   );
   const get = (criterionId: string) =>
     entries[criterionId] ?? {
@@ -449,6 +493,127 @@ function ScoreModal({
   );
 }
 
+/** Mass stage move (SAP-style): movable applications move; the rest report back with reasons. */
+function BulkStageModal({
+  ids,
+  onClose,
+  onDone,
+}: {
+  ids: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useTranslation();
+  const [stage, setStage] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<BulkMoveResultModel | null>(null);
+
+  // Offer/hire stages are process-driven — never a manual (bulk) destination.
+  const options = applicationStageOptions.filter((o) => o.id !== "OfferPending" && o.id !== "Hired");
+
+  const confirm = async () => {
+    if (!stage) return setError(t("Select the stage to move to."));
+    setBusy(true);
+    const res = await bulkMoveApplicationStage({ ids, stage, note: note || undefined });
+    setBusy(false);
+    if (!res.ok) return setError(res.message);
+    setResult(res.result ?? { moved: 0, skipped: [] });
+  };
+
+  return (
+    <Modal
+      visible
+      size="md"
+      title={t("Move {{n}} Applications", { n: ids.length })}
+      description={t("Each application is checked individually — the movable ones move, the rest are reported with the reason.")}
+      onClose={() => (result ? onDone() : onClose())}
+      footer={
+        result ? (
+          <button
+            type="button"
+            onClick={onDone}
+            className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-accent"
+          >
+            {t("Done")}
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
+            >
+              {t("Cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={confirm}
+              className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
+            >
+              {t("Move All")}
+            </button>
+          </>
+        )
+      }
+    >
+      {result ? (
+        <div className="space-y-2 text-sm">
+          <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-success">
+            {t("{{n}} application(s) moved to {{stage}}.", { n: result.moved, stage: t(stage) })}
+          </p>
+          {result.skipped.length > 0 && (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                {t("Skipped ({{n}})", { n: result.skipped.length })}
+              </p>
+              <ul className="space-y-1">
+                {result.skipped.map((s) => (
+                  <li
+                    key={s.applicationId}
+                    className="rounded-md border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs text-foreground"
+                  >
+                    <span className="font-medium">{s.candidateName || s.applicationId.slice(0, 8)}</span>
+                    {" — "}
+                    {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2 text-sm">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+            {t("New Stage")} <span className="text-error">*</span>
+          </label>
+          <select
+            value={stage}
+            onChange={(e) => setStage(e.target.value)}
+            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+          >
+            <option value="">{t("Select…")}</option>
+            {options.map((o) => (
+              <option key={o.id} value={o.id}>{o.name}</option>
+            ))}
+          </select>
+          <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Note")}</label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={t("Logged on every moved application's stage history")}
+            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+          />
+          {error && <p className="whitespace-pre-line text-xs text-error">{error}</p>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 /** Full stage history of one application (HC098 traceability). */
 function HistoryModal({ applicationId, onClose }: { applicationId: string; onClose: () => void }) {
   const { t } = useTranslation();
@@ -507,6 +672,19 @@ function JobApplications() {
   const [interviewsFor, setInterviewsFor] = useState<JobApplicationModel | null>(null);
   const [offersFor, setOffersFor] = useState<JobApplicationModel | null>(null);
   const [rankingFor, setRankingFor] = useState<string | null>(null);
+  // Mass processing: selected applications for a bulk stage move. Final and offer-driven
+  // rows are never selectable (they can't move manually anyway).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulk, setShowBulk] = useState(false);
+  const isMovable = (r: JobApplicationModel) =>
+    !TERMINAL.includes(r.stage ?? "") && r.stage !== "OfferPending" && r.stage !== "OfferAccepted";
+  const toggleSelected = (id: string) =>
+    setSelected((p) => {
+      const next = new Set(p);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const list = useEntityList({
     queryKey: "jobApplications",
@@ -518,6 +696,18 @@ function JobApplications() {
     queryKey: ["jobRequisitions", "pipeline-lookup"],
     queryFn: () => getAllJobRequisitions(lookupParam),
   });
+
+  // Evaluator scope: an assigned criterion evaluator sees only their applicants (backend-filtered)
+  // and may only score their own criteria (the score sheet + button reflect this).
+  const { data: evaluatorCtx } = useQuery({
+    queryKey: ["evaluatorContext"],
+    queryFn: getEvaluatorContext,
+  });
+  const assignedCriteria = useMemo(
+    () => new Set(evaluatorCtx?.assignedCriterionIds ?? []),
+    [evaluatorCtx],
+  );
+  const isConstrainedEvaluator = evaluatorCtx?.isConstrainedEvaluator ?? false;
 
   const activeStage = (list.param.status as string) || "";
   const setStage = (status: string) =>
@@ -535,6 +725,24 @@ function JobApplications() {
   const columns = useMemo(
     () =>
       [
+        {
+          name: "select",
+          label: " ",
+          render: (_t: unknown, record: JobApplicationModel) => (
+            <input
+              type="checkbox"
+              disabled={!isMovable(record)}
+              checked={!!record.id && selected.has(record.id)}
+              onChange={() => record.id && toggleSelected(record.id)}
+              title={
+                isMovable(record)
+                  ? t("Select for bulk stage move")
+                  : t("Final or offer-driven applications cannot move manually")
+              }
+              className="disabled:cursor-not-allowed disabled:opacity-30"
+            />
+          ),
+        },
         {
           name: "candidateName",
           label: "Candidate",
@@ -573,9 +781,20 @@ function JobApplications() {
         {
           name: "stage",
           label: "Stage",
-          render: (text: string) => (
-            <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STAGE_TONE[text] ?? ""}`}>
-              {t(text)}
+          render: (text: string, r: JobApplicationModel) => (
+            <span className="block space-y-0.5">
+              <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STAGE_TONE[text] ?? ""}`}>
+                {t(text)}
+              </span>
+              {/* Scored vacancies: where this applicant stands in the ranking window. */}
+              {r.hireEligibility && !TERMINAL.includes(text) && (
+                <span
+                  className={`block w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${ELIGIBILITY_TONE[r.hireEligibility] ?? "bg-muted/30 text-muted"}`}
+                >
+                  {r.rank ? `#${r.rank} · ` : ""}
+                  {t(r.hireEligibility)}
+                </span>
+              )}
             </span>
           ),
         },
@@ -589,8 +808,9 @@ function JobApplications() {
             return (
               <span className="inline-flex items-center gap-1">
                 {/* 1. Score — level-aware: global criteria keep it on every stage; level-scoped
-                    criteria surface it only at their level. Nothing scoreable → no button. */}
-                {(record.scoreableCriteriaCount ?? 0) > 0 && !terminal && (
+                    criteria surface it only at their level. Nothing scoreable → no button. Scores
+                    lock once the applicant is Selected or beyond (evaluation concluded). */}
+                {(record.scoreableCriteriaCount ?? 0) > 0 && EVALUATABLE.includes(stage) && (
                   <button
                     type="button"
                     onClick={() => record.id && setScoreFor(record.id)}
@@ -616,14 +836,14 @@ function JobApplications() {
                 >
                   <CalendarClock size={14} />
                 </button>
-                {/* 3. Move Stage — locked while an offer drives the pipeline (OfferPending) and
-                    at final stages. */}
+                {/* 3. Move Stage — locked while an offer drives the pipeline (OfferPending /
+                    OfferAccepted) and at final stages. */}
                 <button
                   type="button"
-                  disabled={terminal || stage === "OfferPending"}
+                  disabled={terminal || stage === "OfferPending" || stage === "OfferAccepted"}
                   onClick={() => setStageFor(record)}
                   title={
-                    stage === "OfferPending"
+                    stage === "OfferPending" || stage === "OfferAccepted"
                       ? t("The offer drives this application — respond to or withdraw it instead")
                       : terminal
                         ? t("A {{stage}} application is final", { stage: t(stage) })
@@ -633,23 +853,35 @@ function JobApplications() {
                 >
                   <ArrowRightCircle size={14} />
                 </button>
-                {/* 4. Offers — from Selected onward, and viewable on finished applications
-                    (creation is gated inside the modal). */}
-                <button
-                  type="button"
-                  disabled={!["Selected", "OfferPending", "Hired", "Rejected", "Withdrawn"].includes(stage)}
-                  onClick={() => setOffersFor(record)}
-                  title={
-                    ["Selected", "OfferPending"].includes(stage)
-                      ? t("Offers (HC111–HC114)")
-                      : terminal || stage === "Hired"
-                        ? t("Offers (view)")
-                        : t("Offers open once the candidate is Selected")
-                  }
-                  className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-success hover:text-success disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <BadgeDollarSign size={14} />
-                </button>
+                {/* 4. Offers — only the ELIGIBLE applicant(s) of a scored vacancy get an active
+                    button (mirrors the server-side rank gate: top-N ranked within the open
+                    positions). Waitlisted/unscored applicants see WHY they're blocked; finished
+                    applications keep view access to their offer record. */}
+                {(() => {
+                  const blockReason = offerBlockReason(record.hireEligibility, record.rank);
+                  const offerCreatable = ["Selected", "OfferPending"].includes(stage) && !blockReason;
+                  // OfferAccepted + finished applications keep view access to the offer record.
+                  const offerViewable = terminal || stage === "OfferAccepted";
+                  return (
+                    <button
+                      type="button"
+                      disabled={!offerCreatable && !offerViewable}
+                      onClick={() => setOffersFor(record)}
+                      title={
+                        offerCreatable
+                          ? t("Offers (HC111–HC114)")
+                          : offerViewable
+                            ? t("Offers (view)")
+                            : ["Selected", "OfferPending"].includes(stage) && blockReason
+                              ? t(blockReason)
+                              : t("Offers open once the candidate is Selected")
+                      }
+                      className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-success hover:text-success disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <BadgeDollarSign size={14} />
+                    </button>
+                  );
+                })()}
                 {/* 5. History — the audit trail, always. */}
                 <button
                   type="button"
@@ -664,7 +896,7 @@ function JobApplications() {
           },
         },
       ] as DataTableColumnModel[],
-    [t],
+    [t, selected],
   );
 
   return (
@@ -674,8 +906,36 @@ function JobApplications() {
           <ClipboardList size={16} className="text-primary" />
           {t("Applications")}
           <span className="text-xs font-normal text-muted">— {t("recruitment pipeline (HC098)")}</span>
+          {isConstrainedEvaluator && (
+            <span
+              title={t("You are an assigned evaluator — you can only see and score your own assigned applicants and criteria.")}
+              className="rounded bg-info/15 px-2 py-0.5 text-[11px] font-semibold text-info"
+            >
+              {t("Evaluator view")}
+            </span>
+          )}
         </h1>
         <div className="ml-auto flex items-center gap-1">
+          {/* Mass action — appears once rows are selected */}
+          {selected.size > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowBulk(true)}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90"
+              >
+                <ArrowRightCircle size={14} /> {t("Move {{n}} Selected", { n: selected.size })}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs text-muted hover:text-foreground"
+              >
+                {t("Clear")}
+              </button>
+              <span className="mx-1 h-4 w-px bg-border" />
+            </>
+          )}
           {/* Vacancy scope + its ranking (only meaningful with a vacancy selected) */}
           <select
             value={activeVacancy}
@@ -767,7 +1027,11 @@ function JobApplications() {
         <OfferModal
           applicationId={offersFor.id!}
           candidateName={`${offersFor.candidateName} → ${offersFor.requisitionTitle}`}
-          canCreate={["Selected", "OfferPending"].includes(offersFor.stage ?? "")}
+          canCreate={
+            ["Selected", "OfferPending"].includes(offersFor.stage ?? "") &&
+            !offerBlockReason(offersFor.hireEligibility, offersFor.rank)
+          }
+          blockReason={offerBlockReason(offersFor.hireEligibility, offersFor.rank) ?? undefined}
           onClose={() => {
             setOffersFor(null);
             refresh();
@@ -775,9 +1039,21 @@ function JobApplications() {
         />
       )}
       {rankingFor && <RankingModal requisitionId={rankingFor} onClose={() => setRankingFor(null)} />}
+      {showBulk && (
+        <BulkStageModal
+          ids={[...selected]}
+          onClose={() => setShowBulk(false)}
+          onDone={() => {
+            setShowBulk(false);
+            setSelected(new Set());
+            refresh();
+          }}
+        />
+      )}
       {scoreFor && (
         <ScoreModal
           applicationId={scoreFor}
+          restrictToCriteria={isConstrainedEvaluator ? assignedCriteria : undefined}
           onClose={() => setScoreFor(null)}
           onDone={() => {
             setScoreFor(null);

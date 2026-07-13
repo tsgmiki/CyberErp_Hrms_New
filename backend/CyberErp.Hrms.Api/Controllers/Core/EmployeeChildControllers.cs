@@ -67,17 +67,18 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     {
         /// <summary>Documents attached to an education/experience record.</summary>
         [HttpGet]
-        public Task<List<EmployeeDocumentDto>> GetByOwner([FromQuery] string ownerType, [FromQuery] Guid ownerId)
-            => getHandler.GetAsync(ownerType, ownerId);
+        public Task<List<EmployeeDocumentDto>> GetByOwner([FromQuery] string ownerType, [FromQuery] Guid ownerId, [FromQuery] string? ownerField)
+            => getHandler.GetAsync(ownerType, ownerId, ownerField);
 
-        /// <summary>Attach a file (PDF/Office/image/text, max 10 MB) to an education/experience record.</summary>
+        /// <summary>Attach a file (PDF/Office/image/text, max 10 MB) to an education/experience record
+        /// (or a dynamic-form Attachment field via <c>ownerField</c>).</summary>
         [HttpPost]
         public async Task<IActionResult> Upload(
-            [FromForm] Guid employeeId, [FromForm] string ownerType, [FromForm] Guid ownerId, IFormFile file)
+            [FromForm] Guid employeeId, [FromForm] string ownerType, [FromForm] Guid ownerId, [FromForm] string? ownerField, IFormFile file)
         {
             if (file is null) return BadRequest(new { message = "No file provided." });
             await using var stream = file.OpenReadStream();
-            var id = await uploadHandler.UploadAsync(employeeId, ownerType, ownerId, stream, file.FileName, file.ContentType, file.Length);
+            var id = await uploadHandler.UploadAsync(employeeId, ownerType, ownerId, ownerField, stream, file.FileName, file.ContentType, file.Length);
             return Ok(new { id, message = "Document uploaded" });
         }
 

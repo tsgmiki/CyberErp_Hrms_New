@@ -12,7 +12,10 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 /* Movements — transfers / promotions / demotions (SAP-style personnel actions) */
 export const getMovements = (employeeId: string) =>
   api.get<EmployeeMovementModel[]>(`EmployeeMovement?employeeId=${employeeId}`);
-export const saveMovement = createSaveService("EmployeeMovement", EmployeeMovementSchema);
+export const saveMovement = createSaveService("EmployeeMovement", EmployeeMovementSchema, {
+  numberFields: ["toSalary"],
+  customFields: true,
+});
 export const deleteMovement = createDeleteService("EmployeeMovement");
 
 async function postAction(path: string): Promise<{ ok: boolean; message: string }> {
@@ -38,5 +41,7 @@ export const cancelMovement = (id: string) => postAction(`EmployeeMovement/${id}
 /* Disciplinary measures */
 export const getDisciplinaryMeasures = (employeeId: string) =>
   api.get<DisciplinaryMeasureModel[]>(`DisciplinaryMeasure?employeeId=${employeeId}`);
-export const saveDisciplinaryMeasure = createSaveService("DisciplinaryMeasure", DisciplinaryMeasureSchema);
+export const saveDisciplinaryMeasure = createSaveService("DisciplinaryMeasure", DisciplinaryMeasureSchema, {
+  customFields: true,
+});
 export const deleteDisciplinaryMeasure = createDeleteService("DisciplinaryMeasure");

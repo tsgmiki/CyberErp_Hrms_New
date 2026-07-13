@@ -6,6 +6,8 @@ export default interface FormModel {
   initialValues?: {};
   columnsNo?: number;
   labelWidth?: string;
+  /** Applies a field layout to every field (e.g. "auth" = a clean label-above-input style). */
+  fieldLayout?: FormComponentModel["layout"];
   submitHandler?: any;
   otherComponent?: ReactNode;
   method?: any;

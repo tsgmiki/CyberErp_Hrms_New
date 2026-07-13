@@ -382,6 +382,41 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public DateTime? ScoredAt { get; set; }
     }
 
+    /// <summary>Mass stage move (SAP-style mass processing): per-item outcomes, never all-or-nothing.</summary>
+    public class BulkMoveApplicationStageDto
+    {
+        public List<Guid> Ids { get; set; } = [];
+        public string Stage { get; set; } = string.Empty;
+        /// <summary>One note logged on every moved application's stage history.</summary>
+        public string? Note { get; set; }
+    }
+
+    public class BulkMoveApplicationStageDtoValidator : AbstractValidator<BulkMoveApplicationStageDto>
+    {
+        public BulkMoveApplicationStageDtoValidator()
+        {
+            RuleFor(x => x.Ids).NotEmpty().WithMessage("Select at least one application.");
+            RuleFor(x => x.Ids.Count).LessThanOrEqualTo(200).WithMessage("Move at most 200 applications at once.");
+            RuleFor(x => x.Stage)
+                .Must(v => Enum.TryParse<ApplicationStage>(v, true, out _))
+                .WithMessage("Unknown pipeline stage.");
+            RuleFor(x => x.Note).MaximumLength(1000);
+        }
+    }
+
+    public class BulkMoveSkippedDto
+    {
+        public Guid ApplicationId { get; set; }
+        public string? CandidateName { get; set; }
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    public class BulkMoveResultDto
+    {
+        public int Moved { get; set; }
+        public List<BulkMoveSkippedDto> Skipped { get; set; } = [];
+    }
+
     public class ScoreEntryDto
     {
         public Guid CriterionId { get; set; }
@@ -419,17 +454,27 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? CandidateNumber { get; set; }
         public string? CandidateName { get; set; }
         public string Stage { get; set; } = string.Empty;
+        /// <summary>When the application was submitted — the fair, documented tie-break basis (earliest first).</summary>
+        public DateTime AppliedAt { get; set; }
         public decimal? TotalScore { get; set; }
         public int ScoredCriteria { get; set; }
         public int TotalCriteria { get; set; }
         /// <summary>A mandatory criterion scored below 50 — the candidate fails screening.</summary>
         public bool FailsMandatory { get; set; }
-        /// <summary>1-based position by weighted total (scored candidates only).</summary>
+        /// <summary>
+        /// Standard competition rank by weighted total (scored candidates only): tied scores SHARE
+        /// a rank — e.g. three candidates tied at the top are all "1st", the next is "4th". Equal
+        /// merit is never misrepresented as a strict order.
+        /// </summary>
         public int? Rank { get; set; }
+        /// <summary>True when another in-contention candidate has the EXACT same weighted total.</summary>
+        public bool Tied { get; set; }
         /// <summary>
         /// Eligible | Waitlisted | Hired | OfferRejected | OutOfContention | FailsMandatory | NotScored.
-        /// Only the top-N in-play candidates (N = open positions) are Eligible; a declined/expired
-        /// offer removes the candidate from contention, sliding the next one up from the waitlist.
+        /// A candidate is Eligible when FEWER than the open-position count strictly outrank them on
+        /// score — so when a tie straddles the last open slot, EVERY tied candidate is co-eligible
+        /// and HR chooses (the fill-close + hire gate still cap actual hires at the open positions).
+        /// A declined/expired offer removes the candidate, sliding the next one up from the waitlist.
         /// </summary>
         public string? HireEligibility { get; set; }
         public string? LatestOfferStatus { get; set; }
@@ -465,6 +510,15 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         /// the visibility of the score button in the pipeline UI.
         /// </summary>
         public int ScoreableCriteriaCount { get; set; }
+        /// <summary>
+        /// Hire/offer eligibility from the vacancy ranking (Eligible | Waitlisted | NotScored |
+        /// FailsMandatory | OfferRejected | Hired | OutOfContention). Null when the vacancy has no
+        /// weighted criteria — unscored vacancies gate on stage alone. Drives the Offer button:
+        /// only ELIGIBLE applicants can receive one (mirrors the server-side rank gate).
+        /// </summary>
+        public string? HireEligibility { get; set; }
+        /// <summary>1-based weighted-total rank within the vacancy (scored applicants only).</summary>
+        public int? Rank { get; set; }
         public List<ApplicationStageLogDto> StageLog { get; set; } = [];
         /// <summary>The requisition's criteria merged with this application's scores (score sheet).</summary>
         public List<CriterionScoreDto> CriterionScores { get; set; } = [];

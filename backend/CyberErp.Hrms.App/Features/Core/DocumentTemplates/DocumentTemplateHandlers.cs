@@ -30,6 +30,21 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             Description = t.Description,
             IsActive = t.IsActive
         };
+
+        /// <summary>
+        /// List rows WITHOUT the HTML payload: Body/Header/Footer can be tens of KB per template
+        /// and the grid never renders them — the editor loads the full record by id. Body stays
+        /// non-null (empty) so the DTO contract is unchanged for list consumers.
+        /// </summary>
+        internal static readonly System.Linq.Expressions.Expression<Func<DocumentTemplate, DocumentTemplateDto>> ListProjection = t => new DocumentTemplateDto
+        {
+            Id = t.Id,
+            Name = t.Name,
+            DocumentType = t.DocumentType.ToString(),
+            Description = t.Description,
+            IsActive = t.IsActive,
+            Body = string.Empty
+        };
     }
 
     // ---- Create ---------------------------------------------------------------
@@ -136,7 +151,7 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             var data = await query
                 .OrderBy(x => x.Name)
                 .Skip(skip).Take(take)
-                .Select(DocumentTemplateShared.Projection)
+                .Select(DocumentTemplateShared.ListProjection)
                 .ToListAsync();
 
             return new PaginatedResponse<DocumentTemplateDto> { Total = total, Data = data };

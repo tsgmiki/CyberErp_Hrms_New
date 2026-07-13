@@ -148,12 +148,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 throw new ValidationException("documents",
                     $"Mandatory compliance documents are missing: {string.Join(", ", missing)}.");
 
-            // The hire executes a SELECTED application — or one at OfferPending when the offer
-            // process drives it (Phase 2, HC111–HC114).
+            // The hire executes a SELECTED application — or one at OfferPending / OfferAccepted when
+            // the offer process drives it (Phase 2, HC111–HC114).
             var application = await applicationRepository.GetAll()
                     .Include(a => a.StageLog)
                     .Where(a => a.CandidateId == dto.Id &&
-                        (a.Stage == ApplicationStage.Selected || a.Stage == ApplicationStage.OfferPending))
+                        (a.Stage == ApplicationStage.Selected || a.Stage == ApplicationStage.OfferPending ||
+                         a.Stage == ApplicationStage.OfferAccepted))
                     .OrderByDescending(a => a.AppliedAt)
                     .FirstOrDefaultAsync()
                 ?? throw new ValidationException("id",
@@ -190,20 +191,39 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             if (await employeeRepository.GetAll().AnyAsync(e => e.EmployeeNumber == dto.EmployeeNumber))
                 throw new DuplicateException(nameof(Employee), nameof(dto.EmployeeNumber), dto.EmployeeNumber);
 
-            // Placement (optional at hire; onboarding may assign later).
+            // Auto-populate placement so HR need not re-key Position/Salary at hire: pay terms come
+            // from the OFFER (the agreed figure) then the REQUISITION (the vacancy's scale); the
+            // Position is a still-vacant slot of the requisition's role, preferring its own unit. An
+            // explicit value on the DTO always wins (manual override).
+            var vacancy = await requisitionRepository.GetAll()
+                .Where(q => q.Id == application.RequisitionId)
+                .Select(q => new { q.PositionClassId, q.OrganizationUnitId, q.SalaryScaleId })
+                .FirstOrDefaultAsync();
+
+            var salaryScaleId = dto.SalaryScaleId ?? latestOffer?.SalaryScaleId ?? vacancy?.SalaryScaleId;
+
+            var positionId = dto.PositionId;
+            if (!positionId.HasValue && vacancy is not null)
+                positionId = await positionRepository.GetAll()
+                    .Where(p => p.PositionClassId == vacancy.PositionClassId && p.IsVacant)
+                    .OrderByDescending(p => p.OrganizationUnitId == vacancy.OrganizationUnitId ? 1 : 0)
+                    .Select(p => (Guid?)p.Id)
+                    .FirstOrDefaultAsync();
+
             Guid? branchId = null;
-            if (dto.PositionId.HasValue)
+            if (positionId.HasValue)
             {
-                var position = await positionRepository.GetAll().FirstOrDefaultAsync(p => p.Id == dto.PositionId.Value)
-                    ?? throw new NotFoundException(nameof(Position), dto.PositionId.Value.ToString());
+                var position = await positionRepository.GetAll().FirstOrDefaultAsync(p => p.Id == positionId.Value)
+                    ?? throw new NotFoundException(nameof(Position), positionId.Value.ToString());
                 if (!position.IsVacant)
                     throw new ValidationException("positionId", "The selected position is no longer vacant.");
                 branchId = position.BranchId;
             }
-            var salary = dto.Salary;
-            if (!salary.HasValue && dto.SalaryScaleId.HasValue)
+
+            var salary = dto.Salary ?? latestOffer?.Salary;
+            if (!salary.HasValue && salaryScaleId.HasValue)
                 salary = await salaryScaleRepository.GetAll()
-                    .Where(s => s.Id == dto.SalaryScaleId.Value)
+                    .Where(s => s.Id == salaryScaleId.Value)
                     .Select(s => (decimal?)s.Salary)
                     .FirstOrDefaultAsync();
 
@@ -216,14 +236,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 dto.IsProbation ? EmploymentStatus.Probation : EmploymentStatus.Active,
                 email: candidate.Email,
                 hireDate: dto.HireDate ?? DateTime.UtcNow.Date,
-                positionId: dto.PositionId,
+                positionId: positionId,
                 salary: salary,
                 branchId: branchId,
                 employmentNature: nature,
                 contractPeriod: dto.ContractPeriod,
                 isProbation: dto.IsProbation,
                 probationEndDate: dto.ProbationEndDate,
-                salaryScaleId: dto.SalaryScaleId);
+                salaryScaleId: salaryScaleId);
             await employeeRepository.AddAsync(employee);
 
             // Automated document migration (requirement #3): every candidate document lands on the
@@ -319,8 +339,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 $"Hired on vacancy {requisition?.RequisitionNumber ?? application.RequisitionId.ToString()}",
                 currentUser.GetCurrentUserName());
 
-            // The assigned seat is now occupied.
-            await EmployeeShared.MarkPositionOccupiedAsync(dto.PositionId, positionRepository);
+            // The assigned seat is now occupied (the resolved position, auto-picked or supplied).
+            await EmployeeShared.MarkPositionOccupiedAsync(positionId, positionRepository);
 
             await candidateRepository.SaveChangesAsync();   // one transaction end-to-end
             logger.LogInformation(

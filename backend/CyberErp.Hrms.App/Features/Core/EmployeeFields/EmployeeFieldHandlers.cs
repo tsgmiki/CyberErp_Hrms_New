@@ -13,6 +13,8 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
     public class EmployeeFieldDto
     {
         public Guid Id { get; set; }
+        /// <summary>Which form this field applies to (Employee/Education/Experience/Dependent/Movement/Discipline/Termination).</summary>
+        public string OwnerType { get; set; } = nameof(EmployeeFieldOwnerType.Employee);
         public string Name { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
         public string DataType { get; set; } = string.Empty;
@@ -24,6 +26,8 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
 
     public class CreateEmployeeFieldDto
     {
+        /// <summary>Which form this field applies to; defaults to the main Employee form.</summary>
+        public string OwnerType { get; set; } = nameof(EmployeeFieldOwnerType.Employee);
         public string Name { get; set; } = string.Empty;
         public string Label { get; set; } = string.Empty;
         public string DataType { get; set; } = string.Empty;
@@ -42,6 +46,9 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
     {
         public CreateEmployeeFieldDtoValidator()
         {
+            RuleFor(x => x.OwnerType).NotEmpty()
+                .Must(v => Enum.TryParse<EmployeeFieldOwnerType>(v, out _))
+                .WithMessage("OwnerType must be one of: Employee, Education, Experience, Dependent, Movement, Discipline, Termination.");
             RuleFor(x => x.Name).NotEmpty().MaximumLength(100)
                 .Matches("^[a-zA-Z][a-zA-Z0-9_]*$").WithMessage("Name must be a letter followed by letters, digits or underscores.");
             RuleFor(x => x.Label).NotEmpty().MaximumLength(200);
@@ -59,6 +66,9 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
         public UpdateEmployeeFieldDtoValidator()
         {
             RuleFor(x => x.Id).NotEmpty();
+            RuleFor(x => x.OwnerType).NotEmpty()
+                .Must(v => Enum.TryParse<EmployeeFieldOwnerType>(v, out _))
+                .WithMessage("OwnerType must be one of: Employee, Education, Experience, Dependent, Movement, Discipline, Termination.");
             RuleFor(x => x.Name).NotEmpty().MaximumLength(100)
                 .Matches("^[a-zA-Z][a-zA-Z0-9_]*$").WithMessage("Name must be a letter followed by letters, digits or underscores.");
             RuleFor(x => x.Label).NotEmpty().MaximumLength(200);
@@ -83,6 +93,7 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
         internal static readonly System.Linq.Expressions.Expression<Func<EmployeeFieldDefinition, EmployeeFieldDto>> Projection = f => new EmployeeFieldDto
         {
             Id = f.Id,
+            OwnerType = f.OwnerType.ToString(),
             Name = f.Name,
             Label = f.Label,
             DataType = f.DataType.ToString(),
@@ -104,12 +115,14 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name))
+            var ownerType = Enum.Parse<EmployeeFieldOwnerType>(dto.OwnerType);
+            // Names are unique per (tenant, owner type) — each form has its own field namespace.
+            if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name && x.OwnerType == ownerType))
                 throw new DuplicateException(nameof(EmployeeFieldDefinition), nameof(dto.Name), dto.Name);
 
             var entity = EmployeeFieldDefinition.Create(
                 dto.Name, dto.Label, Enum.Parse<EmployeeFieldDataType>(dto.DataType),
-                dto.Options, dto.IsRequired, dto.IsActive, dto.SortOrder);
+                ownerType, dto.Options, dto.IsRequired, dto.IsActive, dto.SortOrder);
             await repository.AddAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeFieldDefinition {Id} ({Name})", entity.Id, entity.Name);
@@ -130,11 +143,12 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(EmployeeFieldDefinition), dto.Id.ToString());
 
-            if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name && x.Id != dto.Id))
+            var ownerType = Enum.Parse<EmployeeFieldOwnerType>(dto.OwnerType);
+            if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name && x.OwnerType == ownerType && x.Id != dto.Id))
                 throw new DuplicateException(nameof(EmployeeFieldDefinition), nameof(dto.Name), dto.Name);
 
             entity.Update(dto.Name, dto.Label, Enum.Parse<EmployeeFieldDataType>(dto.DataType),
-                dto.Options, dto.IsRequired, dto.IsActive, dto.SortOrder);
+                ownerType, dto.Options, dto.IsRequired, dto.IsActive, dto.SortOrder);
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Updated EmployeeFieldDefinition {Id}", entity.Id);
@@ -189,6 +203,8 @@ namespace CyberErp.Hrms.App.Features.Core.EmployeeFields
             }
             if (!string.IsNullOrWhiteSpace(request.Status) && bool.TryParse(request.Status, out var active))
                 query = query.Where(x => x.IsActive == active);
+            if (!string.IsNullOrWhiteSpace(request.OwnerType) && Enum.TryParse<EmployeeFieldOwnerType>(request.OwnerType, out var owner))
+                query = query.Where(x => x.OwnerType == owner);
 
             var total = await query.CountAsync();
 

@@ -160,11 +160,14 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     }
 
     /// <summary>
-    /// Workflow outcomes for job offers (HC112): approval readies the offer for sending;
-    /// rejection returns it to Draft for correction and resubmission.
+    /// Workflow outcomes for job offers (HC112): FINAL approval readies the offer and immediately
+    /// attempts auto-delivery — the letter is rendered as a PDF and e-mailed to the candidate; on
+    /// success the offer marks Sent and the application moves to OfferPending. Delivery failure
+    /// leaves the offer Approved (manual Send is the retry); rejection returns it to Draft.
     /// </summary>
     public class JobOfferWorkflowHandler(
-        IRepository<JobOffer> repository) : IWorkflowEntityHandler
+        IRepository<JobOffer> repository,
+        Recruitment.IOfferDelivery offerDelivery) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) =>
             string.Equals(entityType, WorkflowEntityTypes.JobOffer, StringComparison.OrdinalIgnoreCase);
@@ -176,6 +179,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             offer.Approve();
             repository.UpdateAsync(offer);
             await repository.SaveChangesAsync();
+            await offerDelivery.TryAutoSendAsync(entityId);
         }
 
         public async Task OnRejectedAsync(string entityType, Guid entityId)

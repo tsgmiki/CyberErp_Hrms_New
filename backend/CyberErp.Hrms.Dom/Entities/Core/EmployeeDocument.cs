@@ -8,7 +8,9 @@ public enum EmployeeDocumentOwner
     Education = 0,
     Experience = 1,
     /// <summary>Documents migrated from the candidate file at hire (OwnerId = the employee id).</summary>
-    Recruitment = 2
+    Recruitment = 2,
+    /// <summary>Files attached to a dynamic-form record via an Attachment field (OwnerId = the record id).</summary>
+    DynamicFormRecord = 3
 }
 
 /// <summary>
@@ -21,6 +23,9 @@ public class EmployeeDocument : BaseEntity, IAggregateRoot
     public Guid EmployeeId { get; private set; }
     public EmployeeDocumentOwner OwnerType { get; private set; }
     public Guid OwnerId { get; private set; }
+    /// <summary>Optional sub-scope within the owner — e.g. a dynamic form's Attachment field name, so
+    /// each attachment field on the same record keeps a separate file pool. Null for education/experience.</summary>
+    public string? OwnerField { get; private set; }
     public string FileName { get; private set; } = string.Empty;
     public string ContentType { get; private set; } = "application/octet-stream";
     public long FileSize { get; private set; }
@@ -47,7 +52,8 @@ public class EmployeeDocument : BaseEntity, IAggregateRoot
         Guid ownerId,
         string fileName,
         string contentType,
-        byte[] content)
+        byte[] content,
+        string? ownerField = null)
     {
         if (employeeId == Guid.Empty)
             throw new ArgumentException("Employee is required.", nameof(employeeId));
@@ -63,6 +69,7 @@ public class EmployeeDocument : BaseEntity, IAggregateRoot
             EmployeeId = employeeId,
             OwnerType = ownerType,
             OwnerId = ownerId,
+            OwnerField = string.IsNullOrWhiteSpace(ownerField) ? null : ownerField,
             FileName = fileName,
             ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
             FileSize = content.LongLength,

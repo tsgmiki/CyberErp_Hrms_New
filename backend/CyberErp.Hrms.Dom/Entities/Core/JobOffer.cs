@@ -124,6 +124,19 @@ public class JobOffer : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
+    /// <summary>
+    /// Attaches the generated standard letter at delivery time when none was drafted.
+    /// Allowed until the offer is sent — the letter freezes with the terms afterwards.
+    /// </summary>
+    public void AttachLetter(string letterText)
+    {
+        if (Status is OfferStatus.Sent or OfferStatus.Accepted or OfferStatus.Declined
+            or OfferStatus.Withdrawn or OfferStatus.Expired)
+            throw new InvalidOperationException($"The letter of a {Status} offer is frozen.");
+        LetterText = letterText;
+        base.Update();
+    }
+
     /// <summary>Approved → Sent: the letter goes to the candidate; terms freeze (HC114 clock starts).</summary>
     public void MarkSent()
     {

@@ -19,15 +19,23 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(m => m.Reason).HasMaxLength(1000);
             builder.Property(m => m.Remark).HasMaxLength(1000);
 
-            // Movement history cascades with its employee; no FKs to positions/grades so past
-            // actions survive master-data cleanup (the snapshot is historical, not relational).
+            // Movement history cascades with its employee; the From* snapshot (position/scale) is
+            // historical (no FK) so past actions survive master-data cleanup.
             builder.HasOne<Employee>()
                 .WithMany()
                 .HasForeignKey(m => m.EmployeeId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // The TARGET pay point is a real relationship to the salary scale (coreSalaryScale).
+            // Restrict: a scale referenced by a movement cannot be hard-deleted out from under it.
+            builder.HasOne<SalaryScale>()
+                .WithMany()
+                .HasForeignKey(m => m.ToSalaryScaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(m => m.EmployeeId);
             builder.HasIndex(m => new { m.Status, m.EffectiveDate });
+            builder.HasIndex(m => m.ToSalaryScaleId);
         }
     }
 }

@@ -68,12 +68,35 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? Note { get; set; }
     }
 
+    /// <summary>
+    /// Vacancy-derived defaults for a new offer: the position's salary scale + amount, and the
+    /// hiring manager resolved from the unit's management hierarchy (unit → parent units).
+    /// </summary>
+    public class OfferDefaultsDto
+    {
+        public Guid RequisitionId { get; set; }
+        public string? RequisitionTitle { get; set; }
+        public Guid OrganizationUnitId { get; set; }
+        public string? UnitName { get; set; }
+        public Guid PositionClassId { get; set; }
+        public string? PositionTitle { get; set; }
+        public Guid? SalaryScaleId { get; set; }
+        public decimal? SalaryScaleAmount { get; set; }
+        public string? SalaryScaleLabel { get; set; }
+        public Guid? HiringManagerEmployeeId { get; set; }
+        public string? HiringManagerName { get; set; }
+        /// <summary>The unit whose manager answered — the vacancy's own unit or an ancestor.</summary>
+        public string? ManagerResolvedFromUnit { get; set; }
+    }
+
     // ---- Interfaces -------------------------------------------------------------
 
     public interface ISaveJobOffer { Task<Guid> SaveAsync(SaveJobOfferDto dto); }
     public interface IGetJobOffers { Task<List<JobOfferDto>> GetAsync(Guid applicationId); }
+    public interface IGetOfferDefaults { Task<OfferDefaultsDto> GetAsync(Guid applicationId); }
     public interface ISubmitJobOffer { Task SubmitAsync(Guid id); }
-    public interface ISendJobOffer { Task SendAsync(Guid id); }
+    /// <summary>Returns true when the offer letter was also e-mailed to the candidate.</summary>
+    public interface ISendJobOffer { Task<bool> SendAsync(Guid id); }
     public interface IRespondJobOffer { Task RespondAsync(RespondJobOfferDto dto); }
     public interface IWithdrawJobOffer { Task WithdrawAsync(Guid id, string? note); }
     public interface IGenerateOfferLetter { Task<string> GenerateAsync(Guid id); }
@@ -126,6 +149,70 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             applications.UpdateAsync(application);
         }
 
+        /// <summary>The offer drives the pipeline: the application moves to OfferPending (logged).</summary>
+        internal static Task MoveToOfferPendingAsync(
+            IRepository<JobApplication> applications,
+            IRepository<JobApplicationStageLog> stageLogs,
+            Guid applicationId, string note, string? actedBy) =>
+            MoveApplicationAsync(applications, stageLogs, applicationId, ApplicationStage.OfferPending, note, actedBy);
+
+        /// <summary>Acceptance advances the application to OfferAccepted (logged) — awaiting hire.</summary>
+        internal static Task MoveToOfferAcceptedAsync(
+            IRepository<JobApplication> applications,
+            IRepository<JobApplicationStageLog> stageLogs,
+            Guid applicationId, string note, string? actedBy) =>
+            MoveApplicationAsync(applications, stageLogs, applicationId, ApplicationStage.OfferAccepted, note, actedBy);
+
+        private static async Task MoveApplicationAsync(
+            IRepository<JobApplication> applications,
+            IRepository<JobApplicationStageLog> stageLogs,
+            Guid applicationId, ApplicationStage target, string note, string? actedBy)
+        {
+            var application = await applications.GetAll().Include(a => a.StageLog)
+                    .FirstOrDefaultAsync(a => a.Id == applicationId)
+                ?? throw new NotFoundException(nameof(JobApplication), applicationId.ToString());
+            if (application.Stage == target) return;
+
+            var before = application.StageLog.Select(l => l.Id).ToHashSet();
+            application.MoveToStage(target, note, actedBy);
+            foreach (var log in application.StageLog.Where(l => !before.Contains(l.Id)))
+            {
+                if (string.IsNullOrEmpty(log.TenantId)) log.TenantId = application.TenantId;
+                await stageLogs.AddAsync(log);
+            }
+            applications.UpdateAsync(application);
+        }
+
+        /// <summary>
+        /// The hiring manager of a unit: the active managerial employee whose position sits in the
+        /// unit; when the unit has none, the PARENT unit answers, walking the hierarchy upwards.
+        /// </summary>
+        internal static async Task<(Guid Id, string? Name, Guid UnitId)?> ResolveUnitManagerAsync(
+            IRepository<Employee> employees,
+            IRepository<Position> positions,
+            IRepository<OrganizationUnit> units,
+            Guid unitId)
+        {
+            Guid? current = unitId;
+            for (var depth = 0; current.HasValue && depth < 10; depth++)
+            {
+                var unit = current.Value;
+                var manager = await employees.GetAll()
+                    .Where(e => e.IsManagerial && !e.IsTerminated && e.PositionId != null &&
+                        positions.GetAll().Any(p => p.Id == e.PositionId && p.OrganizationUnitId == unit))
+                    .OrderBy(e => e.EmployeeNumber)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        Name = e.Person != null ? e.Person.FirstName + " " + e.Person.FatherName : e.EmployeeNumber
+                    })
+                    .FirstOrDefaultAsync();
+                if (manager is not null) return (manager.Id, manager.Name, unit);
+                current = await units.GetAll().Where(u => u.Id == unit).Select(u => u.ParentId).FirstOrDefaultAsync();
+            }
+            return null;
+        }
+
         internal static JobOfferDto ToDto(JobOffer o, decimal? scaleAmount, bool awaitingWorkflow) => new()
         {
             Id = o.Id,
@@ -154,6 +241,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class SaveJobOffer(
         IRepository<JobOffer> repository,
         IRepository<JobApplication> applicationRepository,
+        IRepository<JobRequisition> requisitionRepository,
+        IRepository<PositionClass> positionClassRepository,
+        IRepository<Position> positionRepository,
+        IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<Employee> employeeRepository,
         IRepository<SalaryScale> salaryScaleRepository,
         INumberSequenceService numberSequence,
@@ -174,25 +265,26 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 throw new ValidationException("applicationId",
                     $"Offers are made to SELECTED applicants — this application is at {application.Stage}.");
 
-            var scaleAmount = dto.SalaryScaleId.HasValue
-                ? await salaryScaleRepository.GetAll()
-                    .Where(s => s.Id == dto.SalaryScaleId.Value).Select(s => (decimal?)s.Salary).FirstOrDefaultAsync()
-                : null;
-            OfferShared.EnsureSalaryAgainstScale(dto.Salary, scaleAmount, dto.SalaryJustification);
-
-            var managerName = dto.HiringManagerEmployeeId.HasValue
-                ? await employeeRepository.GetAll()
-                    .Where(e => e.Id == dto.HiringManagerEmployeeId.Value)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber)
-                    .FirstOrDefaultAsync()
-                : null;
+            async Task<string?> ManagerNameAsync(Guid managerId) => await employeeRepository.GetAll()
+                .Where(e => e.Id == managerId)
+                .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.FatherName : e.EmployeeNumber)
+                .FirstOrDefaultAsync();
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
+                var scaleAmountForUpdate = dto.SalaryScaleId.HasValue
+                    ? await salaryScaleRepository.GetAll()
+                        .Where(s => s.Id == dto.SalaryScaleId.Value).Select(s => (decimal?)s.Salary).FirstOrDefaultAsync()
+                    : null;
+                OfferShared.EnsureSalaryAgainstScale(dto.Salary, scaleAmountForUpdate, dto.SalaryJustification);
+                var updateManagerName = dto.HiringManagerEmployeeId.HasValue
+                    ? await ManagerNameAsync(dto.HiringManagerEmployeeId.Value)
+                    : null;
+
                 await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.JobOffer, dto.Id.Value);
                 var entity = await repository.GetAll().FirstOrDefaultAsync(o => o.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(JobOffer), dto.Id.Value.ToString());
-                entity.UpdateTerms(dto.HiringManagerEmployeeId, managerName, dto.Salary, dto.SalaryScaleId,
+                entity.UpdateTerms(dto.HiringManagerEmployeeId, updateManagerName, dto.Salary, dto.SalaryScaleId,
                     dto.SalaryJustification, dto.ProposedStartDate, dto.ExpiryDate, dto.LetterText);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
@@ -224,6 +316,39 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         "The candidate already rejected an offer for this vacancy and is out of contention.",
                     _ => $"The candidate is not offer-eligible for this vacancy ({myRow.HireEligibility})."
                 });
+
+            // Vacancy-derived defaults: the POSITION dictates the pay point (requisition scale,
+            // falling back to the position class's scale) and the UNIT hierarchy names the hiring
+            // manager — the form pre-fills these, and raw API calls get the same treatment here.
+            var vacancy = await requisitionRepository.GetAll()
+                .Where(q => q.Id == application.RequisitionId)
+                .Select(q => new { q.SalaryScaleId, q.PositionClassId, q.OrganizationUnitId })
+                .FirstOrDefaultAsync();
+            if (!dto.SalaryScaleId.HasValue && vacancy is not null)
+                dto.SalaryScaleId = vacancy.SalaryScaleId
+                    ?? await positionClassRepository.GetAll()
+                        .Where(p => p.Id == vacancy.PositionClassId)
+                        .Select(p => (Guid?)p.SalaryScaleId).FirstOrDefaultAsync();
+
+            var scaleAmount = dto.SalaryScaleId.HasValue
+                ? await salaryScaleRepository.GetAll()
+                    .Where(s => s.Id == dto.SalaryScaleId.Value).Select(s => (decimal?)s.Salary).FirstOrDefaultAsync()
+                : null;
+            OfferShared.EnsureSalaryAgainstScale(dto.Salary, scaleAmount, dto.SalaryJustification);
+
+            string? managerName = null;
+            if (dto.HiringManagerEmployeeId.HasValue)
+                managerName = await ManagerNameAsync(dto.HiringManagerEmployeeId.Value);
+            else if (vacancy is not null)
+            {
+                var resolved = await OfferShared.ResolveUnitManagerAsync(
+                    employeeRepository, positionRepository, organizationUnitRepository, vacancy.OrganizationUnitId);
+                if (resolved is not null)
+                {
+                    dto.HiringManagerEmployeeId = resolved.Value.Id;
+                    managerName = resolved.Value.Name;
+                }
+            }
 
             var number = $"OFR-{await numberSequence.NextAsync("JobOffer"):D4}";
             var created = JobOffer.Create(number, dto.ApplicationId, dto.HiringManagerEmployeeId, managerName,
@@ -279,10 +404,79 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
+    /// <summary>
+    /// Everything a new offer inherits from its vacancy: unit, position, the position's salary
+    /// scale (+ amount) and the hiring manager resolved from the unit's management hierarchy.
+    /// The offer form opens pre-populated from this — HR confirms rather than re-enters.
+    /// </summary>
+    public class GetOfferDefaults(
+        IRepository<JobApplication> applicationRepository,
+        IRepository<JobRequisition> requisitionRepository,
+        IRepository<PositionClass> positionClassRepository,
+        IRepository<SalaryScale> salaryScaleRepository,
+        IRepository<OrganizationUnit> organizationUnitRepository,
+        IRepository<Employee> employeeRepository,
+        IRepository<Position> positionRepository) : IGetOfferDefaults
+    {
+        public async Task<OfferDefaultsDto> GetAsync(Guid applicationId)
+        {
+            var application = await applicationRepository.GetAll()
+                    .FirstOrDefaultAsync(a => a.Id == applicationId)
+                ?? throw new NotFoundException(nameof(JobApplication), applicationId.ToString());
+            var requisition = await requisitionRepository.GetAll()
+                    .Where(q => q.Id == application.RequisitionId)
+                    .Select(q => new { q.Id, q.Title, q.OrganizationUnitId, q.PositionClassId, q.SalaryScaleId })
+                    .FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(JobRequisition), application.RequisitionId.ToString());
+
+            var positionClass = await positionClassRepository.GetAll()
+                .Where(p => p.Id == requisition.PositionClassId)
+                .Select(p => new { p.Title, p.SalaryScaleId })
+                .FirstOrDefaultAsync();
+
+            // The position dictates the pay point: the requisition's scale wins, the position
+            // class's scale backs it up.
+            var scaleId = requisition.SalaryScaleId ?? positionClass?.SalaryScaleId;
+            var scale = scaleId.HasValue
+                ? await salaryScaleRepository.GetAll()
+                    .Where(s => s.Id == scaleId.Value)
+                    .Select(s => new { s.Salary, Label = s.JobGrade.Name + " / " + s.Step.Name })
+                    .FirstOrDefaultAsync()
+                : null;
+
+            var manager = await OfferShared.ResolveUnitManagerAsync(
+                employeeRepository, positionRepository, organizationUnitRepository, requisition.OrganizationUnitId);
+
+            var unitNames = await organizationUnitRepository.GetAll()
+                .Where(u => u.Id == requisition.OrganizationUnitId || (manager != null && u.Id == manager.Value.UnitId))
+                .Select(u => new { u.Id, u.Name })
+                .ToListAsync();
+
+            return new OfferDefaultsDto
+            {
+                RequisitionId = requisition.Id,
+                RequisitionTitle = requisition.Title,
+                OrganizationUnitId = requisition.OrganizationUnitId,
+                UnitName = unitNames.FirstOrDefault(u => u.Id == requisition.OrganizationUnitId)?.Name,
+                PositionClassId = requisition.PositionClassId,
+                PositionTitle = positionClass?.Title,
+                SalaryScaleId = scaleId,
+                SalaryScaleAmount = scale?.Salary,
+                SalaryScaleLabel = scale?.Label,
+                HiringManagerEmployeeId = manager?.Id,
+                HiringManagerName = manager?.Name,
+                ManagerResolvedFromUnit = manager is null
+                    ? null
+                    : unitNames.FirstOrDefault(u => u.Id == manager.Value.UnitId)?.Name
+            };
+        }
+    }
+
     public class SubmitJobOffer(
         IRepository<JobOffer> repository,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
+        IOfferDelivery offerDelivery,
         ILogger<SubmitJobOffer> logger) : ISubmitJobOffer
     {
         public async Task SubmitAsync(Guid id)
@@ -299,12 +493,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 WorkflowEntityTypes.JobOffer, offer.Id, null,
                 $"Offer {offer.OfferNumber} — {offer.Salary:N2} ETB, start {offer.ProposedStartDate:yyyy-MM-dd}");
 
-            // No active approval chain configured → the offer approves directly.
+            // No active approval chain configured → the offer approves directly, and the approved
+            // letter goes straight out to the candidate (PDF by e-mail; stays Approved on failure).
             if (!await workflowGate.HasRunningAsync(WorkflowEntityTypes.JobOffer, offer.Id))
             {
                 offer.Approve();
                 repository.UpdateAsync(offer);
                 await repository.SaveChangesAsync();
+                await offerDelivery.TryAutoSendAsync(offer.Id);
             }
             logger.LogInformation("Submitted JobOffer {Id}", id);
         }
@@ -314,36 +510,26 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobOffer> repository,
         IRepository<JobApplication> applicationRepository,
         IRepository<JobApplicationStageLog> stageLogRepository,
+        IOfferDelivery offerDelivery,
         ICurrentUserService currentUser,
         ILogger<SendJobOffer> logger) : ISendJobOffer
     {
-        public async Task SendAsync(Guid id)
+        public async Task<bool> SendAsync(Guid id)
         {
             var offer = await repository.GetAll().FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw new NotFoundException(nameof(JobOffer), id.ToString());
 
             offer.MarkSent();
             repository.UpdateAsync(offer);
-
-            // The offer drives the pipeline: the application moves to OfferPending (logged).
-            var application = await applicationRepository.GetAll().Include(a => a.StageLog)
-                    .FirstOrDefaultAsync(a => a.Id == offer.ApplicationId)
-                ?? throw new NotFoundException(nameof(JobApplication), offer.ApplicationId.ToString());
-            if (application.Stage != ApplicationStage.OfferPending)
-            {
-                var before = application.StageLog.Select(l => l.Id).ToHashSet();
-                application.MoveToStage(ApplicationStage.OfferPending,
-                    $"Offer {offer.OfferNumber} sent", currentUser.GetCurrentUserName());
-                foreach (var log in application.StageLog.Where(l => !before.Contains(l.Id)))
-                {
-                    if (string.IsNullOrEmpty(log.TenantId)) log.TenantId = application.TenantId;
-                    await stageLogRepository.AddAsync(log);
-                }
-                applicationRepository.UpdateAsync(application);
-            }
-
+            await OfferShared.MoveToOfferPendingAsync(applicationRepository, stageLogRepository,
+                offer.ApplicationId, $"Offer {offer.OfferNumber} sent", currentUser.GetCurrentUserName());
             await repository.SaveChangesAsync();
-            logger.LogInformation("Sent JobOffer {Id}", id);
+
+            // Manual send is the retry path when auto-delivery failed at approval: HR decides the
+            // offer is out (marked Sent above regardless), and we attempt the PDF e-mail again.
+            var emailed = await offerDelivery.EmailOfferAsync(offer);
+            logger.LogInformation("Sent JobOffer {Id} (e-mailed: {Emailed})", id, emailed);
+            return emailed;
         }
     }
 
@@ -363,6 +549,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             {
                 case "accept":
                     offer.Accept(dto.Note);
+                    // The acceptance advances the pipeline: OfferPending → OfferAccepted (awaiting
+                    // the hire conversion). The offer still gates any manual move.
+                    await OfferShared.MoveToOfferAcceptedAsync(applicationRepository, stageLogRepository,
+                        offer.ApplicationId, $"Offer {offer.OfferNumber} accepted", currentUser.GetCurrentUserName());
                     break;
                 case "decline":
                     offer.Decline(dto.Note);
@@ -403,60 +593,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
-    /// <summary>Standard offer-letter text assembled server-side (HC111) — editable before sending.</summary>
-    public class GenerateOfferLetter(
-        IRepository<JobOffer> repository,
-        IRepository<JobApplication> applicationRepository,
-        IRepository<Candidate> candidateRepository,
-        IRepository<JobRequisition> requisitionRepository,
-        IRepository<OrganizationUnit> organizationUnitRepository) : IGenerateOfferLetter
+    /// <summary>
+    /// Offer-letter text merged from the tenant's customizable template (HC111) — editable before
+    /// sending. Delegates to <see cref="IOfferLetterComposer"/> so the "Generate letter" button and
+    /// the e-mailed PDF share one source of truth (template body + merge tokens).
+    /// </summary>
+    public class GenerateOfferLetter(IOfferLetterComposer composer) : IGenerateOfferLetter
     {
-        public async Task<string> GenerateAsync(Guid id)
-        {
-            var offer = await repository.GetAll().FirstOrDefaultAsync(o => o.Id == id)
-                ?? throw new NotFoundException(nameof(JobOffer), id.ToString());
-            var application = await applicationRepository.GetAll()
-                    .FirstOrDefaultAsync(a => a.Id == offer.ApplicationId)
-                ?? throw new NotFoundException(nameof(JobApplication), offer.ApplicationId.ToString());
-            var candidate = await candidateRepository.GetAll()
-                .Where(c => c.Id == application.CandidateId)
-                .Select(c => new { c.FirstName, c.FatherName, c.GrandFatherName })
-                .FirstOrDefaultAsync();
-            var requisition = await requisitionRepository.GetAll()
-                .Where(q => q.Id == application.RequisitionId)
-                .Select(q => new { q.Title, q.EmploymentType, q.OrganizationUnitId })
-                .FirstOrDefaultAsync();
-            var unitName = requisition is null
-                ? null
-                : await organizationUnitRepository.GetAll()
-                    .Where(u => u.Id == requisition.OrganizationUnitId).Select(u => u.Name).FirstOrDefaultAsync();
-
-            var candidateName = candidate is null
-                ? "Candidate"
-                : string.Join(" ", new[] { candidate.FirstName, candidate.FatherName, candidate.GrandFatherName }
-                    .Where(n => !string.IsNullOrWhiteSpace(n)));
-
-            return $"""
-                Dear {candidateName},
-
-                Following your application and the completion of our selection process, we are pleased
-                to offer you the position of {requisition?.Title ?? "the advertised role"}{(unitName is null ? "" : $" in {unitName}")}.
-
-                Terms of the offer:
-                  • Employment type: {requisition?.EmploymentType.ToString() ?? "Permanent"}
-                  • Gross monthly salary: {offer.Salary:N2} ETB
-                  • Proposed start date: {offer.ProposedStartDate:dd MMMM yyyy}
-
-                This offer remains valid until {offer.ExpiryDate:dd MMMM yyyy}. Please confirm your
-                acceptance in writing before that date; the offer lapses automatically afterwards.
-
-                We look forward to welcoming you to the team.
-
-                Sincerely,
-                Human Resources
-                (Offer {offer.OfferNumber})
-                """;
-        }
+        public async Task<string> GenerateAsync(Guid id) => (await composer.ComposeAsync(id)).MergedBody;
     }
 
     public class DeleteJobOffer(

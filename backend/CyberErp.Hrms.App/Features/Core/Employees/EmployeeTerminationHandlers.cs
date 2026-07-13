@@ -2,6 +2,7 @@ using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -83,6 +84,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime? SettledAt { get; set; }
         public bool AwaitingWorkflow { get; set; }
         public List<TerminationClearanceDto> Clearances { get; set; } = [];
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeTerminationDto
@@ -94,6 +97,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime LastWorkingDate { get; set; }
         public string Reason { get; set; } = string.Empty;
         public string? Remarks { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class UpdateTerminationClearanceDto
@@ -226,6 +231,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         IValidator<SaveEmployeeTerminationDto> validator,
         ILogger<SaveEmployeeTermination> logger) : ISaveEmployeeTermination
     {
@@ -258,6 +264,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
                 entity.Update(type, dto.NoticeDate, dto.LastWorkingDate, dto.Reason, dto.Remarks);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Termination, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated EmployeeTermination {Id}", entity.Id);
                 return entity.Id;
@@ -272,6 +279,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             var created = EmployeeTermination.Create(dto.EmployeeId, type, dto.NoticeDate, dto.LastWorkingDate, dto.Reason, dto.Remarks);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Termination, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeTermination {Id} ({Type}) for Employee {EmployeeId}", created.Id, type, dto.EmployeeId);
 
@@ -299,13 +307,16 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
         IRepository<UserRole> userRoleRepository,
         ICurrentUserService currentUser,
+        ICustomFieldService customFields,
         IWorkflowGate workflowGate) : IGetEmployeeTerminations
     {
         public async Task<List<EmployeeTerminationDto>> GetAsync(Guid employeeId)
         {
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, employeeId);
 
+            // Read-only DTO mapping — no change tracking for the case + clearance entities.
             var rows = await repository.GetAll()
+                .AsNoTracking()
                 .Include(t => t.Clearances)
                 .Where(t => t.EmployeeId == employeeId)
                 .OrderByDescending(t => t.CreatedAt)
@@ -378,6 +389,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                         .ToList()
                 });
             }
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Termination, result.Select(x => x.Id).ToList());
+            foreach (var item in result)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
             return result;
         }
     }
@@ -694,6 +711,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeTermination> repository,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployeeTermination> logger) : IDeleteEmployeeTermination
     {
         public async Task DeleteAsync(Guid id)
@@ -706,6 +724,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (termination.Status == TerminationStatus.Settled)
                 throw new ValidationException("status", "Settled terminations are part of the employee's history and cannot be deleted.");
 
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Termination, id);
             repository.Delete(termination);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeTermination {Id}", id);

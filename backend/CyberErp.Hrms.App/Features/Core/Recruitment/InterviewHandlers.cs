@@ -210,6 +210,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<InterviewPanelist> panelistRepository,
         IRepository<JobApplication> applicationRepository,
         IRepository<Employee> employeeRepository,
+        IInterviewNotifier notifier,
         IValidator<SaveInterviewDto> validator,
         ILogger<SaveInterview> logger) : ISaveInterview
     {
@@ -235,6 +236,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 var entity = await repository.GetAll().Include(i => i.Panelists).ThenInclude(p => p.Feedback)
                         .FirstOrDefaultAsync(i => i.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(Interview), dto.Id.Value.ToString());
+                var oldStart = entity.ScheduledStart;
+                var oldEnd = entity.ScheduledEnd;
                 entity.Reschedule(dto.ScheduledStart, dto.ScheduledEnd, format, dto.Location, dto.MeetingLink, dto.Notes);
                 entity.SetPanel(await InterviewShared.BuildPanelAsync(employeeRepository, entity.Id, dto.Panelists));
                 InterviewShared.StampChildrenTenant(entity);
@@ -244,6 +247,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Rescheduled Interview {Id}", entity.Id);
+
+                // The applicant hears about TIME changes automatically (panel-only edits are internal).
+                if (oldStart != entity.ScheduledStart || oldEnd != entity.ScheduledEnd)
+                    await notifier.RescheduledAsync(entity, oldStart, oldEnd);
                 return entity.Id;
             }
 
@@ -258,6 +265,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             await repository.SaveChangesAsync();
             logger.LogInformation("Scheduled Interview {Id} (round {Round}) for Application {ApplicationId}",
                 created.Id, created.Round, dto.ApplicationId);
+
+            // Automatic applicant invitation — after the commit, never blocking it.
+            await notifier.ScheduledAsync(created);
             return created.Id;
         }
     }
@@ -277,6 +287,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class SetInterviewStatus(
         IRepository<Interview> repository,
+        IInterviewNotifier notifier,
         ILogger<SetInterviewStatus> logger) : ISetInterviewStatus
     {
         public async Task SetAsync(SetInterviewStatusDto dto)
@@ -284,7 +295,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var entity = await repository.GetAll().FirstOrDefaultAsync(i => i.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(Interview), dto.Id.ToString());
 
-            switch (dto.Action?.Trim().ToLowerInvariant())
+            var action = dto.Action?.Trim().ToLowerInvariant();
+            switch (action)
             {
                 case "complete": entity.Complete(dto.Note); break;
                 case "cancel": entity.Cancel(dto.Note); break;
@@ -295,6 +307,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Interview {Id} → {Status}", dto.Id, entity.Status);
+
+            // The applicant is told automatically when their interview is called off.
+            if (action == "cancel")
+                await notifier.CancelledAsync(entity);
         }
     }
 

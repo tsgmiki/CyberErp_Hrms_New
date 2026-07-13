@@ -35,12 +35,16 @@ function RankingModal({ requisitionId, onClose }: { requisitionId: string; onClo
     queryFn: () => getApplicationRanking(requisitionId),
   });
 
+  // A genuine tie: two or more candidates share the exact same total AND are both hire-eligible.
+  // The engine does not break the tie on merit — all are eligible and HR selects within the slots.
+  const eligibleTie = (data ?? []).some((r) => r.hireEligibility === "Eligible" && r.tied);
+
   return (
     <Modal
       visible
       size="xl"
       title={t("Candidate Ranking & Waitlist")}
-      description={t("Weighted totals decide the order; only the top-ranked candidates (one per open position) are hire-eligible — the rest wait, and slide up if a candidate declines the offer.")}
+      description={t("Weighted totals decide the order; candidates who tie on score share a rank. Tied candidates at the cut-off are ALL eligible — the system never breaks a merit tie arbitrarily, so HR selects within the open positions. Waitlisted candidates slide up if someone declines.")}
       onClose={onClose}
       footer={
         <button
@@ -55,6 +59,11 @@ function RankingModal({ requisitionId, onClose }: { requisitionId: string; onClo
       {isLoading && <Loading />}
       {!isLoading && (data ?? []).length === 0 && (
         <p className="py-6 text-center text-sm text-muted">{t("No applications on this vacancy yet.")}</p>
+      )}
+      {!isLoading && eligibleTie && (
+        <p className="mb-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          {t("Tied scores at the cut-off: the tied candidates are all marked Eligible. Choose which to advance — the vacancy still closes at its open-position count.")}
+        </p>
       )}
       {!isLoading && (data ?? []).length > 0 && (
         <div className="overflow-x-auto">
@@ -90,7 +99,17 @@ function RankingModal({ requisitionId, onClose }: { requisitionId: string; onClo
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <span className="block font-medium text-foreground">{r.candidateName}</span>
+                    <span className="block font-medium text-foreground">
+                      {r.candidateName}
+                      {r.tied && (
+                        <span
+                          title={t("Tied on total score — ranked equal; the tie is broken only for display order (earliest application first), never for eligibility.")}
+                          className="ml-1.5 inline-block rounded bg-warning/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-warning"
+                        >
+                          {t("TIED")}
+                        </span>
+                      )}
+                    </span>
                     <span className="block text-xs text-muted">{r.candidateNumber}</span>
                     {r.failsMandatory && (
                       <span className="mt-0.5 inline-block rounded bg-error/15 px-1.5 py-0.5 text-[10px] font-semibold text-error">

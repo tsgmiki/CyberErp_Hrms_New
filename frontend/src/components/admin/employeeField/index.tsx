@@ -11,10 +11,10 @@ function EmployeeField() {
 
   return (
     <EntityModuleShell
-      title="Employee Fields"
-      headerDescription="Add or exclude employee data fields without code changes"
+      title="Custom Fields"
+      headerDescription="Add dynamic fields to the Employee form or any child form — no code changes"
       headerIcon={<ListPlus className="h-6 w-6 text-primary" />}
-      tableTitle="Employee Fields"
+      tableTitle="Custom Fields"
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}

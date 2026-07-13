@@ -128,6 +128,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(o => o.ApplicationId).IsUnique()
                 .HasDatabaseName("IX_hrms_JobOffer_Application_Active")
                 .HasFilter("[Status] IN ('Draft','PendingApproval','Approved','Sent')");
+            // Latest-offer-per-application lookups (ranking/eligibility) scan ALL statuses — the
+            // filtered active-only index above cannot serve them.
+            builder.HasIndex(o => new { o.ApplicationId, o.CreatedAt });
         }
     }
 

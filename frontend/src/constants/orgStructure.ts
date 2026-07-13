@@ -57,6 +57,27 @@ export const fieldDataTypeOptions = ["Text", "Number", "Date", "Boolean", "Selec
   name: v,
 }));
 
+/** Field types for the dynamic Form Builder — adds "Attachment" (file uploads), which HC021 custom
+ * fields do not support. */
+export const dynamicFormFieldTypeOptions = [
+  ...fieldDataTypeOptions,
+  { id: "Attachment", name: "Attachment (files)" },
+];
+
+/** Forms a custom field (HC021) can apply to. `id` matches the backend EmployeeFieldOwnerType enum;
+ * `name` is the friendly label (the "Dependent" owner shows as "Family"). */
+export const fieldOwnerTypeOptions = [
+  { id: "Employee", name: "Employee" },
+  { id: "Education", name: "Education" },
+  { id: "Experience", name: "Experience" },
+  { id: "Dependent", name: "Family" },
+  { id: "Movement", name: "Movement" },
+  { id: "Discipline", name: "Discipline" },
+  { id: "Termination", name: "Termination" },
+];
+export const ownerTypeLabel = (id?: string) =>
+  fieldOwnerTypeOptions.find((o) => o.id === id)?.name ?? id ?? "Employee";
+
 export const yesNoOptions = [
   { id: "true", name: "Yes" },
   { id: "false", name: "No" },

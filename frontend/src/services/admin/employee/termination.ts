@@ -30,7 +30,9 @@ export const getTerminatedEmployees = async (param: ParameterModel) => {
 export const getMyClearances = () =>
   api.get<MyClearancesModel>("EmployeeTermination/my-clearances");
 
-export const saveTermination = createSaveService("EmployeeTermination", EmployeeTerminationSchema);
+export const saveTermination = createSaveService("EmployeeTermination", EmployeeTerminationSchema, {
+  customFields: true,
+});
 
 async function post(path: string, body?: unknown): Promise<{ ok: boolean; message: string }> {
   const res = await fetch(`${API_BASE_URL}/${path}`, {

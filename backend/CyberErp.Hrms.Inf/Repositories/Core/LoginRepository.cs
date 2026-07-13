@@ -13,6 +13,7 @@ namespace CyberErp.Hrms.Inf.Repositories.Core;
 
 public class LoginRepository(
     IRepository<User> userRepository,
+    IRepository<Employee> employeeRepository,
     IAuthentication authentication,
     ITokenStore tokenStore,
     ITokenParser tokenParser,
@@ -21,6 +22,7 @@ public class LoginRepository(
     IExceptionHandler exceptionHandler) : ILoginRepository
 {
     private readonly IRepository<User> _userRepository = userRepository;
+    private readonly IRepository<Employee> _employeeRepository = employeeRepository;
     private readonly IAuthentication _authentication = authentication;
     private readonly ILogger<LoginRepository> _logger = logger;
     private readonly ITokenStore _tokenStore = tokenStore;
@@ -52,6 +54,17 @@ public class LoginRepository(
                     throw new UnauthorizedException("Invalid username or password");
                 }
 
+                // Branch scope + head-office visibility are DERIVED from the linked employee's
+                // branch: a user tied to a branch employee is scoped to that branch; a user with
+                // no employee (or an employee without a branch) has global / head-office visibility.
+                Guid? branchId = null;
+                if (user.EmployeeId.HasValue)
+                    branchId = await _employeeRepository.GetAll().AsNoTracking()
+                        .Where(e => e.Id == user.EmployeeId.Value)
+                        .Select(e => e.BranchId)
+                        .FirstOrDefaultAsync();
+                var isHeadOffice = branchId is null;
+
                 var tokenId = Guid.NewGuid();
                 var userResult = new UserResult
                 {
@@ -61,8 +74,8 @@ public class LoginRepository(
                     PhoneNumber = user.PhoneNumber,
                     UserName = user.UserName,
                     TenantId = !string.IsNullOrEmpty(user.TenantId) ? Guid.Parse(user.TenantId) : null,
-                    BranchId = user.BranchId,
-                    IsHeadOffice = user.IsHeadOffice
+                    BranchId = branchId,
+                    IsHeadOffice = isHeadOffice
                 };
 
                 var token = _authentication.GenerateToken(userResult, tokenId);
@@ -74,7 +87,7 @@ public class LoginRepository(
                     SetTenantCookie(user.TenantId);
 
                 SetUserCookies(user.Id.ToString(), user.UserName);
-                SetBranchCookies(user.BranchId, user.IsHeadOffice);
+                SetBranchCookies(branchId, isHeadOffice);
 
                 return userResult;
             });

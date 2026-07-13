@@ -14,8 +14,10 @@ import {
 } from "@/services/admin/employee/personnelActions";
 import getAllPosition from "@/services/admin/position/getAll";
 import getAllJobGrade from "@/services/admin/jobGrade/getAll";
+import getAllSalaryScale from "@/services/admin/salaryScale/getAll";
 import Loading from "../../common/loader/loader";
 import { StatusMessage } from "../../common/statusMessage/status";
+import { useCustomFields } from "./customFieldsHook";
 import { parameterInitialData } from "@/constants/initialization";
 import { movementTypeOptions } from "@/constants/orgStructure";
 
@@ -32,7 +34,7 @@ const STATUS_TONE: Record<string, string> = {
 function MovementChange({ m }: { m: EmployeeMovementModel }) {
   const parts: { from?: string | number; to?: string | number }[] = [];
   if (m.toPositionName) parts.push({ from: m.fromPositionName ?? "—", to: m.toPositionName });
-  if (m.toJobGradeName) parts.push({ from: m.fromJobGradeName ?? "—", to: m.toJobGradeName });
+  if (m.toSalaryScaleName) parts.push({ from: m.fromSalaryScaleName ?? "—", to: m.toSalaryScaleName });
   if (m.toSalary != null) parts.push({ from: m.fromSalary ?? "—", to: m.toSalary });
   if (parts.length === 0) return <span className="text-muted">—</span>;
   return (
@@ -57,6 +59,7 @@ function MovementSection({ employeeId }: { employeeId: string }) {
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<EmployeeMovementModel>({});
   const [isSaving, setIsSaving] = useState(false);
+  const customFields = useCustomFields("Movement");
 
   const queryKey = ["employeeMovements", employeeId];
   const { data: rows, isLoading } = useQuery({
@@ -79,6 +82,14 @@ function MovementSection({ employeeId }: { employeeId: string }) {
   const { data: grades, isLoading: gradesLoading } = useQuery({
     queryKey: ["jobGrades", gradeParam],
     queryFn: () => getAllJobGrade(gradeParam),
+  });
+
+  // Salary scales are scoped to the selected job grade (mirrors the employee master form).
+  const [scaleParam, setScaleParam] = useState({ ...parameterInitialData, take: 100 });
+  const { data: scales, isLoading: scalesLoading } = useQuery({
+    queryKey: ["salaryScales", "byGrade", formData.jobGradeId, scaleParam],
+    queryFn: () => getAllSalaryScale({ ...scaleParam, jobGradeId: formData.jobGradeId }),
+    enabled: !!formData.jobGradeId,
   });
 
   const refresh = useCallback(() => {
@@ -113,6 +124,7 @@ function MovementSection({ employeeId }: { employeeId: string }) {
         ? { ...record, effectiveDate: fmtDate(record.effectiveDate) }
         : { movementType: "Transfer" },
     );
+    customFields.hydrate(record?.customFields);
     setFormState({});
     setShowForm(true);
   };
@@ -124,6 +136,23 @@ function MovementSection({ employeeId }: { employeeId: string }) {
   const selectHandler = useCallback((name: string, r: any) => {
     setFormData((p) => ({ ...p, [name]: r.id }));
   }, []);
+  // Choosing a job grade re-scopes the salary scale list; the previous scale/salary is cleared.
+  const gradeSelectHandler = useCallback((_name: string, r: any) => {
+    setFormData((p) => ({ ...p, jobGradeId: r.id, jobGradeName: r.name, toSalaryScaleId: undefined, toSalaryScaleName: undefined }));
+  }, []);
+  // Picking a salary scale records it and auto-fills the (still editable) new salary.
+  const scaleSelectHandler = useCallback(
+    (_name: string, r: any) => {
+      const scale = (scales?.data ?? []).find((s) => s.id === r.id);
+      setFormData((p) => ({
+        ...p,
+        toSalaryScaleId: r.id,
+        toSalaryScaleName: scale?.step,
+        toSalary: scale?.salary ?? p.toSalary,
+      }));
+    },
+    [scales],
+  );
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -237,12 +266,13 @@ function MovementSection({ employeeId }: { employeeId: string }) {
           form={{
             columnsNo: 2,
             submitHandler,
-            labelWidth: "w-[35%]",
+            fieldLayout: "auth",
             isPending: isSaving,
             SubmitButton: "top",
             showModal: true,
             modalVisible: true,
             modalTitle: editing ? "Edit Movement" : "Record Movement",
+            description: "Transfer, promotion or demotion.",
             modalSize: "lg",
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
@@ -269,18 +299,37 @@ function MovementSection({ employeeId }: { employeeId: string }) {
                   name: `${p.code} — ${p.positionClassTitle ?? ""}${p.organizationUnitName ? ` · ${p.organizationUnitName}` : ""}`,
                 })) as never,
               },
-              {
-                name: "toJobGradeId", label: "New Job Grade (optional)", type: "dropDown", onSelect: selectHandler,
-                value: formData.toJobGradeId, displayValue: formData.toJobGradeName,
-                param: gradeParam, setParam: setGradeParam as any, isLoading: gradesLoading,
-                data: (grades?.data ?? []).map((g) => ({ id: g.id, name: g.name })) as never,
-              },
-              {
-                name: "toSalary", label: "New Salary (optional)", value: formData.toSalary,
-                onChange: changeHandler, inputType: "number", type: "text",
-              },
+              // Pay change (grade → scale → salary) is available ONLY for a Promotion or Demotion —
+              // a Transfer moves the employee without changing compensation (backend enforces this).
+              ...(formData.movementType !== "Transfer"
+                ? [
+                    {
+                      name: "jobGradeId", label: "Job Grade (filter)", type: "dropDown" as const, onSelect: gradeSelectHandler,
+                      value: formData.jobGradeId, displayValue: formData.jobGradeName,
+                      placeholder: "Filter salary scales by grade",
+                      param: gradeParam, setParam: setGradeParam as any, isLoading: gradesLoading,
+                      data: (grades?.data ?? []).map((g) => ({ id: g.id, name: g.name })) as never,
+                    },
+                    {
+                      name: "toSalaryScaleId", label: "New Salary Scale (Step)", type: "dropDown" as const, onSelect: scaleSelectHandler,
+                      value: formData.toSalaryScaleId, displayValue: formData.toSalaryScaleName,
+                      disabled: !formData.jobGradeId,
+                      placeholder: formData.jobGradeId ? "Select a step" : "Select a job grade first",
+                      param: scaleParam, setParam: setScaleParam as any, isLoading: scalesLoading,
+                      data: (scales?.data ?? []).map((s) => ({
+                        id: s.id,
+                        name: `${s.step ?? "Step"} — ${s.salary != null ? Number(s.salary).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ""}`,
+                      })) as never,
+                    },
+                    {
+                      name: "toSalary", label: "New Salary (optional)", value: formData.toSalary,
+                      onChange: changeHandler, inputType: "number" as const, type: "text" as const,
+                    },
+                  ]
+                : []),
               { name: "reason", label: "Reason", value: formData.reason, onChange: changeHandler, type: "textarea", colSpan: "full" },
               { name: "remark", label: "Remark", value: formData.remark, onChange: changeHandler, type: "textarea", colSpan: "full" },
+              ...customFields.components,
               { name: "employeeId", value: employeeId, type: "hidden" },
               { name: "id", value: formData.id, type: "hidden" },
             ],

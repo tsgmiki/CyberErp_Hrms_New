@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -21,6 +22,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public string Status { get; set; } = string.Empty;
         public DateTime? EffectiveDate { get; set; }
         public string? Resolution { get; set; }
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveDisciplinaryMeasureDto
@@ -34,6 +37,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public string Status { get; set; } = nameof(DisciplinaryStatus.Open);
         public DateTime? EffectiveDate { get; set; }
         public string? Resolution { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveDisciplinaryMeasureDtoValidator : AbstractValidator<SaveDisciplinaryMeasureDto>
@@ -65,6 +70,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         IValidator<SaveDisciplinaryMeasureDto> validator,
         ILogger<SaveDisciplinaryMeasure> logger) : ISaveDisciplinaryMeasure
     {
@@ -86,6 +92,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 entity.Update(dto.ViolationDate, dto.ViolationType, measureType, status,
                     dto.Description, dto.EffectiveDate, dto.Resolution);
                 repository.UpdateAsync(entity);
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Discipline, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated DisciplinaryMeasure {Id}", entity.Id);
                 return entity.Id;
@@ -94,6 +101,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var created = DisciplinaryMeasure.Create(dto.EmployeeId, dto.ViolationDate, dto.ViolationType,
                 measureType, status, dto.Description, dto.EffectiveDate, dto.Resolution);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Discipline, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created DisciplinaryMeasure {Id} for Employee {EmployeeId}", created.Id, dto.EmployeeId);
 
@@ -112,13 +120,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class GetDisciplinaryMeasures(
         IRepository<DisciplinaryMeasure> repository,
-        IRepository<Employee> employeeRepository) : IGetDisciplinaryMeasures
+        IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields) : IGetDisciplinaryMeasures
     {
         public async Task<List<DisciplinaryMeasureDto>> GetAsync(Guid employeeId)
         {
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, employeeId);
 
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.EmployeeId == employeeId)
                 .OrderByDescending(x => x.ViolationDate)
                 .Select(x => new DisciplinaryMeasureDto
@@ -134,6 +143,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     Resolution = x.Resolution
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Discipline, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
+            return list;
         }
     }
 
@@ -141,6 +157,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<DisciplinaryMeasure> repository,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
+        ICustomFieldService customFields,
         ILogger<DeleteDisciplinaryMeasure> logger) : IDeleteDisciplinaryMeasure
     {
         public async Task DeleteAsync(Guid id)
@@ -151,6 +168,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(DisciplinaryMeasure), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, entity.EmployeeId);
 
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Discipline, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted DisciplinaryMeasure {Id}", id);

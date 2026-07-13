@@ -9,6 +9,7 @@ import {
   deleteDisciplinaryMeasure,
 } from "@/services/admin/employee/personnelActions";
 import ChildManager, { type ChildColumn } from "./childManager";
+import { useCustomFields } from "./customFieldsHook";
 import { StatusMessage } from "../../common/statusMessage/status";
 import {
   measureTypeOptions,
@@ -51,6 +52,7 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<DisciplinaryMeasureModel>({});
   const [isSaving, setIsSaving] = useState(false);
+  const customFields = useCustomFields("Discipline");
 
   const queryKey = ["employeeDiscipline", employeeId];
   const { data: rows, isLoading } = useQuery({
@@ -78,6 +80,7 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
           }
         : { measureType: "VerbalWarning", status: "Open" },
     );
+    customFields.hydrate(record?.customFields);
     setFormState({});
     setShowForm(true);
   };
@@ -121,12 +124,13 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
           form={{
             columnsNo: 2,
             submitHandler,
-            labelWidth: "w-[35%]",
+            fieldLayout: "auth",
             isPending: isSaving,
             SubmitButton: "top",
             showModal: true,
             modalVisible: true,
             modalTitle: editing ? "Edit Disciplinary Case" : "Add Disciplinary Case",
+            description: "Record a disciplinary action and its outcome.",
             modalSize: "lg",
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
@@ -159,6 +163,7 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
               },
               { name: "description", label: "Description", value: formData.description, onChange: changeHandler, type: "textarea", colSpan: "full" },
               { name: "resolution", label: "Resolution", value: formData.resolution, onChange: changeHandler, type: "textarea", colSpan: "full" },
+              ...customFields.components,
               { name: "employeeId", value: employeeId, type: "hidden" },
               { name: "id", value: formData.id, type: "hidden" },
             ],

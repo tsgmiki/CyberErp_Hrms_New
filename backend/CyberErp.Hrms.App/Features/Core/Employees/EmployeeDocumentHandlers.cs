@@ -20,9 +20,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     // ---- Interfaces ---------------------------------------------------------
     public interface IUploadEmployeeDocument
     {
-        Task<Guid> UploadAsync(Guid employeeId, string ownerType, Guid ownerId, Stream content, string fileName, string contentType, long length);
+        Task<Guid> UploadAsync(Guid employeeId, string ownerType, Guid ownerId, string? ownerField, Stream content, string fileName, string contentType, long length);
     }
-    public interface IGetEmployeeDocuments { Task<List<EmployeeDocumentDto>> GetAsync(string ownerType, Guid ownerId); }
+    public interface IGetEmployeeDocuments { Task<List<EmployeeDocumentDto>> GetAsync(string ownerType, Guid ownerId, string? ownerField); }
     public interface IDownloadEmployeeDocument { Task<(byte[] Content, string ContentType, string FileName)> GetAsync(Guid documentId); }
     public interface IDeleteEmployeeDocument { Task DeleteAsync(Guid documentId); }
 
@@ -53,12 +53,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IRepository<EmployeeEducation> educationRepository,
         IRepository<EmployeeExperience> experienceRepository,
+        IRepository<DynamicFormRecord> recordRepository,
         ILogger<UploadEmployeeDocument> logger) : IUploadEmployeeDocument
     {
-        public async Task<Guid> UploadAsync(Guid employeeId, string ownerType, Guid ownerId, Stream content, string fileName, string contentType, long length)
+        public async Task<Guid> UploadAsync(Guid employeeId, string ownerType, Guid ownerId, string? ownerField, Stream content, string fileName, string contentType, long length)
         {
             if (!Enum.TryParse<EmployeeDocumentOwner>(ownerType, true, out var owner))
-                throw new ValidationException("ownerType", "Owner type must be Education or Experience.");
+                throw new ValidationException("ownerType", "Unknown document owner type.");
 
             var ext = Path.GetExtension(fileName);
             if (string.IsNullOrEmpty(ext) || !DocumentStorage.AllowedExtensions.Contains(ext))
@@ -67,24 +68,31 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 throw new ValidationException("file", "File must be between 1 byte and 10 MB.");
 
             var personId = await EmployeeGuard.ResolvePersonIdAsync(employeeRepository, employeeId);
-            await EnsureOwnerBelongsToPersonAsync(owner, ownerId, personId);
+            await EnsureOwnerBelongsAsync(owner, ownerId, personId, employeeId);
 
             using var ms = new MemoryStream();
             await content.CopyToAsync(ms);
             var bytes = ms.ToArray();
 
-            var doc = EmployeeDocument.Create(employeeId, owner, ownerId, Path.GetFileName(fileName), contentType, bytes);
+            var doc = EmployeeDocument.Create(employeeId, owner, ownerId, Path.GetFileName(fileName), contentType, bytes, ownerField);
             await repository.AddAsync(doc);
             await repository.SaveChangesAsync();
             logger.LogInformation("Uploaded EmployeeDocument {Id} for {Owner} {OwnerId} ({Bytes} bytes)", doc.Id, owner, ownerId, bytes.Length);
             return doc.Id;
         }
 
-        private async Task EnsureOwnerBelongsToPersonAsync(EmployeeDocumentOwner owner, Guid ownerId, Guid personId)
+        /// <summary>The owner record must belong to a visible employee: education/experience are
+        /// person-owned; a dynamic-form record is employee-owned (OwnerType "Employee", OwnerId = the employee).</summary>
+        private async Task EnsureOwnerBelongsAsync(EmployeeDocumentOwner owner, Guid ownerId, Guid personId, Guid employeeId)
         {
-            var exists = owner == EmployeeDocumentOwner.Education
-                ? await educationRepository.GetAll().AnyAsync(e => e.Id == ownerId && e.PersonId == personId)
-                : await experienceRepository.GetAll().AnyAsync(x => x.Id == ownerId && x.PersonId == personId);
+            var exists = owner switch
+            {
+                EmployeeDocumentOwner.Education => await educationRepository.GetAll().AnyAsync(e => e.Id == ownerId && e.PersonId == personId),
+                EmployeeDocumentOwner.Experience => await experienceRepository.GetAll().AnyAsync(x => x.Id == ownerId && x.PersonId == personId),
+                EmployeeDocumentOwner.DynamicFormRecord => await recordRepository.GetAll()
+                    .AnyAsync(r => r.Id == ownerId && r.OwnerType == "Employee" && r.OwnerId == employeeId),
+                _ => false,
+            };
             if (!exists) throw new NotFoundException(owner.ToString(), ownerId.ToString());
         }
     }
@@ -93,22 +101,35 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeDocument> repository,
         IRepository<Employee> employeeRepository,
         IRepository<EmployeeEducation> educationRepository,
-        IRepository<EmployeeExperience> experienceRepository) : IGetEmployeeDocuments
+        IRepository<EmployeeExperience> experienceRepository,
+        IRepository<DynamicFormRecord> recordRepository) : IGetEmployeeDocuments
     {
-        public async Task<List<EmployeeDocumentDto>> GetAsync(string ownerType, Guid ownerId)
+        public async Task<List<EmployeeDocumentDto>> GetAsync(string ownerType, Guid ownerId, string? ownerField)
         {
             if (!Enum.TryParse<EmployeeDocumentOwner>(ownerType, true, out var owner))
-                throw new ValidationException("ownerType", "Owner type must be Education or Experience.");
+                throw new ValidationException("ownerType", "Unknown document owner type.");
+            var field = string.IsNullOrWhiteSpace(ownerField) ? null : ownerField;
 
-            // Access is authorized through the owner record's person → a visible employee.
-            var personId = owner == EmployeeDocumentOwner.Education
-                ? await educationRepository.GetAll().Where(e => e.Id == ownerId).Select(e => (Guid?)e.PersonId).FirstOrDefaultAsync()
-                : await experienceRepository.GetAll().Where(x => x.Id == ownerId).Select(x => (Guid?)x.PersonId).FirstOrDefaultAsync();
-            if (personId is null) throw new NotFoundException(owner.ToString(), ownerId.ToString());
-            await EmployeeGuard.EnsurePersonVisibleAsync(employeeRepository, personId.Value);
+            // Access is authorized through the owner record → a visible employee.
+            if (owner == EmployeeDocumentOwner.DynamicFormRecord)
+            {
+                var recordEmployeeId = await recordRepository.GetAll()
+                    .Where(r => r.Id == ownerId && r.OwnerType == "Employee")
+                    .Select(r => (Guid?)r.OwnerId).FirstOrDefaultAsync();
+                if (recordEmployeeId is null) throw new NotFoundException(owner.ToString(), ownerId.ToString());
+                await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, recordEmployeeId.Value);
+            }
+            else
+            {
+                var personId = owner == EmployeeDocumentOwner.Education
+                    ? await educationRepository.GetAll().Where(e => e.Id == ownerId).Select(e => (Guid?)e.PersonId).FirstOrDefaultAsync()
+                    : await experienceRepository.GetAll().Where(x => x.Id == ownerId).Select(x => (Guid?)x.PersonId).FirstOrDefaultAsync();
+                if (personId is null) throw new NotFoundException(owner.ToString(), ownerId.ToString());
+                await EmployeeGuard.EnsurePersonVisibleAsync(employeeRepository, personId.Value);
+            }
 
             var rows = await repository.GetAll()
-                .Where(d => d.OwnerType == owner && d.OwnerId == ownerId)
+                .Where(d => d.OwnerType == owner && d.OwnerId == ownerId && d.OwnerField == field)
                 .OrderBy(d => d.FileName)
                 .Select(d => new { d.Id, d.FileName, d.ContentType, d.FileSize, d.CreatedAt })
                 .ToListAsync();

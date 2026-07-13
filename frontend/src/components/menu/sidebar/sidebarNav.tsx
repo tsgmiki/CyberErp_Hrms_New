@@ -84,7 +84,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     links: [
       { to: "/employee", label: "Employees", Icon: Users },
       { to: "/terminationList", label: "Termination List", Icon: UserX },
-      { to: "/employeeField", label: "Employee Fields", Icon: ListPlus },
+      { to: "/employeeField", label: "Custom Fields", Icon: ListPlus },
       { to: "/documentTemplate", label: "Document Templates", Icon: FileText },
     ],
   },
@@ -123,6 +123,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/jobApplication", label: "Applications", Icon: ClipboardList },
       { to: "/hireEmployee", label: "Hire Employee", Icon: UserCheck },
       { to: "/talentPool", label: "Talent Pool", Icon: Star },
+      { to: "/offerLetterTemplate", label: "Offer Letter Template", Icon: ScrollText },
     ],
   },
   {
@@ -147,6 +148,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { to: "/workflow", label: "Workflow Tracking", Icon: GitPullRequestArrow },
       { to: "/workflowDefinition", label: "Workflow Definitions", Icon: GitBranch },
       { to: "/clearanceDepartment", label: "Clearance Departments", Icon: ClipboardCheck },
+      { to: "/formBuilder", label: "Form Builder", Icon: LayoutGrid },
       { to: "/user", label: "Users", Icon: UserCog },
       { to: "/role", label: "Roles", Icon: KeyRound },
       { to: "/userRole", label: "User Roles", Icon: UserCheck },

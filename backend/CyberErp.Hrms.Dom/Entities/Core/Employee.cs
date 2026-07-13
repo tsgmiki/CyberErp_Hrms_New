@@ -262,7 +262,7 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
     /// stored on the employee (it derives from the salary scale), so a grade change is recorded on the
     /// movement for history but is not applied here — reassign the salary scale to change the grade.
     /// </summary>
-    public void ApplyMovement(bool changePosition, Guid? positionId, Guid? branchId, decimal? salary)
+    public void ApplyMovement(bool changePosition, Guid? positionId, Guid? branchId, decimal? salary, Guid? salaryScaleId = null)
     {
         if (salary is < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(salary));
@@ -272,6 +272,8 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
             PositionId = positionId;
             BranchId = branchId;
         }
+        // A promotion/demotion may move the employee to a new pay point; the grade derives from it.
+        if (salaryScaleId.HasValue) SalaryScaleId = salaryScaleId;
         if (salary.HasValue) Salary = salary;
         base.Update();
     }

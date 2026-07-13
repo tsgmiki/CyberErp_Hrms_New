@@ -56,6 +56,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
         public string UserName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
+        /// <summary>The employee this login is linked to (null = system/owner account).</summary>
+        public Guid? EmployeeId { get; set; }
     }
 
     // ---- Interfaces -----------------------------------------------------------

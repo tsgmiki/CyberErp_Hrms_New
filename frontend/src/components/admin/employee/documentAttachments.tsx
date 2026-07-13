@@ -17,6 +17,10 @@ interface Props {
   employeeId: string;
   ownerType: DocumentOwnerType;
   ownerId: string;
+  /** Sub-scope within the owner (dynamic-form Attachment field name) — its own file pool. */
+  ownerField?: string;
+  /** Panel heading (defaults to "Attachments"). */
+  title?: string;
 }
 
 function formatSize(bytes: number): string {
@@ -26,24 +30,29 @@ function formatSize(bytes: number): string {
 }
 
 /** Manage the files attached to one education/experience record (HC017/HC018). */
-function DocumentAttachments({ employeeId, ownerType, ownerId }: Props) {
+function DocumentAttachments({ employeeId, ownerType, ownerId, ownerField, title }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const queryKey = ["employeeDocuments", ownerType, ownerId];
+  const queryKey = ["employeeDocuments", ownerType, ownerId, ownerField ?? null];
   const { data: docs, isLoading } = useQuery({
     queryKey,
-    queryFn: () => getDocuments(ownerType, ownerId),
+    queryFn: () => getDocuments(ownerType, ownerId, ownerField),
     enabled: !!ownerId,
   });
 
   const refreshParentCount = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: [ownerType === "Education" ? "employeeEducations" : "employeeExperiences", employeeId],
-    });
+    // Refresh the owner list's document-count column after an upload/delete.
+    const key =
+      ownerType === "Education"
+        ? ["employeeEducations", employeeId]
+        : ownerType === "Experience"
+          ? ["employeeExperiences", employeeId]
+          : ["dynamicRecords"]; // dynamic-form records — invalidate all pages (prefix match)
+    queryClient.invalidateQueries({ queryKey: key });
   }, [queryClient, ownerType, employeeId]);
 
   const onPick = useCallback(
@@ -54,7 +63,7 @@ function DocumentAttachments({ employeeId, ownerType, ownerId }: Props) {
       setBusy(true);
       setError(null);
       for (const file of files) {
-        const res = await uploadDocument(employeeId, ownerType, ownerId, file);
+        const res = await uploadDocument(employeeId, ownerType, ownerId, file, ownerField);
         if (!res.ok) {
           setError(res.message);
           break;
@@ -84,7 +93,7 @@ function DocumentAttachments({ employeeId, ownerType, ownerId }: Props) {
     <div className="mt-3 rounded-lg border border-border bg-card p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-          <Paperclip size={15} /> {t("Attachments")}
+          <Paperclip size={15} /> {title ? t(title) : t("Attachments")}
         </h4>
         <input
           ref={inputRef}

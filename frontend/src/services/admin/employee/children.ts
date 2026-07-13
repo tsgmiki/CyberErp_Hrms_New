@@ -15,13 +15,18 @@ import type {
 /* Education (HC017) */
 export const getEducations = (employeeId: string) =>
   api.get<EmployeeEducationModel[]>(`EmployeeEducation?employeeId=${employeeId}`);
-export const saveEducation = createSaveService("EmployeeEducation", EmployeeEducationSchema);
+export const saveEducation = createSaveService("EmployeeEducation", EmployeeEducationSchema, {
+  customFields: true,
+});
 export const deleteEducation = createDeleteService("EmployeeEducation");
 
 /* Experience (HC018) */
 export const getExperiences = (employeeId: string) =>
   api.get<EmployeeExperienceModel[]>(`EmployeeExperience?employeeId=${employeeId}`);
-export const saveExperience = createSaveService("EmployeeExperience", EmployeeExperienceSchema);
+export const saveExperience = createSaveService("EmployeeExperience", EmployeeExperienceSchema, {
+  booleanFields: ["isExternal", "isGovernmental"],
+  customFields: true,
+});
 export const deleteExperience = createDeleteService("EmployeeExperience");
 
 /* Family / dependents (HC019-HC020) */
@@ -29,5 +34,6 @@ export const getDependents = (employeeId: string) =>
   api.get<EmployeeDependentModel[]>(`EmployeeDependent?employeeId=${employeeId}`);
 export const saveDependent = createSaveService("EmployeeDependent", EmployeeDependentSchema, {
   booleanFields: ["isDependent"],
+  customFields: true,
 });
 export const deleteDependent = createDeleteService("EmployeeDependent");

@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public string? Responsibilities { get; set; }
+        /// <summary>True = prior job at another employer; false = internal role from a movement.</summary>
+        public bool IsExternal { get; set; }
+        public bool IsGovernmental { get; set; }
         public int DocumentCount { get; set; }
+        /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeExperienceDto
@@ -30,6 +36,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime? StartDate { get; set; }
         public DateTime? EndDate { get; set; }
         public string? Responsibilities { get; set; }
+        /// <summary>True = prior job at another employer; false = an internal role. Set by the user
+        /// (defaults to external on a manual entry). Movement-generated internal rows use the
+        /// dedicated movement handler and are always internal.</summary>
+        public bool IsExternal { get; set; }
+        /// <summary>Whether the role was at a governmental organization (set by the user).</summary>
+        public bool IsGovernmental { get; set; }
+        /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
+        public Dictionary<string, string?>? CustomFields { get; set; }
     }
 
     public class SaveEmployeeExperienceDtoValidator : AbstractValidator<SaveEmployeeExperienceDto>
@@ -55,6 +69,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class SaveEmployeeExperience(
         IRepository<EmployeeExperience> repository,
         IRepository<Employee> employeeRepository,
+        ICustomFieldService customFields,
         IValidator<SaveEmployeeExperienceDto> validator,
         ILogger<SaveEmployeeExperience> logger) : ISaveEmployeeExperience
     {
@@ -69,16 +84,21 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value && x.PersonId == personId)
                     ?? throw new NotFoundException(nameof(EmployeeExperience), dto.Id.Value.ToString());
-                entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities);
+                entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities,
+                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
                 repository.UpdateAsync(entity);
+                // Record + custom-field values commit atomically in one SaveChanges.
+                await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated EmployeeExperience {Id}", entity.Id);
                 return entity.Id;
             }
 
             var created = EmployeeExperience.Create(personId, dto.Organization, dto.JobTitle,
-                dto.StartDate, dto.EndDate, dto.Responsibilities);
+                dto.StartDate, dto.EndDate, dto.Responsibilities,
+                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
             await repository.AddAsync(created);
+            await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeExperience {Id}", created.Id);
             return created.Id;
@@ -89,6 +109,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeExperience> repository,
         IRepository<Employee> employeeRepository,
         IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields,
         ILogger<DeleteEmployeeExperience> logger) : IDeleteEmployeeExperience
     {
         public async Task DeleteAsync(Guid id)
@@ -97,8 +118,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(EmployeeExperience), id.ToString());
             await EmployeeGuard.EnsurePersonVisibleAsync(employeeRepository, entity.PersonId);
 
-            // Attached documents cascade with the record (no FK — polymorphic owner).
+            // Attached documents and custom-field values cascade with the record (polymorphic, no FK).
             await DocumentStorage.DeleteForOwnerAsync(documentRepository, EmployeeDocumentOwner.Experience, id);
+            await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Experience, id);
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeExperience {Id}", id);
@@ -108,13 +130,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class GetEmployeeExperiences(
         IRepository<EmployeeExperience> repository,
         IRepository<Employee> employeeRepository,
-        IRepository<EmployeeDocument> documentRepository) : IGetEmployeeExperiences
+        IRepository<EmployeeDocument> documentRepository,
+        ICustomFieldService customFields) : IGetEmployeeExperiences
     {
         public async Task<List<EmployeeExperienceDto>> GetAsync(Guid employeeId)
         {
             var personId = await EmployeeGuard.ResolvePersonIdAsync(employeeRepository, employeeId);
 
-            return await repository.GetAll()
+            var list = await repository.GetAll()
                 .Where(x => x.PersonId == personId)
                 .OrderByDescending(x => x.StartDate)
                 .Select(x => new EmployeeExperienceDto
@@ -126,10 +149,19 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     StartDate = x.StartDate,
                     EndDate = x.EndDate,
                     Responsibilities = x.Responsibilities,
+                    IsExternal = x.IsExternal,
+                    IsGovernmental = x.IsGovernmental,
                     DocumentCount = documentRepository.GetAll()
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Experience && d.OwnerId == x.Id)
                 })
                 .ToListAsync();
+
+            var byOwner = await customFields.GetValuesForOwnersAsync(
+                EmployeeFieldOwnerType.Experience, list.Select(x => x.Id).ToList());
+            foreach (var item in list)
+                item.CustomFields = byOwner.TryGetValue(item.Id, out var m) ? m : new();
+
+            return list;
         }
     }
 }

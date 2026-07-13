@@ -83,6 +83,9 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<TerminationClearance> TerminationClearance { get; set; }
     public DbSet<ClearanceDepartment> ClearanceDepartment { get; set; }
     public DbSet<ClearanceDepartmentApprover> ClearanceDepartmentApprover { get; set; }
+    public DbSet<DynamicForm> DynamicForm { get; set; }
+    public DbSet<DynamicFormField> DynamicFormField { get; set; }
+    public DbSet<DynamicFormRecord> DynamicFormRecord { get; set; }
     public DbSet<WorkforcePlan> WorkforcePlan { get; set; }
     public DbSet<WorkforcePlanLine> WorkforcePlanLine { get; set; }
     public DbSet<HiringRequest> HiringRequest { get; set; }
@@ -111,6 +114,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<WorkflowActionLog> WorkflowActionLog { get; set; }
     public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
     public DbSet<CompanyProfile> CompanyProfile { get; set; }
+    public DbSet<OfferLetterTemplate> OfferLetterTemplate { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -216,6 +220,9 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TerminationClearanceConfiguration());
         modelBuilder.ApplyConfiguration(new ClearanceDepartmentConfiguration());
         modelBuilder.ApplyConfiguration(new ClearanceDepartmentApproverConfiguration());
+        modelBuilder.ApplyConfiguration(new DynamicFormConfiguration());
+        modelBuilder.ApplyConfiguration(new DynamicFormFieldConfiguration());
+        modelBuilder.ApplyConfiguration(new DynamicFormRecordConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanLineConfiguration());
         modelBuilder.ApplyConfiguration(new HiringRequestConfiguration());
@@ -244,5 +251,6 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new WorkflowActionLogConfiguration());
         modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
         modelBuilder.ApplyConfiguration(new CompanyProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new OfferLetterTemplateConfiguration());
     }
 }

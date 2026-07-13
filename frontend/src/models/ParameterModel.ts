@@ -41,5 +41,9 @@ export default interface ParameterModel {
   isVacant?: boolean;
   /** Filters the salary-scale grid to a single job grade. */
   jobGradeId?: string;
+  /** Filters custom-field definitions to a single owner form (Employee/Education/…). */
+  ownerType?: string;
+  /** Filters dynamic forms to a single owning module (e.g. "Employee"). */
+  module?: string;
 
 }

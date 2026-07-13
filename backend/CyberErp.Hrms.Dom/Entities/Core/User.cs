@@ -9,25 +9,19 @@ public class User : BaseEntity, IAggregateRoot
     public string UserName { get; private set; } = string.Empty;
     public string Password { get; private set; } = string.Empty;
 
-    /// <summary>Branch this user administers (null for Head Office / unassigned).</summary>
-    public Guid? BranchId { get; private set; }
-    /// <summary>Head Office users have global visibility across all branches.</summary>
-    public bool IsHeadOffice { get; private set; }
+    /// <summary>
+    /// The employee this login account belongs to (nullable — system/owner accounts have none).
+    /// The relationship is owned by the User table (FK here). The user's branch scope and
+    /// head-office visibility are DERIVED from this employee's branch at login.
+    /// </summary>
+    public Guid? EmployeeId { get; private set; }
 
     private User() : base() { }
 
-    /// <summary>Marks the user as Head Office (global oversight). Used for the tenant owner at signup.</summary>
-    public void MarkAsHeadOffice()
+    /// <summary>Links (or unlinks, when null) this login account to an employee record.</summary>
+    public void LinkEmployee(Guid? employeeId)
     {
-        IsHeadOffice = true;
-        BranchId = null;
-    }
-
-    /// <summary>Assigns the user to a branch as a branch-scoped administrator.</summary>
-    public void AssignBranch(Guid? branchId, bool isHeadOffice = false)
-    {
-        BranchId = branchId;
-        IsHeadOffice = isHeadOffice;
+        EmployeeId = employeeId;
         base.Update();
     }
 

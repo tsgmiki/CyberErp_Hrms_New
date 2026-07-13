@@ -1305,6 +1305,7 @@ export const EmployeeSchema = z.object({
     z.number("Contract period must be a number").int().positive().optional(),
   ),
   isProbation: z.union([z.boolean(), z.string()]).optional(),
+  isManagerial: z.union([z.boolean(), z.string()]).optional(),
   probationEndDate: z.string().nullish(),
 })
   // Contract nature requires a contract period.
@@ -1318,6 +1319,7 @@ export const EmployeeSchema = z.object({
     path: ["probationEndDate"],
   });
 export const EmployeeFieldSchema = z.object({
+  ownerType: z.string().min(1, "Applies To is Required"),
   name: z
     .string()
     .min(1, "Name is Required")

@@ -257,6 +257,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(a => new { a.CandidateId, a.RequisitionId }).IsUnique();
             builder.HasIndex(a => new { a.TenantId, a.Stage });
             builder.HasIndex(a => a.RequisitionId);
+            // The pipeline list is tenant-filtered and ordered by AppliedAt DESC on every page load.
+            builder.HasIndex(a => new { a.TenantId, a.AppliedAt });
         }
     }
 

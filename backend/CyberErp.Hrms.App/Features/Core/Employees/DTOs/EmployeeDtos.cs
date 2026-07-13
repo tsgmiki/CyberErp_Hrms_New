@@ -46,6 +46,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
         public string? SalaryScaleStep { get; set; }
         public decimal? SalaryScaleAmount { get; set; }
         public decimal? Salary { get; set; }
+        /// <summary>Managerial staff receive the managerial annual-leave entitlement and may head units.</summary>
+        public bool IsManagerial { get; set; }
 
         public Guid? PositionId { get; set; }
         public string? PositionCode { get; set; }
@@ -82,6 +84,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
         public string EmploymentNature { get; set; } = nameof(Dom.Entities.Core.EmploymentNature.Permanent);
         public int? ContractPeriod { get; set; }
         public bool IsProbation { get; set; }
+        /// <summary>Managerial staff receive the managerial annual-leave entitlement and may head units.</summary>
+        public bool IsManagerial { get; set; }
         public DateTime? ProbationEndDate { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public string? PlaceOfBirth { get; set; }

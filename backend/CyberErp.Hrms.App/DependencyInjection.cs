@@ -275,6 +275,15 @@ namespace CyberErp.Hrms.App
             // Recruitment Phase 2 — offers (HC111–HC114)
             services.AddScoped<Features.Core.Recruitment.ISaveJobOffer, Features.Core.Recruitment.SaveJobOffer>();
             services.AddScoped<Features.Core.Recruitment.IGetJobOffers, Features.Core.Recruitment.GetJobOffers>();
+            services.AddScoped<Features.Core.Recruitment.IGetOfferDefaults, Features.Core.Recruitment.GetOfferDefaults>();
+            services.AddScoped<Features.Core.Recruitment.IOfferDelivery, Features.Core.Recruitment.OfferDelivery>();
+            services.AddScoped<Features.Core.Recruitment.IOfferLetterComposer, Features.Core.Recruitment.OfferLetterComposer>();
+            services.AddScoped<Features.Core.Recruitment.IGetOfferLetterTemplate, Features.Core.Recruitment.GetOfferLetterTemplate>();
+            services.AddScoped<Features.Core.Recruitment.ISaveOfferLetterTemplate, Features.Core.Recruitment.SaveOfferLetterTemplate>();
+            services.AddScoped<Features.Core.Recruitment.IGetCompanyProfile, Features.Core.Recruitment.GetCompanyProfile>();
+            services.AddScoped<Features.Core.Recruitment.ISaveCompanyProfile, Features.Core.Recruitment.SaveCompanyProfile>();
+            services.AddScoped<Features.Core.Recruitment.IGetOfferMergeFields, Features.Core.Recruitment.GetOfferMergeFields>();
+            services.AddScoped<Features.Core.Recruitment.IPreviewOfferLetter, Features.Core.Recruitment.PreviewOfferLetter>();
             services.AddScoped<Features.Core.Recruitment.ISubmitJobOffer, Features.Core.Recruitment.SubmitJobOffer>();
             services.AddScoped<Features.Core.Recruitment.ISendJobOffer, Features.Core.Recruitment.SendJobOffer>();
             services.AddScoped<Features.Core.Recruitment.IRespondJobOffer, Features.Core.Recruitment.RespondJobOffer>();
@@ -283,6 +292,9 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IDeleteJobOffer, Features.Core.Recruitment.DeleteJobOffer>();
             services.AddScoped<Features.Core.Recruitment.IGetHireQueue, Features.Core.Recruitment.GetHireQueue>();
             services.AddScoped<Features.Core.Recruitment.IAdoptInterviewScores, Features.Core.Recruitment.AdoptInterviewScores>();
+            services.AddScoped<Features.Core.Recruitment.IGetEvaluatorContext, Features.Core.Recruitment.GetEvaluatorContext>();
+            services.AddScoped<Features.Core.Recruitment.IBulkMoveApplicationStage, Features.Core.Recruitment.BulkMoveApplicationStage>();
+            services.AddScoped<Features.Core.Recruitment.IInterviewNotifier, Features.Core.Recruitment.InterviewNotifier>();
 
             // Workforce Planning (HC053–HC076)
             services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();
@@ -311,6 +323,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IDeleteEmployeeField, DeleteEmployeeField>();
             services.AddScoped<IGetEmployeeFieldById, GetEmployeeFieldById>();
             services.AddScoped<IGetAllEmployeeFields, GetAllEmployeeFields>();
+            // Shared custom-field engine (HC021) — used by the Employee form and all child forms.
+            services.AddScoped<ICustomFieldService, CustomFieldService>();
+            // Dynamic form/tab builder (user-defined custom tabs) — reusable across modules.
+            services.AddScoped<Features.Core.DynamicForms.IDynamicFormService, Features.Core.DynamicForms.DynamicFormService>();
 
             // Document templates & correspondence (HC022)
             services.AddScoped<ICreateDocumentTemplate, CreateDocumentTemplate>();

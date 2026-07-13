@@ -6,6 +6,7 @@ import type { EmployeeDependentModel } from "@/models";
 import { getDependents, saveDependent, deleteDependent } from "@/services/admin/employee/children";
 import getAllEmployee from "@/services/admin/employee/getAll";
 import ChildManager, { type ChildColumn } from "./childManager";
+import { useCustomFields } from "./customFieldsHook";
 import { StatusMessage } from "../../common/statusMessage/status";
 import { parameterInitialData } from "@/constants/initialization";
 import { relationshipOptions, yesNoOptions } from "@/constants/orgStructure";
@@ -33,6 +34,7 @@ function FamilySection({ employeeId }: { employeeId: string }) {
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<EmployeeDependentModel>({});
   const [isSaving, setIsSaving] = useState(false);
+  const customFields = useCustomFields("Dependent");
 
   const queryKey = ["employeeDependents", employeeId];
   const { data: rows, isLoading } = useQuery({
@@ -59,6 +61,7 @@ function FamilySection({ employeeId }: { employeeId: string }) {
   const open = (record: EmployeeDependentModel | null) => {
     setEditing(record);
     setFormData(record ? { ...record, dateOfBirth: fmtDate(record.dateOfBirth) } : {});
+    customFields.hydrate(record?.customFields);
     setFormState({});
     setShowForm(true);
   };
@@ -102,12 +105,13 @@ function FamilySection({ employeeId }: { employeeId: string }) {
           form={{
             columnsNo: 2,
             submitHandler,
-            labelWidth: "w-[35%]",
+            fieldLayout: "auth",
             isPending: isSaving,
             SubmitButton: "top",
             showModal: true,
             modalVisible: true,
             modalTitle: editing ? "Edit Family Member" : "Add Family Member",
+            description: "Dependents and next of kin.",
             modalSize: "lg",
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
@@ -136,6 +140,7 @@ function FamilySection({ employeeId }: { employeeId: string }) {
               },
               { name: "address", label: "Address", value: formData.address, onChange: changeHandler, type: "textarea", colSpan: "full" },
               { name: "remark", label: "Remark", value: formData.remark, onChange: changeHandler, type: "textarea", colSpan: "full" },
+              ...customFields.components,
               { name: "employeeId", value: employeeId, type: "hidden" },
               { name: "id", value: formData.id, type: "hidden" },
             ],

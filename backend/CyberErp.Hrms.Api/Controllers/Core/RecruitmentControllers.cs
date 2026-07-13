@@ -405,6 +405,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     public class JobOfferController(
         ISaveJobOffer saveHandler,
         IGetJobOffers getHandler,
+        IGetOfferDefaults defaultsHandler,
         ISubmitJobOffer submitHandler,
         ISendJobOffer sendHandler,
         IRespondJobOffer respondHandler,
@@ -416,6 +417,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet]
         public Task<List<JobOfferDto>> Get([FromQuery] Guid applicationId)
             => getHandler.GetAsync(applicationId);
+
+        /// <summary>
+        /// Vacancy-derived defaults for a new offer: position salary scale + amount, and the
+        /// hiring manager resolved from the unit hierarchy (unit → parent units).
+        /// </summary>
+        [HttpGet("defaults")]
+        public Task<OfferDefaultsDto> GetDefaults([FromQuery] Guid applicationId)
+            => defaultsHandler.GetAsync(applicationId);
 
         /// <summary>Standard offer-letter text assembled server-side (HC111).</summary>
         [HttpGet("{id:guid}/generate-letter")]
@@ -441,12 +450,18 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             return Ok(new { message = "Offer submitted" });
         }
 
-        /// <summary>Approved → Sent; the application moves to OfferPending (logged).</summary>
+        /// <summary>Approved → Sent; the application moves to OfferPending (logged) and the
+        /// letter is e-mailed to the candidate as a PDF (retry path for failed auto-delivery).</summary>
         [HttpPost("{id:guid}/send")]
         public async Task<IActionResult> Send(Guid id)
         {
-            await sendHandler.SendAsync(id);
-            return Ok(new { message = "Offer sent" });
+            var emailed = await sendHandler.SendAsync(id);
+            return Ok(new
+            {
+                message = emailed
+                    ? "Offer sent — the PDF letter is queued for e-mail delivery to the candidate."
+                    : "Offer marked sent, but no e-mail was queued (candidate has no address or the mailer is disabled) — deliver the letter manually."
+            });
         }
 
         /// <summary>Records the candidate's response: Accept | Decline (HC114).</summary>
@@ -478,11 +493,18 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetJobApplicationById getByIdHandler,
         IGetAllJobApplications getAllHandler,
         IMoveJobApplicationStage moveHandler,
+        IBulkMoveApplicationStage bulkMoveHandler,
         IScoreJobApplication scoreHandler,
         IGetApplicationRanking rankingHandler,
         IGetHireQueue hireQueueHandler,
+        IGetEvaluatorContext evaluatorContextHandler,
         IAdoptInterviewScores adoptHandler) : BaseController
     {
+        /// <summary>The current user's evaluator scope (assigned criteria/requisitions), for the UI.</summary>
+        [HttpGet("evaluator-context")]
+        public Task<EvaluatorContextDto> GetEvaluatorContext()
+            => evaluatorContextHandler.GetAsync();
+
         /// <summary>Copies the consolidated per-criterion interview averages into the score sheet.</summary>
         [HttpPost("{id:guid}/adopt-interview-scores")]
         public async Task<IActionResult> AdoptInterviewScores(Guid id)
@@ -529,5 +551,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             await moveHandler.MoveAsync(dto);
             return Ok(new { message = "Application stage updated" });
         }
+
+        /// <summary>Mass stage move — movable applications move; the rest report back with reasons.</summary>
+        [HttpPut("stage/bulk")]
+        public Task<BulkMoveResultDto> BulkMoveStage([FromBody] BulkMoveApplicationStageDto dto)
+            => bulkMoveHandler.MoveAsync(dto);
     }
 }

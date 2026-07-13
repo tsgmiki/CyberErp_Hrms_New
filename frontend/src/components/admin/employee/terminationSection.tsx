@@ -19,6 +19,7 @@ import {
 } from "@/services/admin/employee/termination";
 import Loading from "../../common/loader/loader";
 import Modal from "@/components/common/modal";
+import { useCustomFields } from "./customFieldsHook";
 import { StatusMessage } from "../../common/statusMessage/status";
 import { terminationTypeOptions } from "@/constants/orgStructure";
 
@@ -82,6 +83,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<EmployeeTerminationModel>({});
   const [isSaving, setIsSaving] = useState(false);
+  const customFields = useCustomFields("Termination");
   const [busy, setBusy] = useState(false);
 
   const queryKey = ["employeeTerminations", employeeId];
@@ -157,6 +159,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
             type="button"
             onClick={() => {
               setFormData({ terminationType: "Voluntary" });
+              customFields.hydrate();
               setFormState({});
               setShowForm(true);
             }}
@@ -313,12 +316,13 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
           form={{
             columnsNo: 2,
             submitHandler,
-            labelWidth: "w-[35%]",
+            fieldLayout: "auth",
             isPending: isSaving,
             SubmitButton: "top",
             showModal: true,
             modalVisible: true,
             modalTitle: "Initiate Termination",
+            description: "End the employment and start the clearance process.",
             modalSize: "lg",
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Submit",
@@ -336,6 +340,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
                 value: formData.reason, onChange: changeHandler, error: formState?.zodErrors?.reason },
               { name: "remarks", label: "Remarks", type: "textarea", colSpan: "full",
                 value: formData.remarks, onChange: changeHandler },
+              ...customFields.components,
               { name: "employeeId", value: employeeId, type: "hidden" },
               { name: "id", value: formData.id, type: "hidden" },
             ],

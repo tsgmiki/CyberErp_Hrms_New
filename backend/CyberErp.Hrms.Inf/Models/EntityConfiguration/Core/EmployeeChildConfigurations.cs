@@ -39,6 +39,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.Organization).IsRequired().HasMaxLength(300);
             builder.Property(x => x.JobTitle).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Responsibilities).HasMaxLength(2000);
+            builder.Property(x => x.IsExternal).HasDefaultValue(false);
+            builder.Property(x => x.IsGovernmental).HasDefaultValue(false);
 
             builder.HasOne<Person>()
                 .WithMany()
@@ -87,12 +89,14 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasKey(x => x.Id);
 
+            builder.Property(x => x.OwnerType).HasConversion<string>().HasMaxLength(30).IsRequired();
             builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
             builder.Property(x => x.Label).IsRequired().HasMaxLength(200);
             builder.Property(x => x.DataType).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Options).HasMaxLength(2000);
 
-            builder.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
+            // Names are unique per (tenant, owner form) — each form has its own field namespace.
+            builder.HasIndex(x => new { x.TenantId, x.OwnerType, x.Name }).IsUnique();
         }
     }
 
@@ -104,12 +108,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasKey(x => x.Id);
 
+            builder.Property(x => x.OwnerType).HasConversion<string>().HasMaxLength(30).IsRequired();
             builder.Property(x => x.Value).HasMaxLength(2000);
 
-            builder.HasOne<Employee>()
-                .WithMany()
-                .HasForeignKey(x => x.EmployeeId)
-                .OnDelete(DeleteBehavior.Cascade);
+            // The owner is polymorphic (Employee or a child record) — no cascade FK; each owner's
+            // delete handler removes its values via ICustomFieldService.DeleteForOwnerAsync.
 
             // Definitions with stored values cannot be deleted (deactivate instead).
             builder.HasOne<EmployeeFieldDefinition>()
@@ -117,7 +120,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .HasForeignKey(x => x.FieldDefinitionId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasIndex(x => new { x.EmployeeId, x.FieldDefinitionId }).IsUnique();
+            builder.HasIndex(x => new { x.OwnerType, x.OwnerId, x.FieldDefinitionId }).IsUnique();
         }
     }
 }

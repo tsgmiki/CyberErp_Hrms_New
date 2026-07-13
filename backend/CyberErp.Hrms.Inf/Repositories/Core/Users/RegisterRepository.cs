@@ -94,8 +94,8 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
 
                     // Set tenant ID on user (BaseEntity has TenantId property)
                     user.TenantId = tenant.Id.ToString();
-                    // The tenant owner is Head Office (global visibility across all branches).
-                    user.MarkAsHeadOffice();
+                    // The tenant owner has no employee link, so it resolves to Head Office (global
+                    // visibility) at login — no explicit flag needed on the User record.
 
                     await _userRepository.AddAsync(user);
                     await _userRepository.SaveChangesAsync();
@@ -186,8 +186,7 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
 
                     // Set tenant ID on user
                     user.TenantId = tenant.Id.ToString();
-                    // The tenant owner is Head Office (global visibility across all branches).
-                    user.MarkAsHeadOffice();
+                    // No employee link → resolves to Head Office (global visibility) at login.
 
                     await _userRepository.AddAsync(user);
                     _logger.LogInformation("User created via Google signup: {UserId }, Email: {Email }, TenantId: {TenantId }", user.Id, user.Email, tenant.Id);

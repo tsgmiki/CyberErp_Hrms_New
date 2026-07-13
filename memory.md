@@ -68,6 +68,44 @@ migration + frontend, verified end-to-end against the live DB before moving on.
 `http://localhost:5241` (or IIS Express 44363 in Visual Studio). Login: **`hoadmin` / `Passw0rd!`**,
 tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = global visibility).
 
+**Cross-cutting services:** `IEmailService` (Email config section: Enabled switch, SMTP relay or
+`PickupDirectory` .eml delivery for dev/test; attachments supported; never throws; authenticated
+relays like Gmail send AS the login mailbox with the branded address as Reply-To). **E-mail is
+dispatched in the background via Hangfire** (`QueuedEmailService` enqueues → `EmailDispatchJob`
+sends via `SmtpEmailService` with 5 retries; compose stays in-request so jobs are tenant-free;
+SQL storage auto-created in CERP schema `HangFire`; ops dashboard `/hangfire`, cookie-authed).
+Consumers: interview lifecycle e-mails (`IInterviewNotifier`) and **offer auto-delivery**
+(`IOfferDelivery`: final approval → offer letter rendered as PDF via `IPdfService`/QuestPDF and
+queued for e-mail; queued = offer marks Sent + OfferPending automatically, no-address/disabled =
+stays Approved, manual Send retries). The offer **PDF is a customizable
+template**: `CompanyProfile` (letterhead: name/address/phone/e-mail + logo) + `OfferLetterTemplate`
+(tokenized body + signatory), merged by `IOfferLetterComposer` ({{CandidateName}}/{{Position}}/
+{{Salary}}/… 10 tokens) — configured under *Recruitment → Offer Letter Template*. Offer acceptance
+advances the application to the new **OfferAccepted** stage (offer-driven, hire-ready). Offers also
+carry vacancy-derived defaults (position pay point + hiring manager via unit→parent hierarchy) and
+the applications list exposes per-row `HireEligibility`/`Rank` — the Offer button only activates
+for eligible applicants.
+
+**User ↔ Employee link:** the FK lives on **`User.EmployeeId`** (nullable, set on the user form's
+"Linked Employee" dropdown). `User.BranchId`/`IsHeadOffice` columns were REMOVED — branch scope +
+head-office visibility are derived at login from the linked employee's branch (no employee / no
+branch = head office; tenant owner has no employee → head office). `CurrentUserService` still reads
+the branch/head-office cookies (unchanged) that `LoginRepository` now sets from the derivation.
+
+**Recruitment scoring/hire controls:** an assigned criterion evaluator (resolved via
+`User.EmployeeId` — the login MUST be linked to the employee on the User form) is strictly scoped:
+(1) they SEE only their assigned requisitions' applicants (applications list is server-filtered),
+(2) they may score ONLY their assigned criteria (direct scoring + interview-score adoption, others
+400), (3) the score sheet shows only their criteria + an "Evaluator view" chip. HR/unlinked users
+are unconstrained. Scores lock once the applicant is **Selected or beyond**. The hire conversion
+**auto-populates Position & Salary** from the offer/requisition (explicit values override).
+
+**Performance (measured, 2k-applicant vacancy):** list eligibility is set-based
+(`RankingShared.ComputeEligibilityAsync`, no full-ranking hydration per page), rank assignment is
+O(N log N), hot reads use `AsNoTracking` (⚠ `Repository.GetAll()` tracks by default), hire-queue
+docs batched, indexes on JobApplication(TenantId,AppliedAt) + JobOffer(ApplicationId,CreatedAt),
+Brotli/gzip response compression, FE React Query staleTime 30 s. List page: 1.1–3 s → 0.13–0.19 s.
+
 **Implemented modules (all verified E2E):**
 - **Org Structure (§3.1):** OrganizationUnit, Position, PositionClass, JobGrade, JobCategory, WorkLocation; tree + org chart.
 - **Multi-Branch:** Branch, branch-level isolation, head-office visibility, audit-trail interceptor.

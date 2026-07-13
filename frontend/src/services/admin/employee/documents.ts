@@ -3,12 +3,14 @@ import type { EmployeeDocumentModel } from "@/models";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-export type DocumentOwnerType = "Education" | "Experience";
+export type DocumentOwnerType = "Education" | "Experience" | "DynamicFormRecord";
 
-/** Documents attached to an education/experience record. */
-export const getDocuments = (ownerType: DocumentOwnerType, ownerId: string) =>
+/** Documents attached to an owner record. `ownerField` sub-scopes to a dynamic-form Attachment field
+ * (each field is its own file pool); omit it for education/experience. */
+export const getDocuments = (ownerType: DocumentOwnerType, ownerId: string, ownerField?: string) =>
   api.get<EmployeeDocumentModel[]>(
-    `EmployeeDocument?ownerType=${ownerType}&ownerId=${ownerId}`,
+    `EmployeeDocument?ownerType=${ownerType}&ownerId=${ownerId}` +
+      (ownerField ? `&ownerField=${encodeURIComponent(ownerField)}` : ""),
   );
 
 export async function uploadDocument(
@@ -16,11 +18,13 @@ export async function uploadDocument(
   ownerType: DocumentOwnerType,
   ownerId: string,
   file: File,
+  ownerField?: string,
 ): Promise<{ ok: boolean; message: string }> {
   const form = new FormData();
   form.append("employeeId", employeeId);
   form.append("ownerType", ownerType);
   form.append("ownerId", ownerId);
+  if (ownerField) form.append("ownerField", ownerField);
   form.append("file", file);
 
   const res = await fetch(`${API_BASE_URL}/EmployeeDocument`, {

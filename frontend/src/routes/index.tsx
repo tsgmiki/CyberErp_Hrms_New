@@ -34,6 +34,7 @@ const BranchPage = memo(lazy(() => import("@/pages/admin/branch")));
 const AuditLogPage = memo(lazy(() => import("@/pages/admin/auditLog")));
 const EmployeePage = memo(lazy(() => import("@/pages/admin/employee")));
 const EmployeeFieldPage = memo(lazy(() => import("@/pages/admin/employeeField")));
+const FormBuilderPage = memo(lazy(() => import("@/pages/admin/formBuilder")));
 const DocumentTemplatePage = memo(lazy(() => import("@/pages/admin/documentTemplate")));
 const WorkflowPage = memo(lazy(() => import("@/pages/admin/workflow")));
 const WorkflowDefinitionPage = memo(lazy(() => import("@/pages/admin/workflowDefinition")));
@@ -47,6 +48,7 @@ const CandidatePage = memo(lazy(() => import("@/pages/admin/candidate")));
 const JobApplicationPage = memo(lazy(() => import("@/pages/admin/jobApplication")));
 const TalentPoolPage = memo(lazy(() => import("@/pages/admin/talentPool")));
 const HireEmployeePage = memo(lazy(() => import("@/pages/admin/hireEmployee")));
+const OfferLetterTemplatePage = memo(lazy(() => import("@/pages/admin/offerLetterTemplate")));
 export default function AppRoutes() {
   return (
     <Routes>
@@ -95,6 +97,7 @@ export default function AppRoutes() {
         <Route path="auditLog" element={<AuditLogPage />} />
         <Route path="employee" element={<EmployeePage />} />
         <Route path="employeeField" element={<EmployeeFieldPage />} />
+        <Route path="formBuilder" element={<FormBuilderPage />} />
         <Route path="documentTemplate" element={<DocumentTemplatePage />} />
         <Route path="workflow" element={<WorkflowPage />} />
         <Route path="workflowDefinition" element={<WorkflowDefinitionPage />} />
@@ -108,6 +111,7 @@ export default function AppRoutes() {
         <Route path="jobApplication" element={<JobApplicationPage />} />
         <Route path="talentPool" element={<TalentPoolPage />} />
         <Route path="hireEmployee" element={<HireEmployeePage />} />
+        <Route path="offerLetterTemplate" element={<OfferLetterTemplatePage />} />
        </Route>
     </Routes>
   );

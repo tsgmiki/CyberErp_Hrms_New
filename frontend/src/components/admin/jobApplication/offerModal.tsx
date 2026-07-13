@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -11,6 +11,7 @@ import {
   FileText,
   Trash2,
   Pencil,
+  Building2,
 } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
@@ -18,6 +19,7 @@ import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllSalaryScale from "@/services/admin/salaryScale/getAll";
 import {
   getJobOffers,
+  getOfferDefaults,
   saveJobOffer,
   submitJobOffer,
   sendJobOffer,
@@ -77,8 +79,30 @@ function OfferForm({
     queryKey: ["salaryScales", lookupParam],
     queryFn: () => getAllSalaryScale(lookupParam),
   });
+  // Vacancy-derived defaults: the position dictates the pay point; the unit hierarchy names the
+  // hiring manager. New offers open pre-populated — HR confirms rather than re-enters.
+  const { data: defaults } = useQuery({
+    queryKey: ["offerDefaults", applicationId],
+    queryFn: () => getOfferDefaults(applicationId),
+  });
+  const [prefilled, setPrefilled] = useState(false);
+  useEffect(() => {
+    if (editing || !defaults || prefilled) return;
+    setPrefilled(true);
+    if (defaults.salaryScaleId) {
+      setSalaryScaleId(defaults.salaryScaleId);
+      if (defaults.salaryScaleAmount != null) setSalary(String(defaults.salaryScaleAmount));
+    }
+    if (defaults.hiringManagerEmployeeId) setManagerId(defaults.hiringManagerEmployeeId);
+  }, [defaults, editing, prefilled]);
 
-  const scaleAmount = (scales?.data ?? []).find((s) => s.id === salaryScaleId)?.salary;
+  // The position locks the scale (rule: offers are made against the vacancy's pay point);
+  // a free dropdown only remains for vacancies that carry no scale at all.
+  const positionScaleId = defaults?.salaryScaleId;
+  const scaleAmount =
+    salaryScaleId && salaryScaleId === positionScaleId && defaults?.salaryScaleAmount != null
+      ? defaults.salaryScaleAmount
+      : (scales?.data ?? []).find((s) => s.id === salaryScaleId)?.salary;
   const deviates = scaleAmount != null && salary !== "" && Number(salary.replace(/[,\s]/g, "")) !== scaleAmount;
 
   const pickScale = (id: string) => {
@@ -112,19 +136,39 @@ function OfferForm({
       <h4 className="text-sm font-semibold text-foreground">
         {editing ? t("Edit Offer {{n}}", { n: editing.offerNumber }) : t("New Offer")}
       </h4>
+      {/* The vacancy the offer is made against — everything below derives from it. */}
+      {defaults && (
+        <p className="flex items-center gap-1.5 rounded-md bg-secondary/50 px-2 py-1.5 text-xs text-muted">
+          <Building2 size={13} className="shrink-0 text-primary" />
+          <span>
+            <span className="font-semibold text-foreground">{defaults.positionTitle ?? defaults.requisitionTitle}</span>
+            {defaults.unitName && <> · {defaults.unitName}</>}
+            {" — "}
+            {t("scale and manager auto-populated from the position and unit")}
+          </span>
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
             {t("Salary Scale (HC113)")}
           </label>
-          <select value={salaryScaleId} onChange={(e) => pickScale(e.target.value)} className={inputCls}>
-            <option value="">{t("No scale — free salary")}</option>
-            {(scales?.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.jobGrade} / {s.step} — {s.salary?.toLocaleString()}
-              </option>
-            ))}
-          </select>
+          {positionScaleId ? (
+            // The position's pay point — fixed by the vacancy, not re-chosen per offer.
+            <div className={`${inputCls} flex items-center bg-secondary/40 text-muted`}>
+              {defaults?.salaryScaleLabel ?? t("Position scale")} —{" "}
+              {defaults?.salaryScaleAmount?.toLocaleString()} {t("ETB")}
+            </div>
+          ) : (
+            <select value={salaryScaleId} onChange={(e) => pickScale(e.target.value)} className={inputCls}>
+              <option value="">{t("No scale — free salary")}</option>
+              {(scales?.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.jobGrade} / {s.step} — {s.salary?.toLocaleString()}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
@@ -157,6 +201,20 @@ function OfferForm({
               <option key={e.id} value={e.id}>{e.fullName ?? e.employeeNumber}</option>
             ))}
           </select>
+          {defaults?.hiringManagerName && managerId === defaults.hiringManagerEmployeeId && (
+            <p className="mt-0.5 text-[10px] text-muted">
+              {defaults.managerResolvedFromUnit && defaults.managerResolvedFromUnit !== defaults.unitName
+                ? t("Manager of parent unit {{u}} (the vacancy's unit has none)", {
+                    u: defaults.managerResolvedFromUnit,
+                  })
+                : t("Manager of {{u}}", { u: defaults.managerResolvedFromUnit ?? defaults.unitName })}
+            </p>
+          )}
+          {defaults && !defaults.hiringManagerEmployeeId && !managerId && (
+            <p className="mt-0.5 text-[10px] text-warning">
+              {t("No manager found in the unit hierarchy — pick one manually")}
+            </p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
@@ -210,12 +268,15 @@ function OfferModal({
   applicationId,
   candidateName,
   canCreate = true,
+  blockReason,
   onClose,
 }: {
   applicationId: string;
   candidateName?: string;
-  /** Offers are only CREATED for Selected/OfferPending applications; history stays viewable. */
+  /** Offers are only CREATED for eligible Selected/OfferPending applications; history stays viewable. */
   canCreate?: boolean;
+  /** Why creation is blocked (ranking eligibility) — shown instead of the New Offer button. */
+  blockReason?: string;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -225,6 +286,7 @@ function OfferModal({
   const [respondFor, setRespondFor] = useState<{ offer: JobOfferModel; response: "Accept" | "Decline" } | null>(null);
   const [responseNote, setResponseNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const queryKey = ["jobOffers", applicationId];
@@ -234,18 +296,24 @@ function OfferModal({
   });
 
   const hasActive = (offers ?? []).some((o) => ACTIVE.includes(o.status ?? ""));
+  // An accepted offer is a settled positive outcome — the candidate is ready to hire, so no new
+  // offer is ever created after acceptance (the previous bug: New Offer reappeared once Accepted
+  // left the ACTIVE set).
+  const hasAccepted = (offers ?? []).some((o) => o.status === "Accepted");
 
   const refresh = async () => {
     await refetch();
     queryClient.invalidateQueries({ queryKey: ["jobApplications"] });
   };
 
-  const run = async (fn: () => Promise<{ ok: boolean; message: string }>) => {
+  const run = async (fn: () => Promise<{ ok: boolean; message: string }>, showResult = false) => {
     setError(null);
+    setInfo(null);
     setBusy(true);
     const res = await fn();
     setBusy(false);
     if (!res.ok) return setError(res.message);
+    if (showResult) setInfo(res.message);
     await refresh();
   };
 
@@ -294,6 +362,9 @@ function OfferModal({
         {isLoading && <Loading />}
         {error && (
           <p className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">{error}</p>
+        )}
+        {info && (
+          <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info">{info}</p>
         )}
 
         {!isLoading && (offers ?? []).length === 0 && (
@@ -363,7 +434,10 @@ function OfferModal({
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => o.id && run(() => sendJobOffer(o.id!))}
+                    title={t(
+                      "Approved offers are e-mailed automatically (PDF letter) — this is the retry when that delivery failed",
+                    )}
+                    onClick={() => o.id && run(() => sendJobOffer(o.id!), true)}
                     className="inline-flex items-center gap-1 rounded bg-success px-2.5 py-1 text-xs font-semibold text-on-accent disabled:opacity-50"
                   >
                     <Send size={12} /> {t("Send to Candidate")}
@@ -441,6 +515,10 @@ function OfferModal({
               await refresh();
             }}
           />
+        ) : hasAccepted ? (
+          <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-xs font-medium text-success">
+            {t("Offer accepted — the candidate is ready for the hire conversion.")}
+          </p>
         ) : (
           !hasActive &&
           (canCreate ? (
@@ -453,7 +531,9 @@ function OfferModal({
             </button>
           ) : (
             <p className="text-xs italic text-muted">
-              {t("This application is final — the offer record is view-only.")}
+              {blockReason
+                ? t(blockReason)
+                : t("This application is final — the offer record is view-only.")}
             </p>
           ))
         )}

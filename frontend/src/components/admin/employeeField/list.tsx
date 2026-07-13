@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import GridAction from "../../common/gridAction/gridAction";
 import getAllEmployeeField from "@/services/admin/employeeField/getAll";
 import deleteEmployeeField from "@/services/admin/employeeField/delete";
+import { ownerTypeLabel } from "@/constants/orgStructure";
 import type { EmployeeFieldModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
@@ -36,6 +37,7 @@ function EmployeeFieldList({ editHandler }: Props) {
             </button>
           ),
         },
+        { name: "ownerType", label: "Applies To", render: (v: string) => ownerTypeLabel(v) },
         { name: "name", label: "Field Key" },
         { name: "dataType", label: "Data Type" },
         {
@@ -69,7 +71,7 @@ function EmployeeFieldList({ editHandler }: Props) {
   );
 
   return (
-    <EntityListShell listKey="employeeFields" listLabel="Employee Fields" columns={columns} {...list} />
+    <EntityListShell listKey="employeeFields" listLabel="Custom Fields" columns={columns} {...list} />
   );
 }
 

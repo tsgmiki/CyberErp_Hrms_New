@@ -299,7 +299,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value && x.PersonId == personId)
                     ?? throw new NotFoundException(nameof(EmployeeExperience), dto.Id.Value.ToString());
-                entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities);
+                // Candidate prior jobs are EXTERNAL experience (another employer).
+                entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities,
+                    isExternal: true, isGovernmental: entity.IsGovernmental);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 logger.LogInformation("Updated candidate experience {Id}", entity.Id);
@@ -307,7 +309,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             }
 
             var created = EmployeeExperience.Create(personId, dto.Organization, dto.JobTitle,
-                dto.StartDate, dto.EndDate, dto.Responsibilities);
+                dto.StartDate, dto.EndDate, dto.Responsibilities, isExternal: true);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created candidate experience {Id} on Person {PersonId}", created.Id, personId);

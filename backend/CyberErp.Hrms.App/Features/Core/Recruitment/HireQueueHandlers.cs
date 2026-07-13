@@ -72,19 +72,29 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     // Ranked vacancies: strictly the qualified, ranked applicants.
                     ? ranking.Where(r => r.HireEligibility is "Eligible" or "Waitlisted")
                     // Legacy (no criteria): fall back to hire-stage applicants.
-                    : ranking.Where(r => r.Stage is nameof(ApplicationStage.Selected) or nameof(ApplicationStage.OfferPending));
+                    : ranking.Where(r => r.Stage is nameof(ApplicationStage.Selected) or nameof(ApplicationStage.OfferPending)
+                        or nameof(ApplicationStage.OfferAccepted));
 
-                foreach (var r in pool)
+                // One batched read for the whole pool — the previous per-candidate query was a
+                // classic N+1 (one DB roundtrip per row on the hire screen).
+                var poolRows = pool.ToList();
+                var poolCandidateIds = poolRows.Select(r => r.CandidateId).Distinct().ToList();
+                var documentsByCandidate = (await candidateDocumentRepository.GetAll().AsNoTracking()
+                        .Where(d => poolCandidateIds.Contains(d.CandidateId))
+                        .Select(d => new { d.CandidateId, d.DocumentType })
+                        .ToListAsync())
+                    .GroupBy(d => d.CandidateId)
+                    .ToDictionary(g => g.Key, g => g.Select(d => d.DocumentType).ToList());
+
+                foreach (var r in poolRows)
                 {
                     var eligibility = hasCriteria ? r.HireEligibility! : "Eligible";
-                    var stageOk = r.Stage is nameof(ApplicationStage.Selected) or nameof(ApplicationStage.OfferPending);
+                    var stageOk = r.Stage is nameof(ApplicationStage.Selected) or nameof(ApplicationStage.OfferPending)
+                        or nameof(ApplicationStage.OfferAccepted);
                     var offerOk = r.LatestOfferStatus is null or nameof(OfferStatus.Accepted);
 
-                    var presentTypes = await candidateDocumentRepository.GetAll()
-                        .Where(d => d.CandidateId == r.CandidateId)
-                        .Select(d => d.DocumentType)
-                        .ToListAsync();
-                    var missing = CandidateShared.MissingComplianceDocuments(presentTypes);
+                    var missing = CandidateShared.MissingComplianceDocuments(
+                        documentsByCandidate.GetValueOrDefault(r.CandidateId) ?? []);
 
                     var blocked =
                         eligibility != "Eligible" ? $"Waitlisted at rank #{r.Rank} — a higher-ranked candidate holds the slot" :

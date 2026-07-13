@@ -480,6 +480,13 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   Sent / Accepted), manual stage moves are blocked (400 naming the offer) — the offer drives the
   pipeline; declined/expired/withdrawn offers release the application automatically. The UI
   disables Move Stage at OfferPending with an explanatory tooltip.
+- **Bulk stage moves (mass processing):** `PUT JobApplication/stage/bulk` moves many applications
+  in one action with **per-item outcomes** — each application is checked against the SAME rules as
+  a single move (final stages, offer-driven lock, already-there); the movable subset commits as
+  one transaction, the rest are reported back with the reason and candidate name, never failing
+  the batch. Bulk moves carry a shared note (logged per application) but no screening scores.
+  UI: checkbox selection on the pipeline (final/offer-driven rows unselectable) → "Move N
+  Selected" toolbar action → stage+note modal → moved/skipped result report.
 - **Action-button sequence (Applications row, process order):** Score → Interviews → Move Stage →
   Offers → History. Interviews are ALWAYS viewable (the record outlives the decision; the modal is
   read-only for final applications); Offers are viewable from Selected onward and on final
@@ -492,7 +499,99 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   Interview 30 @Interview / Document Review 20 @Screening).
 - **Offers are rank-gated like hires:** on a scored vacancy, an offer can only be created for an
   ELIGIBLE candidate (never waitlisted / unscored / mandatory-failing / offer-rejected) — the
-  system never issues an offer the hire gate would refuse.
+  system never issues an offer the hire gate would refuse. **The UI mirrors the gate:** the
+  applications list carries per-row `HireEligibility` + `Rank` (computed from the vacancy ranking
+  for criteria-scored vacancies; null otherwise), an eligibility chip renders under the stage
+  chip, and the row's Offer button is ACTIVE only for Eligible applicants (disabled with the
+  specific reason — "Waitlisted at rank #N…", "Not scored…" — for everyone else; finished
+  applications keep view-only access). Three applicants on a 1-position vacancy = exactly one
+  active Offer button.
+- **Offer defaults derive from the vacancy** (`GET JobOffer/defaults?applicationId=`): the
+  position dictates the pay point (requisition `SalaryScaleId`, falling back to the position
+  class's scale — label + amount returned), and the **hiring manager resolves from the unit's
+  management hierarchy**: the active `IsManagerial` employee whose position sits in the vacancy's
+  unit; when the unit has none, the PARENT unit answers, walking `ParentId` upwards (≤10 levels;
+  `ManagerResolvedFromUnit` names the answering unit). The offer form opens pre-populated (scale
+  locked to the position's pay point when one exists, salary + manager pre-filled with the
+  resolution source shown); `SaveJobOffer` applies the SAME defaults server-side when a create
+  omits scale/manager, so raw API calls behave identically. HC113 deviation-justification applies
+  against the defaulted scale.
+- **Approved offers auto-deliver as PDF e-mail:** the moment the FINAL approver approves
+  (workflow `OnApprovedAsync`, or the direct auto-approve when no chain is defined), the letter
+  (HR draft, or the standard HC111 letter generated and attached to the record) renders as a PDF
+  (`IPdfService`/QuestPDF, A4 letter layout) and e-mails to the candidate as an attachment
+  (`IOfferDelivery`; `EmailAttachment` support added to `IEmailService`). On success the offer
+  marks **Sent** and the application moves to OfferPending ("approved and e-mailed") — no manual
+  step. On failure (no candidate e-mail, mail outage) the offer STAYS Approved and the manual
+  "Send to Candidate" button is the retry (it too e-mails the PDF; the response says whether the
+  mail went out). Delivery never throws — approval always stands.
+- **Offer acceptance advances the pipeline (OfferAccepted stage):** an accepted offer moves the
+  application OfferPending → **OfferAccepted** (a non-terminal stage, `ApplicationStage=9`; string
+  column, no migration) with a logged transition, so the list no longer reads "Offer Pending"
+  after acceptance. OfferAccepted is offer-driven like OfferPending: manual/bulk moves are blocked
+  (400), the Move-Stage button is disabled, and the offer record stays view-only (`New Offer` is
+  replaced by an "accepted — ready to hire" note; `SaveJobOffer` also refuses a new offer at this
+  stage). The hire flow and hire-queue treat OfferAccepted as hire-ready (alongside
+  Selected/OfferPending); the hire conversion moves it → Hired.
+- **The offer button reflects acceptance too:** an Accepted offer is a settled positive outcome,
+  so no `New Offer` is offered afterwards — this fixes the bug where `New Offer` reappeared once
+  Accepted left the ACTIVE set. Terminal + OfferAccepted applications keep view access to the
+  offer record.
+- **Customizable offer-letter PDF template (HC111):** HR configures the offer letter under
+  *Recruitment → Offer Letter Template* (`OfferLetterTemplateController`). Two parts:
+  (1) **company letterhead** on `CompanyProfile` (shared with document templates) — company name,
+  contact address/phone/e-mail, and the logo (reuses the `DocumentTemplate/logo` upload); and
+  (2) a **tokenized letter body** + signatory (`OfferLetterTemplate`, one row per tenant, default
+  provided). `IOfferLetterComposer` merges `{{CandidateName}}`, `{{Position}}`, `{{Salary}}`,
+  `{{StartDate}}`, `{{ExpiryDate}}`, `{{OfferNumber}}`, `{{EmploymentType}}`, `{{UnitName}}`,
+  `{{CompanyName}}`, `{{Today}}` from the offer/candidate/requisition/company, and QuestPDF renders
+  the letterhead (logo + identity) + merged body + signatory. One source of truth: the
+  "Generate letter" button, the stored `LetterText`, and the e-mailed PDF all flow through the
+  composer. The editor has a live **Preview PDF** (`POST .../preview`, sample data over the real
+  letterhead). An HR-edited `LetterText` is used verbatim as the PDF body.
+- **SMTP sender must be the authenticated mailbox (Gmail/365):** authenticated relays reject a
+  `From` that is not the login account or a verified alias, so a branded `FromAddress` like
+  `no-reply@…local` silently fails. `SmtpEmailService` now sends **as the login** when `UserName`
+  is an e-mail address that differs from `FromAddress`, and keeps the branded address as
+  **Reply-To**. Non-address logins (e.g. SendGrid's `apikey`) leave the configured From untouched.
+- **User ↔ Employee relationship (FK owned by User):** the `User` table carries a nullable
+  **`EmployeeId`** foreign key to `Employee` (SET NULL on employee deletion) — one login account
+  belongs to at most one employee; set on the **user** form ("Linked Employee"). The old
+  `Employee.UserId` direction was removed. `User.BranchId` and `User.IsHeadOffice` columns were
+  also removed: **branch scope + head-office visibility are DERIVED at login** from the linked
+  employee's branch — a user tied to a branch employee is scoped to that branch; a user with no
+  employee (or an employee without a branch — e.g. the tenant owner) has global / head-office
+  visibility. `LoginRepository` computes this and still writes the `BranchId`/`IsHeadOffice`
+  cookies the rest of the app reads, so branch isolation is unchanged downstream.
+- **Evaluator permissions (an assigned evaluator only handles their own applicants) — enforced at
+  three layers:** the current user is resolved to their employee via **`User.EmployeeId`**; an
+  employee assigned as a criterion evaluator ANYWHERE is a "constrained evaluator"
+  (`EvaluationGuard.GetContextAsync` → employeeId + assigned criterion ids + assigned requisition
+  ids). **PREREQUISITE:** the evaluator's login account must be linked to their employee (User form
+  → "Linked Employee"); an unlinked account is treated as HR (unconstrained). The three layers:
+  1. **Visibility (read):** `GetAllJobApplications` filters the pipeline to the constrained
+     evaluator's assigned requisitions — they SEE only their own applicants. HR / unlinked see all.
+  2. **Scoring (write):** `EvaluationGuard.EnsureMayScoreAsync` rejects (400) any criterion the
+     evaluator is not personally assigned to — on direct scoring AND interview-score adoption
+     (`AdoptInterviewScores`, previously a bypass).
+  3. **UI:** `GET JobApplication/evaluator-context` returns `{ isConstrainedEvaluator,
+     assignedCriterionIds, assignedRequisitionIds }`; the applications page shows an "Evaluator
+     view" chip and the score sheet lists ONLY the evaluator's assigned criteria (never inviting a
+     submission the backend would refuse).
+  The "assigned anywhere" test means an evaluator from vacancy A cannot see or score vacancy B's
+  applicants (no assignment there).
+- **Score locking (evaluation concluded = frozen):** criterion scores can be entered or corrected
+  only while the applicant is still being evaluated — stages Received / Screening / Shortlisted /
+  Interview. Once HR moves them to **Selected** (or any later/terminal stage), the evaluation is
+  complete and the score sheet is locked (400 on any score/adopt). `EvaluationGuard.EnsureEvaluatable`
+  guards both direct scoring and interview-score adoption; the pipeline's Score button hides at
+  Selected+ to match.
+- **Hire auto-populates Position & Salary (no manual re-entry):** the hire conversion derives the
+  pay point and placement instead of asking HR to re-select them — salary scale = DTO ?? the
+  candidate's **offer** ?? the requisition scale; salary = DTO ?? **offer amount** ?? scale amount;
+  position = DTO ?? a still-**vacant** position of the requisition's PositionClass (preferring its
+  own unit). An explicit value on the request always wins (override). The Hire modal prefills the
+  salary from the accepted offer and labels the position picker "Auto — from the vacancy's role".
 - **Interview results adopt into the ranking (no double entry):**
   `POST JobApplication/{id}/adopt-interview-scores` copies the consolidated per-criterion interview
   averages into the application's criterion scores (weights inherited; overall impressions stay
@@ -506,8 +605,36 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   counter (`hrms_NumberSequence`); existing tenants' counters were seeded from their current max
   (data migration `SeedRecruitmentNumberSequences`).
 - **Notifications** (HC079/HC087/HC099/HC100): in-app via status chips + the Dashboard approvals
-  inbox; e-mail (incl. the configurable acknowledgement, HC100) is the documented hook — no SMTP
-  infrastructure exists. The posting window (`OpenUntil`) deliberately does NOT block manual
+  inbox. **E-mail infrastructure now exists**: `IEmailService` (App) / `SmtpEmailService` (Inf),
+  driven by the `Email` config section — `Enabled` master switch (false = logged no-op),
+  Host/Port/EnableSsl/UserName/Password relay settings, FromAddress/FromName, and
+  `PickupDirectory` (writes .eml files instead of network delivery — dev/test without a mail
+  server). Sends NEVER throw and always run AFTER the business transaction commits — a mail
+  outage or a candidate without an e-mail address is logged and skipped, the operation stands.
+- **E-mail is delivered in the BACKGROUND (Hangfire, 2026-07-12):** requests never block on SMTP
+  (previously up to the 15 s timeout). `IEmailService` resolves to `QueuedEmailService`, which
+  runs the cheap guards in-request (no recipient / mailer disabled → `false`, nothing enqueued —
+  callers keep their semantics) and otherwise enqueues an `EmailDispatchJob` with the fully
+  materialized payload (to/subject/body/attachments) and returns `true` = "durably queued".
+  **Compose in-request, send in background:** all tenant-scoped work (candidate lookup, letter
+  merge, QuestPDF) still happens inside the request — background jobs have NO Finbuckle tenant
+  context, and the payload design keeps them tenant-free. The job throws on a failed send so
+  Hangfire retries (1 m/5 m/15 m/1 h/2 h, then parked as Failed on the dashboard) — delivery is now
+  MORE reliable than the old one-shot attempt; a transient relay outage delays mail instead of
+  losing it. Consequence for offers: `true` from `EmailOfferAsync` = queued, so an approved offer
+  marks **Sent on successful enqueue** (retries make delivery durable); no-address/disabled still
+  leaves it Approved for manual handling. Storage: Hangfire SQL Server tables auto-created in CERP
+  under the `HangFire` schema (no EF migration); tuned options (`SlidingInvisibilityTimeout` +
+  `QueuePollInterval=Zero`, `UseRecommendedIsolationLevel`, `DisableGlobalLocks`) + a small capped
+  worker pool (2–4) so background processing never contends with the request path's connection
+  pool. Ops dashboard at **`/hangfire`** — cookie-authenticated users only (the filter
+  authenticates the `Cookies` scheme explicitly because the app's default scheme is JWT).
+  **Automatic applicant e-mails (interview lifecycle):** invitation on schedule, "rescheduled"
+  with old→new times when the TIME changes on a reschedule (panel-only edits are internal — no
+  mail), and cancellation notice on cancel. Composed by `IInterviewNotifier` from the
+  application → candidate (Email, name) + requisition title. Other e-mail hooks (HC100
+  acknowledgement, offer letters) can now plug into the same service.
+  The posting window (`OpenUntil`) deliberately does NOT block manual
   application entry — HR may register late/walk-in applicants; requisition status is the gate.
   **Deferred to Phase 3:** background verification (HC110), public career portal (HC093),
   onboarding checklist (HC115–116 beyond the hire conversion now in place), job-board feeds
@@ -541,13 +668,50 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   toolbar has Add Criterion (pre-fills the unassigned weight) and **Distribute Evenly**; the footer
   shows a live weight progress bar (green =100 / amber under / red over) and gates Apply.
 - **Ranking & waitlist (`RankingShared`):** `GET JobApplication/ranking?requisitionId=` assigns
-  1-based **Rank** (weighted-total order) and **HireEligibility**: the top *N in-play* candidates
-  are `Eligible` (N = NumberOfPositions − hired); the rest are `Waitlisted`. Out of play =
-  stage Rejected/Withdrawn/Hired, fails-mandatory, unscored, or **latest offer Declined/Expired**
-  (`OfferRejected`) — a declined offer automatically slides the next waitlisted candidate into the
-  window. `HireCandidate` enforces the gate whenever the vacancy has criteria: only `Eligible`
-  candidates can be hired (a 1-position vacancy → only the #1 ranked; after #1 declines, #2).
-  Requisitions WITHOUT criteria keep the legacy behavior (no rank gate).
+  **Rank** and **HireEligibility**. Out of play = stage Rejected/Withdrawn/Hired, fails-mandatory,
+  unscored, or **latest offer Declined/Expired** (`OfferRejected`) — a declined offer automatically
+  slides the next scored tier into the window. `HireCandidate` enforces the gate whenever the
+  vacancy has criteria: only `Eligible` candidates can be hired. Requisitions WITHOUT criteria keep
+  the legacy behavior (no rank gate).
+- **Large-scale performance (2026-07-12, measured on a 2,000-applicant vacancy):** the pipeline
+  list dropped **1.1–3.0 s → 0.13–0.19 s**, ranking 0.44 s → 0.23 s, hire-queue 1.3 s → 0.32 s.
+  What was fixed (migration `AddPerformanceIndexes` + code):
+  1. **List eligibility went set-based** (`RankingShared.ComputeEligibilityAsync`): the list had
+     called the FULL ranking per requisition on every page load — hydrating every applicant's
+     criterion breakdown, candidate names and offers with change tracking. Now three no-tracking
+     projection queries (light app rows using the stored `ScreeningScore`, mandatory-fail set,
+     latest offers) for ALL page requisitions combined, then the same shared assignment logic —
+     identical eligibility/rank values, none of the hydration.
+  2. **Rank assignment is O(N log N)** — one sort + a walk over score tiers (competition ranks +
+     co-eligible ties preserved); the per-row recount was O(N²) (~4 M comparisons at 2 k rows).
+  3. **`AsNoTracking` on hot read paths** (ranking hydration, eligibility queries, hire-queue
+     docs, latest offers) — `Repository.GetAll()` tracks by default; read-only lists must opt out.
+  4. **Hire-queue N+1 removed** — compliance documents now load in ONE batched query per vacancy
+     pool instead of one query per candidate row.
+  5. **Indexes:** `hrms_JobApplication (TenantId, AppliedAt)` (the list's tenant-filtered
+     `ORDER BY AppliedAt DESC`) and `hrms_JobOffer (ApplicationId, CreatedAt)` (latest-offer
+     lookups scan all statuses; the existing ApplicationId index is filtered to active only).
+  6. **Response compression** (Brotli/gzip, Fastest): ranking payload 1.28 MB → 248 KB on the wire.
+  7. **Frontend React Query defaults** (`staleTime: 30 s`, `refetchOnWindowFocus: false`,
+     `retry: 1`): screen navigation / tab refocus reuses cached results instead of refiring every
+     list+lookup query; saves still show fresh data because handlers invalidate their query keys.
+- **Tied scores — no hidden tie-break (fixed 2026-07-12):** the old logic sorted only by
+  `OrderByDescending(TotalScore)` (a STABLE sort) and then assigned Rank 1,2,3 + top-N Eligible in
+  list order — so equal scores were split by the **arbitrary database return order** (clustered
+  `Guid` PK order), silently making one tied applicant Eligible and the rest Waitlisted. Now:
+  - **Rank is standard-competition:** `Rank = 1 + (# scored candidates strictly higher)` — tied
+    scores SHARE a rank (three tied at the top are all "1st", the next is "4th").
+  - **Eligibility is tie-safe / co-eligible:** a candidate is `Eligible` when **fewer than the
+    open-position count strictly outrank them on score** (`strictlyAhead < openSlots`). All members
+    of a tie group share the same `strictlyAhead`, so a tie straddling the last slot makes **every**
+    tied candidate Eligible — the engine never breaks a genuine merit tie; HR selects within the
+    open positions (the fill-auto-close + hire gate still cap actual hires). Enterprise-standard:
+    equal merit is treated equally and the final pick is a transparent human decision.
+  - **Deterministic display order** (no arbitrary DB order): `TotalScore` desc → `AppliedAt` asc
+    (earliest application) → `CandidateNumber` — decides only the row order, never eligibility.
+  - Row exposes **`Tied`** + **`AppliedAt`**; the Ranking modal shows a "TIED" badge and a banner
+    when tied candidates are co-eligible ("choose which to advance — the vacancy still closes at its
+    open-position count").
 - **Score-button visibility rule (level-aware UI):** the "Score against the requisition criteria"
   action on the Applications pipeline renders per row based on the application's CURRENT stage:
   **global criteria (`AppliesAtStage` = null / "All Steps") keep the button visible and enabled on
