@@ -32,7 +32,26 @@ export type { default as JobGradeModel } from "./masters/JobGradeModel";
 export type { default as SalaryScaleModel } from "./masters/SalaryScaleModel";
 export type { default as LeaveTypeModel } from "./masters/LeaveTypeModel";
 export type { default as HolidayModel } from "./masters/HolidayModel";
-export type { default as LeaveRequestModel } from "./masters/LeaveRequestModel";
+export type {
+  default as LeaveRequestModel,
+  LeaveRequestLineModel,
+} from "./masters/LeaveRequestModel";
+export type { default as WorkWeekConfigurationModel } from "./masters/WorkWeekConfigurationModel";
+export type {
+  default as AnnualLeaveModel,
+  AnnualLeaveDetailModel,
+} from "./masters/AnnualLeaveModel";
+export type {
+  default as ReportDefinitionModel,
+  ReportFieldModel,
+  ReportCatalogGroupModel,
+  ReportCatalogItemModel,
+  ReportLookupOptionModel,
+  ReportSchemaModel,
+  ReportSchemaFieldModel,
+  ReportColumnModel,
+  ReportResultModel,
+} from "./masters/ReportModel";
 export type { default as LeaveBalanceModel } from "./masters/LeaveBalanceModel";
 export type { default as FiscalYearModel } from "./masters/FiscalYearModel";
 export type { default as AnnualLeaveSettingModel } from "./masters/AnnualLeaveSettingModel";
@@ -111,3 +130,72 @@ export type {
   WorkforcePlanComparisonModel,
   ApprovedDemandRowModel,
 } from "./masters/WorkforcePlanModel";
+export type {
+  default as RatingScaleModel,
+  RatingScaleLevelModel,
+  CompetencyCategoryModel,
+  CompetencyModel,
+  ReviewCycleModel,
+  AppraisalTemplateModel,
+  PositionCompetencyModel,
+  OrganizationalObjectiveModel,
+  EmployeeGoalModel,
+  GoalActionItemModel,
+  AppraisalModel,
+  AppraisalLineModel,
+  AppraisalAppealModel,
+  AppraisalPeerReviewModel,
+  CalibrationSessionModel,
+  CalibrationItemModel,
+  PerformanceHistoryModel,
+  DevelopmentPlanModel,
+  DevelopmentActionModel,
+  ImprovementPlanModel,
+  PipObjectiveModel,
+  AchievementModel,
+  RecognitionBadgeModel,
+  EmployeeRecognitionModel,
+  PerformanceDashboardModel,
+  RatingDistributionRowModel,
+  EmployeePerformanceSummaryModel,
+} from "./masters/PerformanceModel";
+
+export type {
+  CriticalPositionModel,
+  TalentReviewModel,
+  NineBoxCellModel,
+  NineBoxModel,
+  TalentRatingModel,
+  TalentAssessmentModel,
+  SuccessionPlanModel,
+  SuccessionChartNodeModel,
+  SuccessionChartModel,
+  SuccessionDevelopmentActionModel,
+  KnowledgeTransferModel,
+  SuccessionCandidateModel,
+  CompetencyGapItemModel,
+  CompetencyGapModel,
+  ReadinessComputationModel,
+  SuccessionCandidateProfileModel,
+  IdentifyHiPosResultModel,
+  CareerPathModel,
+  CareerPathStepCompetencyModel,
+  CareerPathStepModel,
+  EmployeeCareerStepProgressModel,
+  EmployeeCareerPathModel,
+  MentorshipModel,
+  CareerPathChangeRequestModel,
+  VisualizeCompetencyModel,
+  CareerPathVisualizeStepModel,
+  CareerPathVisualizeModel,
+  CareerPathUtilizationModel,
+  CareerPathSuggestionModel,
+  DevelopmentRecommendationItemModel,
+  DevelopmentRecommendationModel,
+  CreateDevelopmentGoalsResultModel,
+  CreateDevelopmentPlanResultModel,
+  DevEmployeeCareerPathModel,
+  DevSuccessionCandidacyModel,
+  DevMentorshipModel,
+  EmployeeDevelopmentProfileModel,
+} from "./masters/CareerDevelopmentModel";

@@ -3,6 +3,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormComponentModel } from "../../models";
 import { FieldShell } from "./fieldShell";
+import { ZodErrors } from "../common/statusMessage/status";
 import { FORM_INPUT_CLASS } from "./fieldStyles";
 
 const InputField = ({
@@ -24,6 +25,7 @@ const InputField = ({
   onKeyDown,
   onChange,
   onBlur,
+  floatingLabel,
 }: FormComponentModel) => {
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
@@ -39,6 +41,47 @@ const InputField = ({
     if (inputType === "password") return "password";
     return type;
   };
+
+  // Floating-label variant (reusable app-wide): the label sits INSIDE the control as a placeholder
+  // and floats above it on focus or when the field has a value. Uses the peer/:placeholder-shown
+  // technique — the input's real placeholder is a single space so it toggles as the field fills.
+  if (floatingLabel && label?.trim()) {
+    return (
+      <div className="w-full">
+        <div className="relative">
+          <input
+            className={`peer ${FORM_INPUT_CLASS} ${className}`}
+            name={name}
+            id={name}
+            type={resolvedType()}
+            disabled={disabled}
+            maxLength={maxLength}
+            onChange={onChange}
+            onBlur={onBlur}
+            onKeyDown={onKeyDown}
+            value={value ?? ""}
+            placeholder={placeholder ? t(placeholder) : " "}
+            step={inputType === "number" ? "0.0001" : undefined}
+          />
+          <label
+            htmlFor={name}
+            className="pointer-events-none absolute left-2.5 top-2 z-10 origin-[0] -translate-y-4 scale-90 bg-background px-1 text-sm text-muted transition-all duration-150
+              peer-placeholder-shown:top-1/2 peer-placeholder-shown:-translate-y-1/2 peer-placeholder-shown:scale-100 peer-placeholder-shown:text-muted
+              peer-focus:top-2 peer-focus:-translate-y-4 peer-focus:scale-90 peer-focus:text-primary
+              peer-disabled:opacity-60"
+          >
+            {t(label)}
+            {required ? <span className="text-error"> *</span> : null}
+          </label>
+        </div>
+        {error ? (
+          <span className="mt-1 block">
+            <ZodErrors error={error} />
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   const input = (
     <div className={isPasswordField && showPasswordToggle ? "relative" : undefined}>

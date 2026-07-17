@@ -5,6 +5,7 @@ export interface AnnualLeaveLedgerRow {
   hireDate?: string;
   serviceYears: number;
   isManagerial: boolean;
+  organizationUnitName?: string;
   calculatedEntitlement: number;
   isGenerated: boolean;
   entitled: number;

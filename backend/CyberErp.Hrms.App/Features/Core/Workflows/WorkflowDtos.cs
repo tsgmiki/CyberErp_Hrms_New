@@ -4,10 +4,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 {
     public class WorkflowApproverDto
     {
-        /// <summary>"User" or "Role".</summary>
+        /// <summary>"User", "Role", "ImmediateManager" or "UnitManager".</summary>
         public string ApproverType { get; set; } = "User";
+        /// <summary>User/role id, target org-unit id (UnitManager), or Guid.Empty (ImmediateManager).</summary>
         public Guid ApproverId { get; set; }
-        /// <summary>Resolved server-side (user full name / role name).</summary>
+        /// <summary>Resolved server-side (user full name / role name / "Manager of {unit}").</summary>
         public string? DisplayName { get; set; }
     }
 
@@ -78,11 +79,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 step.RuleFor(s => s.ApproverRole).MaximumLength(200);
                 step.RuleForEach(s => s.Approvers).ChildRules(a =>
                 {
-                    a.RuleFor(x => x.ApproverId).NotEmpty();
+                    // ImmediateManager carries no principal id (resolved per-request from the org
+                    // tree); User/Role need a user/role id and UnitManager the target unit id.
+                    a.RuleFor(x => x.ApproverId).NotEmpty()
+                        .When(x => !string.Equals(x.ApproverType, "ImmediateManager", StringComparison.OrdinalIgnoreCase));
                     a.RuleFor(x => x.ApproverType).NotEmpty()
-                        .Must(v => string.Equals(v, "User", StringComparison.OrdinalIgnoreCase)
-                                || string.Equals(v, "Role", StringComparison.OrdinalIgnoreCase))
-                        .WithMessage("ApproverType must be User or Role.");
+                        .Must(v => Enum.TryParse<Dom.Entities.Core.WorkflowApproverType>(v, true, out _))
+                        .WithMessage("ApproverType must be User, Role, ImmediateManager or UnitManager.");
                 });
             });
         }

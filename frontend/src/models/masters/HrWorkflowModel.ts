@@ -1,11 +1,19 @@
 import type AbstractModel from "../AbstractModel";
 
-/** One authorized approver of a step: a specific user, or any user holding a role. */
+/**
+ * One authorized approver of a step: a specific user, any user holding a role, or a DYNAMIC
+ * approver resolved from the org structure per request — "ImmediateManager" (the requester's unit
+ * manager, climbing parent units) or "UnitManager" (the manager of a configured unit; approverId
+ * holds the org-unit id). ImmediateManager carries the empty guid as approverId.
+ */
 export interface WorkflowApproverModel {
-  approverType: "User" | "Role";
+  approverType: "User" | "Role" | "ImmediateManager" | "UnitManager";
   approverId: string;
   displayName?: string;
 }
+
+/** approverId placeholder for ImmediateManager approvers (no target — resolved per request). */
+export const EMPTY_APPROVER_ID = "00000000-0000-0000-0000-000000000000";
 
 /** One ordered approval step of a workflow definition. */
 export interface WorkflowStepModel {

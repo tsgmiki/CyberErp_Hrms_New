@@ -11,7 +11,7 @@ import getAllFiscalYear from "@/services/admin/fiscalYear/getAll";
 import getAllLeaveType from "@/services/admin/leaveType/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
-import { yesNoOptions, boolId, yesNoLabel } from "@/constants/leave";
+import { yesNoOptions, boolId, yesNoLabel, leaveAccrualRuleTypeOptions, leaveAccrualRuleTypeLabel } from "@/constants/leave";
 
 const FormProvider = memo(FormProviders);
 const lookupParam = { ...parameterInitialData, take: 100 };
@@ -26,6 +26,11 @@ const NEW_DEFAULTS: AnnualLeaveSettingModel = {
   incrementIntervalYears: 2,
   maxLeaveDays: 35,
   expiryYears: 2,
+  ruleType: "ServiceYears",
+  considerExternalExperience: false,
+  preMilestoneBaseLeaveDays: 14,
+  preMilestoneIncrementDays: 1,
+  preMilestoneIntervalYears: 1,
   isActive: true,
 };
 
@@ -72,8 +77,9 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
   }, []);
 
   useEffect(() => {
-    if (typeof record != "undefined" && record != null) setFormData(record);
-    else if (!id) setFormData({ ...NEW_DEFAULTS });
+    if (typeof record != "undefined" && record != null) {
+      setFormData({ ...record, milestoneDate: (record.milestoneDate || "").slice(0, 10) });
+    } else if (!id) setFormData({ ...NEW_DEFAULTS });
   }, [record, id]);
 
   useEffect(() => {
@@ -116,14 +122,33 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
               param: typeParam, setParam: setTypeParam as any, isLoading: typesLoading,
               data: (types?.data ?? []).map((t: any) => ({ id: t.id, name: `${t.code} — ${t.name}` })) as never,
             },
+            {
+              name: "ruleType", label: "Accrual Rule", required: true, type: "dropDown", onSelect: selectHandler,
+              value: formData.ruleType, displayValue: leaveAccrualRuleTypeLabel(formData.ruleType),
+              error: formState?.zodErrors?.ruleType, data: leaveAccrualRuleTypeOptions as never,
+            },
+            {
+              name: "considerExternalExperience", label: "Count External (Gov) Experience", type: "dropDown", onSelect: selectHandler,
+              value: boolId(formData.considerExternalExperience), displayValue: yesNoLabel(formData.considerExternalExperience),
+              data: yesNoOptions as never,
+            },
             num("baseLeaveDays", "Base Leave Days"),
             num("managerialLeaveDays", "Managerial Leave Days"),
             num("incrementDays", "Increment (days)"),
             num("incrementIntervalYears", "Increment Interval (years)"),
-            num("maxLeaveDays", "Maximum Leave Days"),
+            num("maxLeaveDays", "Maximum Leave Days (0 = uncapped)"),
             num("minExperienceMonths", "Min Service Before Leave (months)"),
             num("newEmployeeLeaveDays", "New-Employee Basis (days)"),
             num("expiryYears", "Carry-forward Expiry (years)"),
+            // Milestone-split (Rule A / B) parameters — only for the service-milestone rule.
+            ...(formData.ruleType === "ServiceMilestone"
+              ? [
+                  { name: "milestoneDate", label: "Milestone Date", required: true, type: "date" as const, value: formData.milestoneDate, onChange: changeHandler, error: formState?.zodErrors?.milestoneDate },
+                  num("preMilestoneBaseLeaveDays", "Pre-Milestone Base Days"),
+                  num("preMilestoneIncrementDays", "Pre-Milestone Increment (days)"),
+                  num("preMilestoneIntervalYears", "Pre-Milestone Interval (years)"),
+                ]
+              : []),
             {
               name: "isActive", label: "Active", type: "dropDown", onSelect: selectHandler,
               value: boolId(formData.isActive), displayValue: yesNoLabel(formData.isActive),

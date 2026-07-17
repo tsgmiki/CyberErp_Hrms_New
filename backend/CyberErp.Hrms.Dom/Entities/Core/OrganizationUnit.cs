@@ -47,6 +47,11 @@ public class OrganizationUnit : BaseEntity, IAggregateRoot, IBranchScoped, IAudi
     private WorkLocation? _workLocation;
     public WorkLocation? WorkLocation => _workLocation;
 
+    // NOTE: a unit carries no direct manager link. The manager of a unit is RELATIONAL:
+    // an employee with IsManagerial = true whose Position belongs to this unit. Workflow
+    // "Immediate Manager" routing resolves that join, climbing ParentId when no managerial
+    // employee sits in the unit (or the requester is the only one).
+
     private OrganizationUnit() : base() { }
 
     public static OrganizationUnit Create(

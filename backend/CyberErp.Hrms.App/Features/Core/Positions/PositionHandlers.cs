@@ -140,7 +140,9 @@ namespace CyberErp.Hrms.App.Features.Core.Positions
 
             var query = repository.GetAll();
 
-            // parentId scopes positions to an organization unit (drives the tree → grid view).
+            // parentId scopes positions to EXACTLY the selected organization unit (a strict single-level
+            // match — descendant units are NOT included), so the employee form's placement dropdown only
+            // offers positions belonging directly to that unit.
             if (request.ParentId.HasValue)
                 query = query.Where(x => x.OrganizationUnitId == request.ParentId.Value);
 

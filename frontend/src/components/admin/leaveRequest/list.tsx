@@ -11,18 +11,43 @@ import { leaveStatusOptions, leaveStatusTone } from "@/constants/leave";
 
 interface Props {
   editHandler: (id: string) => void;
+  /** When set (Employee tab), the list is filtered to this employee and the Employee column is hidden. */
+  employeeId?: string;
 }
 
 const fmt = (v?: string) => (v ? String(v).slice(0, 10) : "");
 
-function LeaveRequestList({ editHandler }: Props) {
+/** Distinct leave-type labels across a request's lines. */
+const typeSummary = (r: LeaveRequestModel) => {
+  const names = (r.lines ?? [])
+    .map((l) => l.leaveTypeName || l.leaveTypeCode)
+    .filter((v, i, a): v is string => !!v && a.indexOf(v) === i);
+  return names.length ? names.join(", ") : "—";
+};
+
+/** Earliest start → latest end across a request's lines. */
+const periodSummary = (r: LeaveRequestModel) => {
+  const lines = r.lines ?? [];
+  if (!lines.length) return "—";
+  const starts = lines.map((l) => fmt(l.startDate)).filter(Boolean).sort();
+  const ends = lines.map((l) => fmt(l.endDate)).filter(Boolean).sort();
+  if (!starts.length || !ends.length) return "—";
+  const from = starts[0];
+  const to = ends[ends.length - 1];
+  return from === to ? from : `${from} → ${to}`;
+};
+
+function LeaveRequestList({ editHandler, employeeId }: Props) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState("");
+  const scoped = !!employeeId;
 
+  // Same base key for global and per-employee lists; the employeeId in `param` differentiates the
+  // cache entry, and a ["leaveRequests"] prefix-invalidation (from the form) refreshes both.
   const list = useEntityList({
     queryKey: "leaveRequests",
     fetchPage: getAllLeaveRequest,
-    initialParam: { status },
+    initialParam: { status, ...(employeeId ? { employeeId } : {}) },
   });
   const { setParam } = list;
 
@@ -40,19 +65,34 @@ function LeaveRequestList({ editHandler }: Props) {
   const columns = useMemo(
     () =>
       [
-        {
-          name: "employeeName",
-          label: "Employee",
-          render: (_t: unknown, r: LeaveRequestModel) => (
-            <button type="button" onClick={() => r.id && editHandler(r.id)} className="font-semibold">
-              {r.employeeName || r.employeeNumber || "—"}
-            </button>
-          ),
-        },
-        { name: "leaveTypeCode", label: "Type", render: (_t: unknown, r: LeaveRequestModel) => r.leaveTypeName || r.leaveTypeCode },
-        { name: "startDate", label: "From", render: (_t: unknown, r: LeaveRequestModel) => fmt(r.startDate) },
-        { name: "endDate", label: "To", render: (_t: unknown, r: LeaveRequestModel) => fmt(r.endDate) },
-        { name: "workingDays", label: "Days", render: (_t: unknown, r: LeaveRequestModel) => String(r.workingDays ?? "") },
+        // Employee column only in the global list; in the Employee tab it's redundant, so Type(s) is
+        // the clickable column that opens the request detail.
+        ...(scoped
+          ? [
+              {
+                name: "types",
+                label: "Type(s)",
+                render: (_t: unknown, r: LeaveRequestModel) => (
+                  <button type="button" onClick={() => r.id && editHandler(r.id)} className="font-semibold">
+                    {typeSummary(r)}
+                  </button>
+                ),
+              },
+            ]
+          : [
+              {
+                name: "employeeName",
+                label: "Employee",
+                render: (_t: unknown, r: LeaveRequestModel) => (
+                  <button type="button" onClick={() => r.id && editHandler(r.id)} className="font-semibold">
+                    {r.employeeName || r.employeeNumber || "—"}
+                  </button>
+                ),
+              },
+              { name: "types", label: "Type(s)", render: (_t: unknown, r: LeaveRequestModel) => typeSummary(r) },
+            ]),
+        { name: "period", label: "Period", render: (_t: unknown, r: LeaveRequestModel) => periodSummary(r) },
+        { name: "totalWorkingDays", label: "Days", render: (_t: unknown, r: LeaveRequestModel) => String(r.totalWorkingDays ?? "") },
         {
           name: "status",
           label: "Status",
@@ -77,7 +117,7 @@ function LeaveRequestList({ editHandler }: Props) {
             ) : null,
         },
       ] as DataTableColumnModel[],
-    [editHandler],
+    [editHandler, scoped],
   );
 
   return (

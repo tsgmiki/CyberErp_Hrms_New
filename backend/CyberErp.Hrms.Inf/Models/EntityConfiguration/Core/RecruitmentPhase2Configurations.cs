@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Interview> builder)
         {
-            builder.ToTable("hrms_Interview", "Core",
+            builder.ToTable("hrmsInterview", "dbo",
                 // Defense-in-depth beyond FluentValidation (logic.md §7.1 adoption #3).
                 t => t.HasCheckConstraint("CK_hrms_Interview_Window", "[ScheduledEnd] > [ScheduledStart]"));
 
@@ -41,7 +41,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InterviewPanelist> builder)
         {
-            builder.ToTable("hrms_InterviewPanelist", "Core");
+            builder.ToTable("hrmsInterviewPanelist", "dbo");
 
             builder.HasKey(p => p.Id);
 
@@ -70,7 +70,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InterviewFeedback> builder)
         {
-            builder.ToTable("hrms_InterviewFeedback", "Core",
+            builder.ToTable("hrmsInterviewFeedback", "dbo",
                 t => t.HasCheckConstraint("CK_hrms_InterviewFeedback_Score", "[Score] >= 0 AND [Score] <= 100"));
 
             builder.HasKey(f => f.Id);
@@ -91,7 +91,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<JobOffer> builder)
         {
-            builder.ToTable("hrms_JobOffer", "Core",
+            builder.ToTable("hrmsJobOffer", "dbo",
                 t => t.HasCheckConstraint("CK_hrms_JobOffer_Salary", "[Salary] > 0"));
 
             builder.HasKey(o => o.Id);
@@ -143,7 +143,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<NumberSequence> builder)
         {
-            builder.ToTable("hrms_NumberSequence", "Core");
+            builder.ToTable("hrmsNumberSequence", "dbo");
 
             builder.HasKey(s => new { s.TenantId, s.Key });
             builder.Property(s => s.TenantId).HasMaxLength(64);

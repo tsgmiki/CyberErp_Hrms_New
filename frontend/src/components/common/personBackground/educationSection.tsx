@@ -7,6 +7,7 @@ import { Paperclip } from "lucide-react";
 import type { EmployeeEducationModel, FormComponentModel } from "@/models";
 import ChildManager, { type ChildColumn } from "@/components/admin/employee/childManager";
 import { useCustomFields } from "@/components/admin/employee/customFieldsHook";
+import { useLookupOptions } from "@/services/admin/lookup";
 import { StatusMessage } from "@/components/common/statusMessage/status";
 import type { BackgroundDataSource } from "./types";
 
@@ -46,6 +47,9 @@ function EducationSection({ ds }: { ds: BackgroundDataSource<EmployeeEducationMo
   const [formData, setFormData] = useState<EmployeeEducationModel>({});
   const [isSaving, setIsSaving] = useState(false);
   const customFields = useCustomFields("Education");
+  // Centralized lookups (generic 2-table system) → Education Level / Field of Study comboboxes.
+  const { options: educationLevels } = useLookupOptions("EducationLevel");
+  const { options: fieldsOfStudy } = useLookupOptions("FieldOfStudy");
 
   const { data: rows, isLoading, isError, error: queryError } = useQuery({
     queryKey: ds.queryKey,
@@ -74,6 +78,10 @@ function EducationSection({ ds }: { ds: BackgroundDataSource<EmployeeEducationMo
   const changeHandler = useCallback((e: any) => {
     const { name, value } = e.target;
     setFormData((p) => ({ ...p, [name]: value }));
+  }, []);
+  // Combobox pick → store the selected value (its name) on the form.
+  const selectHandler = useCallback((name: string, item: { id: string }) => {
+    setFormData((p) => ({ ...p, [name]: item.id }));
   }, []);
 
   const submitHandler = async (e: any) => {
@@ -125,9 +133,9 @@ function EducationSection({ ds }: { ds: BackgroundDataSource<EmployeeEducationMo
             onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
-              { name: "educationLevel", label: "Education Level", placeholder: "e.g. BSc, MSc, Certification", required: true, value: formData.educationLevel, onChange: changeHandler, error: formState?.zodErrors?.educationLevel, type: "text" },
+              { name: "educationLevel", label: "Education Level", required: true, type: "dropDown", value: formData.educationLevel, displayValue: formData.educationLevel, onSelect: selectHandler, error: formState?.zodErrors?.educationLevel, data: educationLevels as never },
               { name: "institution", label: "Institution", required: true, value: formData.institution, onChange: changeHandler, error: formState?.zodErrors?.institution, type: "text" },
-              { name: "fieldOfStudy", label: "Field of Study", value: formData.fieldOfStudy, onChange: changeHandler, type: "text" },
+              { name: "fieldOfStudy", label: "Field of Study", type: "dropDown", value: formData.fieldOfStudy, displayValue: formData.fieldOfStudy, onSelect: selectHandler, data: fieldsOfStudy as never },
               { name: "qualification", label: "Qualification", value: formData.qualification, onChange: changeHandler, type: "text" },
               { name: "graduationYear", label: "Graduation Year", value: formData.graduationYear, onChange: changeHandler, inputType: "number", type: "text" },
               { name: "remark", label: "Remark", value: formData.remark, onChange: changeHandler, type: "textarea", colSpan: "full" },

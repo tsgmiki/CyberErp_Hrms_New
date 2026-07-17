@@ -27,7 +27,7 @@ namespace CyberErp.Hrms.Inf.Common
             try
             {
                 await context.Database.ExecuteSqlAsync(
-                    $"INSERT INTO [Core].[hrms_NumberSequence] ([TenantId], [Key], [Value]) VALUES ({tenantId}, {key}, 0)");
+                    $"INSERT INTO [dbo].[hrmsNumberSequence] ([TenantId], [Key], [Value]) VALUES ({tenantId}, {key}, 0)");
             }
             catch (SqlException ex) when (ex.Number is 2601 or 2627)
             {
@@ -41,7 +41,7 @@ namespace CyberErp.Hrms.Inf.Common
         private async Task<long?> TryIncrementAsync(string tenantId, string key)
         {
             var values = await context.Database.SqlQuery<long>(
-                    $@"UPDATE [Core].[hrms_NumberSequence]
+                    $@"UPDATE [dbo].[hrmsNumberSequence]
                        SET [Value] = [Value] + 1
                        OUTPUT inserted.[Value]
                        WHERE [TenantId] = {tenantId} AND [Key] = {key}")

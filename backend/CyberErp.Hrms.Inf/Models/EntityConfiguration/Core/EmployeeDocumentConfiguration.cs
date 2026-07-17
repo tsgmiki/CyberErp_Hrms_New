@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeDocument> builder)
         {
-            builder.ToTable("hrms_EmployeeDocument", "Core");
+            builder.ToTable("hrmsEmployeeDocument", "dbo");
 
             builder.HasKey(d => d.Id);
 

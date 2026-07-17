@@ -25,6 +25,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int IncrementIntervalYears { get; set; }
         public int MaxLeaveDays { get; set; }
         public int ExpiryYears { get; set; }
+        public string RuleType { get; set; } = string.Empty;
+        public bool ConsiderExternalExperience { get; set; }
+        public DateTime? MilestoneDate { get; set; }
+        public int PreMilestoneBaseLeaveDays { get; set; }
+        public int PreMilestoneIncrementDays { get; set; }
+        public int PreMilestoneIntervalYears { get; set; }
         public bool IsActive { get; set; }
     }
 
@@ -41,6 +47,13 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int IncrementIntervalYears { get; set; } = 2;
         public int MaxLeaveDays { get; set; } = 35;
         public int ExpiryYears { get; set; } = 2;
+        /// <summary>ServiceMilestone | ServiceYears | FiscalYears</summary>
+        public string RuleType { get; set; } = nameof(LeaveAccrualRuleType.ServiceYears);
+        public bool ConsiderExternalExperience { get; set; }
+        public DateTime? MilestoneDate { get; set; }
+        public int PreMilestoneBaseLeaveDays { get; set; } = 14;
+        public int PreMilestoneIncrementDays { get; set; } = 1;
+        public int PreMilestoneIntervalYears { get; set; } = 1;
         public bool IsActive { get; set; } = true;
     }
 
@@ -56,9 +69,18 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             RuleFor(x => x.ManagerialLeaveDays).GreaterThan(0);
             RuleFor(x => x.IncrementDays).GreaterThanOrEqualTo(0);
             RuleFor(x => x.IncrementIntervalYears).GreaterThanOrEqualTo(1);
-            RuleFor(x => x.MaxLeaveDays).GreaterThanOrEqualTo(x => x.BaseLeaveDays)
+            // 0 = uncapped; otherwise the cap must not sit below the base entitlement.
+            RuleFor(x => x.MaxLeaveDays).Must((dto, max) => max == 0 || max >= dto.BaseLeaveDays)
                 .WithMessage("Maximum leave days cannot be below the base entitlement.");
             RuleFor(x => x.ExpiryYears).GreaterThanOrEqualTo(1);
+            RuleFor(x => x.RuleType).NotEmpty()
+                .Must(v => Enum.TryParse<LeaveAccrualRuleType>(v, out _))
+                .WithMessage("Rule type must be ServiceMilestone, ServiceYears or FiscalYears.");
+            RuleFor(x => x.MilestoneDate).NotNull()
+                .When(x => x.RuleType == nameof(LeaveAccrualRuleType.ServiceMilestone))
+                .WithMessage("A milestone date is required for the service-milestone rule.");
+            RuleFor(x => x.PreMilestoneBaseLeaveDays).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.PreMilestoneIncrementDays).GreaterThanOrEqualTo(0);
         }
     }
 
@@ -85,6 +107,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             IncrementIntervalYears = s.IncrementIntervalYears,
             MaxLeaveDays = s.MaxLeaveDays,
             ExpiryYears = s.ExpiryYears,
+            RuleType = s.RuleType.ToString(),
+            ConsiderExternalExperience = s.ConsiderExternalExperience,
+            MilestoneDate = s.MilestoneDate,
+            PreMilestoneBaseLeaveDays = s.PreMilestoneBaseLeaveDays,
+            PreMilestoneIncrementDays = s.PreMilestoneIncrementDays,
+            PreMilestoneIntervalYears = s.PreMilestoneIntervalYears,
             IsActive = s.IsActive
         };
     }
@@ -110,13 +138,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     s.FiscalYearId == dto.FiscalYearId && s.LeaveTypeId == dto.LeaveTypeId && s.Id != dto.Id))
                 throw new ValidationException("leaveTypeId", "A setting for this fiscal year and leave type already exists.");
 
+            var ruleType = Enum.Parse<LeaveAccrualRuleType>(dto.RuleType);
+
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(AnnualLeaveSetting), dto.Id.Value.ToString());
                 entity.Update(dto.FiscalYearId, dto.LeaveTypeId, dto.MinExperienceMonths, dto.NewEmployeeLeaveDays,
                     dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays, dto.IncrementIntervalYears,
-                    dto.MaxLeaveDays, dto.ExpiryYears, dto.IsActive);
+                    dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience, dto.MilestoneDate,
+                    dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays, dto.PreMilestoneIntervalYears, dto.IsActive);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
@@ -124,7 +155,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
             var created = AnnualLeaveSetting.Create(dto.FiscalYearId, dto.LeaveTypeId, dto.MinExperienceMonths,
                 dto.NewEmployeeLeaveDays, dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays,
-                dto.IncrementIntervalYears, dto.MaxLeaveDays, dto.ExpiryYears, dto.IsActive);
+                dto.IncrementIntervalYears, dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience,
+                dto.MilestoneDate, dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays,
+                dto.PreMilestoneIntervalYears, dto.IsActive);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created AnnualLeaveSetting {Id}", created.Id);

@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import type { FormComponentModel } from "@/models";
 import FileUploadField from "../../ui/fileUploadField";
 import CheckboxDropDownField from "../../ui/checkboxListField";
+import MultiSelectField from "../../ui/multiSelectField";
 import CheckBoxField from "../../ui/checkBoxField";
 import DateField from "../../ui/dateField";
 import CustomField from "@/components/ui/customField";
@@ -82,6 +83,7 @@ function FormFieldRenderer({ component }: { component: FormComponentModel }) {
     labelWidth: component.labelWidth,
     colSpan: component.colSpan,
     layout: component.layout,
+    floatingLabel: component.floatingLabel,
     value: component.value,
     onChange: component.onChange,
     onBlur: component.onBlur,
@@ -144,6 +146,18 @@ function FormFieldRenderer({ component }: { component: FormComponentModel }) {
           displayValue={component.displayValue}
           param={component.param}
           setParam={component.setParam}
+          onSelect={component.onSelect}
+        />
+      );
+      break;
+    case "multiSelectField":
+      // The standard multi-select COMBOBOX (searchable dropdown + chips). Same comma-id value
+      // contract as checkboxListField, so it's a drop-in for multi-select parameters.
+      field = (
+        <MultiSelectField
+          {...common}
+          type="multiSelectField"
+          data={component.data}
           onSelect={component.onSelect}
         />
       );

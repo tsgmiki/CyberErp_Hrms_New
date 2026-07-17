@@ -29,6 +29,32 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
     }
 
+    /// <summary>Annual-leave requests (Master-Detail, dedicated to annual leave). Charged against the
+    /// employee's annual-leave ledger row (hrms_LeaveBalance); approvals run through the workflow engine.</summary>
+    public class AnnualLeaveController(
+        ISubmitAnnualLeave submitHandler,
+        ICancelAnnualLeave cancelHandler,
+        IGetAnnualLeaveById getByIdHandler,
+        IGetAllAnnualLeaves getAllHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAll([FromQuery] GetAllRequest request)
+            => getAllHandler.GetAsync(request);
+
+        [HttpGet("{id:guid}")]
+        public Task<AnnualLeaveHeaderDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
+
+        [HttpPost]
+        public Task<Guid> Create([FromBody] SaveAnnualLeaveDto dto) => submitHandler.SubmitAsync(dto);
+
+        [HttpPost("cancel")]
+        public async Task<IActionResult> Cancel([FromBody] CancelAnnualLeaveDto dto)
+        {
+            await cancelHandler.CancelAsync(dto);
+            return Ok(new { message = "Annual leave request cancelled" });
+        }
+    }
+
     /// <summary>Leave balances (HC033): view per employee, set opening figures / adjust.</summary>
     public class LeaveBalanceController(
         IGetLeaveBalances getHandler,

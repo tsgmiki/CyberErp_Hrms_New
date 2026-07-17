@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkflowDefinition> builder)
         {
-            builder.ToTable("hrms_WorkflowDefinition", "Core");
+            builder.ToTable("hrmsWorkflowDefinition", "dbo");
 
             builder.HasKey(d => d.Id);
 
@@ -31,7 +31,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkflowStep> builder)
         {
-            builder.ToTable("hrms_WorkflowStep", "Core");
+            builder.ToTable("hrmsWorkflowStep", "dbo");
 
             builder.HasKey(s => s.Id);
 
@@ -52,7 +52,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkflowStepApprover> builder)
         {
-            builder.ToTable("hrms_WorkflowStepApprover", "Core");
+            builder.ToTable("hrmsWorkflowStepApprover", "dbo");
 
             builder.HasKey(a => a.Id);
 
@@ -68,7 +68,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkflowInstance> builder)
         {
-            builder.ToTable("hrms_WorkflowInstance", "Core");
+            builder.ToTable("hrmsWorkflowInstance", "dbo");
 
             builder.HasKey(i => i.Id);
 
@@ -92,7 +92,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkflowActionLog> builder)
         {
-            builder.ToTable("hrms_WorkflowActionLog", "Core");
+            builder.ToTable("hrmsWorkflowActionLog", "dbo");
 
             builder.HasKey(a => a.Id);
 

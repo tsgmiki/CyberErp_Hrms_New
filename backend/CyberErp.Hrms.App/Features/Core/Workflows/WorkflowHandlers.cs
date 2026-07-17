@@ -90,18 +90,33 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 ? await approverAuth.GetCurrentUserRoleIdsAsync()
                 : new HashSet<Guid>();
 
-            var data = rows.Select(x =>
+            var data = new List<WorkflowInstanceDto>(rows.Count);
+            foreach (var x in rows)
             {
                 var stepApprovers = approverRows
                     .Where(a => a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder)
                     .ToList();
-                var canDecide = x.Status == WorkflowInstanceStatus.Running &&
-                    (stepApprovers.Count == 0 ||
-                     stepApprovers.Any(a =>
-                         (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId) ||
-                         (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId))));
 
-                return new WorkflowInstanceDto
+                bool canDecide;
+                List<string> approverNames;
+                var hasDynamic = stepApprovers.Any(a =>
+                    a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager);
+                if (hasDynamic && x.Status == WorkflowInstanceStatus.Running)
+                {
+                    // Dynamic approvers resolve per requester (org-tree climb) — evaluate the row fully.
+                    (canDecide, approverNames) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                }
+                else
+                {
+                    canDecide = x.Status == WorkflowInstanceStatus.Running &&
+                        (stepApprovers.Count == 0 ||
+                         stepApprovers.Any(a =>
+                             (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId) ||
+                             (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId))));
+                    approverNames = stepApprovers.Select(a => a.DisplayName).ToList();
+                }
+
+                data.Add(new WorkflowInstanceDto
                 {
                     Id = x.Id,
                     DefinitionName = x.DefinitionName ?? x.EntityType,
@@ -117,9 +132,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     RequestedAt = x.CreatedAt.ToDateTimeUtc(),
                     CompletedAt = x.CompletedAt,
                     CanDecide = canDecide,
-                    CurrentStepApprovers = stepApprovers.Select(a => a.DisplayName).ToList()
-                };
-            }).ToList();
+                    CurrentStepApprovers = approverNames
+                });
+            }
 
             return new PaginatedResponse<WorkflowInstanceDto> { Total = total, Data = data };
         }
@@ -135,6 +150,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     public class GetMyApprovals(
         IRepository<WorkflowInstance> repository,
         IRepository<WorkflowDefinition> definitions,
+        IRepository<Employee> employees,
+        IRepository<User> users,
         IWorkflowApproverAuth approverAuth,
         Common.Services.ICurrentUserService currentUser) : IGetMyApprovals
     {
@@ -153,6 +170,18 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 .AnyAsync(a =>
                     (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
                     (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
+
+            // A managerial employee is a potential DYNAMIC approver (Immediate/Unit Manager steps
+            // resolve to them through their position's unit), so they get the inbox too.
+            if (!isApprover)
+            {
+                var myEmployeeId = await users.GetAll()
+                    .Where(u => u.Id == userId.Value)
+                    .Select(u => u.EmployeeId)
+                    .FirstOrDefaultAsync();
+                isApprover = myEmployeeId.HasValue &&
+                    await employees.GetAll().AnyAsync(e => e.Id == myEmployeeId.Value && e.IsManagerial);
+            }
             if (!isApprover) return new MyApprovalsDto { IsApprover = false };
 
             // Batch the running instances' current-step approvers (same shape as the tracking list).
@@ -160,7 +189,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 .Where(x => x.Status == WorkflowInstanceStatus.Running)
                 .Select(x => new
                 {
-                    x.Id, x.DefinitionId, x.EntityType, x.Summary,
+                    x.Id, x.DefinitionId, x.EntityType, x.EmployeeId, x.Summary,
                     x.CurrentStepOrder, x.CurrentStepName, x.TotalSteps,
                     x.RequestedBy, x.CreatedAt
                 })
@@ -180,13 +209,25 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 })
                 .ToListAsync();
 
-            var items = running
-                .Where(x => approverRows.Any(a =>
-                    a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder &&
-                    ((a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
-                     (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)))))
-                .OrderBy(x => x.CreatedAt)
-                .Select(x => new MyApprovalItemDto
+            var items = new List<MyApprovalItemDto>();
+            foreach (var x in running.OrderBy(x => x.CreatedAt))
+            {
+                var stepApprovers = approverRows
+                    .Where(a => a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder)
+                    .ToList();
+
+                // Static match first; dynamic (manager) approvers need the per-requester org climb.
+                var mine = stepApprovers.Any(a =>
+                    (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
+                    (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
+                if (!mine && stepApprovers.Any(a =>
+                        a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager))
+                {
+                    (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                }
+                if (!mine) continue;
+
+                items.Add(new MyApprovalItemDto
                 {
                     InstanceId = x.Id,
                     Summary = x.Summary,
@@ -196,8 +237,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     TotalSteps = x.TotalSteps,
                     RequestedBy = x.RequestedBy,
                     RequestedAt = x.CreatedAt.ToDateTimeUtc()
-                })
-                .ToList();
+                });
+            }
 
             return new MyApprovalsDto { IsApprover = true, Items = items };
         }
@@ -280,6 +321,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<WorkflowStep> stepRepository,
         IRepository<Dom.Entities.Core.User> userRepository,
         IRepository<Role> roleRepository,
+        IRepository<OrganizationUnit> orgUnitRepository,
         IValidator<SaveWorkflowDefinitionDto> validator,
         ILogger<SaveWorkflowDefinition> logger) : ISaveWorkflowDefinition
     {
@@ -326,16 +368,22 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
         /// <summary>
         /// Resolves approver display names server-side (never trusting client text) and validates
-        /// that every referenced user / role exists in the tenant.
+        /// that every referenced user / role / org unit exists in the tenant. Dynamic approvers
+        /// (ImmediateManager / UnitManager) store no principal — they resolve per-request at
+        /// decision time through the org-structure traversal.
         /// </summary>
         private async Task<List<WorkflowStepSpec>> BuildStepSpecsAsync(SaveWorkflowDefinitionDto dto)
         {
-            var userIds = dto.Steps.SelectMany(s => s.Approvers)
-                .Where(a => string.Equals(a.ApproverType, "User", StringComparison.OrdinalIgnoreCase))
-                .Select(a => a.ApproverId).Distinct().ToList();
-            var roleIds = dto.Steps.SelectMany(s => s.Approvers)
-                .Where(a => string.Equals(a.ApproverType, "Role", StringComparison.OrdinalIgnoreCase))
-                .Select(a => a.ApproverId).Distinct().ToList();
+            static WorkflowApproverType ParseType(string value) =>
+                Enum.TryParse<WorkflowApproverType>(value, true, out var t)
+                    ? t
+                    : throw new ValidationException("approverType", $"Unknown approver type '{value}'.");
+
+            var typed = dto.Steps.SelectMany(s => s.Approvers)
+                .Select(a => (Type: ParseType(a.ApproverType), a.ApproverId)).ToList();
+            var userIds = typed.Where(a => a.Type == WorkflowApproverType.User).Select(a => a.ApproverId).Distinct().ToList();
+            var roleIds = typed.Where(a => a.Type == WorkflowApproverType.Role).Select(a => a.ApproverId).Distinct().ToList();
+            var unitIds = typed.Where(a => a.Type == WorkflowApproverType.UnitManager).Select(a => a.ApproverId).Distinct().ToList();
 
             var users = await userRepository.GetAll()
                 .Where(u => userIds.Contains(u.Id))
@@ -343,6 +391,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var roles = await roleRepository.GetAll()
                 .Where(r => roleIds.Contains(r.Id))
                 .ToDictionaryAsync(r => r.Id, r => r.Name);
+            var unitNames = await orgUnitRepository.GetAll()
+                .Where(u => unitIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Name);
 
             var specs = new List<WorkflowStepSpec>();
             foreach (var step in dto.Steps)
@@ -350,16 +401,26 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 var approvers = new List<WorkflowApproverSpec>();
                 foreach (var a in step.Approvers)
                 {
-                    var isUser = string.Equals(a.ApproverType, "User", StringComparison.OrdinalIgnoreCase);
-                    if (isUser && !users.TryGetValue(a.ApproverId, out var userName))
-                        throw new NotFoundException("User", a.ApproverId.ToString());
-                    if (!isUser && !roles.TryGetValue(a.ApproverId, out var roleName))
-                        throw new NotFoundException("Role", a.ApproverId.ToString());
-
-                    approvers.Add(new WorkflowApproverSpec(
-                        isUser ? WorkflowApproverType.User : WorkflowApproverType.Role,
-                        a.ApproverId,
-                        isUser ? users[a.ApproverId] : roles[a.ApproverId]));
+                    var type = ParseType(a.ApproverType);
+                    var spec = type switch
+                    {
+                        WorkflowApproverType.User => new WorkflowApproverSpec(type, a.ApproverId,
+                            users.TryGetValue(a.ApproverId, out var userName)
+                                ? userName
+                                : throw new NotFoundException("User", a.ApproverId.ToString())),
+                        WorkflowApproverType.Role => new WorkflowApproverSpec(type, a.ApproverId,
+                            roles.TryGetValue(a.ApproverId, out var roleName)
+                                ? roleName
+                                : throw new NotFoundException("Role", a.ApproverId.ToString())),
+                        WorkflowApproverType.UnitManager => new WorkflowApproverSpec(type, a.ApproverId,
+                            unitNames.TryGetValue(a.ApproverId, out var unitName)
+                                ? $"Manager of {unitName}"
+                                : throw new NotFoundException("OrganizationUnit", a.ApproverId.ToString())),
+                        WorkflowApproverType.ImmediateManager =>
+                            new WorkflowApproverSpec(type, Guid.Empty, "Immediate Manager"),
+                        _ => throw new ValidationException("approverType", $"Unknown approver type '{a.ApproverType}'.")
+                    };
+                    approvers.Add(spec);
                 }
                 specs.Add(new WorkflowStepSpec(step.Name, step.ApproverRole, approvers));
             }
@@ -468,6 +529,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("HR Review", "HR"), ("Approving Authority", null)]),
             (WorkflowEntityTypes.JobOffer, "Offer Approval",
                 [("HR Review", "HR"), ("Approving Authority", null)]),
+            (WorkflowEntityTypes.CareerPathChangeRequest, "Career Path Change Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
         ];
 
         public async Task<int> SeedAsync()

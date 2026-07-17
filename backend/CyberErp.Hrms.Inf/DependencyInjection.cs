@@ -20,6 +20,10 @@ namespace CyberErp.Hrms.Inf
             services.AddHttpContextAccessor();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
+            // Generic report engine: Dapper SP execution with ambient tenant/branch/user injection.
+            services.AddScoped<App.Features.Core.Reports.IReportExecutor, ReportExecutor>();
+            services.AddScoped<App.Features.Core.Reports.IReportJobScheduler, ReportJobScheduler>();
+            services.AddScoped<App.Features.Core.Reports.IReportScheduleStore, ReportScheduleStore>();
             // Race-safe per-tenant business numbering (logic.md §7.1 adoption #5)
             services.AddScoped<INumberSequenceService, NumberSequenceService>();
             // Outbound e-mail (Email config section): the app enqueues (QueuedEmailService — cheap

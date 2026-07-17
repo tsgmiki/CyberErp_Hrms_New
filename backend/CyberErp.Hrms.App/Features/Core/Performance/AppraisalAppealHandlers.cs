@@ -1,0 +1,268 @@
+using CyberErp.Hrms.App.Common.DTOs;
+using CyberErp.Hrms.App.Common.Exceptions;
+using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.Dom.Entities.Core;
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationException;
+
+namespace CyberErp.Hrms.App.Features.Core.Performance
+{
+    // ---- DTOs ---------------------------------------------------------------
+    public class SignAppraisalDto
+    {
+        public Guid Id { get; set; }
+        public string Signature { get; set; } = string.Empty;
+    }
+
+    public class SubmitAppraisalAppealDto
+    {
+        public Guid AppraisalId { get; set; }
+        public string Comments { get; set; } = string.Empty;
+        public bool RequestFollowUp { get; set; }
+    }
+
+    public class ResolveAppraisalAppealDto
+    {
+        public Guid Id { get; set; }
+        public bool Upheld { get; set; }
+        public string Resolution { get; set; } = string.Empty;
+    }
+
+    public class AppraisalAppealDto
+    {
+        public Guid Id { get; set; }
+        public Guid AppraisalId { get; set; }
+        public Guid EmployeeId { get; set; }
+        public string? EmployeeName { get; set; }
+        public string Comments { get; set; } = string.Empty;
+        public bool RequestFollowUp { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? Resolution { get; set; }
+        public DateTime? ResolvedAt { get; set; }
+    }
+
+    public class SignAppraisalDtoValidator : AbstractValidator<SignAppraisalDto>
+    {
+        public SignAppraisalDtoValidator()
+        {
+            RuleFor(x => x.Id).NotEmpty();
+            RuleFor(x => x.Signature).NotEmpty().MaximumLength(200);
+        }
+    }
+
+    public class SubmitAppraisalAppealDtoValidator : AbstractValidator<SubmitAppraisalAppealDto>
+    {
+        public SubmitAppraisalAppealDtoValidator()
+        {
+            RuleFor(x => x.AppraisalId).NotEmpty();
+            RuleFor(x => x.Comments).NotEmpty().MaximumLength(2000);
+        }
+    }
+
+    public class ResolveAppraisalAppealDtoValidator : AbstractValidator<ResolveAppraisalAppealDto>
+    {
+        public ResolveAppraisalAppealDtoValidator()
+        {
+            RuleFor(x => x.Id).NotEmpty();
+            RuleFor(x => x.Resolution).NotEmpty().MaximumLength(2000);
+        }
+    }
+
+    // ---- Interfaces ---------------------------------------------------------
+    public interface IAcknowledgeAppraisal { Task AcknowledgeAsync(SignAppraisalDto dto); }
+    public interface IManagerSignAppraisal { Task SignAsync(SignAppraisalDto dto); }
+    public interface ISubmitAppraisalAppeal { Task<Guid> SubmitAsync(SubmitAppraisalAppealDto dto); }
+    public interface IStartAppraisalAppealReview { Task StartAsync(Guid id); }
+    public interface IResolveAppraisalAppeal { Task ResolveAsync(ResolveAppraisalAppealDto dto); }
+    public interface IGetAppraisalAppealById { Task<AppraisalAppealDto> GetAsync(Guid id); }
+    public interface IGetAllAppraisalAppeals { Task<PaginatedResponse<AppraisalAppealDto>> GetAsync(GetAllRequest request); }
+
+    // ---- Acknowledge / sign (HC142–HC143, HC146) ----------------------------
+    public class AcknowledgeAppraisal(
+        IRepository<Appraisal> repository,
+        IPerformanceHistoryWriter history,
+        IValidator<SignAppraisalDto> validator,
+        ILogger<AcknowledgeAppraisal> logger) : IAcknowledgeAppraisal
+    {
+        public async Task AcknowledgeAsync(SignAppraisalDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
+            if (appraisal.Stage != AppraisalStage.Completed)
+                throw new ValidationException(nameof(dto.Id), "Only a completed appraisal can be acknowledged.");
+            if (appraisal.AcknowledgmentStatus == Dom.Entities.Core.AcknowledgmentStatus.Appealed)
+                throw new ValidationException(nameof(dto.Id), "This appraisal is under appeal and cannot be acknowledged.");
+
+            appraisal.Acknowledge(dto.Signature);
+            await history.WriteAsync("Appraisal", dto.Id, "Acknowledged", $"Employee acknowledged and signed ({dto.Signature}).");
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Appraisal {Id} acknowledged", dto.Id);
+        }
+    }
+
+    public class ManagerSignAppraisal(
+        IRepository<Appraisal> repository,
+        IPerformanceHistoryWriter history,
+        IValidator<SignAppraisalDto> validator,
+        ILogger<ManagerSignAppraisal> logger) : IManagerSignAppraisal
+    {
+        public async Task SignAsync(SignAppraisalDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
+            if (appraisal.Stage != AppraisalStage.Completed)
+                throw new ValidationException(nameof(dto.Id), "Only a completed appraisal can be signed.");
+
+            appraisal.ManagerSign(dto.Signature);
+            await history.WriteAsync("Appraisal", dto.Id, "ManagerSigned", $"Manager signed ({dto.Signature}).");
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Appraisal {Id} manager-signed", dto.Id);
+        }
+    }
+
+    // ---- Appeal (HC143–HC144) -----------------------------------------------
+    public class SubmitAppraisalAppeal(
+        IRepository<AppraisalAppeal> repository,
+        IRepository<Appraisal> appraisalRepository,
+        IPerformanceHistoryWriter history,
+        IValidator<SubmitAppraisalAppealDto> validator,
+        ILogger<SubmitAppraisalAppeal> logger) : ISubmitAppraisalAppeal
+    {
+        public async Task<Guid> SubmitAsync(SubmitAppraisalAppealDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appraisal = await appraisalRepository.GetAll().FirstOrDefaultAsync(a => a.Id == dto.AppraisalId)
+                ?? throw new NotFoundException(nameof(Appraisal), dto.AppraisalId.ToString());
+            if (appraisal.Stage != AppraisalStage.Completed)
+                throw new ValidationException(nameof(dto.AppraisalId), "Only a completed appraisal can be appealed.");
+            if (appraisal.AcknowledgmentStatus == Dom.Entities.Core.AcknowledgmentStatus.Accepted)
+                throw new ValidationException(nameof(dto.AppraisalId), "An already-accepted appraisal cannot be appealed.");
+            if (await repository.GetAll().AnyAsync(x => x.AppraisalId == dto.AppraisalId
+                    && (x.Status == AppealStatus.Open || x.Status == AppealStatus.UnderReview)))
+                throw new ValidationException(nameof(dto.AppraisalId), "An appeal is already open for this appraisal.");
+
+            var appeal = AppraisalAppeal.Create(dto.AppraisalId, appraisal.EmployeeId, dto.Comments, dto.RequestFollowUp);
+            appraisal.MarkAppealed();   // triggers the HR/management review flow (HC144)
+            await repository.AddAsync(appeal);
+            appraisalRepository.UpdateAsync(appraisal);
+            await history.WriteAsync("Appraisal", dto.AppraisalId, "Appealed",
+                $"Appeal submitted{(dto.RequestFollowUp ? " (follow-up requested)" : "")}.");
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Appeal {Id} submitted for Appraisal {AppraisalId}", appeal.Id, dto.AppraisalId);
+            return appeal.Id;
+        }
+    }
+
+    public class StartAppraisalAppealReview(
+        IRepository<AppraisalAppeal> repository,
+        ILogger<StartAppraisalAppealReview> logger) : IStartAppraisalAppealReview
+    {
+        public async Task StartAsync(Guid id)
+        {
+            var appeal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
+                ?? throw new NotFoundException(nameof(AppraisalAppeal), id.ToString());
+            if (appeal.Status != AppealStatus.Open)
+                throw new ValidationException(nameof(id), "Only an open appeal can be moved to review.");
+            appeal.StartReview();
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Appeal {Id} moved to review", id);
+        }
+    }
+
+    public class ResolveAppraisalAppeal(
+        IRepository<AppraisalAppeal> repository,
+        IPerformanceHistoryWriter history,
+        IValidator<ResolveAppraisalAppealDto> validator,
+        ILogger<ResolveAppraisalAppeal> logger) : IResolveAppraisalAppeal
+    {
+        public async Task ResolveAsync(ResolveAppraisalAppealDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appeal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(AppraisalAppeal), dto.Id.ToString());
+            if (appeal.Status is AppealStatus.Resolved or AppealStatus.Rejected)
+                throw new ValidationException(nameof(dto.Id), "This appeal has already been closed.");
+
+            appeal.Resolve(dto.Upheld, dto.Resolution);
+            await history.WriteAsync("Appraisal", appeal.AppraisalId, "AppealResolved",
+                $"Appeal {(dto.Upheld ? "upheld" : "rejected")}: {dto.Resolution}.");
+            await repository.SaveChangesAsync();
+            logger.LogInformation("Appeal {Id} resolved (upheld={Upheld})", dto.Id, dto.Upheld);
+        }
+    }
+
+    // ---- Reads --------------------------------------------------------------
+    internal static class AppraisalAppealMapper
+    {
+        internal static AppraisalAppealDto Map(AppraisalAppeal x, string? employeeName) => new()
+        {
+            Id = x.Id,
+            AppraisalId = x.AppraisalId,
+            EmployeeId = x.EmployeeId,
+            EmployeeName = employeeName,
+            Comments = x.Comments,
+            RequestFollowUp = x.RequestFollowUp,
+            Status = x.Status.ToString(),
+            Resolution = x.Resolution,
+            ResolvedAt = x.ResolvedAt
+        };
+    }
+
+    public class GetAppraisalAppealById(
+        IRepository<AppraisalAppeal> repository,
+        IRepository<Employee> employeeRepository) : IGetAppraisalAppealById
+    {
+        public async Task<AppraisalAppealDto> GetAsync(Guid id)
+        {
+            var entity = await repository.GetAll().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id)
+                ?? throw new NotFoundException(nameof(AppraisalAppeal), id.ToString());
+            var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
+                .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
+            return AppraisalAppealMapper.Map(entity, employeeName);
+        }
+    }
+
+    public class GetAllAppraisalAppeals(
+        IRepository<AppraisalAppeal> repository,
+        IRepository<Employee> employeeRepository) : IGetAllAppraisalAppeals
+    {
+        public async Task<PaginatedResponse<AppraisalAppealDto>> GetAsync(GetAllRequest request)
+        {
+            var skip = int.TryParse(request.Skip, out var s) ? s : 0;
+            var take = int.TryParse(request.Take, out var t) ? t : 15;
+
+            var query = repository.GetAll().AsNoTracking();
+            if (request.EmployeeId.HasValue)
+                query = query.Where(x => x.EmployeeId == request.EmployeeId.Value);
+            if (request.ObjectiveId.HasValue)   // reused as appraisalId filter
+                query = query.Where(x => x.AppraisalId == request.ObjectiveId.Value);
+            if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<AppealStatus>(request.Status, out var st))
+                query = query.Where(x => x.Status == st);
+
+            var total = await query.CountAsync();
+            var rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
+
+            var employees = employeeRepository.GetAll();
+            var data = new List<AppraisalAppealDto>(rows.Count);
+            foreach (var r in rows)
+            {
+                var employeeName = await employees.Where(e => e.Id == r.EmployeeId)
+                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
+                data.Add(AppraisalAppealMapper.Map(r, employeeName));
+            }
+            return new PaginatedResponse<AppraisalAppealDto> { Total = total, Data = data };
+        }
+    }
+}

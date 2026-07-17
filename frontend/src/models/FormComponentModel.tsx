@@ -16,6 +16,7 @@ export default interface FormComponentModel {
     | "hidden"
     | "file"
     | "checkboxListField"
+    | "multiSelectField"
     | "checkbox"
     | "date"
     | "label"
@@ -27,6 +28,9 @@ export default interface FormComponentModel {
   hidden?: boolean;
   placeholder?: string;
   required?: boolean;
+  /** Text/number/password inputs: render the label as a floating placeholder that rises above the
+   * control on focus/value (Material-style). Reusable via `<InputField floatingLabel/>` or FormUtility. */
+  floatingLabel?: boolean;
   onChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onFocus?: () => void;
   onSelect?: (name: string, record: any) => void;

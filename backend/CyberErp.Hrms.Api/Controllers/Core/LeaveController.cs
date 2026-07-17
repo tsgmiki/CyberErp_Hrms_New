@@ -73,4 +73,27 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<WorkingDaysDto> WorkingDays([FromQuery] DateTime start, [FromQuery] DateTime end, [FromQuery] bool halfDay = false)
             => workingDaysHandler.GetAsync(start, end, halfDay);
     }
+
+    /// <summary>Client work-week configuration (Full/Half/Rest per weekday) driving the leave/attendance day count.</summary>
+    public class WorkWeekConfigurationController(
+        ISaveWorkWeekConfiguration saveHandler,
+        IDeleteWorkWeekConfiguration deleteHandler,
+        IGetWorkWeekConfigurationById getByIdHandler,
+        IGetAllWorkWeekConfigurations getAllHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<PaginatedResponse<WorkWeekConfigurationDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
+
+        [HttpGet("{id:guid}")]
+        public Task<WorkWeekConfigurationDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] SaveWorkWeekConfigurationDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] SaveWorkWeekConfigurationDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id) { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
+    }
 }

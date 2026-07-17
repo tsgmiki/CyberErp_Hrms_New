@@ -2,6 +2,7 @@ using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
+using NodaTime;
 
 namespace CyberErp.Hrms.App.Features.Core.Leaves
 {
@@ -14,6 +15,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public DateTime? HireDate { get; set; }
         public decimal ServiceYears { get; set; }
         public bool IsManagerial { get; set; }
+        /// <summary>Owning organization unit (via the employee's position) — the ledger groups on this.</summary>
+        public string? OrganizationUnitName { get; set; }
 
         /// <summary>Entitlement the policy computes from service length (preview, before persisting).</summary>
         public decimal CalculatedEntitlement { get; set; }
@@ -50,7 +53,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public class GetAnnualLeaveLedger(
         IRepository<AnnualLeaveSetting> settings,
         IRepository<Employee> employees,
+        IRepository<EmployeeExperience> experiences,
+        IRepository<FiscalYear> fiscalYears,
         IRepository<LeaveBalance> balances,
+        IRepository<Position> positions,
+        IRepository<OrganizationUnit> organizationUnits,
         ILeaveAccrualService accrualService) : IGetAnnualLeaveLedger
     {
         public async Task<AnnualLeaveLedgerDto> GetAsync(Guid settingId)
@@ -71,13 +78,38 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .Select(e => new
                 {
                     e.Id,
+                    e.PersonId,
                     e.EmployeeNumber,
                     e.HireDate,
                     e.IsManagerial,
+                    e.PositionId,
                     First = e.Person != null ? e.Person.FirstName : "",
                     Grand = e.Person != null ? e.Person.GrandFatherName : ""
                 })
                 .ToListAsync();
+
+            // Per-employee facts the flexible accrual rules need (external gov experience + fiscal-year count).
+            var personIds = staff.Where(s => s.PersonId != Guid.Empty).Select(s => s.PersonId).Distinct().ToList();
+            var extRows = personIds.Count == 0
+                ? new List<ExpSpan>()
+                : await experiences.GetAll()
+                    .Where(x => personIds.Contains(x.PersonId) && x.IsExternal && x.IsGovernmental
+                        && x.StartDate != null && x.EndDate != null)
+                    .Select(x => new ExpSpan(x.PersonId, x.StartDate!.Value, x.EndDate!.Value))
+                    .ToListAsync();
+            var externalMonths = extRows.GroupBy(r => r.PersonId)
+                .ToDictionary(g => g.Key, g => g.Sum(r => MonthsBetween(r.Start.Date, r.End.Date)));
+            var fyStartDates = await fiscalYears.GetAll().Select(f => f.StartDate).ToListAsync();
+
+            // Resolve each employee's owning unit (via position) in a single batched query.
+            var positionIds = staff.Where(s => s.PositionId.HasValue).Select(s => s.PositionId!.Value).Distinct().ToList();
+            var unitByPosition = positionIds.Count == 0
+                ? new Dictionary<Guid, string>()
+                : await positions.GetAll()
+                    .Where(p => positionIds.Contains(p.Id))
+                    .Join(organizationUnits.GetAll(), p => p.OrganizationUnitId, u => u.Id,
+                        (p, u) => new { p.Id, UnitName = u.Name })
+                    .ToDictionaryAsync(x => x.Id, x => x.UnitName);
 
             var existing = await balances.GetAll()
                 .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == setting.LeaveTypeId)
@@ -94,7 +126,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var rows = new List<AnnualLeaveLedgerRowDto>(staff.Count);
             foreach (var e in staff)
             {
-                var calculated = accrualService.CalculateEntitlement(e.HireDate, e.IsManagerial, setting, fyStart, fyEnd);
+                var input = new EmployeeAccrualInput(
+                    e.HireDate, e.IsManagerial,
+                    externalMonths.GetValueOrDefault(e.PersonId),
+                    CountFiscalYearsOfService(fyStartDates, e.HireDate, fyStart));
+                var calculated = accrualService.CalculateEntitlement(input, setting, fyStart, fyEnd);
                 var row = new AnnualLeaveLedgerRowDto
                 {
                     EmployeeId = e.Id,
@@ -103,6 +139,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     HireDate = e.HireDate,
                     ServiceYears = ServiceYearsAt(e.HireDate, fyStart),
                     IsManagerial = e.IsManagerial,
+                    OrganizationUnitName = e.PositionId.HasValue && unitByPosition.TryGetValue(e.PositionId.Value, out var unit)
+                        ? unit : null,
                     CalculatedEntitlement = calculated
                 };
 
@@ -146,5 +184,27 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                          - (asOf.Day < hireDate.Value.Day ? 1 : 0);
             return Math.Round(Math.Max(0, months) / 12m, 1);
         }
+
+        private static int MonthsBetween(DateTime fromDate, DateTime toDate)
+        {
+            if (toDate < fromDate) return 0;
+            var months = (toDate.Year - fromDate.Year) * 12 + toDate.Month - fromDate.Month;
+            if (toDate.Day < fromDate.Day) months--;
+            return Math.Max(0, months);
+        }
+
+        private static int CountFiscalYearsOfService(List<Instant> fiscalYearStarts, DateTime? hireDate, DateTime currentFyStart)
+        {
+            if (!hireDate.HasValue) return 0;
+            var hire = hireDate.Value.Date;
+            var current = currentFyStart.Date;
+            return fiscalYearStarts.Count(s =>
+            {
+                var d = s.ToDateTimeUtc().Date;
+                return d > hire && d <= current;
+            });
+        }
+
+        private readonly record struct ExpSpan(Guid PersonId, DateTime Start, DateTime End);
     }
 }

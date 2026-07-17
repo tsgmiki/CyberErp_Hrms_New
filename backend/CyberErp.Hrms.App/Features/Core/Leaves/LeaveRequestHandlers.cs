@@ -11,12 +11,9 @@ using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationExcept
 namespace CyberErp.Hrms.App.Features.Core.Leaves
 {
     // ---- DTOs ---------------------------------------------------------------
-    public class LeaveRequestDto
+    public class LeaveRequestLineDto
     {
         public Guid Id { get; set; }
-        public Guid EmployeeId { get; set; }
-        public string? EmployeeName { get; set; }
-        public string? EmployeeNumber { get; set; }
         public Guid LeaveTypeId { get; set; }
         public string? LeaveTypeCode { get; set; }
         public string? LeaveTypeName { get; set; }
@@ -24,20 +21,37 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public DateTime EndDate { get; set; }
         public string DayPart { get; set; } = nameof(LeaveDayPart.Full);
         public decimal WorkingDays { get; set; }
+    }
+
+    public class LeaveRequestDto
+    {
+        public Guid Id { get; set; }
+        public Guid EmployeeId { get; set; }
+        public string? EmployeeName { get; set; }
+        public string? EmployeeNumber { get; set; }
+        public Guid FiscalYearId { get; set; }
+        public DateTime SubmittedDate { get; set; }
+        public decimal TotalWorkingDays { get; set; }
         public string? Reason { get; set; }
         public string Status { get; set; } = nameof(LeaveRequestStatus.Pending);
         public string? DecisionComment { get; set; }
         public string? CancelReason { get; set; }
+        public List<LeaveRequestLineDto> Lines { get; set; } = [];
+    }
+
+    public class SaveLeaveRequestLineDto
+    {
+        public Guid LeaveTypeId { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+        public LeaveDayPart DayPart { get; set; } = LeaveDayPart.Full;
     }
 
     public class SaveLeaveRequestDto
     {
         public Guid EmployeeId { get; set; }
-        public Guid LeaveTypeId { get; set; }
-        public DateTime StartDate { get; set; }
-        public DateTime EndDate { get; set; }
-        public LeaveDayPart DayPart { get; set; } = LeaveDayPart.Full;
         public string? Reason { get; set; }
+        public List<SaveLeaveRequestLineDto> Lines { get; set; } = [];
     }
 
     public class SaveLeaveRequestDtoValidator : AbstractValidator<SaveLeaveRequestDto>
@@ -45,12 +59,15 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public SaveLeaveRequestDtoValidator()
         {
             RuleFor(x => x.EmployeeId).NotEmpty().WithMessage("Employee is required.");
-            RuleFor(x => x.LeaveTypeId).NotEmpty().WithMessage("Leave type is required.");
-            RuleFor(x => x.StartDate).NotEmpty().WithMessage("Start date is required.");
-            RuleFor(x => x.EndDate).NotEmpty().WithMessage("End date is required.");
-            RuleFor(x => x.EndDate).GreaterThanOrEqualTo(x => x.StartDate)
-                .WithMessage("End date cannot be before start date.");
             RuleFor(x => x.Reason).MaximumLength(1000);
+            RuleFor(x => x.Lines).NotEmpty().WithMessage("Add at least one leave line.");
+            RuleForEach(x => x.Lines).ChildRules(l =>
+            {
+                l.RuleFor(y => y.LeaveTypeId).NotEmpty().WithMessage("Leave type is required.");
+                l.RuleFor(y => y.StartDate).NotEmpty();
+                l.RuleFor(y => y.EndDate).NotEmpty().GreaterThanOrEqualTo(y => y.StartDate)
+                    .WithMessage("End date cannot be before start date.");
+            });
         }
     }
 
@@ -66,17 +83,42 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface IGetLeaveRequestById { Task<LeaveRequestDto> GetAsync(Guid id); }
     public interface IGetAllLeaveRequests { Task<PaginatedResponse<LeaveRequestDto>> GetAsync(GetAllRequest request); }
 
+    /// <summary>Groups a request's lines by leave type and applies each type's summed days to the ledger.</summary>
+    internal static class LeaveBalanceApplier
+    {
+        internal static async Task DeductAsync(LeaveRequest request, ILeaveBalanceService balanceService, string reason)
+        {
+            foreach (var g in request.Lines.GroupBy(l => l.LeaveTypeId))
+                await balanceService.DeductAsync(request.EmployeeId, g.Key, request.FiscalYearId,
+                    g.Sum(l => l.WorkingDays), request.Id, reason);
+        }
+
+        internal static async Task ReverseAsync(LeaveRequest request, ILeaveBalanceService balanceService, string reason)
+        {
+            foreach (var g in request.Lines.GroupBy(l => l.LeaveTypeId))
+                await balanceService.ReverseAsync(request.EmployeeId, g.Key, request.FiscalYearId,
+                    g.Sum(l => l.WorkingDays), request.Id, reason);
+        }
+
+        internal static void StampLineTenant(LeaveRequest request)
+        {
+            foreach (var line in request.Lines)
+                if (string.IsNullOrEmpty(line.TenantId)) line.TenantId = request.TenantId;
+        }
+    }
+
     // ---- Submit -------------------------------------------------------------
     public class SubmitLeaveRequest(
         IRepository<LeaveRequest> repository,
+        IRepository<LeaveRequestLine> lineRepository,
         IRepository<LeaveType> leaveTypes,
         IRepository<Employee> employees,
         IRepository<AnnualLeaveSetting> leaveSettings,
+        IRepository<WorkflowDefinition> workflowDefinitions,
         IFiscalYearResolver fiscalYearResolver,
         IWorkingCalendar calendar,
         ILeaveBalanceService balanceService,
         IWorkflowService workflowService,
-        IWorkflowGate workflowGate,
         IValidator<SaveLeaveRequestDto> validator,
         ILogger<SubmitLeaveRequest> logger) : ISubmitLeaveRequest
     {
@@ -85,10 +127,17 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            var leaveType = await leaveTypes.GetAll().FirstOrDefaultAsync(t => t.Id == dto.LeaveTypeId)
-                ?? throw new NotFoundException(nameof(LeaveType), dto.LeaveTypeId.ToString());
-            if (!leaveType.IsActive)
-                throw new ValidationException("leaveTypeId", "This leave type is inactive.");
+            // A submitted request is NEVER auto-approved: it must route through the configured
+            // approval workflow and stay Pending until every stage approves (deduction happens
+            // only in the workflow handler after the final stage). Fail loudly when unconfigured.
+            if (!await workflowDefinitions.GetAll().AnyAsync(d =>
+                    d.EntityType == WorkflowEntityTypes.LeaveRequest && d.IsActive))
+                throw new ValidationException("workflow",
+                    "No active approval workflow is configured for Leave Requests. Ask an administrator to add one under Workflow Definitions (Process: Leave Request) before submitting requests.");
+
+            // Dynamic approvers (Immediate/Unit Manager) must be resolvable BEFORE the request is
+            // persisted — otherwise a stuck, unapprovable Pending row would be left behind.
+            await workflowService.EnsureStartableAsync(WorkflowEntityTypes.LeaveRequest, dto.EmployeeId);
 
             var emp = await employees.GetAll().Where(e => e.Id == dto.EmployeeId)
                 .Select(e => new
@@ -102,96 +151,114 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .FirstOrDefaultAsync()
                 ?? throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
 
-            // Every request is charged to the open fiscal year containing its start date; a request
-            // may not straddle two fiscal years (balances are per-year — submit one per year instead).
-            var fiscalYear = await fiscalYearResolver.ResolveForDateAsync(dto.StartDate);
+            // The whole request is charged to the fiscal year of its earliest line; every line must fall
+            // within that year (balances are per-year — split into separate requests otherwise).
+            var earliestStart = dto.Lines.Min(l => l.StartDate.Date);
+            var fiscalYear = await fiscalYearResolver.ResolveForDateAsync(earliestStart);
+            var fyStart = fiscalYear.StartDate.ToDateTimeUtc().Date;
             var fyEnd = fiscalYear.EndDate.ToDateTimeUtc().Date;
-            if (dto.EndDate.Date > fyEnd)
-                throw new ValidationException("endDate",
-                    $"The request crosses the fiscal-year boundary ({fyEnd:yyyy-MM-dd}). Submit separate requests per fiscal year.");
 
-            // Gender eligibility (maternity/paternity).
-            if (leaveType.GenderEligibility != LeaveGenderEligibility.Any && emp.Gender.HasValue)
+            var typeIds = dto.Lines.Select(l => l.LeaveTypeId).Distinct().ToList();
+            var typeById = await leaveTypes.GetAll().Where(t => typeIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id);
+
+            var request = LeaveRequest.Create(dto.EmployeeId, fiscalYear.Id, DateTime.UtcNow, dto.Reason);
+
+            // Validate + cost each line.
+            foreach (var line in dto.Lines)
             {
-                var required = leaveType.GenderEligibility == LeaveGenderEligibility.Male ? Gender.Male : Gender.Female;
-                if (emp.Gender.Value != required)
-                    throw new ValidationException("leaveTypeId", $"This leave type is restricted to {required} employees.");
+                var start = line.StartDate.Date;
+                var end = line.EndDate.Date;
+                if (start < fyStart || end > fyEnd)
+                    throw new ValidationException("lines",
+                        $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} falls outside the fiscal year ({fyStart:yyyy-MM-dd}–{fyEnd:yyyy-MM-dd}). Submit separate requests per fiscal year.");
+
+                if (!typeById.TryGetValue(line.LeaveTypeId, out var leaveType))
+                    throw new NotFoundException(nameof(LeaveType), line.LeaveTypeId.ToString());
+                if (!leaveType.IsActive)
+                    throw new ValidationException("lines", $"Leave type {leaveType.Code} is inactive.");
+
+                if (leaveType.GenderEligibility != LeaveGenderEligibility.Any && emp.Gender.HasValue)
+                {
+                    var required = leaveType.GenderEligibility == LeaveGenderEligibility.Male ? Gender.Male : Gender.Female;
+                    if (emp.Gender.Value != required)
+                        throw new ValidationException("lines", $"Leave type {leaveType.Code} is restricted to {required} employees.");
+                }
+
+                var halfDay = line.DayPart != LeaveDayPart.Full;
+                if (halfDay && !leaveType.AllowHalfDay)
+                    throw new ValidationException("lines", $"Leave type {leaveType.Code} does not allow half-day leave.");
+
+                decimal workingDays;
+                try { workingDays = await calendar.CountWorkingDaysAsync(start, end, halfDay); }
+                catch (ArgumentException ex) { throw new ValidationException("lines", ex.Message); }
+                if (workingDays <= 0)
+                    throw new ValidationException("lines", $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} contains no working days (only rest days/holidays).");
+
+                if (leaveType.MaxConsecutiveDays.HasValue && workingDays > leaveType.MaxConsecutiveDays.Value)
+                    throw new ValidationException("lines", $"Leave type {leaveType.Code} allows at most {leaveType.MaxConsecutiveDays.Value} consecutive days.");
+
+                request.AddLine(line.LeaveTypeId, start, end, line.DayPart, workingDays);
             }
 
-            var halfDay = dto.DayPart != LeaveDayPart.Full;
-            if (halfDay && !leaveType.AllowHalfDay)
-                throw new ValidationException("dayPart", "This leave type does not allow half-day leave.");
+            // Overlap — lines within the request must not overlap each other …
+            var newLines = request.Lines.Select(l => (l.StartDate, l.EndDate)).ToList();
+            for (var i = 0; i < newLines.Count; i++)
+                for (var j = i + 1; j < newLines.Count; j++)
+                    if (newLines[i].StartDate <= newLines[j].EndDate && newLines[i].EndDate >= newLines[j].StartDate)
+                        throw new ValidationException("lines", "Two lines in this request overlap the same dates.");
 
-            decimal workingDays;
-            try
+            // … nor overlap an existing pending/approved request's lines.
+            var existing = await lineRepository.GetAll()
+                .Join(repository.GetAll().Where(h => h.EmployeeId == dto.EmployeeId
+                        && (h.Status == LeaveRequestStatus.Pending || h.Status == LeaveRequestStatus.Approved)),
+                    l => l.LeaveRequestId, h => h.Id, (l, h) => new { l.StartDate, l.EndDate })
+                .ToListAsync();
+            foreach (var nl in newLines)
+                if (existing.Any(e => e.StartDate <= nl.EndDate && e.EndDate >= nl.StartDate))
+                    throw new ValidationException("lines", "A line overlaps a date range this employee already has pending or approved.");
+
+            // Probation guard + balance check, aggregated per leave type.
+            foreach (var g in request.Lines.GroupBy(l => l.LeaveTypeId))
             {
-                workingDays = await calendar.CountWorkingDaysAsync(dto.StartDate, dto.EndDate, halfDay);
-            }
-            catch (ArgumentException ex)
-            {
-                throw new ValidationException("dayPart", ex.Message);
-            }
-            if (workingDays <= 0)
-                throw new ValidationException("startDate", "The selected range contains no working days (only weekends/holidays).");
+                var leaveType = typeById[g.Key];
+                var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
+                    s.FiscalYearId == fiscalYear.Id && s.LeaveTypeId == g.Key && s.IsActive);
+                if (setting is not null && setting.MinExperienceMonths > 0)
+                {
+                    var refDate = g.Min(l => l.StartDate);
+                    var serviceMonths = emp.HireDate.HasValue
+                        ? Math.Max(0, ((refDate.Year - emp.HireDate.Value.Year) * 12) + refDate.Month - emp.HireDate.Value.Month
+                            - (refDate.Day < emp.HireDate.Value.Day ? 1 : 0))
+                        : 0;
+                    if (serviceMonths < setting.MinExperienceMonths)
+                        throw new ValidationException("employeeId",
+                            $"This employee has {serviceMonths} month(s) of service; {setting.MinExperienceMonths} are required for {leaveType.Code}.");
+                }
 
-            if (leaveType.MaxConsecutiveDays.HasValue && workingDays > leaveType.MaxConsecutiveDays.Value)
-                throw new ValidationException("endDate", $"This leave type allows at most {leaveType.MaxConsecutiveDays.Value} consecutive days.");
-
-            var start = dto.StartDate.Date;
-            var end = dto.EndDate.Date;
-            var overlaps = await repository.GetAll().AnyAsync(r =>
-                r.EmployeeId == dto.EmployeeId &&
-                (r.Status == LeaveRequestStatus.Pending || r.Status == LeaveRequestStatus.Approved) &&
-                r.StartDate <= end && r.EndDate >= start);
-            if (overlaps)
-                throw new ValidationException("startDate", "This employee already has a pending or approved leave request overlapping these dates.");
-
-            // Probation guard (legacy MinExperience): when an accrual policy governs this type,
-            // the employee must have served the minimum months before requesting.
-            var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
-                s.FiscalYearId == fiscalYear.Id && s.LeaveTypeId == dto.LeaveTypeId && s.IsActive);
-            if (setting is not null && setting.MinExperienceMonths > 0)
-            {
-                var serviceMonths = emp.HireDate.HasValue
-                    ? Math.Max(0, ((start.Year - emp.HireDate.Value.Year) * 12) + start.Month - emp.HireDate.Value.Month
-                        - (start.Day < emp.HireDate.Value.Day ? 1 : 0))
-                    : 0;
-                if (serviceMonths < setting.MinExperienceMonths)
-                    throw new ValidationException("employeeId",
-                        $"This employee has {serviceMonths} month(s) of service; {setting.MinExperienceMonths} are required before taking this leave.");
-            }
-
-            // Only entitlement-bearing types are balance-checked; unpaid/None accrual is always available.
-            if (leaveType.AccrualMethod != LeaveAccrualMethod.None)
-            {
-                var available = await balanceService.GetAvailableAsync(dto.EmployeeId, dto.LeaveTypeId, fiscalYear.Id);
-                if (workingDays > available)
-                    throw new ValidationException("leaveTypeId",
-                        $"Insufficient balance: requested {workingDays} day(s) but only {available} available.");
+                if (leaveType.AccrualMethod != LeaveAccrualMethod.None)
+                {
+                    var requested = g.Sum(l => l.WorkingDays);
+                    var available = await balanceService.GetAvailableAsync(dto.EmployeeId, g.Key, fiscalYear.Id);
+                    if (requested > available)
+                        throw new ValidationException("lines",
+                            $"Insufficient {leaveType.Code} balance: requested {requested} day(s) but only {available} available.");
+                }
             }
 
-            var request = LeaveRequest.Create(dto.EmployeeId, dto.LeaveTypeId, fiscalYear.Id, start, end, dto.DayPart, workingDays, dto.Reason);
             await repository.AddAsync(request);
+            LeaveBalanceApplier.StampLineTenant(request);
             await repository.SaveChangesAsync();
 
             var name = $"{emp.First} {emp.Grand}".Trim();
-            var summary = $"{leaveType.Code} — {name} ({emp.EmployeeNumber}): {start:yyyy-MM-dd}→{end:yyyy-MM-dd} ({workingDays}d)";
+            var summary = $"{name} ({emp.EmployeeNumber}): {request.Lines.Count} line(s), {request.TotalWorkingDays}d";
 
-            if (leaveType.RequiresApproval)
-                await workflowService.StartIfDefinedAsync(WorkflowEntityTypes.LeaveRequest, request.Id, dto.EmployeeId, summary);
+            // Route through the approval workflow. The request stays Pending here; the ledger is
+            // debited ONLY by LeaveRequestWorkflowHandler.OnApprovedAsync after the FINAL stage
+            // approves (rejected / cancelled / pending requests never touch the balance).
+            await workflowService.StartIfDefinedAsync(WorkflowEntityTypes.LeaveRequest, request.Id, dto.EmployeeId, summary);
 
-            // No workflow is running (approval not required, or no active definition) → auto-approve now.
-            if (!await workflowGate.HasRunningAsync(WorkflowEntityTypes.LeaveRequest, request.Id))
-            {
-                request.Approve();
-                await balanceService.DeductAsync(dto.EmployeeId, dto.LeaveTypeId, fiscalYear.Id, workingDays, request.Id, "Leave auto-approved");
-                await repository.SaveChangesAsync();
-                logger.LogInformation("Leave request {Id} auto-approved ({Days}d)", request.Id, workingDays);
-            }
-            else
-            {
-                logger.LogInformation("Leave request {Id} submitted for approval ({Days}d)", request.Id, workingDays);
-            }
+            logger.LogInformation("Leave request {Id} submitted for approval ({Days}d across {Lines} line(s))",
+                request.Id, request.TotalWorkingDays, request.Lines.Count);
 
             return request.Id;
         }
@@ -206,18 +273,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public async Task CancelAsync(CancelLeaveRequestDto dto)
         {
-            var request = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+            var request = await repository.GetAll().Include(r => r.Lines).FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(LeaveRequest), dto.Id.ToString());
 
-            // Can't cancel directly while an approval is in flight — reject it from the workflow instead.
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.LeaveRequest, request.Id);
 
             var wasApproved = request.HoldsBalance;
             request.Cancel(dto.Reason);
 
             if (wasApproved)
-                await balanceService.ReverseAsync(request.EmployeeId, request.LeaveTypeId, request.FiscalYearId,
-                    request.WorkingDays, request.Id, "Leave cancelled");
+                await LeaveBalanceApplier.ReverseAsync(request, balanceService, "Leave cancelled");
             else
                 await repository.SaveChangesAsync();
 
@@ -251,7 +316,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 query = query.Where(x => x.Status == status);
 
             var total = await query.CountAsync();
-            var data = await query.OrderByDescending(x => x.StartDate)
+            var data = await query.OrderByDescending(x => x.SubmittedDate)
                 .Skip(skip).Take(take)
                 .Select(LeaveRequestMapper.Projection)
                 .ToListAsync();
@@ -269,17 +334,24 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             EmployeeName = r.Employee != null && r.Employee.Person != null
                 ? (r.Employee.Person.FirstName + " " + r.Employee.Person.GrandFatherName).Trim() : null,
             EmployeeNumber = r.Employee != null ? r.Employee.EmployeeNumber : null,
-            LeaveTypeId = r.LeaveTypeId,
-            LeaveTypeCode = r.LeaveType != null ? r.LeaveType.Code : null,
-            LeaveTypeName = r.LeaveType != null ? r.LeaveType.Name : null,
-            StartDate = r.StartDate,
-            EndDate = r.EndDate,
-            DayPart = r.DayPart.ToString(),
-            WorkingDays = r.WorkingDays,
+            FiscalYearId = r.FiscalYearId,
+            SubmittedDate = r.SubmittedDate,
+            TotalWorkingDays = r.TotalWorkingDays,
             Reason = r.Reason,
             Status = r.Status.ToString(),
             DecisionComment = r.DecisionComment,
-            CancelReason = r.CancelReason
+            CancelReason = r.CancelReason,
+            Lines = r.Lines.OrderBy(l => l.StartDate).Select(l => new LeaveRequestLineDto
+            {
+                Id = l.Id,
+                LeaveTypeId = l.LeaveTypeId,
+                LeaveTypeCode = l.LeaveType != null ? l.LeaveType.Code : null,
+                LeaveTypeName = l.LeaveType != null ? l.LeaveType.Name : null,
+                StartDate = l.StartDate,
+                EndDate = l.EndDate,
+                DayPart = l.DayPart.ToString(),
+                WorkingDays = l.WorkingDays
+            }).ToList()
         };
     }
 
@@ -294,13 +366,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
         public async Task OnApprovedAsync(string entityType, Guid entityId)
         {
-            var request = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == entityId);
+            var request = await repository.GetAll().Include(r => r.Lines).FirstOrDefaultAsync(x => x.Id == entityId);
             if (request is null || request.Status != LeaveRequestStatus.Pending) return;
 
             request.Approve();
-            await balanceService.DeductAsync(request.EmployeeId, request.LeaveTypeId, request.FiscalYearId,
-                request.WorkingDays, request.Id, "Leave approved");
-            logger.LogInformation("Leave request {Id} approved via workflow; balance debited {Days}d", request.Id, request.WorkingDays);
+            await LeaveBalanceApplier.DeductAsync(request, balanceService, "Leave approved");
+            logger.LogInformation("Leave request {Id} approved via workflow; balance debited {Days}d", request.Id, request.TotalWorkingDays);
         }
 
         public async Task OnRejectedAsync(string entityType, Guid entityId)

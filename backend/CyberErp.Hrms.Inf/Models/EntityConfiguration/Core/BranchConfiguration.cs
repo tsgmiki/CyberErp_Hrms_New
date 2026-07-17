@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Branch> builder)
         {
-            builder.ToTable("hrms_Branch", "Core");
+            builder.ToTable("hrmsBranch", "dbo");
 
             builder.HasKey(b => b.Id);
 

@@ -96,6 +96,7 @@ function EmployeeList({ orgUnitId, orgUnitName, editHandler }: Props) {
         { name: "organizationUnitName", label: "Organization Unit" },
         { name: "positionClassTitle", label: "Position" },
         { name: "jobGradeName", label: "Job Grade" },
+        { name: "hireDate", label: "Hire Date" },
         {
           name: "employmentStatus",
           label: "Status",

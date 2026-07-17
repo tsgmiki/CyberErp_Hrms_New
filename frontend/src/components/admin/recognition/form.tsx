@@ -1,0 +1,120 @@
+"use client";
+import FormProviders from "@/components/common/formProvider/formProvider";
+import { memo, useCallback, useEffect, useState } from "react";
+import type { EmployeeRecognitionModel } from "@/models";
+import { StatusMessage } from "../../common/statusMessage/status";
+import React from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import saveRecognition from "@/services/admin/recognition/save";
+import getRecognition from "@/services/admin/recognition/get";
+import getAllEmployee from "@/services/admin/employee/getAll";
+import getAllRecognitionBadge from "@/services/admin/recognitionBadge/getAll";
+import Loading from "../../common/loader/loader";
+import { parameterInitialData } from "@/constants/initialization";
+import { yesNoOptions, boolId, yesNoLabel } from "@/constants/leave";
+
+const FormProvider = memo(FormProviders);
+const NEW_DEFAULTS: EmployeeRecognitionModel = { isPublic: true };
+
+function RecognitionForm(props: { id: string; setId: (id: string) => void }) {
+  const { id, setId } = props;
+
+  const [formState, setFormState] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState<EmployeeRecognitionModel>({ ...NEW_DEFAULTS });
+  const formRef = React.createRef<HTMLFormElement>();
+  const queryClient = useQueryClient();
+
+  const { data: record, isLoading: pending } = useQuery({
+    queryKey: ["recognition", id],
+    queryFn: () => getRecognition(id),
+    enabled: typeof id != "undefined" && id != "",
+  });
+
+  const [empParam, setEmpParam] = useState({ ...parameterInitialData, take: 500 });
+  const { data: employees, isLoading: isEmpLoading } = useQuery({
+    queryKey: ["employees", empParam],
+    queryFn: () => getAllEmployee(empParam),
+  });
+  const [badgeParam, setBadgeParam] = useState({ ...parameterInitialData, take: 200 });
+  const { data: badges, isLoading: isBadgeLoading } = useQuery({
+    queryKey: ["recognitionBadges", badgeParam],
+    queryFn: () => getAllRecognitionBadge(badgeParam),
+  });
+
+  const submitHandler = async (e: any) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    setIsLoading(true);
+    const result = await saveRecognition(fd);
+    setFormState(result);
+    setIsLoading(false);
+  };
+
+  const changeHandler = useCallback((e: any) => {
+    const { name, value } = e.target;
+    setFormData((p) => ({ ...p, [name]: value }));
+  }, []);
+  const selectHandler = useCallback((name: string, r: any) => {
+    setFormData((p) => ({ ...p, [name]: r.id }));
+  }, []);
+
+  useEffect(() => {
+    if (typeof record != "undefined" && record != null) {
+      setFormData({ ...record, recognizedOn: (record.recognizedOn || "").slice(0, 10) });
+    } else if (!id) setFormData({ ...NEW_DEFAULTS });
+  }, [record, id]);
+
+  useEffect(() => {
+    if (formState.status == "success") {
+      setFormData({ ...NEW_DEFAULTS });
+      if (formRef.current) formRef?.current.reset();
+      queryClient.invalidateQueries({ queryKey: ["recognitions"] });
+      setId("");
+    }
+  }, [formState]);
+
+  return (
+    <div className="text-white">
+      {pending && <Loading />}
+      <FormProvider
+        ref={formRef}
+        form={{
+          columnsNo: 2,
+          submitHandler,
+          labelWidth: "w-[30%]",
+          isPending: isLoading,
+          SubmitButton: "top",
+          components: [
+            {
+              name: "employeeId", label: "Employee", placeholder: "Select employee", required: true, type: "dropDown",
+              value: formData.employeeId, displayValue: formData.employeeName,
+              error: formState?.zodErrors?.employeeId,
+              param: empParam, setParam: setEmpParam as any, isLoading: isEmpLoading,
+              onSelect: selectHandler,
+              data: employees?.data?.map((e) => ({ id: e.id, name: `${e.employeeNumber} — ${e.fullName ?? ""}` })) as never,
+            },
+            {
+              name: "recognitionBadgeId", label: "Badge", placeholder: "Select badge", required: true, type: "dropDown",
+              value: formData.recognitionBadgeId, displayValue: formData.badgeName,
+              error: formState?.zodErrors?.recognitionBadgeId,
+              param: badgeParam, setParam: setBadgeParam as any, isLoading: isBadgeLoading,
+              onSelect: selectHandler,
+              data: badges?.data?.map((b) => ({ id: b.id, name: b.name })) as never,
+            },
+            { name: "recognizedOn", label: "Date", required: true, type: "date", value: formData.recognizedOn, onChange: changeHandler, error: formState?.zodErrors?.recognizedOn },
+            {
+              name: "isPublic", label: "Public", type: "dropDown", onSelect: selectHandler,
+              value: boolId(formData.isPublic), displayValue: yesNoLabel(formData.isPublic),
+              data: yesNoOptions as never,
+            },
+            { name: "citation", label: "Citation", placeholder: "Why is this employee being recognized?", required: true, value: formData.citation, onChange: changeHandler, error: formState?.zodErrors?.citation, type: "textarea", colSpan: "full" },
+            { name: "id", value: formData.id, type: "hidden" },
+          ],
+        }}
+      />
+      <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+    </div>
+  );
+}
+export default RecognitionForm;

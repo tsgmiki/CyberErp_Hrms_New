@@ -6,10 +6,12 @@ import { StatusMessage } from "../../common/statusMessage/status";
 import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { X, UserRound, Shield } from "lucide-react";
+import { X, UserRound, Shield, GitBranch } from "lucide-react";
 import { saveWorkflowDefinition, getWorkflowDefinition } from "@/services/admin/workflow";
 import getAllUser from "@/services/admin/user/getAll";
 import getAllRole from "@/services/admin/role/getAll";
+import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
+import { EMPTY_APPROVER_ID } from "@/models/masters/HrWorkflowModel";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import {
@@ -61,6 +63,10 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
   const { data: roles } = useQuery({
     queryKey: ["roles", lookupParam],
     queryFn: () => getAllRole(lookupParam),
+  });
+  const { data: orgUnits } = useQuery({
+    queryKey: ["organizationUnits", lookupParam],
+    queryFn: () => getAllOrganizationUnit(lookupParam),
   });
 
   const submitHandler = async (e: any) => {
@@ -247,6 +253,34 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </select>
+                <select
+                  className={selectClass}
+                  value=""
+                  onChange={(e) => {
+                    // Dynamic approvers resolve per request from the org structure at decision time.
+                    if (e.target.value === "__immediate__") {
+                      addApprover(i, {
+                        approverType: "ImmediateManager",
+                        approverId: EMPTY_APPROVER_ID,
+                        displayName: "Immediate Manager",
+                      });
+                      return;
+                    }
+                    const u = (orgUnits?.data ?? []).find((x) => x.id === e.target.value);
+                    if (u?.id)
+                      addApprover(i, {
+                        approverType: "UnitManager",
+                        approverId: u.id,
+                        displayName: `Manager of ${u.name}`,
+                      });
+                  }}
+                >
+                  <option value="">{t("+ Add dynamic approver")}</option>
+                  <option value="__immediate__">{t("Immediate Manager (requester's chain)")}</option>
+                  {(orgUnits?.data ?? []).map((u) => (
+                    <option key={u.id} value={u.id}>{t("Manager of")} {u.name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Approver chips */}
@@ -260,10 +294,18 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
                       a.approverType === "Role"
                         ? "border-info/40 bg-info/10 text-info"
-                        : "border-primary/40 bg-primary/10 text-primary"
+                        : a.approverType === "ImmediateManager" || a.approverType === "UnitManager"
+                          ? "border-warning/40 bg-warning/10 text-warning"
+                          : "border-primary/40 bg-primary/10 text-primary"
                     }`}
                   >
-                    {a.approverType === "Role" ? <Shield size={11} /> : <UserRound size={11} />}
+                    {a.approverType === "Role" ? (
+                      <Shield size={11} />
+                    ) : a.approverType === "ImmediateManager" || a.approverType === "UnitManager" ? (
+                      <GitBranch size={11} />
+                    ) : (
+                      <UserRound size={11} />
+                    )}
                     {a.displayName}
                     <button
                       type="button"

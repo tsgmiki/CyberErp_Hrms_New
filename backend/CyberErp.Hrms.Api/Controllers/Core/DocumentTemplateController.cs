@@ -14,6 +14,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISeedDefaultDocumentTemplates seedHandler,
         IGetDocumentMergeFields mergeFieldsHandler,
         IGenerateEmployeeDocument generateHandler,
+        IGenerateAnnualLeaveDocument generateAnnualLeaveHandler,
         IUploadCompanyLogo uploadLogoHandler,
         IGetCompanyLogo getLogoHandler,
         IGetCompanyLogoInfo getLogoInfoHandler,
@@ -77,6 +78,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet("{id:guid}/generate/{employeeId:guid}")]
         public Task<GeneratedDocumentDto> Generate(Guid id, Guid employeeId)
             => generateHandler.GenerateAsync(id, employeeId);
+
+        /// <summary>Render this template's merged, print-ready HTML for one annual-leave request (header + detail).</summary>
+        [HttpGet("{id:guid}/generate-annual-leave/{annualLeaveId:guid}")]
+        public Task<GeneratedDocumentDto> GenerateAnnualLeave(Guid id, Guid annualLeaveId)
+            => generateAnnualLeaveHandler.GenerateAsync(id, annualLeaveId);
 
         [HttpPost]
         public Task<Guid> Create([FromBody] CreateDocumentTemplateDto dto)

@@ -89,6 +89,36 @@ export const documentTemplateSamples: Record<string, DocumentTemplateSample> = {
     footer: letterFooter,
   },
 
+  AnnualLeaveRequest: {
+    header: letterHeader,
+    body: `
+<div style="font-family: Georgia, serif; color:#111; line-height:1.6;">
+  <p style="text-align:right;">{{Today}}</p>
+  <h2 style="text-align:center; text-transform:uppercase; letter-spacing:1px;">Annual Leave Request</h2>
+  <table style="width:100%; font-family:Arial, sans-serif; font-size:13px; margin-bottom:12px;">
+    <tr>
+      <td style="padding:2px 0;"><strong>Employee:</strong> {{EmployeeName}} ({{EmployeeNumber}})</td>
+      <td style="padding:2px 0; text-align:right;"><strong>Request Date:</strong> {{RequestDate}}</td>
+    </tr>
+    <tr>
+      <td style="padding:2px 0;"><strong>Ledger (Fiscal Year):</strong> {{Ledger}}</td>
+      <td style="padding:2px 0; text-align:right;"><strong>Available Balance:</strong> {{LedgerAvailable}}</td>
+    </tr>
+  </table>
+  <div style="margin:12px 0;">{{LeaveDetailsTable}}</div>
+  <p><strong>Total Leave Days Requested:</strong> {{TotalLeaveDays}}</p>
+  <p><strong>Remark:</strong> {{Remark}}</p>
+  <table style="width:100%; margin-top:48px; font-family:Arial, sans-serif;">
+    <tr>
+      <td style="text-align:left;">_____________________________<br/>Employee Signature</td>
+      <td style="text-align:center;">_____________________________<br/>Supervisor</td>
+      <td style="text-align:right;">_____________________________<br/>Human Resources</td>
+    </tr>
+  </table>
+</div>`,
+    footer: letterFooter,
+  },
+
   IdCard: {
     body: `
 <div style="width:320px; border:2px solid #1e3a5f; border-radius:10px; overflow:hidden; font-family: Arial, sans-serif;">

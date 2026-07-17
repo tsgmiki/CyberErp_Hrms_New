@@ -3,6 +3,7 @@ using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NodaTime;
 using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationException;
 
 namespace CyberErp.Hrms.App.Features.Core.Leaves
@@ -16,7 +17,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface ILeaveAccrualService
     {
         /// <summary>Pure entitlement calculation — exposed for previews and tests.</summary>
-        decimal CalculateEntitlement(DateTime? hireDate, bool isManagerial, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd);
+        decimal CalculateEntitlement(EmployeeAccrualInput input, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd);
         /// <summary>Generates opening entitlements for every active employee under a policy. Idempotent (skips employees already generated).</summary>
         Task<int> GenerateEntitlementsAsync(Guid settingId);
         /// <summary>Rolls remaining balances of a fiscal year into the next one (carry-forward + expiry), then closes the source year.</summary>
@@ -25,38 +26,89 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
     public record RolloverResult(int BalancesRolled, decimal TotalCarried, decimal TotalExpired);
 
+    /// <summary>Per-employee facts the accrual engine needs, resolved once by the caller.</summary>
+    /// <param name="ExternalExperienceMonths">Total qualifying external (government) experience in months.</param>
+    /// <param name="FiscalYearsOfService">Completed fiscal years since hire (for the fiscal-year rule).</param>
+    public record EmployeeAccrualInput(
+        DateTime? HireDate, bool IsManagerial, int ExternalExperienceMonths, int FiscalYearsOfService);
+
     public class LeaveAccrualService(
         IRepository<AnnualLeaveSetting> settings,
         IRepository<FiscalYear> fiscalYears,
         IRepository<Employee> employees,
+        IRepository<EmployeeExperience> experiences,
         IRepository<LeaveBalance> balances,
         IRepository<LeaveBalanceTransaction> transactions,
         IRepository<LeaveType> leaveTypes,
         ILogger<LeaveAccrualService> logger) : ILeaveAccrualService
     {
-        public decimal CalculateEntitlement(DateTime? hireDate, bool isManagerial, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd)
+        public decimal CalculateEntitlement(EmployeeAccrualInput input, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd)
         {
-            if (!hireDate.HasValue) return 0m; // no hire date on record → nothing accrues
-            var hire = hireDate.Value.Date;
+            if (!input.HireDate.HasValue) return 0m; // no hire date on record → nothing accrues
+            var hire = input.HireDate.Value.Date;
             if (hire > fyEnd.Date) return 0m;  // hired after the year ends
 
-            var serviceMonthsAtStart = MonthsBetween(hire, fyStart.Date);
+            // Service is measured to the start of the fiscal year being calculated.
+            var asOf = fyStart.Date;
+            var actualServiceMonths = MonthsBetween(hire, asOf);
 
-            if (serviceMonthsAtStart < 12)
+            // Below the minimum-service gate: prorate the new-employee basis by months served this FY.
+            if (actualServiceMonths < setting.MinExperienceMonths)
             {
-                // Under a year of service: prorate the new-employee basis by months served in this FY.
                 var from = hire > fyStart.Date ? hire : fyStart.Date;
                 var monthsInYear = Math.Min(12, MonthsBetween(from, fyEnd.Date) + 1);
                 if (monthsInYear <= 0) return 0m;
                 var basis = setting.NewEmployeeLeaveDays > 0 ? setting.NewEmployeeLeaveDays : setting.BaseLeaveDays;
-                // Half-day precision, rounded down (conservative).
-                return Math.Floor(basis * monthsInYear / 12m * 2) / 2;
+                return Math.Floor(basis * monthsInYear / 12m * 2) / 2; // half-day precision, rounded down
             }
 
-            var serviceYears = serviceMonthsAtStart / 12;
-            var baseDays = isManagerial ? setting.ManagerialLeaveDays : setting.BaseLeaveDays;
-            var extra = ((serviceYears - 1) / setting.IncrementIntervalYears) * setting.IncrementDays;
-            return Math.Min(baseDays + extra, setting.MaxLeaveDays);
+            var baseDays = input.IsManagerial ? setting.ManagerialLeaveDays : setting.BaseLeaveDays;
+            decimal days;
+
+            switch (setting.RuleType)
+            {
+                case LeaveAccrualRuleType.ServiceMilestone:
+                {
+                    var milestone = (setting.MilestoneDate ?? asOf).Date;
+                    if (hire <= milestone)
+                    {
+                        // Rule A — external experience may extend the pre-milestone service (toggle).
+                        var extMonths = setting.ConsiderExternalExperience ? input.ExternalExperienceMonths : 0;
+                        var effStart = hire.AddMonths(-extMonths);
+                        var preYears = CompletedYears(effStart, milestone);
+                        var postYears = CompletedYears(milestone, asOf);
+                        var preInterval = setting.PreMilestoneIntervalYears < 1 ? 1 : setting.PreMilestoneIntervalYears;
+                        days = setting.PreMilestoneBaseLeaveDays
+                             + (preYears / preInterval) * setting.PreMilestoneIncrementDays
+                             + (postYears / setting.IncrementIntervalYears) * setting.IncrementDays;
+                    }
+                    else
+                    {
+                        // Rule B — post-milestone hires never count external experience.
+                        var years = CompletedYears(hire, asOf);
+                        days = baseDays + (years / setting.IncrementIntervalYears) * setting.IncrementDays;
+                    }
+                    break;
+                }
+                case LeaveAccrualRuleType.FiscalYears:
+                {
+                    // Rule C — increment per N completed fiscal years (external optional via the toggle).
+                    var extYears = setting.ConsiderExternalExperience ? input.ExternalExperienceMonths / 12 : 0;
+                    var fiscalYears = input.FiscalYearsOfService + extYears;
+                    days = baseDays + (fiscalYears / setting.IncrementIntervalYears) * setting.IncrementDays;
+                    break;
+                }
+                default: // ServiceYears — single-phase service-based (external optional via the toggle).
+                {
+                    var extMonths = setting.ConsiderExternalExperience ? input.ExternalExperienceMonths : 0;
+                    var years = CompletedYears(hire.AddMonths(-extMonths), asOf);
+                    days = baseDays + (years / setting.IncrementIntervalYears) * setting.IncrementDays;
+                    break;
+                }
+            }
+
+            // 0 = uncapped.
+            return setting.MaxLeaveDays > 0 ? Math.Min(days, setting.MaxLeaveDays) : days;
         }
 
         public async Task<int> GenerateEntitlementsAsync(Guid settingId)
@@ -84,15 +136,23 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
             var staff = await employees.GetAll()
                 .Where(e => e.EmploymentStatus == EmploymentStatus.Active)
-                .Select(e => new { e.Id, e.HireDate, e.IsManagerial })
+                .Select(e => new { e.Id, e.PersonId, e.HireDate, e.IsManagerial })
                 .ToListAsync();
+
+            // Per-employee facts the flexible rules need, resolved in bulk.
+            var externalMonthsByPerson = await LoadExternalExperienceMonthsAsync(staff.Select(s => s.PersonId));
+            var fyStartDates = await fiscalYears.GetAll().Select(f => f.StartDate).ToListAsync();
 
             var created = 0;
             foreach (var emp in staff)
             {
                 if (existingSet.Contains(emp.Id)) continue;
 
-                var entitled = CalculateEntitlement(emp.HireDate, emp.IsManagerial, setting, fyStart, fyEnd);
+                var input = new EmployeeAccrualInput(
+                    emp.HireDate, emp.IsManagerial,
+                    externalMonthsByPerson.GetValueOrDefault(emp.PersonId),
+                    CountFiscalYearsOfService(fyStartDates, emp.HireDate, fyStart));
+                var entitled = CalculateEntitlement(input, setting, fyStart, fyEnd);
                 var balance = LeaveBalance.Create(emp.Id, setting.LeaveTypeId, setting.FiscalYearId, entitled);
                 await balances.AddAsync(balance);
                 if (entitled > 0)
@@ -194,6 +254,37 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var months = (toDate.Year - fromDate.Year) * 12 + toDate.Month - fromDate.Month;
             if (toDate.Day < fromDate.Day) months--;
             return Math.Max(0, months);
+        }
+
+        /// <summary>Completed whole years between two dates.</summary>
+        private static int CompletedYears(DateTime fromDate, DateTime toDate) => MonthsBetween(fromDate, toDate) / 12;
+
+        /// <summary>Total qualifying external (government) experience months per person, resolved in bulk.</summary>
+        private async Task<Dictionary<Guid, int>> LoadExternalExperienceMonthsAsync(IEnumerable<Guid> personIds)
+        {
+            var ids = personIds.Where(id => id != Guid.Empty).Distinct().ToList();
+            if (ids.Count == 0) return new Dictionary<Guid, int>();
+            var rows = await experiences.GetAll()
+                .Where(x => ids.Contains(x.PersonId) && x.IsExternal && x.IsGovernmental
+                    && x.StartDate != null && x.EndDate != null)
+                .Select(x => new { x.PersonId, x.StartDate, x.EndDate })
+                .ToListAsync();
+            return rows
+                .GroupBy(r => r.PersonId)
+                .ToDictionary(g => g.Key, g => g.Sum(r => MonthsBetween(r.StartDate!.Value.Date, r.EndDate!.Value.Date)));
+        }
+
+        /// <summary>Completed fiscal years of service = fiscal-year starts falling after hire, up to the current FY start.</summary>
+        private static int CountFiscalYearsOfService(List<Instant> fiscalYearStarts, DateTime? hireDate, DateTime currentFyStart)
+        {
+            if (!hireDate.HasValue) return 0;
+            var hire = hireDate.Value.Date;
+            var current = currentFyStart.Date;
+            return fiscalYearStarts.Count(s =>
+            {
+                var d = s.ToDateTimeUtc().Date;
+                return d > hire && d <= current;
+            });
         }
     }
 }

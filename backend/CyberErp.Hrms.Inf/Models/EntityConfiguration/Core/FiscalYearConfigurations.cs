@@ -23,9 +23,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AnnualLeaveSetting> builder)
         {
-            builder.ToTable("hrms_AnnualLeaveSetting", "Core");
+            builder.ToTable("hrmsAnnualLeaveSetting", "dbo");
 
             builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.RuleType).HasConversion<string>().HasMaxLength(20).IsRequired();
 
             builder.HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
             builder.HasOne(x => x.LeaveType).WithMany().HasForeignKey(x => x.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);

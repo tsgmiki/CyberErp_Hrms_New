@@ -39,7 +39,7 @@ Monorepo for an HRMS (multi-tenant SaaS). Two independently-built halves:
 
 **Wiring is manual.** New handlers register in `App/DependencyInjection.cs`; new repositories register in `Inf/DependencyInjection.cs`. There is no assembly-scanning auto-registration for these.
 
-**Multi-tenancy (Finbuckle.MultiTenant).** `HrmsDbContext : MultiTenantDbContext` — tenant isolation is enforced by Finbuckle (`[MultiTenant]` entities), resolved per-request via `HybridTenantStrategy` + `DatabaseTenantStore`. Every tenant-scoped entity carries `TenantId`; do not bypass the context to query across tenants. Default DB schema is `Core`.
+**Multi-tenancy (Finbuckle.MultiTenant).** `HrmsDbContext : MultiTenantDbContext` — tenant isolation is enforced by Finbuckle (`[MultiTenant]` entities), resolved per-request via `HybridTenantStrategy` + `DatabaseTenantStore`. Every tenant-scoped entity carries `TenantId`; do not bypass the context to query across tenants. **Schema/table naming (after the 2026-07 rename): HRMS tables live in the `dbo` schema with no underscore — `dbo.hrmsEmployee`, `dbo.hrmsPosition`, etc. (configs use `ToTable("hrmsX", "dbo")`).** Non-HRMS tables (`Core.CorePerson`, `Core.coreSalaryScale`, `Core.lupStep`, `Core.Tenant`, `Core.User`, `Core.LookUpCategory`, …) remain in the `Core` schema, which is still the DbContext default (`HasDefaultSchema("Core")`). The report/lookup **stored procedures kept their `Core.hrms_*` names**; only tables were renamed.
 
 **Auth.** Cookie/session based. `BaseController` applies `[Authorize(AuthenticationSchemes = "Cookies")]` and routes as `api/v{version}/[controller]`. JWT config also exists (`JwtConfiguration`) but controllers gate on the cookie scheme.
 

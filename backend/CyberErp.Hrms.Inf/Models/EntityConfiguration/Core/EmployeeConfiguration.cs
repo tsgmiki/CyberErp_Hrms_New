@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Employee> builder)
         {
-            builder.ToTable("hrms_Employee", "Core");
+            builder.ToTable("hrmsEmployee", "dbo");
 
             builder.HasKey(e => e.Id);
 
@@ -61,6 +61,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(e => e.DateOfBirth);
             // Employee numbers are unique organization-wide (per tenant), across all branches.
             builder.HasIndex(e => new { e.TenantId, e.EmployeeNumber }).IsUnique();
+            // Employee grid filtered by org unit (via the position) + sorted/paged by EmployeeNumber:
+            // this composite lets SQL seek employees per position ALREADY ordered by EmployeeNumber,
+            // avoiding a full sort of the matched set across the projection's joins. (The org-unit filter
+            // is served by the existing Position.OrganizationUnitId index.)
+            builder.HasIndex(e => new { e.TenantId, e.PositionId, e.EmployeeNumber });
         }
     }
 }

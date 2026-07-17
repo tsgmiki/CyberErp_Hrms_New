@@ -94,7 +94,7 @@ export const workflowEntityTypeOptions = [
   { id: "EmployeeMovement.Demotion", name: "Demotion" },
   { id: "DisciplinaryMeasure", name: "Disciplinary Measure" },
   { id: "EmployeeTermination", name: "Termination" },
-  { id: "LeaveRequest", name: "Leave Request" },
+  { id: "AnnualLeave", name: "Annual Leave" },
   { id: "WorkforcePlan", name: "Workforce Plan" },
   { id: "HiringRequest", name: "Hiring Need" },
   { id: "JobRequisition", name: "Job Requisition" },
@@ -165,6 +165,7 @@ export const documentTypeOptions = [
   { id: "ExperienceLetter", name: "Experience Letter" },
   { id: "IdCard", name: "ID Card" },
   { id: "ClearanceCertificate", name: "Clearance Certificate" },
+  { id: "AnnualLeaveRequest", name: "Annual Leave Request" },
   { id: "Other", name: "Other" },
 ];
 

@@ -3,6 +3,7 @@ using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.Employees.DTOs;
+using CyberErp.Hrms.App.Features.Core.WorkforcePlans;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -323,7 +324,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     // ---- Get all (paged) --------------------------------------------------------
 
-    public class GetAllEmployees(IRepository<Employee> repository) : IGetAllEmployees
+    public class GetAllEmployees(
+        IRepository<Employee> repository,
+        IRepository<OrganizationUnit> units) : IGetAllEmployees
     {
         public async Task<PaginatedResponse<EmployeeDto>> GetAsync(GetAllRequest request)
         {
@@ -332,10 +335,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             var query = repository.GetAll();
 
-            // parentId scopes to an organization unit, derived through the assigned position
-            // (the org unit is not stored on the employee).
+            // parentId scopes to an organization unit AND its descendants (subtree), derived through the
+            // assigned position (the org unit is not stored on the employee). Selecting a parent unit
+            // therefore shows everyone beneath it, not only those assigned directly to that node.
             if (request.ParentId.HasValue)
-                query = query.Where(x => x.Position != null && x.Position.OrganizationUnitId == request.ParentId.Value);
+            {
+                var unitIds = await EstablishmentShared.ResolveSubtreeAsync(units, request.ParentId.Value);
+                if (unitIds is { Count: > 0 })
+                    query = query.Where(x => x.Position != null && unitIds.Contains(x.Position.OrganizationUnitId));
+            }
 
             if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<EmploymentStatus>(request.Status, out var status))
                 query = query.Where(x => x.EmploymentStatus == status);

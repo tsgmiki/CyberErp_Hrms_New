@@ -93,7 +93,13 @@ public static class ServiceCollectionExtensions
         var connectionString = configuration.GetConnectionString("DefaultConnection");
         services.AddDbContext<HrmsDbContext>((sp, options) =>
         {
-            options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CyberErp.Hrms.Inf"));
+            options.UseSqlServer(connectionString, b =>
+            {
+                b.MigrationsAssembly("CyberErp.Hrms.Inf");
+                // Safety net so a cold cache / stats refresh can't hard-fail with the 30s ADO default;
+                // real speed comes from the indexes, not this ceiling.
+                b.CommandTimeout(60);
+            });
             // Audit-trail interceptor (resolved per-scope so it sees the current user/tenant).
             options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
         });

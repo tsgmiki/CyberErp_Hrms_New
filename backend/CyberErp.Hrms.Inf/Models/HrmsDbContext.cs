@@ -35,7 +35,11 @@ public class HrmsDbContext : MultiTenantDbContext
                     var conn = defaultConn.GetString();
                     if (!string.IsNullOrEmpty(conn))
                     {
-                        optionsBuilder.UseSqlServer(conn, b => b.MigrationsAssembly("CyberErp.Hrms.Inf"));
+                        optionsBuilder.UseSqlServer(conn, b =>
+                        {
+                            b.MigrationsAssembly("CyberErp.Hrms.Inf");
+                            b.CommandTimeout(60);
+                        });
                     }
                 }
             }
@@ -59,10 +63,47 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<LeaveType> LeaveType { get; set; }
     public DbSet<Holiday> Holiday { get; set; }
     public DbSet<LeaveRequest> LeaveRequest { get; set; }
+    public DbSet<LeaveRequestLine> LeaveRequestLine { get; set; }
+    public DbSet<WorkWeekConfiguration> WorkWeekConfiguration { get; set; }
+    public DbSet<Report> Report { get; set; }
+    public DbSet<ReportField> ReportField { get; set; }
+    public DbSet<ReportFieldOutput> ReportFieldOutput { get; set; }
+    public DbSet<SavedReportFilter> SavedReportFilter { get; set; }
+    public DbSet<ReportRun> ReportRun { get; set; }
+    public DbSet<ReportSchedule> ReportSchedule { get; set; }
+    public DbSet<ReportScheduleRecipient> ReportScheduleRecipient { get; set; }
+    public DbSet<ReportScheduleFieldValue> ReportScheduleFieldValue { get; set; }
+    public DbSet<ReportScheduleFieldOutput> ReportScheduleFieldOutput { get; set; }
+    public DbSet<ReportRunRecipient> ReportRunRecipient { get; set; }
+    public DbSet<ReportRestriction> ReportRestriction { get; set; }
+    public DbSet<AnnualLeaveHeader> AnnualLeaveHeader { get; set; }
+    public DbSet<AnnualLeaveDetail> AnnualLeaveDetail { get; set; }
     public DbSet<LeaveBalance> LeaveBalance { get; set; }
     public DbSet<LeaveBalanceTransaction> LeaveBalanceTransaction { get; set; }
     public DbSet<JobCategory> JobCategory { get; set; }
     public DbSet<WorkLocation> WorkLocation { get; set; }
+    // Generic, centralized lookup system (global reference data — see LookupCategory).
+    public DbSet<LookupCategory> LookupCategory { get; set; }
+    public DbSet<LookupCategoryList> LookupCategoryList { get; set; }
+
+    // Career Development §3.7.A — Succession Planning (HC148–HC160).
+    public DbSet<CriticalPosition> CriticalPosition { get; set; }
+    public DbSet<TalentReview> TalentReview { get; set; }
+    public DbSet<TalentAssessment> TalentAssessment { get; set; }
+    public DbSet<TalentRating> TalentRating { get; set; }
+    public DbSet<SuccessionPlan> SuccessionPlan { get; set; }
+    public DbSet<SuccessionCandidate> SuccessionCandidate { get; set; }
+    public DbSet<SuccessionDevelopmentAction> SuccessionDevelopmentAction { get; set; }
+    public DbSet<KnowledgeTransfer> KnowledgeTransfer { get; set; }
+
+    // Career Development §3.7.B — Career Path (HC161–HC169).
+    public DbSet<CareerPath> CareerPath { get; set; }
+    public DbSet<CareerPathStep> CareerPathStep { get; set; }
+    public DbSet<CareerPathStepCompetency> CareerPathStepCompetency { get; set; }
+    public DbSet<EmployeeCareerPath> EmployeeCareerPath { get; set; }
+    public DbSet<EmployeeCareerPathStepProgress> EmployeeCareerPathStepProgress { get; set; }
+    public DbSet<Mentorship> Mentorship { get; set; }
+    public DbSet<CareerPathChangeRequest> CareerPathChangeRequest { get; set; }
 
     // Multi-Branch Organizational Structure
     public DbSet<Branch> Branch { get; set; }
@@ -86,6 +127,32 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<DynamicForm> DynamicForm { get; set; }
     public DbSet<DynamicFormField> DynamicFormField { get; set; }
     public DbSet<DynamicFormRecord> DynamicFormRecord { get; set; }
+    // Performance Management (HC118–HC147) — Phase A config
+    public DbSet<RatingScale> RatingScale { get; set; }
+    public DbSet<RatingScaleLevel> RatingScaleLevel { get; set; }
+    public DbSet<CompetencyCategory> CompetencyCategory { get; set; }
+    public DbSet<Competency> Competency { get; set; }
+    public DbSet<PositionCompetency> PositionCompetency { get; set; }
+    public DbSet<ReviewCycle> ReviewCycle { get; set; }
+    public DbSet<AppraisalTemplate> AppraisalTemplate { get; set; }
+    public DbSet<OrganizationalObjective> OrganizationalObjective { get; set; }
+    public DbSet<EmployeeGoal> EmployeeGoal { get; set; }
+    public DbSet<GoalActionItem> GoalActionItem { get; set; }
+    public DbSet<Appraisal> Appraisal { get; set; }
+    public DbSet<AppraisalGoal> AppraisalGoal { get; set; }
+    public DbSet<AppraisalCompetency> AppraisalCompetency { get; set; }
+    public DbSet<AppraisalPeerReview> AppraisalPeerReview { get; set; }
+    public DbSet<CalibrationSession> CalibrationSession { get; set; }
+    public DbSet<CalibrationItem> CalibrationItem { get; set; }
+    public DbSet<PerformanceHistory> PerformanceHistory { get; set; }
+    public DbSet<IndividualDevelopmentPlan> IndividualDevelopmentPlan { get; set; }
+    public DbSet<DevelopmentAction> DevelopmentAction { get; set; }
+    public DbSet<PerformanceImprovementPlan> PerformanceImprovementPlan { get; set; }
+    public DbSet<PipObjective> PipObjective { get; set; }
+    public DbSet<Achievement> Achievement { get; set; }
+    public DbSet<RecognitionBadge> RecognitionBadge { get; set; }
+    public DbSet<EmployeeRecognition> EmployeeRecognition { get; set; }
+    public DbSet<AppraisalAppeal> AppraisalAppeal { get; set; }
     public DbSet<WorkforcePlan> WorkforcePlan { get; set; }
     public DbSet<WorkforcePlanLine> WorkforcePlanLine { get; set; }
     public DbSet<HiringRequest> HiringRequest { get; set; }
@@ -193,9 +260,43 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new LeaveTypeConfiguration());
         modelBuilder.ApplyConfiguration(new HolidayConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new LeaveRequestLineConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkWeekConfigurationConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportFieldConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportFieldOutputConfiguration());
+        modelBuilder.ApplyConfiguration(new SavedReportFilterConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportRunConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportRunRecipientConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportScheduleConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportScheduleRecipientConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportScheduleFieldValueConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportScheduleFieldOutputConfiguration());
+        modelBuilder.ApplyConfiguration(new ReportRestrictionConfiguration());
+        modelBuilder.ApplyConfiguration(new AnnualLeaveHeaderConfiguration());
+        modelBuilder.ApplyConfiguration(new AnnualLeaveDetailConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveBalanceConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveBalanceTransactionConfiguration());
         modelBuilder.ApplyConfiguration(new JobCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new LookupCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new LookupCategoryListConfiguration());
+        // Career Development §3.7.A — Succession Planning.
+        modelBuilder.ApplyConfiguration(new CriticalPositionConfiguration());
+        modelBuilder.ApplyConfiguration(new TalentReviewConfiguration());
+        modelBuilder.ApplyConfiguration(new TalentAssessmentConfiguration());
+        modelBuilder.ApplyConfiguration(new TalentRatingConfiguration());
+        modelBuilder.ApplyConfiguration(new SuccessionPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new SuccessionCandidateConfiguration());
+        modelBuilder.ApplyConfiguration(new SuccessionDevelopmentActionConfiguration());
+        modelBuilder.ApplyConfiguration(new KnowledgeTransferConfiguration());
+        // Career Development §3.7.B — Career Path.
+        modelBuilder.ApplyConfiguration(new CareerPathConfiguration());
+        modelBuilder.ApplyConfiguration(new CareerPathStepConfiguration());
+        modelBuilder.ApplyConfiguration(new CareerPathStepCompetencyConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeCareerPathConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeCareerPathStepProgressConfiguration());
+        modelBuilder.ApplyConfiguration(new MentorshipConfiguration());
+        modelBuilder.ApplyConfiguration(new CareerPathChangeRequestConfiguration());
         modelBuilder.ApplyConfiguration(new WorkLocationConfiguration());
         modelBuilder.ApplyConfiguration(new OrganizationUnitConfiguration());
         modelBuilder.ApplyConfiguration(new PositionClassConfiguration());
@@ -223,6 +324,31 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new DynamicFormConfiguration());
         modelBuilder.ApplyConfiguration(new DynamicFormFieldConfiguration());
         modelBuilder.ApplyConfiguration(new DynamicFormRecordConfiguration());
+        modelBuilder.ApplyConfiguration(new RatingScaleConfiguration());
+        modelBuilder.ApplyConfiguration(new RatingScaleLevelConfiguration());
+        modelBuilder.ApplyConfiguration(new CompetencyCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new CompetencyConfiguration());
+        modelBuilder.ApplyConfiguration(new PositionCompetencyConfiguration());
+        modelBuilder.ApplyConfiguration(new ReviewCycleConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new OrganizationalObjectiveConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeGoalConfiguration());
+        modelBuilder.ApplyConfiguration(new GoalActionItemConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalGoalConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalCompetencyConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalPeerReviewConfiguration());
+        modelBuilder.ApplyConfiguration(new CalibrationSessionConfiguration());
+        modelBuilder.ApplyConfiguration(new CalibrationItemConfiguration());
+        modelBuilder.ApplyConfiguration(new PerformanceHistoryConfiguration());
+        modelBuilder.ApplyConfiguration(new IndividualDevelopmentPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new DevelopmentActionConfiguration());
+        modelBuilder.ApplyConfiguration(new PerformanceImprovementPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new PipObjectiveConfiguration());
+        modelBuilder.ApplyConfiguration(new AchievementConfiguration());
+        modelBuilder.ApplyConfiguration(new RecognitionBadgeConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeRecognitionConfiguration());
+        modelBuilder.ApplyConfiguration(new AppraisalAppealConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanLineConfiguration());
         modelBuilder.ApplyConfiguration(new HiringRequestConfiguration());

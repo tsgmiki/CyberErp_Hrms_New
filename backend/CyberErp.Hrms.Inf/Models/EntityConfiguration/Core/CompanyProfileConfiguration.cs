@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CompanyProfile> builder)
         {
-            builder.ToTable("hrms_CompanyProfile", "Core");
+            builder.ToTable("hrmsCompanyProfile", "dbo");
 
             builder.HasKey(p => p.Id);
 
@@ -28,7 +28,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<OfferLetterTemplate> builder)
         {
-            builder.ToTable("hrms_OfferLetterTemplate", "Core");
+            builder.ToTable("hrmsOfferLetterTemplate", "dbo");
 
             builder.HasKey(t => t.Id);
 

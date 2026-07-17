@@ -2,6 +2,19 @@ using CyberErp.Hrms.Dom.Entities;
 
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
+/// <summary>Which accrual algorithm a leave policy applies (client-configurable).</summary>
+public enum LeaveAccrualRuleType
+{
+    /// <summary>Two-phase statutory policy split at <see cref="AnnualLeaveSetting.MilestoneDate"/>: pre-milestone
+    /// hires accrue by the pre-milestone rule (e.g. 14 + 1/yr up to the milestone, then 1 per 2 yrs); post-milestone
+    /// hires accrue by the base rule (e.g. 16 + 1 per 2 yrs, external experience ignored).</summary>
+    ServiceMilestone = 0,
+    /// <summary>Single-phase service-based accrual: base + increment per N service years.</summary>
+    ServiceYears = 1,
+    /// <summary>Fiscal-year-based accrual: base + increment per N completed fiscal years.</summary>
+    FiscalYears = 2
+}
+
 /// <summary>
 /// Annual-leave accrual policy for one fiscal year (successor of the legacy
 /// <c>hrmsAnnualLeaveSetting</c>). Governs a single leave type and drives entitlement generation:
@@ -36,6 +49,21 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>Years unused leave survives before expiring on rollover (legacy NoOfExpiryYears; law: 2).</summary>
     public int ExpiryYears { get; private set; } = 2;
 
+    // ---- Flexible accrual configuration ------------------------------------
+    /// <summary>Which accrual algorithm this policy applies.</summary>
+    public LeaveAccrualRuleType RuleType { get; private set; } = LeaveAccrualRuleType.ServiceYears;
+    /// <summary>Count qualifying external (government) experience toward service years. Never applied to
+    /// post-milestone hires under <see cref="LeaveAccrualRuleType.ServiceMilestone"/>.</summary>
+    public bool ConsiderExternalExperience { get; private set; }
+    /// <summary>Cutover date for <see cref="LeaveAccrualRuleType.ServiceMilestone"/> (e.g. 2011-07-07).</summary>
+    public DateTime? MilestoneDate { get; private set; }
+    /// <summary>Base entitlement for pre-milestone hires (e.g. 14).</summary>
+    public int PreMilestoneBaseLeaveDays { get; private set; }
+    /// <summary>Increment days for the pre-milestone phase (e.g. 1).</summary>
+    public int PreMilestoneIncrementDays { get; private set; }
+    /// <summary>Service-year interval for the pre-milestone increment (e.g. 1 = one day per year).</summary>
+    public int PreMilestoneIntervalYears { get; private set; } = 1;
+
     public bool IsActive { get; private set; } = true;
 
     private FiscalYear? _fiscalYear;
@@ -48,10 +76,13 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     public static AnnualLeaveSetting Create(
         Guid fiscalYearId, Guid leaveTypeId, int minExperienceMonths, int newEmployeeLeaveDays,
         int baseLeaveDays, int managerialLeaveDays, int incrementDays, int incrementIntervalYears,
-        int maxLeaveDays, int expiryYears, bool isActive = true)
+        int maxLeaveDays, int expiryYears, LeaveAccrualRuleType ruleType, bool considerExternalExperience,
+        DateTime? milestoneDate, int preMilestoneBaseLeaveDays, int preMilestoneIncrementDays,
+        int preMilestoneIntervalYears, bool isActive = true)
     {
         Validate(fiscalYearId, leaveTypeId, minExperienceMonths, newEmployeeLeaveDays, baseLeaveDays,
-            managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears);
+            managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears,
+            ruleType, milestoneDate, preMilestoneIntervalYears);
         return new AnnualLeaveSetting
         {
             FiscalYearId = fiscalYearId,
@@ -64,6 +95,12 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
             IncrementIntervalYears = incrementIntervalYears,
             MaxLeaveDays = maxLeaveDays,
             ExpiryYears = expiryYears,
+            RuleType = ruleType,
+            ConsiderExternalExperience = considerExternalExperience,
+            MilestoneDate = milestoneDate,
+            PreMilestoneBaseLeaveDays = preMilestoneBaseLeaveDays,
+            PreMilestoneIncrementDays = preMilestoneIncrementDays,
+            PreMilestoneIntervalYears = preMilestoneIntervalYears < 1 ? 1 : preMilestoneIntervalYears,
             IsActive = isActive
         };
     }
@@ -71,10 +108,13 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     public void Update(
         Guid fiscalYearId, Guid leaveTypeId, int minExperienceMonths, int newEmployeeLeaveDays,
         int baseLeaveDays, int managerialLeaveDays, int incrementDays, int incrementIntervalYears,
-        int maxLeaveDays, int expiryYears, bool isActive)
+        int maxLeaveDays, int expiryYears, LeaveAccrualRuleType ruleType, bool considerExternalExperience,
+        DateTime? milestoneDate, int preMilestoneBaseLeaveDays, int preMilestoneIncrementDays,
+        int preMilestoneIntervalYears, bool isActive)
     {
         Validate(fiscalYearId, leaveTypeId, minExperienceMonths, newEmployeeLeaveDays, baseLeaveDays,
-            managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears);
+            managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears,
+            ruleType, milestoneDate, preMilestoneIntervalYears);
         FiscalYearId = fiscalYearId;
         LeaveTypeId = leaveTypeId;
         MinExperienceMonths = minExperienceMonths;
@@ -85,13 +125,20 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
         IncrementIntervalYears = incrementIntervalYears;
         MaxLeaveDays = maxLeaveDays;
         ExpiryYears = expiryYears;
+        RuleType = ruleType;
+        ConsiderExternalExperience = considerExternalExperience;
+        MilestoneDate = milestoneDate;
+        PreMilestoneBaseLeaveDays = preMilestoneBaseLeaveDays;
+        PreMilestoneIncrementDays = preMilestoneIncrementDays;
+        PreMilestoneIntervalYears = preMilestoneIntervalYears < 1 ? 1 : preMilestoneIntervalYears;
         IsActive = isActive;
         base.Update();
     }
 
     private static void Validate(Guid fiscalYearId, Guid leaveTypeId, int minExperienceMonths,
         int newEmployeeLeaveDays, int baseLeaveDays, int managerialLeaveDays, int incrementDays,
-        int incrementIntervalYears, int maxLeaveDays, int expiryYears)
+        int incrementIntervalYears, int maxLeaveDays, int expiryYears,
+        LeaveAccrualRuleType ruleType, DateTime? milestoneDate, int preMilestoneIntervalYears)
     {
         if (fiscalYearId == Guid.Empty)
             throw new ArgumentException("Fiscal year is required.", nameof(fiscalYearId));
@@ -103,9 +150,14 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
             throw new ArgumentException("Leave day figures cannot be negative.");
         if (incrementIntervalYears < 1)
             throw new ArgumentException("Increment interval must be at least 1 year.", nameof(incrementIntervalYears));
-        if (maxLeaveDays < baseLeaveDays)
+        // 0 = uncapped; otherwise the cap must not sit below the base entitlement.
+        if (maxLeaveDays != 0 && maxLeaveDays < baseLeaveDays)
             throw new ArgumentException("Maximum leave days cannot be below the base entitlement.", nameof(maxLeaveDays));
         if (expiryYears < 1)
             throw new ArgumentException("Expiry years must be at least 1.", nameof(expiryYears));
+        if (ruleType == LeaveAccrualRuleType.ServiceMilestone && !milestoneDate.HasValue)
+            throw new ArgumentException("A milestone date is required for the service-milestone rule.", nameof(milestoneDate));
+        if (preMilestoneIntervalYears < 0)
+            throw new ArgumentException("Pre-milestone interval cannot be negative.", nameof(preMilestoneIntervalYears));
     }
 }

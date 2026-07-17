@@ -1,5 +1,6 @@
 import type { FormComponentModel } from "@/models";
 import { FieldShell } from "./fieldShell";
+import { FloatingLabel } from "./floatingLabel";
 import {
   FORM_COMPACT_SELECT_CLASS,
   FORM_SELECT_CLASS,
@@ -20,7 +21,33 @@ const SelectField = ({
   colSpan,
   compact,
   layout,
+  floatingLabel,
 }: FormComponentModel & { compact?: boolean }) => {
+  // Floating-label variant: the label floats above the select once a value is chosen.
+  if (floatingLabel && label && !compact) {
+    return (
+      <FloatingLabel htmlFor={name} label={label} required={required} active={!!value}>
+        <select
+          className={FORM_SELECT_CLASS}
+          {...error?.register?.(name, {
+            required: { value: required, message: `${name} Required` },
+          })}
+          name={name}
+          id={name}
+          type={inputType}
+          disabled={disabled}
+          onChange={onChange}
+          value={value ?? ""}
+        >
+          {data?.map((item: { id: string | number; name: string }) => (
+            <option key={String(item.id)} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </FloatingLabel>
+    );
+  }
   return (
     <FieldShell
       name={name}

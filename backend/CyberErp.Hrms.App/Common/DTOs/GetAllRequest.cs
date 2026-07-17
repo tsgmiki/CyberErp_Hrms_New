@@ -66,6 +66,18 @@ namespace CyberErp.Hrms.App.Common.DTOs
 
         /// <summary>Filters dynamic forms to a single owning module (e.g. "Employee").</summary>
         public string? Module { get; set; }
+
+        /// <summary>Filters performance records (objectives/goals) to a single review cycle.</summary>
+        public Guid? ReviewCycleId { get; set; }
+
+        /// <summary>Filters employee goals to a single linked organizational objective.</summary>
+        public Guid? ObjectiveId { get; set; }
+
+        /// <summary>Filters organizational objectives to a single owning organization unit.</summary>
+        public Guid? OrganizationUnitId { get; set; }
+
+        /// <summary>Filters recognitions to public ones (the recognition board feed).</summary>
+        public bool? IsPublic { get; set; }
     }
 }
 

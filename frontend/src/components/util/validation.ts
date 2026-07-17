@@ -1232,11 +1232,13 @@ export const HolidaySchema = z.object({
   nameA: z.string().max(200).optional(),
 });
 
+// Header-only guard; the detail lines are validated in the bespoke JSON save service.
 export const LeaveRequestSchema = z.object({
   employeeId: z.string().min(1, "Employee is Required"),
-  leaveTypeId: z.string().min(1, "Leave Type is Required"),
-  startDate: z.string().min(1, "Start Date is Required"),
-  endDate: z.string().min(1, "End Date is Required"),
+});
+
+export const WorkWeekConfigurationSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
 });
 
 export const LeaveBalanceSetSchema = z.object({
@@ -1373,4 +1375,86 @@ export const EmployeeTerminationSchema = z.object({
   noticeDate: z.string().min(1, "Notice date is required"),
   lastWorkingDate: z.string().min(1, "Last working date is required"),
   reason: z.string().min(1, "Termination reason is required").max(1000),
+});
+
+/* ---- Performance Management (HC118–HC147) — Phase A ---- */
+
+export const CompetencyCategorySchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
+});
+
+export const CompetencySchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  competencyCategoryId: z.string().min(1, "Category is Required"),
+});
+
+export const AppraisalTemplateSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+});
+
+export const ReviewCycleSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  periodType: z.string().min(1, "Period type is Required"),
+  ratingScaleId: z.string().min(1, "Rating scale is Required"),
+  startDate: z.string().min(1, "Start date is Required"),
+  endDate: z.string().min(1, "End date is Required"),
+});
+
+export const OrganizationalObjectiveSchema = z.object({
+  title: z.string().min(2, "Title is Required").max(300),
+  reviewCycleId: z.string().min(1, "Review cycle is Required"),
+});
+
+export const AchievementSchema = z.object({
+  employeeId: z.string().min(1, "Employee is Required"),
+  title: z.string().min(2, "Title is Required").max(300),
+  achievementDate: z.string().min(1, "Date is Required"),
+  category: z.string().min(1, "Category is Required"),
+});
+
+export const RecognitionBadgeSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
+});
+
+export const RecognitionSchema = z.object({
+  employeeId: z.string().min(1, "Employee is Required"),
+  recognitionBadgeId: z.string().min(1, "Badge is Required"),
+  citation: z.string().min(2, "Citation is Required").max(1000),
+  recognizedOn: z.string().min(1, "Date is Required"),
+});
+
+// ===== Career Development §3.7.A — Succession Planning =====
+export const CriticalPositionSchema = z.object({
+  positionId: z.string().min(1, "Position is Required"),
+  riskLevel: z.string().min(1, "Risk level is Required"),
+});
+
+export const TalentReviewSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  status: z.string().min(1, "Status is Required"),
+});
+
+export const SuccessionPlanSchema = z.object({
+  criticalPositionId: z.string().min(1, "Critical position is Required"),
+  name: z.string().min(2, "Name is Required").max(200),
+  horizon: z.string().min(1, "Horizon is Required"),
+  status: z.string().min(1, "Status is Required"),
+});
+
+// ===== Career Development §3.7.B — Career Path =====
+export const CareerPathSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  code: z.string().min(1, "Code is Required").max(50),
+});
+
+export const MentorshipSchema = z.object({
+  mentorEmployeeId: z.string().min(1, "Mentor is Required"),
+  menteeEmployeeId: z.string().min(1, "Mentee is Required"),
+  context: z.string().min(1, "Context is Required"),
+  status: z.string().min(1, "Status is Required"),
+});
+
+export const CareerPathChangeRequestSchema = z.object({
+  employeeId: z.string().min(1, "Employee is Required"),
+  requestedCareerPathId: z.string().min(1, "Requested career path is Required"),
 });

@@ -13,5 +13,12 @@ export default interface AnnualLeaveSettingModel extends AbstractModel {
   incrementIntervalYears?: number;
   maxLeaveDays?: number;
   expiryYears?: number;
+  /** ServiceMilestone | ServiceYears | FiscalYears */
+  ruleType?: string;
+  considerExternalExperience?: boolean;
+  milestoneDate?: string;
+  preMilestoneBaseLeaveDays?: number;
+  preMilestoneIncrementDays?: number;
+  preMilestoneIntervalYears?: number;
   isActive?: boolean;
 }

@@ -38,6 +38,12 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// module keeps operating directly (no workflow). Duplicate running workflows are skipped.
         /// </summary>
         Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary);
+        /// <summary>
+        /// Validates that the active definition (if any) could run to completion for this request —
+        /// i.e. every dynamic approver (Immediate/Unit Manager) resolves. Call BEFORE persisting the
+        /// governed record so an unresolvable workflow rejects the submission instead of orphaning it.
+        /// </summary>
+        Task EnsureStartableAsync(string entityType, Guid? employeeId);
         Task ApproveAsync(Guid instanceId, string? comment);
         Task RejectAsync(Guid instanceId, string? comment);
     }
@@ -64,6 +70,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<WorkflowActionLog> actionLogs,
         IEnumerable<IWorkflowEntityHandler> handlers,
         IWorkflowApproverAuth approverAuth,
+        IOrgManagerResolver managerResolver,
         ICurrentUserService currentUser,
         ILogger<WorkflowService> logger) : IWorkflowService
     {
@@ -71,7 +78,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         {
             // Steps are read through the definition aggregate (children carry no tenant stamp).
             var definition = await definitions.GetAll()
-                .Include(d => d.Steps)
+                .Include(d => d.Steps).ThenInclude(s => s.Approvers)
                 .FirstOrDefaultAsync(d => d.EntityType == entityType && d.IsActive);
             if (definition is null) return; // no workflow configured — module operates directly
 
@@ -81,6 +88,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
             var stepList = definition.Steps.OrderBy(s => s.StepOrder).ToList();
             if (stepList.Count == 0) return; // misconfigured definition — treat as no workflow
+
+            // Pre-flight: every DYNAMIC approver (Immediate/Unit Manager) across ALL steps must be
+            // resolvable NOW, otherwise the instance would get stuck on a step nobody can action
+            // ("(unresolved)"). Fail loudly with the exact data gap instead of starting it.
+            await EnsureDynamicApproversResolvableAsync(stepList, employeeId);
 
             var user = currentUser.GetCurrentUserName();
             var instance = WorkflowInstance.Start(
@@ -92,6 +104,55 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             await instances.SaveChangesAsync();
             logger.LogInformation("Started workflow {InstanceId} ({EntityType}) for entity {EntityId}",
                 instance.Id, entityType, entityId);
+        }
+
+        public async Task EnsureStartableAsync(string entityType, Guid? employeeId)
+        {
+            var definition = await definitions.GetAll()
+                .Include(d => d.Steps).ThenInclude(s => s.Approvers)
+                .FirstOrDefaultAsync(d => d.EntityType == entityType && d.IsActive);
+            if (definition is null) return; // nothing would start — nothing to validate
+
+            await EnsureDynamicApproversResolvableAsync(
+                definition.Steps.OrderBy(s => s.StepOrder).ToList(), employeeId);
+        }
+
+        /// <summary>
+        /// Validates that each dynamic approver can resolve to a real manager for this request —
+        /// the same climb the decision-time authorization performs — and throws an actionable 400
+        /// naming the exact configuration gap (unplaced employee / unmanaged unit chain) otherwise.
+        /// </summary>
+        private async Task EnsureDynamicApproversResolvableAsync(IReadOnlyList<WorkflowStep> steps, Guid? employeeId)
+        {
+            foreach (var step in steps)
+            {
+                foreach (var approver in step.Approvers)
+                {
+                    if (approver.ApproverType == WorkflowApproverType.ImmediateManager)
+                    {
+                        if (employeeId is null)
+                            throw new ValidationException("workflow",
+                                $"Step '{step.Name}' routes to the Immediate Manager, but this request has no employee context.");
+
+                        var unit = await managerResolver.GetEmployeeUnitAsync(employeeId.Value);
+                        if (unit is null)
+                            throw new ValidationException("workflow",
+                                $"Step '{step.Name}' routes to the Immediate Manager, but the employee has no position / organizational unit. Assign the employee to a position first.");
+
+                        if (await managerResolver.ResolveImmediateManagerAsync(employeeId.Value) is null)
+                            throw new ValidationException("workflow",
+                                $"Step '{step.Name}' cannot resolve an approver: no managerial employee is positioned in '{unit.Value.Name}' or any of its parent units. " +
+                                "Designate a manager by ticking 'Managerial' on an employee whose position belongs to that unit (or a parent unit).");
+                    }
+                    else if (approver.ApproverType == WorkflowApproverType.UnitManager)
+                    {
+                        if (await managerResolver.ResolveUnitManagerAsync(approver.ApproverId, employeeId) is null)
+                            throw new ValidationException("workflow",
+                                $"Step '{step.Name}' cannot resolve '{approver.DisplayName}': no managerial employee is positioned in that unit or any of its parent units. " +
+                                "Designate a manager by ticking 'Managerial' on an employee whose position belongs to that unit (or a parent unit).");
+                    }
+                }
+            }
         }
 
         public async Task ApproveAsync(Guid instanceId, string? comment)

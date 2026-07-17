@@ -47,7 +47,7 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates.DTOs
             RuleFor(x => x.Description).MaximumLength(1000);
             RuleFor(x => x.DocumentType).NotEmpty()
                 .Must(v => Enum.TryParse<DocumentTemplateType>(v, out _))
-                .WithMessage("DocumentType must be one of: EmploymentLetter, ExperienceLetter, IdCard, Other.");
+                .WithMessage("DocumentType must be one of: EmploymentLetter, ExperienceLetter, IdCard, ClearanceCertificate, AnnualLeaveRequest, Other.");
         }
     }
 

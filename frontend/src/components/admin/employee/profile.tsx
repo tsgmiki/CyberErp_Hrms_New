@@ -9,7 +9,9 @@ import {
   ArrowLeftRight,
   Gavel,
   UserX,
+  CalendarCheck,
   LayoutGrid,
+  Rocket,
 } from "lucide-react";
 import { useDynamicForms } from "@/components/common/dynamicForm/useDynamicForms";
 import DynamicFormSection from "@/components/common/dynamicForm/DynamicFormSection";
@@ -21,6 +23,8 @@ const FamilySection = memo(lazy(() => import("./familySection")));
 const MovementSection = memo(lazy(() => import("./movementSection")));
 const DisciplineSection = memo(lazy(() => import("./disciplineSection")));
 const TerminationSection = memo(lazy(() => import("./terminationSection")));
+const LeaveRequestSection = memo(lazy(() => import("./leaveRequestSection")));
+const DevelopmentSection = memo(lazy(() => import("./developmentSection")));
 
 type TabKey =
   | "personal"
@@ -28,8 +32,10 @@ type TabKey =
   | "experience"
   | "family"
   | "movements"
+  | "leave"
   | "discipline"
-  | "termination";
+  | "termination"
+  | "development";
 
 const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boolean }[] = [
   { key: "personal", label: "Personal & Identification", Icon: UserRound, needsId: false },
@@ -37,6 +43,8 @@ const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boole
   { key: "experience", label: "Experience", Icon: BriefcaseBusiness, needsId: true },
   { key: "family", label: "Family", Icon: HeartHandshake, needsId: true },
   { key: "movements", label: "Movements", Icon: ArrowLeftRight, needsId: true },
+  { key: "leave", label: "Annual Leave", Icon: CalendarCheck, needsId: true },
+  { key: "development", label: "Development", Icon: Rocket, needsId: true },
   { key: "discipline", label: "Discipline", Icon: Gavel, needsId: true },
   { key: "termination", label: "Termination", Icon: UserX, needsId: true },
 ];
@@ -122,6 +130,8 @@ function EmployeeProfile({ id, setId, onBack, orgUnitId, orgUnitName }: Props) {
         {tab === "experience" && hasId && <ExperienceSection employeeId={id} />}
         {tab === "family" && hasId && <FamilySection employeeId={id} />}
         {tab === "movements" && hasId && <MovementSection employeeId={id} />}
+        {tab === "leave" && hasId && <LeaveRequestSection employeeId={id} />}
+        {tab === "development" && hasId && <DevelopmentSection employeeId={id} />}
         {tab === "discipline" && hasId && <DisciplineSection employeeId={id} />}
         {tab === "termination" && hasId && <TerminationSection employeeId={id} />}
         {/* Active custom tab content */}

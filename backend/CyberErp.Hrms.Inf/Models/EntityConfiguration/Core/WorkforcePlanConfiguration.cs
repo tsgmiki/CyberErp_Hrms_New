@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkforcePlan> builder)
         {
-            builder.ToTable("hrms_WorkforcePlan", "Core");
+            builder.ToTable("hrmsWorkforcePlan", "dbo");
 
             builder.HasKey(p => p.Id);
 
@@ -52,7 +52,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkforcePlanLine> builder)
         {
-            builder.ToTable("hrms_WorkforcePlanLine", "Core");
+            builder.ToTable("hrmsWorkforcePlanLine", "dbo");
 
             builder.HasKey(l => l.Id);
 

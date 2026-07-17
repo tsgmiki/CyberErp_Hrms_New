@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<HiringRequest> builder)
         {
-            builder.ToTable("hrms_HiringRequest", "Core");
+            builder.ToTable("hrmsHiringRequest", "dbo");
 
             builder.HasKey(r => r.Id);
 
@@ -41,7 +41,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<JobRequisition> builder)
         {
-            builder.ToTable("hrms_JobRequisition", "Core");
+            builder.ToTable("hrmsJobRequisition", "dbo");
 
             builder.HasKey(r => r.Id);
 
@@ -97,7 +97,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RequisitionScreeningCriterion> builder)
         {
-            builder.ToTable("hrms_RequisitionScreeningCriterion", "Core");
+            builder.ToTable("hrmsRequisitionScreeningCriterion", "dbo");
 
             builder.HasKey(c => c.Id);
 
@@ -118,7 +118,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CriterionEvaluator> builder)
         {
-            builder.ToTable("hrms_CriterionEvaluator", "Core");
+            builder.ToTable("hrmsCriterionEvaluator", "dbo");
 
             builder.HasKey(e => e.Id);
 
@@ -139,7 +139,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ApplicationCriterionScore> builder)
         {
-            builder.ToTable("hrms_ApplicationCriterionScore", "Core");
+            builder.ToTable("hrmsApplicationCriterionScore", "dbo");
 
             builder.HasKey(s => s.Id);
 
@@ -157,7 +157,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CandidateDocument> builder)
         {
-            builder.ToTable("hrms_CandidateDocument", "Core");
+            builder.ToTable("hrmsCandidateDocument", "dbo");
 
             builder.HasKey(d => d.Id);
 
@@ -178,7 +178,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Candidate> builder)
         {
-            builder.ToTable("hrms_Candidate", "Core");
+            builder.ToTable("hrmsCandidate", "dbo");
 
             builder.HasKey(c => c.Id);
 
@@ -223,7 +223,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<JobApplication> builder)
         {
-            builder.ToTable("hrms_JobApplication", "Core");
+            builder.ToTable("hrmsJobApplication", "dbo");
 
             builder.HasKey(a => a.Id);
 
@@ -266,7 +266,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<JobApplicationStageLog> builder)
         {
-            builder.ToTable("hrms_JobApplicationStageLog", "Core");
+            builder.ToTable("hrmsJobApplicationStageLog", "dbo");
 
             builder.HasKey(l => l.Id);
 

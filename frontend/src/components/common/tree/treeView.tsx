@@ -19,6 +19,13 @@ export interface TreeViewNode {
   /** Optional right-aligned tag (e.g. a type/status). */
   badge?: string;
   children?: TreeViewNode[];
+  /** Optional leading icon; overrides the default yellow folder (inherits the row's text colour). */
+  icon?: ReactNode;
+  /** Optional right-aligned control revealed on row hover (e.g. a delete button). */
+  action?: ReactNode;
+  /** When false the row can't be selected — clicking it just expands/collapses its children
+   * (use for pure grouping headers). Defaults to true. */
+  selectable?: boolean;
 }
 
 export interface TreeViewProps {
@@ -55,15 +62,18 @@ function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect }: Node
   const hasChildren = !!node.children && node.children.length > 0;
   const isOpen = !collapsed.has(node.id);
   const isSelected = node.id === selectedId;
+  const selectable = node.selectable !== false;
+  // A grouping-only row (selectable=false) toggles its children on click instead of selecting.
+  const activate = () => (selectable ? onSelect(node) : hasChildren && toggle(node.id));
 
   return (
     <div>
       <div
         role="button"
         tabIndex={0}
-        onClick={() => onSelect(node)}
-        onKeyDown={(e) => e.key === "Enter" && onSelect(node)}
-        className={`flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-sm transition-colors ${
+        onClick={activate}
+        onKeyDown={(e) => e.key === "Enter" && activate()}
+        className={`group flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-sm transition-colors ${
           isSelected
             ? "bg-primary/15 font-semibold text-primary"
             : "text-sidebar-foreground hover:bg-secondary"
@@ -85,15 +95,25 @@ function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect }: Node
         ) : (
           <span className="w-[18px] shrink-0" />
         )}
-        {hasChildren && isOpen ? (
+        {node.icon ? (
+          <span className="flex shrink-0 items-center">{node.icon}</span>
+        ) : hasChildren && isOpen ? (
           <FolderOpen size={15} className="shrink-0 fill-amber-300 text-amber-500" />
         ) : (
           <Folder size={15} className="shrink-0 fill-amber-300 text-amber-500" />
         )}
         <span className="truncate">{node.label}</span>
         {node.badge && (
-          <span className="ml-auto shrink-0 pl-2 text-[10px] uppercase tracking-wide text-muted opacity-70">
+          <span className={`shrink-0 pl-2 text-[10px] uppercase tracking-wide text-muted opacity-70 ${node.action ? "" : "ml-auto"}`}>
             {node.badge}
+          </span>
+        )}
+        {node.action && (
+          <span
+            className={`shrink-0 ${node.badge ? "pl-1" : "ml-auto pl-2"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {node.action}
           </span>
         )}
       </div>
