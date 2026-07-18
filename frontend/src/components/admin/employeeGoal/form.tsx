@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Trash2, Save, Target, ListChecks } from "lucide-react";
 import type { EmployeeGoalModel, GoalActionItemModel } from "@/models";
 import { getEmployeeGoal, saveEmployeeGoal } from "@/services/admin/employeeGoal";
 import getAllEmployee from "@/services/admin/employee/getAll";
@@ -11,6 +11,7 @@ import getAllOrganizationalObjective from "@/services/admin/organizationalObject
 import { goalStatusOptions } from "@/constants/performance";
 import { StatusMessage } from "../../common/statusMessage/status";
 import Loading from "../../common/loader/loader";
+import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
 import { parameterInitialData } from "@/constants/initialization";
 
 const INPUT = "w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none";
@@ -69,8 +70,7 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
     setItems((p) => p.map((a) => (a._key === key ? { ...a, ...patch } : a)));
   const removeItem = (key: number) => setItems((p) => p.filter((a) => a._key !== key));
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submit = async () => {
     setIsSaving(true);
     const payload: EmployeeGoalModel = {
       ...meta,
@@ -96,132 +96,150 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
 
   if (isLoading) return <Loading />;
 
+  const canSave = !!meta.employeeId && !!meta.reviewCycleId && !!meta.title && !!meta.startDate && !!meta.dueDate;
+
   return (
-    <form onSubmit={submit} className="space-y-5 text-foreground">
-      {/* Goal details */}
-      <section className="rounded-lg border border-border bg-card p-4">
-        <h3 className="mb-3 text-sm font-semibold">{t("Goal Details")}</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className={LABEL}>{t("Employee")} *</label>
-            <select className={INPUT} value={meta.employeeId ?? ""} onChange={(e) => setMetaField("employeeId", e.target.value)} required>
-              <option value="">{t("Select employee")}</option>
-              {(employees?.data ?? []).map((e) => (
-                <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>{t("Review Cycle")} *</label>
-            <select className={INPUT} value={meta.reviewCycleId ?? ""} onChange={(e) => setMetaField("reviewCycleId", e.target.value)} required>
-              <option value="">{t("Select cycle")}</option>
-              {(cycles?.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className={LABEL}>{t("Title")} *</label>
-            <input className={INPUT} value={meta.title ?? ""} onChange={(e) => setMetaField("title", e.target.value)} placeholder="e.g. Close 20 enterprise deals" required />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Organizational Objective")}</label>
-            <select className={INPUT} value={meta.organizationalObjectiveId ?? ""} onChange={(e) => setMetaField("organizationalObjectiveId", e.target.value)}>
-              <option value="">{t("Unaligned")}</option>
-              {(objectives?.data ?? []).map((o) => (
-                <option key={o.id} value={o.id}>{o.title}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>{t("Status")}</label>
-            <select className={INPUT} value={meta.status ?? "Active"} onChange={(e) => setMetaField("status", e.target.value)}>
-              {goalStatusOptions.map((o) => (
-                <option key={o.id} value={o.id}>{t(o.name)}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>{t("Measure")}</label>
-            <input className={INPUT} value={meta.measure ?? ""} onChange={(e) => setMetaField("measure", e.target.value)} placeholder={t("How success is measured") ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Target Value")}</label>
-            <input type="number" step="any" className={INPUT} value={meta.targetValue ?? ""} onChange={(e) => setMetaField("targetValue", e.target.value)} />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Start Date")} *</label>
-            <input type="date" className={INPUT} value={meta.startDate ?? ""} onChange={(e) => setMetaField("startDate", e.target.value)} required />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Due Date")} *</label>
-            <input type="date" className={INPUT} value={meta.dueDate ?? ""} onChange={(e) => setMetaField("dueDate", e.target.value)} required />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Weight (%)")}</label>
-            <input type="number" step="any" className={INPUT} value={meta.weight ?? 0} onChange={(e) => setMetaField("weight", e.target.value)} />
-          </div>
-          <div>
-            <label className={LABEL}>{t("Progress (%)")}</label>
-            <input type="number" className={INPUT} value={meta.progressPercent ?? 0} onChange={(e) => setMetaField("progressPercent", e.target.value)} />
-          </div>
-          <div className="flex items-end gap-2 pb-1">
-            <input id="goal-mgr" type="checkbox" className="h-4 w-4 accent-primary" checked={meta.setByManager ?? false} onChange={(e) => setMetaField("setByManager", e.target.checked)} />
-            <label htmlFor="goal-mgr" className="text-sm">{t("Set by manager")}</label>
-          </div>
-          <div className="sm:col-span-2">
-            <label className={LABEL}>{t("Description")}</label>
-            <input className={INPUT} value={meta.description ?? ""} onChange={(e) => setMetaField("description", e.target.value)} />
-          </div>
-        </div>
-      </section>
-
-      {/* Action plan */}
-      <section className="rounded-lg border border-border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">{t("Action Plan")}</h3>
-          <button type="button" onClick={addItem} className="inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90">
-            <Plus className="h-3.5 w-3.5" /> {t("Add Action Item")}
-          </button>
-        </div>
-
-        {items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted">{t("No action items yet.")}</p>
-        ) : (
-          <div className="space-y-2">
-            {items.map((a) => (
-              <div key={a._key} className="grid grid-cols-1 items-end gap-2 rounded-md border border-border/70 bg-secondary/20 p-2.5 md:grid-cols-[1fr_140px_90px_auto]">
+    <div className="space-y-4 text-foreground">
+      <EntityFormTabs
+        hasId={!!id}
+        tabs={[
+          {
+            key: "details",
+            label: "Goal Details",
+            Icon: Target,
+            description: "",//"Objective, alignment and measurable targets",
+            keepMounted: true,
+            content: (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className={LABEL}>{t("Description")} *</label>
-                  <input className={INPUT} value={a.description ?? ""} onChange={(e) => updateItem(a._key, { description: e.target.value })} required />
+                  <label className={LABEL}>{t("Employee")} *</label>
+                  <select className={INPUT} value={meta.employeeId ?? ""} onChange={(e) => setMetaField("employeeId", e.target.value)}>
+                    <option value="">{t("Select employee")}</option>
+                    {(employees?.data ?? []).map((e) => (
+                      <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className={LABEL}>{t("Due Date")}</label>
-                  <input type="date" className={INPUT} value={a.dueDate ?? ""} onChange={(e) => updateItem(a._key, { dueDate: e.target.value })} />
+                  <label className={LABEL}>{t("Review Cycle")} *</label>
+                  <select className={INPUT} value={meta.reviewCycleId ?? ""} onChange={(e) => setMetaField("reviewCycleId", e.target.value)}>
+                    <option value="">{t("Select cycle")}</option>
+                    {(cycles?.data ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex items-center gap-1 pb-2">
-                  <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!a.isCompleted} onChange={(e) => updateItem(a._key, { isCompleted: e.target.checked })} />
-                  <label className="text-xs">{t("Done")}</label>
+                <div className="sm:col-span-2">
+                  <label className={LABEL}>{t("Title")} *</label>
+                  <input className={INPUT} value={meta.title ?? ""} onChange={(e) => setMetaField("title", e.target.value)} placeholder="e.g. Close 20 enterprise deals" />
                 </div>
-                <div className="flex items-center pb-1">
-                  <button type="button" onClick={() => removeItem(a._key)} className="rounded p-1 text-error hover:bg-error/10" title={t("Remove") ?? ""}>
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div>
+                  <label className={LABEL}>{t("Organizational Objective")}</label>
+                  <select className={INPUT} value={meta.organizationalObjectiveId ?? ""} onChange={(e) => setMetaField("organizationalObjectiveId", e.target.value)}>
+                    <option value="">{t("Unaligned")}</option>
+                    {(objectives?.data ?? []).map((o) => (
+                      <option key={o.id} value={o.id}>{o.title}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Status")}</label>
+                  <select className={INPUT} value={meta.status ?? "Active"} onChange={(e) => setMetaField("status", e.target.value)}>
+                    {goalStatusOptions.map((o) => (
+                      <option key={o.id} value={o.id}>{t(o.name)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Measure")}</label>
+                  <input className={INPUT} value={meta.measure ?? ""} onChange={(e) => setMetaField("measure", e.target.value)} placeholder={t("How success is measured") ?? ""} />
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Target Value")}</label>
+                  <input type="number" step="any" className={INPUT} value={meta.targetValue ?? ""} onChange={(e) => setMetaField("targetValue", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Start Date")} *</label>
+                  <input type="date" className={INPUT} value={meta.startDate ?? ""} onChange={(e) => setMetaField("startDate", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Due Date")} *</label>
+                  <input type="date" className={INPUT} value={meta.dueDate ?? ""} onChange={(e) => setMetaField("dueDate", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Weight (%)")}</label>
+                  <input type="number" step="any" className={INPUT} value={meta.weight ?? 0} onChange={(e) => setMetaField("weight", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>{t("Progress (%)")}</label>
+                  <input type="number" className={INPUT} value={meta.progressPercent ?? 0} onChange={(e) => setMetaField("progressPercent", e.target.value)} />
+                </div>
+                <div className="flex items-end gap-2 pb-1">
+                  <input id="goal-mgr" type="checkbox" className="h-4 w-4 accent-primary" checked={meta.setByManager ?? false} onChange={(e) => setMetaField("setByManager", e.target.checked)} />
+                  <label htmlFor="goal-mgr" className="text-sm">{t("Set by manager")}</label>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={LABEL}>{t("Description")}</label>
+                  <input className={INPUT} value={meta.description ?? ""} onChange={(e) => setMetaField("description", e.target.value)} />
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            ),
+          },
+          {
+            key: "action",
+            label: "Action Plan",
+            Icon: ListChecks,
+            description: "Break the goal into trackable action items",
+            keepMounted: true,
+            content: (
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <button type="button" onClick={addItem} className="inline-flex items-center gap-1 rounded bg-primary px-2.5 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90">
+                    <Plus className="h-3.5 w-3.5" /> {t("Add Action Item")}
+                  </button>
+                </div>
+                {items.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted">{t("No action items yet.")}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {items.map((a) => (
+                      <div key={a._key} className="grid grid-cols-1 items-end gap-2 rounded-md border border-border/70 bg-secondary/20 p-2.5 md:grid-cols-[1fr_140px_90px_auto]">
+                        <div>
+                          <label className={LABEL}>{t("Description")} *</label>
+                          <input className={INPUT} value={a.description ?? ""} onChange={(e) => updateItem(a._key, { description: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className={LABEL}>{t("Due Date")}</label>
+                          <input type="date" className={INPUT} value={a.dueDate ?? ""} onChange={(e) => updateItem(a._key, { dueDate: e.target.value })} />
+                        </div>
+                        <div className="flex items-center gap-1 pb-2">
+                          <input type="checkbox" className="h-4 w-4 accent-primary" checked={!!a.isCompleted} onChange={(e) => updateItem(a._key, { isCompleted: e.target.checked })} />
+                          <label className="text-xs">{t("Done")}</label>
+                        </div>
+                        <div className="flex items-center pb-1">
+                          <button type="button" onClick={() => removeItem(a._key)} className="rounded p-1 text-error hover:bg-error/10" title={t("Remove") ?? ""}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
 
-      <div className="flex justify-end">
-        <button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+      {/* Persistent save bar — details + action plan save as one payload from any tab. */}
+      <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+        <button type="button" disabled={isSaving || !canSave} onClick={submit} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-primary-hover disabled:opacity-50">
           <Save className="h-4 w-4" /> {isSaving ? t("Saving…") : t("Save Goal")}
         </button>
       </div>
-    </form>
+    </div>
   );
 }
 
