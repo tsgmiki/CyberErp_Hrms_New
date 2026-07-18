@@ -7,7 +7,7 @@ import type AbstractModel from "../AbstractModel";
  * holds the org-unit id). ImmediateManager carries the empty guid as approverId.
  */
 export interface WorkflowApproverModel {
-  approverType: "User" | "Role" | "ImmediateManager" | "UnitManager";
+  approverType: "User" | "Role" | "ImmediateManager" | "UnitManager" | "SecondLevelManager" | "Subject";
   approverId: string;
   displayName?: string;
 }
@@ -56,6 +56,8 @@ export interface WorkflowInstanceModel extends AbstractModel {
 /** One approval awaiting the current user's decision (Dashboard "Approvals" inbox). */
 export interface MyApprovalItemModel {
   instanceId: string;
+  /** The governed record's id — used to deep-link to the owning module's screen (e.g. an appraisal). */
+  entityId: string;
   summary: string;
   entityType: string;
   currentStepOrder: number;

@@ -39,6 +39,12 @@ public class ReviewCycle : BaseEntity, IAggregateRoot, IAuditable
     public bool EnableSelfAssessment { get; private set; } = true;
     public bool EnablePeerAssessment { get; private set; }
     public bool EnableCalibration { get; private set; }
+    /// <summary>When true, a completed manager review routes to a second-level manager (reviewer) sign-off
+    /// before the employee's acknowledgment.</summary>
+    public bool EnableSecondLevelReview { get; private set; }
+    /// <summary>When true, the employee's acknowledgment routes to a final HR sign-off that closes/locks the
+    /// appraisal; otherwise the employee's signature closes it.</summary>
+    public bool EnableHrSignOff { get; private set; }
     public ReviewCycleStatus Status { get; private set; } = ReviewCycleStatus.Draft;
     /// <summary>
     /// For a <see cref="ReviewPeriodType.Probation"/> cycle, the probation length in months. When set, an
@@ -53,6 +59,7 @@ public class ReviewCycle : BaseEntity, IAggregateRoot, IAuditable
         DateTime startDate, DateTime endDate, Guid? fiscalYearId = null,
         DateTime? selfReviewDue = null, DateTime? managerReviewDue = null,
         bool enableSelfAssessment = true, bool enablePeerAssessment = false, bool enableCalibration = false,
+        bool enableSecondLevelReview = false, bool enableHrSignOff = false,
         int? probationDurationMonths = null)
     {
         Guard(name, ratingScaleId, startDate, endDate, probationDurationMonths);
@@ -69,6 +76,8 @@ public class ReviewCycle : BaseEntity, IAggregateRoot, IAuditable
             EnableSelfAssessment = enableSelfAssessment,
             EnablePeerAssessment = enablePeerAssessment,
             EnableCalibration = enableCalibration,
+            EnableSecondLevelReview = enableSecondLevelReview,
+            EnableHrSignOff = enableHrSignOff,
             ProbationDurationMonths = probationDurationMonths
         };
     }
@@ -77,6 +86,7 @@ public class ReviewCycle : BaseEntity, IAggregateRoot, IAuditable
         DateTime startDate, DateTime endDate, Guid? fiscalYearId,
         DateTime? selfReviewDue, DateTime? managerReviewDue,
         bool enableSelfAssessment, bool enablePeerAssessment, bool enableCalibration,
+        bool enableSecondLevelReview, bool enableHrSignOff,
         int? probationDurationMonths = null)
     {
         Guard(name, ratingScaleId, startDate, endDate, probationDurationMonths);
@@ -91,6 +101,8 @@ public class ReviewCycle : BaseEntity, IAggregateRoot, IAuditable
         EnableSelfAssessment = enableSelfAssessment;
         EnablePeerAssessment = enablePeerAssessment;
         EnableCalibration = enableCalibration;
+        EnableSecondLevelReview = enableSecondLevelReview;
+        EnableHrSignOff = enableHrSignOff;
         ProbationDurationMonths = probationDurationMonths;
         base.Update();
     }

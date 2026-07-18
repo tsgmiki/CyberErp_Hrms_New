@@ -59,8 +59,10 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 SelfAssessmentCount = await appraisals.CountAsync(a => a.Stage == AppraisalStage.SelfAssessment),
                 ManagerReviewCount = await appraisals.CountAsync(a => a.Stage == AppraisalStage.ManagerReview),
                 CompletedCount = await appraisals.CountAsync(a => a.Stage == AppraisalStage.Completed),
+                // Awaiting the employee's final acknowledgment signature (the collaborative flow signs off
+                // before the terminal Completed/locked state).
                 PendingAcknowledgment = await appraisals.CountAsync(a =>
-                    a.Stage == AppraisalStage.Completed && a.AcknowledgmentStatus == AcknowledgmentStatus.Pending),
+                    a.Stage == AppraisalStage.EmployeeAcknowledgment),
             };
 
             // Overdue: non-completed appraisals whose cycle end date has passed.

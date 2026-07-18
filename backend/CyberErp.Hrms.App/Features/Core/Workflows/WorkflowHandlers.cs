@@ -100,7 +100,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 bool canDecide;
                 List<string> approverNames;
                 var hasDynamic = stepApprovers.Any(a =>
-                    a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager);
+                    a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
+                        or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject);
                 if (hasDynamic && x.Status == WorkflowInstanceStatus.Running)
                 {
                     // Dynamic approvers resolve per requester (org-tree climb) — evaluate the row fully.
@@ -171,16 +172,25 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
                     (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
 
-            // A managerial employee is a potential DYNAMIC approver (Immediate/Unit Manager steps
-            // resolve to them through their position's unit), so they get the inbox too.
+            // A linked employee is a potential DYNAMIC approver: a managerial employee resolves for
+            // Immediate/Second-Level/Unit Manager steps, and ANY employee can be the Subject of a step that
+            // routes to the request's subject (e.g. an appraisal self-assessment / final signature).
             if (!isApprover)
             {
                 var myEmployeeId = await users.GetAll()
                     .Where(u => u.Id == userId.Value)
                     .Select(u => u.EmployeeId)
                     .FirstOrDefaultAsync();
-                isApprover = myEmployeeId.HasValue &&
-                    await employees.GetAll().AnyAsync(e => e.Id == myEmployeeId.Value && e.IsManagerial);
+                if (myEmployeeId.HasValue)
+                {
+                    var isManagerial = await employees.GetAll().AnyAsync(e => e.Id == myEmployeeId.Value && e.IsManagerial);
+                    var subjectRoutingExists = await definitions.GetAll()
+                        .Where(d => d.IsActive)
+                        .SelectMany(d => d.Steps)
+                        .SelectMany(s => s.Approvers)
+                        .AnyAsync(a => a.ApproverType == WorkflowApproverType.Subject);
+                    isApprover = isManagerial || subjectRoutingExists;
+                }
             }
             if (!isApprover) return new MyApprovalsDto { IsApprover = false };
 
@@ -189,7 +199,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 .Where(x => x.Status == WorkflowInstanceStatus.Running)
                 .Select(x => new
                 {
-                    x.Id, x.DefinitionId, x.EntityType, x.EmployeeId, x.Summary,
+                    x.Id, x.DefinitionId, x.EntityType, x.EntityId, x.EmployeeId, x.Summary,
                     x.CurrentStepOrder, x.CurrentStepName, x.TotalSteps,
                     x.RequestedBy, x.CreatedAt
                 })
@@ -216,12 +226,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .Where(a => a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder)
                     .ToList();
 
-                // Static match first; dynamic (manager) approvers need the per-requester org climb.
+                // Static match first; dynamic (manager / subject) approvers need the per-requester resolution.
                 var mine = stepApprovers.Any(a =>
                     (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
                     (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
                 if (!mine && stepApprovers.Any(a =>
-                        a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager))
+                        a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
+                            or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject))
                 {
                     (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
                 }
@@ -230,6 +241,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 items.Add(new MyApprovalItemDto
                 {
                     InstanceId = x.Id,
+                    EntityId = x.EntityId,
                     Summary = x.Summary,
                     EntityType = x.EntityType,
                     CurrentStepOrder = x.CurrentStepOrder,
@@ -545,6 +557,27 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 definition.SetSteps(steps);
                 await repository.AddAsync(definition);
                 SaveWorkflowDefinition.StampStepTenant(definition);
+                created++;
+            }
+
+            // Appraisal routing carries real approver TYPES (not open steps): the subject employee acts on their
+            // own self-assessment + final signature, the manager / second-level manager on their reviews. Step
+            // NAMES must equal the AppraisalStage values — the appraisal keeps its instance in lockstep by name.
+            // HrSignOff is left open so an admin can attach the HR role/users on the workflow-config screen.
+            if (!existing.Contains(WorkflowEntityTypes.Appraisal))
+            {
+                var appr = WorkflowDefinition.Create("Appraisal Routing", WorkflowEntityTypes.Appraisal,
+                    "Collaborative appraisal routing (self → manager → 2nd-level → employee sign-off → HR)");
+                appr.SetSteps(new[]
+                {
+                    new WorkflowStepSpec("SelfAssessment", null, [new WorkflowApproverSpec(WorkflowApproverType.Subject, Guid.Empty, "Employee (self)")]),
+                    new WorkflowStepSpec("ManagerReview", null, [new WorkflowApproverSpec(WorkflowApproverType.ImmediateManager, Guid.Empty, "Immediate Manager")]),
+                    new WorkflowStepSpec("SecondLevelReview", null, [new WorkflowApproverSpec(WorkflowApproverType.SecondLevelManager, Guid.Empty, "Second-Level Manager")]),
+                    new WorkflowStepSpec("EmployeeAcknowledgment", null, [new WorkflowApproverSpec(WorkflowApproverType.Subject, Guid.Empty, "Employee (self)")]),
+                    new WorkflowStepSpec("HrSignOff", "HR", null),
+                });
+                await repository.AddAsync(appr);
+                SaveWorkflowDefinition.StampStepTenant(appr);
                 created++;
             }
 

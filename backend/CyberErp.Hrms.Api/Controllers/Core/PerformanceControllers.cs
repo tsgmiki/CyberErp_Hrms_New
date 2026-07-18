@@ -164,6 +164,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISaveAppraisalScores saveScoresHandler,
         ISubmitAppraisalSelfAssessment submitHandler,
         ICompleteAppraisal completeHandler,
+        IReviewerSignOffAppraisal reviewerSignOffHandler,
+        IHrCloseAppraisal hrCloseHandler,
         IDeleteAppraisal deleteHandler,
         IGetAppraisalById getByIdHandler,
         IGetAllAppraisals getAllHandler) : BaseController
@@ -184,7 +186,13 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public async Task<IActionResult> SubmitSelf(Guid id) { await submitHandler.SubmitAsync(id); return Ok(new { message = "Submitted for manager review" }); }
 
         [HttpPost("{id:guid}/complete")]
-        public async Task<IActionResult> Complete(Guid id) { await completeHandler.CompleteAsync(id); return Ok(new { message = "Appraisal completed" }); }
+        public async Task<IActionResult> Complete(Guid id) { await completeHandler.CompleteAsync(id); return Ok(new { message = "Manager review completed" }); }
+
+        [HttpPost("{id:guid}/reviewer-signoff")]
+        public async Task<IActionResult> ReviewerSignOff(Guid id, [FromBody] ReviewerSignOffDto dto) { dto.Id = id; await reviewerSignOffHandler.SignOffAsync(dto); return Ok(new { message = "Reviewer sign-off recorded" }); }
+
+        [HttpPost("{id:guid}/hr-close")]
+        public async Task<IActionResult> HrClose(Guid id, [FromBody] SignAppraisalDto dto) { dto.Id = id; await hrCloseHandler.CloseAsync(dto); return Ok(new { message = "Appraisal closed & locked" }); }
 
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id) { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }

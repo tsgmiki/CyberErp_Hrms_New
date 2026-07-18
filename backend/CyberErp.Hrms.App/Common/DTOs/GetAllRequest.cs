@@ -78,6 +78,9 @@ namespace CyberErp.Hrms.App.Common.DTOs
 
         /// <summary>Filters recognitions to public ones (the recognition board feed).</summary>
         public bool? IsPublic { get; set; }
+
+        /// <summary>Appraisal worklist: restrict to records the current user must act on at their current stage.</summary>
+        public bool? AssignedToMe { get; set; }
     }
 }
 

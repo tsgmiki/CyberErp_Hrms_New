@@ -56,6 +56,14 @@ export const submitAppraisalSelf = (id: string) => jsonCall("POST", `Appraisal/$
 
 export const completeAppraisal = (id: string) => jsonCall("POST", `Appraisal/${id}/complete`);
 
+/** Second-level manager (reviewer) sign-off — approval signature + high-level comments. */
+export const reviewerSignOffAppraisal = (dto: { id: string; signature: string; comments?: string }) =>
+  jsonCall("POST", `Appraisal/${dto.id}/reviewer-signoff`, dto as Record<string, unknown>);
+
+/** HR final sign-off — closes and locks the appraisal. */
+export const hrCloseAppraisal = (dto: { id: string; signature: string }) =>
+  jsonCall("POST", `Appraisal/${dto.id}/hr-close`, dto as Record<string, unknown>);
+
 export const deleteAppraisal = createDeleteService("Appraisal");
 
 /* ---- Peer assessment (HC127) ---- */

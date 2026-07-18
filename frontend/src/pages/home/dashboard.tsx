@@ -216,22 +216,34 @@ function ApprovalQueueRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onPick(item, "approve")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <CheckCircle2 size={17} /> {t("Approve")}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => onPick(item, "reject")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ShieldAlert size={17} /> {t("Reject")}
-        </button>
+        {item.entityType === "Appraisal" ? (
+          // Appraisals are acted on from the appraisal screen (score / sign / complete), not the generic buttons.
+          <Link
+            to="/appraisal"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-[13px] font-semibold text-primary transition-colors hover:bg-primary/20"
+          >
+            <CheckCircle2 size={17} /> {t("Open in Appraisals")}
+          </Link>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onPick(item, "approve")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 size={17} /> {t("Approve")}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onPick(item, "reject")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ShieldAlert size={17} /> {t("Reject")}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

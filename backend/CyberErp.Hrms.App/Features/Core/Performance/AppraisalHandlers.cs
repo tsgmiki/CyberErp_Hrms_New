@@ -51,11 +51,22 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public DateTime? EmployeeSignedAt { get; set; }
         public string? ManagerSignature { get; set; }
         public DateTime? ManagerSignedAt { get; set; }
+        public string? ReviewerComments { get; set; }
+        public string? ReviewerSignature { get; set; }
+        public DateTime? ReviewerSignedAt { get; set; }
+        public string? HrSignature { get; set; }
+        public DateTime? HrSignedAt { get; set; }
         public List<AppraisalLineDto> Goals { get; set; } = [];
         public List<AppraisalLineDto> Competencies { get; set; } = [];
         public List<AppraisalPeerReviewDto> PeerReviews { get; set; } = [];
         /// <summary>Average of submitted peer scores (HC127) — advisory, not folded into OverallScore.</summary>
         public decimal? PeerAverageScore { get; set; }
+
+        // Identity-aware routing (filled on the single-record read): the current user's relationship to this
+        // appraisal, whether they may act on the current stage, and who the stage is waiting on.
+        public string? CurrentUserRole { get; set; }
+        public bool CanActCurrentStage { get; set; }
+        public string? CurrentStageActorName { get; set; }
     }
 
     // ---- Write DTOs ---------------------------------------------------------
@@ -102,11 +113,31 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         }
     }
 
+    /// <summary>Second-level manager (reviewer) sign-off — an approval signature plus high-level comments.</summary>
+    public class ReviewerSignOffDto
+    {
+        public Guid Id { get; set; }
+        public string Signature { get; set; } = string.Empty;
+        public string? Comments { get; set; }
+    }
+
+    public class ReviewerSignOffDtoValidator : AbstractValidator<ReviewerSignOffDto>
+    {
+        public ReviewerSignOffDtoValidator()
+        {
+            RuleFor(x => x.Id).NotEmpty();
+            RuleFor(x => x.Signature).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.Comments).MaximumLength(4000);
+        }
+    }
+
     // ---- Interfaces ---------------------------------------------------------
     public interface IGenerateAppraisal { Task<Guid> GenerateAsync(GenerateAppraisalDto dto); }
     public interface ISaveAppraisalScores { Task SaveAsync(SaveAppraisalScoresDto dto); }
     public interface ISubmitAppraisalSelfAssessment { Task SubmitAsync(Guid id); }
     public interface ICompleteAppraisal { Task CompleteAsync(Guid id); }
+    public interface IReviewerSignOffAppraisal { Task SignOffAsync(ReviewerSignOffDto dto); }
+    public interface IHrCloseAppraisal { Task CloseAsync(SignAppraisalDto dto); }
     public interface IDeleteAppraisal { Task DeleteAsync(Guid id); }
     public interface IGetAppraisalById { Task<AppraisalDto> GetAsync(Guid id); }
     public interface IGetAllAppraisals { Task<PaginatedResponse<AppraisalDto>> GetAsync(GetAllRequest request); }
@@ -121,6 +152,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<PositionCompetency> positionCompetencyRepository,
         IRepository<Competency> competencyRepository,
         IPerformanceHistoryWriter history,
+        Workflows.IWorkflowService workflowService,
         IValidator<GenerateAppraisalDto> validator,
         ILogger<GenerateAppraisal> logger) : IGenerateAppraisal
     {
@@ -205,6 +237,14 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             await history.WriteAsync("Appraisal", appraisal.Id, "Generated",
                 $"Appraisal generated ({appraisal.Goals.Count} goals, {appraisal.Competencies.Count} competencies).");
             await repository.SaveChangesAsync();
+
+            // Start the routing instance in the shared workflow engine (EntityType "Appraisal", subject = the
+            // appraisee), beginning at the appraisal's actual first stage. Approvers resolve lazily per stage —
+            // don't pre-validate (optional second-level/HR steps may never be reached).
+            await workflowService.StartIfDefinedAsync(WorkflowEntityTypes.Appraisal, appraisal.Id, appraisal.EmployeeId,
+                $"Appraisal — {employee.EmployeeNumber} ({cycle.Name})",
+                startAtStepName: startStage.ToString(), preValidateApprovers: false);
+
             logger.LogInformation("Generated Appraisal {Id} for employee {EmployeeId} ({Goals} goals, {Comps} competencies)",
                 appraisal.Id, dto.EmployeeId, appraisal.Goals.Count, appraisal.Competencies.Count);
             return appraisal.Id;
@@ -215,6 +255,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     public class SaveAppraisalScores(
         IRepository<Appraisal> repository,
         IPerformanceHistoryWriter history,
+        IAppraisalWorkflowService workflowService,
         IValidator<SaveAppraisalScoresDto> validator,
         ILogger<SaveAppraisalScores> logger) : ISaveAppraisalScores
     {
@@ -233,6 +274,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 throw new ValidationException(nameof(dto.Scope), "Self scores can only be edited during the self-assessment stage.");
             if (!isSelf && appraisal.Stage != AppraisalStage.ManagerReview)
                 throw new ValidationException(nameof(dto.Scope), "Manager scores can only be edited during the manager-review stage.");
+            // Identity gating from the workflow engine: only the configured approver for the current stage
+            // (SelfAssessment → the subject employee; ManagerReview → the manager) may edit scores.
+            await workflowService.EnsureCanActAsync(appraisal);
 
             var goalScores = dto.Goals.Select(g => new AppraisalLineScore(g.LineId, g.Score, g.Comments));
             var compScores = dto.Competencies.Select(c => new AppraisalLineScore(c.LineId, c.Score, c.Comments));
@@ -250,6 +294,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     public class SubmitAppraisalSelfAssessment(
         IRepository<Appraisal> repository,
         IPerformanceHistoryWriter history,
+        IAppraisalWorkflowService workflowService,
         ILogger<SubmitAppraisalSelfAssessment> logger) : ISubmitAppraisalSelfAssessment
     {
         public async Task SubmitAsync(Guid id)
@@ -259,9 +304,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 ?? throw new NotFoundException(nameof(Appraisal), id.ToString());
             if (appraisal.Stage != AppraisalStage.SelfAssessment)
                 throw new ValidationException(nameof(id), "Only a self-assessment can be submitted for manager review.");
+            await workflowService.EnsureCanActAsync(appraisal);
             appraisal.SubmitSelfAssessment();
             await history.WriteAsync("Appraisal", id, "SelfSubmitted", "Self-assessment submitted for manager review.");
             await repository.SaveChangesAsync();
+            await workflowService.SyncInstanceAsync(appraisal, "Self-assessment submitted");   // route to the manager
             logger.LogInformation("Submitted self-assessment for Appraisal {Id}", id);
         }
     }
@@ -273,6 +320,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<RatingScaleLevel> ratingLevelRepository,
         IPerformanceHistoryWriter history,
         IEnumerable<IAppraisalCompletedHandler> completedHandlers,
+        IAppraisalWorkflowService workflowService,
         ILogger<CompleteAppraisal> logger) : ICompleteAppraisal
     {
         public async Task CompleteAsync(Guid id)
@@ -282,6 +330,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 ?? throw new NotFoundException(nameof(Appraisal), id.ToString());
             if (appraisal.Stage != AppraisalStage.ManagerReview)
                 throw new ValidationException(nameof(id), "Only an appraisal in manager review can be completed.");
+            await workflowService.EnsureCanActAsync(appraisal);
 
             var goalScore = WeightedAverage(appraisal.Goals.Select(g => (g.ManagerScore, g.Weight)));
             var compScore = WeightedAverage(appraisal.Competencies.Select(c => (c.ManagerScore, c.Weight)));
@@ -301,18 +350,24 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             overall = Math.Round(overall, 2);
             var finalLevelId = await ResolveRatingLevelAsync(appraisal.ReviewCycleId, overall);
 
-            appraisal.CompleteManagerReview(overall, finalLevelId);
-            repository.UpdateAsync(appraisal);
-            await history.WriteAsync("Appraisal", id, "Completed", $"Appraisal completed with overall score {overall}.");
-            await repository.SaveChangesAsync();
-            logger.LogInformation("Completed Appraisal {Id} with overall score {Score}", id, overall);
+            // Route onward: second-level reviewer if the cycle enables it, else straight to the employee's
+            // acknowledgment. The overall score is fixed here regardless of the remaining sign-off steps.
+            var enableSecondLevel = await reviewCycleRepository.GetAll()
+                .Where(c => c.Id == appraisal.ReviewCycleId).Select(c => c.EnableSecondLevelReview).FirstOrDefaultAsync();
+            var nextStage = enableSecondLevel ? AppraisalStage.SecondLevelReview : AppraisalStage.EmployeeAcknowledgment;
 
-            // Notify other modules (HC147/HC153) — best-effort; a listener failure must not undo completion.
-            foreach (var handler in completedHandlers)
-            {
-                try { await handler.OnAppraisalCompletedAsync(id, appraisal.EmployeeId); }
-                catch (Exception ex) { logger.LogWarning(ex, "Appraisal-completed handler {Handler} failed for {Id}", handler.GetType().Name, id); }
-            }
+            appraisal.CompleteManagerReview(overall, finalLevelId, nextStage);
+            repository.UpdateAsync(appraisal);
+            await history.WriteAsync("Appraisal", id, "ManagerReviewCompleted",
+                $"Manager review completed with overall score {overall}; routed to {nextStage}.");
+            await repository.SaveChangesAsync();
+            await workflowService.SyncInstanceAsync(appraisal, $"Manager review completed (score {overall})");   // route onward
+            logger.LogInformation("Completed manager review for Appraisal {Id} (score {Score}, next {Stage})", id, overall, nextStage);
+
+            // The "appraisal is final" event (HC147/HC153) fires only once the flow reaches the terminal,
+            // locked state — normally at the employee acknowledgment or HR sign-off, not here.
+            if (nextStage == AppraisalStage.Completed)
+                await AppraisalCompletion.NotifyAsync(completedHandlers, logger, id, appraisal.EmployeeId);
         }
 
         /// <summary>Weighted average over the lines that carry a manager score; equal-weight fallback.</summary>
@@ -345,6 +400,83 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         }
     }
 
+    /// <summary>Fires the appraisal-completed extension handlers (HC147/HC153) when an appraisal reaches the
+    /// terminal, locked state — best-effort; a listener failure must not undo the transition.</summary>
+    internal static class AppraisalCompletion
+    {
+        internal static async Task NotifyAsync(IEnumerable<IAppraisalCompletedHandler> handlers, ILogger logger,
+            Guid appraisalId, Guid employeeId)
+        {
+            foreach (var handler in handlers)
+            {
+                try { await handler.OnAppraisalCompletedAsync(appraisalId, employeeId); }
+                catch (Exception ex) { logger.LogWarning(ex, "Appraisal-completed handler {Handler} failed for {Id}", handler.GetType().Name, appraisalId); }
+            }
+        }
+    }
+
+    // ---- Reviewer (second-level) sign-off -----------------------------------
+    public class ReviewerSignOffAppraisal(
+        IRepository<Appraisal> repository,
+        IPerformanceHistoryWriter history,
+        IAppraisalWorkflowService workflowService,
+        IValidator<ReviewerSignOffDto> validator,
+        ILogger<ReviewerSignOffAppraisal> logger) : IReviewerSignOffAppraisal
+    {
+        public async Task SignOffAsync(ReviewerSignOffDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
+            if (appraisal.Stage != AppraisalStage.SecondLevelReview)
+                throw new ValidationException(nameof(dto.Id), "This appraisal is not awaiting second-level review.");
+            await workflowService.EnsureCanActAsync(appraisal);
+
+            // Reviewer approval always routes back to the employee for the final acknowledgment signature.
+            appraisal.ReviewerSignOff(dto.Signature, dto.Comments, AppraisalStage.EmployeeAcknowledgment);
+            repository.UpdateAsync(appraisal);
+            await history.WriteAsync("Appraisal", dto.Id, "ReviewerSignedOff",
+                $"Second-level reviewer signed off ({dto.Signature}).");
+            await repository.SaveChangesAsync();
+            await workflowService.SyncInstanceAsync(appraisal, "Reviewer signed off");   // route to the employee
+            logger.LogInformation("Reviewer signed off Appraisal {Id}", dto.Id);
+        }
+    }
+
+    // ---- HR final sign-off (close & lock) -----------------------------------
+    public class HrCloseAppraisal(
+        IRepository<Appraisal> repository,
+        IPerformanceHistoryWriter history,
+        IEnumerable<IAppraisalCompletedHandler> completedHandlers,
+        IAppraisalWorkflowService workflowService,
+        IValidator<SignAppraisalDto> validator,
+        ILogger<HrCloseAppraisal> logger) : IHrCloseAppraisal
+    {
+        public async Task CloseAsync(SignAppraisalDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
+            if (appraisal.Stage != AppraisalStage.HrSignOff)
+                throw new ValidationException(nameof(dto.Id), "This appraisal is not awaiting HR sign-off.");
+            await workflowService.EnsureCanActAsync(appraisal);
+
+            appraisal.HrClose(dto.Signature);
+            repository.UpdateAsync(appraisal);
+            await history.WriteAsync("Appraisal", dto.Id, "HrClosed", $"HR closed and locked the appraisal ({dto.Signature}).");
+            await repository.SaveChangesAsync();
+            await workflowService.SyncInstanceAsync(appraisal, "HR closed & locked");   // completes the routing instance
+            logger.LogInformation("HR closed Appraisal {Id}", dto.Id);
+
+            // Terminal reached — notify downstream modules (HC147/HC153).
+            await AppraisalCompletion.NotifyAsync(completedHandlers, logger, appraisal.Id, appraisal.EmployeeId);
+        }
+    }
+
     // ---- Delete -------------------------------------------------------------
     public class DeleteAppraisal(
         IRepository<Appraisal> repository,
@@ -366,7 +498,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
         IRepository<RatingScaleLevel> ratingLevelRepository,
-        IRepository<AppraisalPeerReview> peerRepository) : IGetAppraisalById
+        IRepository<AppraisalPeerReview> peerRepository,
+        IAppraisalWorkflowService workflowService) : IGetAppraisalById
     {
         public async Task<AppraisalDto> GetAsync(Guid id)
         {
@@ -401,6 +534,12 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             }
             var submitted = peers.Where(p => p.Status == PeerReviewStatus.Submitted && p.Score.HasValue).Select(p => p.Score!.Value).ToList();
             dto.PeerAverageScore = submitted.Count > 0 ? Math.Round(submitted.Average(), 2) : null;
+
+            // Identity-aware routing: who owns the current stage, and whether the caller may act on it now.
+            var actor = await workflowService.ResolveAsync(entity);
+            dto.CurrentUserRole = actor.CurrentUserRole;
+            dto.CanActCurrentStage = actor.CanActCurrentStage;
+            dto.CurrentStageActorName = actor.CurrentStageActorName;
             return dto;
         }
     }
@@ -408,7 +547,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     public class GetAllAppraisals(
         IRepository<Appraisal> repository,
         IRepository<Employee> employeeRepository,
-        IRepository<ReviewCycle> reviewCycleRepository) : IGetAllAppraisals
+        IRepository<ReviewCycle> reviewCycleRepository,
+        IAppraisalWorkflowService workflowService) : IGetAllAppraisals
     {
         public async Task<PaginatedResponse<AppraisalDto>> GetAsync(GetAllRequest request)
         {
@@ -423,8 +563,24 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             if (!string.IsNullOrWhiteSpace(request.Status) && Enum.TryParse<AppraisalStage>(request.Status, out var stage))
                 query = query.Where(x => x.Stage == stage);
 
-            var total = await query.CountAsync();
-            var rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
+            int total;
+            List<Appraisal> rows;
+            if (request.AssignedToMe == true)
+            {
+                // Worklist: the engine tells us which running appraisal instances route to the current user now
+                // (same authorization as the shared "My Approvals" inbox). Intersect with any other filters.
+                var mineIds = await workflowService.PendingMyActionAppraisalIdsAsync();
+                var mine = mineIds.Count == 0
+                    ? []
+                    : await query.Where(x => mineIds.Contains(x.Id)).OrderByDescending(x => x.CreatedAt).ToListAsync();
+                total = mine.Count;
+                rows = mine.Skip(skip).Take(take).ToList();
+            }
+            else
+            {
+                total = await query.CountAsync();
+                rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
+            }
 
             var employees = employeeRepository.GetAll();
             var cycles = reviewCycleRepository.GetAll();
@@ -468,7 +624,12 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             EmployeeSignature = a.EmployeeSignature,
             EmployeeSignedAt = a.EmployeeSignedAt,
             ManagerSignature = a.ManagerSignature,
-            ManagerSignedAt = a.ManagerSignedAt
+            ManagerSignedAt = a.ManagerSignedAt,
+            ReviewerComments = a.ReviewerComments,
+            ReviewerSignature = a.ReviewerSignature,
+            ReviewerSignedAt = a.ReviewerSignedAt,
+            HrSignature = a.HrSignature,
+            HrSignedAt = a.HrSignedAt
         };
 
         internal static AppraisalDto Map(Appraisal a, string? employeeName, string? cycleName, string? finalLabel)

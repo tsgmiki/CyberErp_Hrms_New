@@ -46,6 +46,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     public class MyApprovalItemDto
     {
         public Guid InstanceId { get; set; }
+        /// <summary>The governed record's id — lets the inbox deep-link to the owning module's screen.</summary>
+        public Guid EntityId { get; set; }
         public string Summary { get; set; } = string.Empty;
         public string EntityType { get; set; } = string.Empty;
         public int CurrentStepOrder { get; set; }

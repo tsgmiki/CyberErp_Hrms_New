@@ -20,6 +20,8 @@ const NEW_DEFAULTS: ReviewCycleModel = {
   enableSelfAssessment: true,
   enablePeerAssessment: false,
   enableCalibration: false,
+  enableSecondLevelReview: false,
+  enableHrSignOff: false,
 };
 
 function ReviewCycleForm(props: { id: string; setId: (id: string) => void }) {
@@ -137,6 +139,16 @@ function ReviewCycleForm(props: { id: string; setId: (id: string) => void }) {
             {
               name: "enableCalibration", label: "Enable Calibration", type: "dropDown", onSelect: selectHandler,
               value: boolId(formData.enableCalibration), displayValue: yesNoLabel(formData.enableCalibration),
+              data: yesNoOptions as never,
+            },
+            {
+              name: "enableSecondLevelReview", label: "Enable 2nd-Level Review", type: "dropDown", onSelect: selectHandler,
+              value: boolId(formData.enableSecondLevelReview), displayValue: yesNoLabel(formData.enableSecondLevelReview),
+              data: yesNoOptions as never,
+            },
+            {
+              name: "enableHrSignOff", label: "Enable HR Sign-off", type: "dropDown", onSelect: selectHandler,
+              value: boolId(formData.enableHrSignOff), displayValue: yesNoLabel(formData.enableHrSignOff),
               data: yesNoOptions as never,
             },
             // Probation cycles: the period end is computed as each employee's hire date + this many months.

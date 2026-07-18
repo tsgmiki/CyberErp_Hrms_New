@@ -37,7 +37,12 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// Starts an approval when an active definition exists for the entity type; otherwise the
         /// module keeps operating directly (no workflow). Duplicate running workflows are skipped.
         /// </summary>
-        Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary);
+        /// <param name="startAtStepName">Optional — begin the instance at this named step instead of step 1
+        /// (e.g. an appraisal whose self-assessment stage is disabled starts at ManagerReview).</param>
+        /// <param name="preValidateApprovers">When false, skip the start-time "every dynamic approver resolves"
+        /// pre-flight — for flows with OPTIONAL steps (e.g. an appraisal's second-level review) that may never be
+        /// reached, so an unreachable step must not block starting.</param>
+        Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary, string? startAtStepName = null, bool preValidateApprovers = true);
         /// <summary>
         /// Validates that the active definition (if any) could run to completion for this request —
         /// i.e. every dynamic approver (Immediate/Unit Manager) resolves. Call BEFORE persisting the
@@ -46,6 +51,16 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task EnsureStartableAsync(string entityType, Guid? employeeId);
         Task ApproveAsync(Guid instanceId, string? comment);
         Task RejectAsync(Guid instanceId, string? comment);
+        /// <summary>
+        /// Module-driven advance: authorizes the current step, logs the decision, then moves the instance to
+        /// the step whose Name == <paramref name="targetStepName"/> — or completes it (Approved + module handler)
+        /// when <paramref name="targetStepName"/> is null. Unlike <see cref="ApproveAsync"/> (rigid immediate-next),
+        /// this lets a module steer the instance to a NAMED stage, cleanly skipping steps it chooses not to run
+        /// (e.g. per-cycle-disabled appraisal stages). The caller supplies the next stage from its own state machine.
+        /// </summary>
+        Task AdvanceToStepAsync(Guid instanceId, string? targetStepName, string? comment);
+        /// <summary>The running instance governing a record, or null when none (for module lockstep + gating).</summary>
+        Task<WorkflowInstance?> GetRunningInstanceAsync(string entityType, Guid entityId);
     }
 
     public class WorkflowGate(IRepository<WorkflowInstance> instances) : IWorkflowGate
@@ -74,7 +89,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         ICurrentUserService currentUser,
         ILogger<WorkflowService> logger) : IWorkflowService
     {
-        public async Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary)
+        public async Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary, string? startAtStepName = null, bool preValidateApprovers = true)
         {
             // Steps are read through the definition aggregate (children carry no tenant stamp).
             var definition = await definitions.GetAll()
@@ -91,13 +106,21 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
             // Pre-flight: every DYNAMIC approver (Immediate/Unit Manager) across ALL steps must be
             // resolvable NOW, otherwise the instance would get stuck on a step nobody can action
-            // ("(unresolved)"). Fail loudly with the exact data gap instead of starting it.
-            await EnsureDynamicApproversResolvableAsync(stepList, employeeId);
+            // ("(unresolved)"). Fail loudly with the exact data gap instead of starting it. Skipped for
+            // flows with optional steps that may never be reached.
+            if (preValidateApprovers)
+                await EnsureDynamicApproversResolvableAsync(stepList, employeeId);
 
             var user = currentUser.GetCurrentUserName();
             var instance = WorkflowInstance.Start(
                 definition.Id, entityType, entityId, employeeId, summary,
                 stepList[0].Name, stepList.Count, user);
+            // Optionally begin partway in (the module's state machine may skip leading steps).
+            if (!string.IsNullOrWhiteSpace(startAtStepName) && startAtStepName != stepList[0].Name)
+            {
+                var start = stepList.FirstOrDefault(s => s.Name == startAtStepName);
+                if (start is not null) instance.AdvanceTo(start.StepOrder, start.Name);
+            }
             await instances.AddAsync(instance);
             await actionLogs.AddAsync(WorkflowActionLog.Create(
                 instance.Id, 0, "Submission", WorkflowActionType.Submitted, null, user));
@@ -128,20 +151,30 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             {
                 foreach (var approver in step.Approvers)
                 {
-                    if (approver.ApproverType == WorkflowApproverType.ImmediateManager)
+                    if (approver.ApproverType == WorkflowApproverType.Subject)
                     {
                         if (employeeId is null)
                             throw new ValidationException("workflow",
-                                $"Step '{step.Name}' routes to the Immediate Manager, but this request has no employee context.");
+                                $"Step '{step.Name}' routes to the request's subject, but this request has no employee context.");
+                    }
+                    else if (approver.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.SecondLevelManager)
+                    {
+                        var levelLabel = approver.ApproverType == WorkflowApproverType.SecondLevelManager ? "Second-Level Manager" : "Immediate Manager";
+                        if (employeeId is null)
+                            throw new ValidationException("workflow",
+                                $"Step '{step.Name}' routes to the {levelLabel}, but this request has no employee context.");
 
                         var unit = await managerResolver.GetEmployeeUnitAsync(employeeId.Value);
                         if (unit is null)
                             throw new ValidationException("workflow",
-                                $"Step '{step.Name}' routes to the Immediate Manager, but the employee has no position / organizational unit. Assign the employee to a position first.");
+                                $"Step '{step.Name}' routes to the {levelLabel}, but the employee has no position / organizational unit. Assign the employee to a position first.");
 
-                        if (await managerResolver.ResolveImmediateManagerAsync(employeeId.Value) is null)
+                        var resolved = approver.ApproverType == WorkflowApproverType.SecondLevelManager
+                            ? await managerResolver.ResolveSecondLevelManagerAsync(employeeId.Value)
+                            : await managerResolver.ResolveImmediateManagerAsync(employeeId.Value);
+                        if (resolved is null)
                             throw new ValidationException("workflow",
-                                $"Step '{step.Name}' cannot resolve an approver: no managerial employee is positioned in '{unit.Value.Name}' or any of its parent units. " +
+                                $"Step '{step.Name}' cannot resolve the {levelLabel}: no managerial employee is positioned in '{unit.Value.Name}' or any of its parent units. " +
                                 "Designate a manager by ticking 'Managerial' on an employee whose position belongs to that unit (or a parent unit).");
                     }
                     else if (approver.ApproverType == WorkflowApproverType.UnitManager)
@@ -158,6 +191,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         public async Task ApproveAsync(Guid instanceId, string? comment)
         {
             var instance = await GetRunningAsync(instanceId);
+            EnsureNotModuleDriven(instance);
             await approverAuth.EnsureCanDecideAsync(instance);
             var user = currentUser.GetCurrentUserName();
 
@@ -226,6 +260,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         public async Task RejectAsync(Guid instanceId, string? comment)
         {
             var instance = await GetRunningAsync(instanceId);
+            EnsureNotModuleDriven(instance);
             await approverAuth.EnsureCanDecideAsync(instance);
             var user = currentUser.GetCurrentUserName();
 
@@ -249,6 +284,58 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 throw;
             }
         }
+
+        public async Task AdvanceToStepAsync(Guid instanceId, string? targetStepName, string? comment)
+        {
+            var instance = await GetRunningAsync(instanceId);
+            await approverAuth.EnsureCanDecideAsync(instance);
+            var user = currentUser.GetCurrentUserName();
+
+            await actionLogs.AddAsync(WorkflowActionLog.Create(
+                instance.Id, instance.CurrentStepOrder, instance.CurrentStepName,
+                WorkflowActionType.Approved, comment, user));
+
+            if (string.IsNullOrWhiteSpace(targetStepName))
+            {
+                // Terminal — complete first so module gates open, then apply the outcome (compensate on failure).
+                instance.Complete(WorkflowInstanceStatus.Approved);
+                instances.UpdateAsync(instance);
+                await instances.SaveChangesAsync();
+                try
+                {
+                    var handler = handlers.FirstOrDefault(h => h.Supports(instance.EntityType));
+                    if (handler is not null) await handler.OnApprovedAsync(instance.EntityType, instance.EntityId);
+                }
+                catch { await TryReopenAsync(instance); throw; }
+                return;
+            }
+
+            var target = await definitions.GetAllWithoutTenantFilter()
+                .Where(d => d.Id == instance.DefinitionId)
+                .SelectMany(d => d.Steps)
+                .Where(s => s.Name == targetStepName)
+                .Select(s => new { s.StepOrder, s.Name })
+                .FirstOrDefaultAsync()
+                ?? throw new ValidationException("workflow", $"No workflow step named '{targetStepName}' in this definition.");
+
+            instance.AdvanceTo(target.StepOrder, target.Name);
+            instances.UpdateAsync(instance);
+            await instances.SaveChangesAsync();
+            logger.LogInformation("Workflow {InstanceId} advanced to step {Step} ({Name})", instance.Id, target.StepOrder, target.Name);
+        }
+
+        /// <summary>Some entity types (e.g. Appraisal) advance through their own rich per-stage actions, not the
+        /// generic approve/reject buttons — steer users to that screen instead of half-advancing the instance.</summary>
+        private static void EnsureNotModuleDriven(WorkflowInstance instance)
+        {
+            if (instance.EntityType == WorkflowEntityTypes.Appraisal)
+                throw new ValidationException("workflow",
+                    "Act on this appraisal from the appraisal screen (score / sign / complete); the generic approve/reject does not apply here.");
+        }
+
+        public Task<WorkflowInstance?> GetRunningInstanceAsync(string entityType, Guid entityId) =>
+            instances.GetAll().FirstOrDefaultAsync(i =>
+                i.EntityId == entityId && i.EntityType == entityType && i.Status == WorkflowInstanceStatus.Running);
 
         private async Task<WorkflowInstance> GetRunningAsync(Guid instanceId)
         {

@@ -257,13 +257,17 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                   className={selectClass}
                   value=""
                   onChange={(e) => {
-                    // Dynamic approvers resolve per request from the org structure at decision time.
+                    // Dynamic / self approvers resolve per request from the org structure at decision time.
                     if (e.target.value === "__immediate__") {
-                      addApprover(i, {
-                        approverType: "ImmediateManager",
-                        approverId: EMPTY_APPROVER_ID,
-                        displayName: "Immediate Manager",
-                      });
+                      addApprover(i, { approverType: "ImmediateManager", approverId: EMPTY_APPROVER_ID, displayName: "Immediate Manager" });
+                      return;
+                    }
+                    if (e.target.value === "__second__") {
+                      addApprover(i, { approverType: "SecondLevelManager", approverId: EMPTY_APPROVER_ID, displayName: "Second-Level Manager" });
+                      return;
+                    }
+                    if (e.target.value === "__subject__") {
+                      addApprover(i, { approverType: "Subject", approverId: EMPTY_APPROVER_ID, displayName: "Subject (the employee)" });
                       return;
                     }
                     const u = (orgUnits?.data ?? []).find((x) => x.id === e.target.value);
@@ -276,7 +280,9 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                   }}
                 >
                   <option value="">{t("+ Add dynamic approver")}</option>
+                  <option value="__subject__">{t("Subject (the employee themselves)")}</option>
                   <option value="__immediate__">{t("Immediate Manager (requester's chain)")}</option>
+                  <option value="__second__">{t("Second-Level Manager (manager's manager)")}</option>
                   {(orgUnits?.data ?? []).map((u) => (
                     <option key={u.id} value={u.id}>{t("Manager of")} {u.name}</option>
                   ))}
@@ -294,14 +300,14 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                     className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
                       a.approverType === "Role"
                         ? "border-info/40 bg-info/10 text-info"
-                        : a.approverType === "ImmediateManager" || a.approverType === "UnitManager"
+                        : a.approverType === "ImmediateManager" || a.approverType === "UnitManager" || a.approverType === "SecondLevelManager"
                           ? "border-warning/40 bg-warning/10 text-warning"
                           : "border-primary/40 bg-primary/10 text-primary"
                     }`}
                   >
                     {a.approverType === "Role" ? (
                       <Shield size={11} />
-                    ) : a.approverType === "ImmediateManager" || a.approverType === "UnitManager" ? (
+                    ) : a.approverType === "ImmediateManager" || a.approverType === "UnitManager" || a.approverType === "SecondLevelManager" ? (
                       <GitBranch size={11} />
                     ) : (
                       <UserRound size={11} />

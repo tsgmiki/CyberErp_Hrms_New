@@ -20,6 +20,7 @@ public static class WorkflowEntityTypes
     public const string JobRequisition = "JobRequisition";
     public const string JobOffer = "JobOffer";
     public const string CareerPathChangeRequest = "CareerPathChangeRequest";
+    public const string Appraisal = "Appraisal";
 }
 
 /// <summary>
@@ -97,19 +98,24 @@ public class WorkflowDefinition : BaseEntity, IAggregateRoot, IAuditable
 }
 
 /// <summary>
-/// Who may act on a workflow step: a specific user, any user holding a role, or a DYNAMIC approver
-/// resolved per-request from the org structure at decision time —
-/// <see cref="ImmediateManager"/> = the requester's unit manager (climbing parent units when the unit
-/// has no manager or the requester IS the manager); <see cref="UnitManager"/> = the manager of a
-/// specific configured unit (<see cref="WorkflowStepApprover.ApproverId"/> holds the unit id),
-/// with the same upward climb when that unit's manager is unset.
+/// Who may act on a workflow step: a specific user, any user holding a role, the SUBJECT of the
+/// request themselves, or a DYNAMIC approver resolved per-request from the org structure at decision
+/// time — <see cref="ImmediateManager"/> = the requester's unit manager (climbing parent units when
+/// the unit has no manager or the requester IS the manager); <see cref="UnitManager"/> = the manager
+/// of a specific configured unit (<see cref="WorkflowStepApprover.ApproverId"/> holds the unit id);
+/// <see cref="SecondLevelManager"/> = the immediate manager's own manager (a two-hop climb);
+/// <see cref="Subject"/> = the instance's subject employee acting on their own step (self-service,
+/// e.g. an appraisal self-assessment or the employee's final acknowledgment). All dynamic types carry
+/// no target id (resolved from the instance's subject / requester).
 /// </summary>
 public enum WorkflowApproverType
 {
     User = 0,
     Role = 1,
     ImmediateManager = 2,
-    UnitManager = 3
+    UnitManager = 3,
+    Subject = 4,
+    SecondLevelManager = 5
 }
 
 /// <summary>Input spec for one approver of a step (see <see cref="WorkflowDefinition.SetSteps(IEnumerable{WorkflowStepSpec})"/>).</summary>
@@ -148,9 +154,11 @@ public class WorkflowStep : BaseEntity
 
     public void AddApprover(WorkflowApproverType type, Guid approverId, string displayName)
     {
-        // ImmediateManager carries no target id (resolved from the requester at decision time);
-        // User/Role need a principal id and UnitManager needs the target unit id.
-        if (approverId == Guid.Empty && type != WorkflowApproverType.ImmediateManager)
+        // Dynamic/self approver types carry no target id (resolved from the instance's subject at
+        // decision time); User/Role need a principal id and UnitManager needs the target unit id.
+        var noTargetId = type is WorkflowApproverType.ImmediateManager
+            or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject;
+        if (approverId == Guid.Empty && !noTargetId)
             throw new ArgumentException("Approver is required.", nameof(approverId));
         if (_approvers.Any(a => a.ApproverType == type && a.ApproverId == approverId))
             return;

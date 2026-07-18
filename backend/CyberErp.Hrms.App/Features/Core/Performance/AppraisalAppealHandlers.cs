@@ -82,7 +82,10 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     // ---- Acknowledge / sign (HC142–HC143, HC146) ----------------------------
     public class AcknowledgeAppraisal(
         IRepository<Appraisal> repository,
+        IRepository<ReviewCycle> reviewCycleRepository,
         IPerformanceHistoryWriter history,
+        IEnumerable<IAppraisalCompletedHandler> completedHandlers,
+        IAppraisalWorkflowService workflowService,
         IValidator<SignAppraisalDto> validator,
         ILogger<AcknowledgeAppraisal> logger) : IAcknowledgeAppraisal
     {
@@ -93,21 +96,35 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
-            if (appraisal.Stage != AppraisalStage.Completed)
-                throw new ValidationException(nameof(dto.Id), "Only a completed appraisal can be acknowledged.");
+            if (appraisal.Stage != AppraisalStage.EmployeeAcknowledgment)
+                throw new ValidationException(nameof(dto.Id), "This appraisal is not awaiting the employee's acknowledgment.");
             if (appraisal.AcknowledgmentStatus == Dom.Entities.Core.AcknowledgmentStatus.Appealed)
                 throw new ValidationException(nameof(dto.Id), "This appraisal is under appeal and cannot be acknowledged.");
+            await workflowService.EnsureCanActAsync(appraisal);
 
-            appraisal.Acknowledge(dto.Signature);
-            await history.WriteAsync("Appraisal", dto.Id, "Acknowledged", $"Employee acknowledged and signed ({dto.Signature}).");
+            // The employee's signature routes to HR sign-off if the cycle enables it, otherwise closes/locks.
+            var enableHr = await reviewCycleRepository.GetAll()
+                .Where(c => c.Id == appraisal.ReviewCycleId).Select(c => c.EnableHrSignOff).FirstOrDefaultAsync();
+            var nextStage = enableHr ? AppraisalStage.HrSignOff : AppraisalStage.Completed;
+
+            appraisal.Acknowledge(dto.Signature, nextStage);
+            repository.UpdateAsync(appraisal);
+            await history.WriteAsync("Appraisal", dto.Id, "Acknowledged",
+                $"Employee acknowledged and signed ({dto.Signature}); routed to {nextStage}.");
             await repository.SaveChangesAsync();
-            logger.LogInformation("Appraisal {Id} acknowledged", dto.Id);
+            await workflowService.SyncInstanceAsync(appraisal, "Employee acknowledged & signed");   // route to HR / complete
+            logger.LogInformation("Appraisal {Id} acknowledged (next {Stage})", dto.Id, nextStage);
+
+            // If there is no HR sign-off step, the employee's signature is terminal — notify downstream modules.
+            if (nextStage == AppraisalStage.Completed)
+                await AppraisalCompletion.NotifyAsync(completedHandlers, logger, appraisal.Id, appraisal.EmployeeId);
         }
     }
 
     public class ManagerSignAppraisal(
         IRepository<Appraisal> repository,
         IPerformanceHistoryWriter history,
+        IAppraisalWorkflowService workflowService,
         IValidator<SignAppraisalDto> validator,
         ILogger<ManagerSignAppraisal> logger) : IManagerSignAppraisal
     {
@@ -118,8 +135,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var appraisal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(Appraisal), dto.Id.ToString());
-            if (appraisal.Stage != AppraisalStage.Completed)
-                throw new ValidationException(nameof(dto.Id), "Only a completed appraisal can be signed.");
+            if (appraisal.Stage < AppraisalStage.SecondLevelReview)
+                throw new ValidationException(nameof(dto.Id), "The manager can sign only after completing the manager review.");
+            // Counter-signature is a side action (doesn't advance the stage): gate it to the ManagerReview step's approver.
+            if (!await workflowService.CanActOnStageAsync(appraisal, nameof(AppraisalStage.ManagerReview)))
+                throw new ValidationException(nameof(dto.Id), "Only the direct manager can counter-sign this appraisal.");
 
             appraisal.ManagerSign(dto.Signature);
             await history.WriteAsync("Appraisal", dto.Id, "ManagerSigned", $"Manager signed ({dto.Signature}).");
@@ -133,6 +153,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<AppraisalAppeal> repository,
         IRepository<Appraisal> appraisalRepository,
         IPerformanceHistoryWriter history,
+        IAppraisalWorkflowService workflowService,
         IValidator<SubmitAppraisalAppealDto> validator,
         ILogger<SubmitAppraisalAppeal> logger) : ISubmitAppraisalAppeal
     {
@@ -143,8 +164,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var appraisal = await appraisalRepository.GetAll().FirstOrDefaultAsync(a => a.Id == dto.AppraisalId)
                 ?? throw new NotFoundException(nameof(Appraisal), dto.AppraisalId.ToString());
-            if (appraisal.Stage != AppraisalStage.Completed)
-                throw new ValidationException(nameof(dto.AppraisalId), "Only a completed appraisal can be appealed.");
+            if (appraisal.Stage != AppraisalStage.EmployeeAcknowledgment)
+                throw new ValidationException(nameof(dto.AppraisalId), "An appraisal can be appealed only while it awaits the employee's acknowledgment.");
+            await workflowService.EnsureCanActAsync(appraisal);
             if (appraisal.AcknowledgmentStatus == Dom.Entities.Core.AcknowledgmentStatus.Accepted)
                 throw new ValidationException(nameof(dto.AppraisalId), "An already-accepted appraisal cannot be appealed.");
             if (await repository.GetAll().AnyAsync(x => x.AppraisalId == dto.AppraisalId

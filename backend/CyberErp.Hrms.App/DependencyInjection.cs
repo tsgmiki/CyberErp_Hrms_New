@@ -231,6 +231,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, HiringRequestWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, JobRequisitionWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, JobOfferWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Performance.AppraisalWorkflowHandler>();
 
             // Recruitment & Talent Acquisition — Phase 1 (HC077–HC100 core)
             services.AddScoped<Features.Core.Recruitment.ISaveHiringRequest, Features.Core.Recruitment.SaveHiringRequest>();
@@ -439,7 +440,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Performance.IGenerateAppraisal, Features.Core.Performance.GenerateAppraisal>();
             services.AddScoped<Features.Core.Performance.ISaveAppraisalScores, Features.Core.Performance.SaveAppraisalScores>();
             services.AddScoped<Features.Core.Performance.ISubmitAppraisalSelfAssessment, Features.Core.Performance.SubmitAppraisalSelfAssessment>();
+            services.AddScoped<Features.Core.Performance.IAppraisalWorkflowService, Features.Core.Performance.AppraisalWorkflowService>();
             services.AddScoped<Features.Core.Performance.ICompleteAppraisal, Features.Core.Performance.CompleteAppraisal>();
+            services.AddScoped<Features.Core.Performance.IReviewerSignOffAppraisal, Features.Core.Performance.ReviewerSignOffAppraisal>();
+            services.AddScoped<Features.Core.Performance.IHrCloseAppraisal, Features.Core.Performance.HrCloseAppraisal>();
             services.AddScoped<Features.Core.Performance.IDeleteAppraisal, Features.Core.Performance.DeleteAppraisal>();
             services.AddScoped<Features.Core.Performance.IGetAppraisalById, Features.Core.Performance.GetAppraisalById>();
             services.AddScoped<Features.Core.Performance.IGetAllAppraisals, Features.Core.Performance.GetAllAppraisals>();

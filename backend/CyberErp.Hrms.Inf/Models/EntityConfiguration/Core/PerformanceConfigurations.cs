@@ -236,7 +236,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("hrmsAppraisal", "dbo");
             builder.HasKey(x => x.Id);
 
-            builder.Property(x => x.Stage).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.Stage).HasConversion<string>().HasMaxLength(30).IsRequired();
             builder.Property(x => x.GoalsWeight).HasPrecision(5, 2);
             builder.Property(x => x.CompetenciesWeight).HasPrecision(5, 2);
             builder.Property(x => x.OverallScore).HasPrecision(6, 2);
@@ -245,6 +245,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.AcknowledgmentStatus).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.EmployeeSignature).HasMaxLength(200);
             builder.Property(x => x.ManagerSignature).HasMaxLength(200);
+            builder.Property(x => x.ReviewerComments).HasMaxLength(4000);
+            builder.Property(x => x.ReviewerSignature).HasMaxLength(200);
+            builder.Property(x => x.HrSignature).HasMaxLength(200);
 
             builder.HasOne<Employee>()
                 .WithMany()

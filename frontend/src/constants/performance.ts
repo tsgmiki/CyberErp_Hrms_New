@@ -22,6 +22,9 @@ export const goalStatusOptions = ["Draft", "Active", "Completed", "Cancelled"].m
 export const appraisalStageOptions = [
   { id: "SelfAssessment", name: "Self-Assessment" },
   { id: "ManagerReview", name: "Manager Review" },
+  { id: "SecondLevelReview", name: "2nd-Level Review" },
+  { id: "EmployeeAcknowledgment", name: "Employee Sign-off" },
+  { id: "HrSignOff", name: "HR Sign-off" },
   { id: "Completed", name: "Completed" },
 ];
 

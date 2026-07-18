@@ -56,6 +56,8 @@ export interface ReviewCycleModel extends AbstractModel {
   enableSelfAssessment?: boolean;
   enablePeerAssessment?: boolean;
   enableCalibration?: boolean;
+  enableSecondLevelReview?: boolean;
+  enableHrSignOff?: boolean;
   /** Probation length in months (probation cycles only). */
   probationDurationMonths?: number;
   /** Draft | Active | Closed */
@@ -168,6 +170,15 @@ export interface AppraisalModel extends AbstractModel {
   employeeSignedAt?: string;
   managerSignature?: string;
   managerSignedAt?: string;
+  reviewerComments?: string;
+  reviewerSignature?: string;
+  reviewerSignedAt?: string;
+  hrSignature?: string;
+  hrSignedAt?: string;
+  /** Workflow-routing fields (single-record read): whose turn it is + whether the caller may act now. */
+  currentUserRole?: string;
+  canActCurrentStage?: boolean;
+  currentStageActorName?: string;
   goals?: AppraisalLineModel[];
   competencies?: AppraisalLineModel[];
   peerReviews?: AppraisalPeerReviewModel[];

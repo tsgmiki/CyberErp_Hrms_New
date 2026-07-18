@@ -26,6 +26,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public bool EnableSelfAssessment { get; set; }
         public bool EnablePeerAssessment { get; set; }
         public bool EnableCalibration { get; set; }
+        public bool EnableSecondLevelReview { get; set; }
+        public bool EnableHrSignOff { get; set; }
         public string Status { get; set; } = string.Empty;
         public int? ProbationDurationMonths { get; set; }
     }
@@ -44,6 +46,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public bool EnableSelfAssessment { get; set; } = true;
         public bool EnablePeerAssessment { get; set; }
         public bool EnableCalibration { get; set; }
+        public bool EnableSecondLevelReview { get; set; }
+        public bool EnableHrSignOff { get; set; }
         /// <summary>Probation length in months (probation cycles only) — computes period end from hire date.</summary>
         public int? ProbationDurationMonths { get; set; }
     }
@@ -100,6 +104,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                     ?? throw new NotFoundException(nameof(ReviewCycle), dto.Id.Value.ToString());
                 entity.Update(dto.Name, periodType, dto.RatingScaleId, dto.StartDate, dto.EndDate, dto.FiscalYearId,
                     dto.SelfReviewDue, dto.ManagerReviewDue, dto.EnableSelfAssessment, dto.EnablePeerAssessment, dto.EnableCalibration,
+                    dto.EnableSecondLevelReview, dto.EnableHrSignOff,
                     dto.ProbationDurationMonths);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
@@ -110,6 +115,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var created = ReviewCycle.Create(dto.Name, periodType, dto.RatingScaleId, dto.StartDate, dto.EndDate,
                 dto.FiscalYearId, dto.SelfReviewDue, dto.ManagerReviewDue,
                 dto.EnableSelfAssessment, dto.EnablePeerAssessment, dto.EnableCalibration,
+                dto.EnableSecondLevelReview, dto.EnableHrSignOff,
                 dto.ProbationDurationMonths);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
@@ -188,6 +194,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                     EnableSelfAssessment = x.EnableSelfAssessment,
                     EnablePeerAssessment = x.EnablePeerAssessment,
                     EnableCalibration = x.EnableCalibration,
+                    EnableSecondLevelReview = x.EnableSecondLevelReview,
+                    EnableHrSignOff = x.EnableHrSignOff,
                     Status = x.Status.ToString(),
                     ProbationDurationMonths = x.ProbationDurationMonths
                 })
@@ -215,6 +223,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         EnableSelfAssessment = x.EnableSelfAssessment,
         EnablePeerAssessment = x.EnablePeerAssessment,
         EnableCalibration = x.EnableCalibration,
+        EnableSecondLevelReview = x.EnableSecondLevelReview,
+        EnableHrSignOff = x.EnableHrSignOff,
         Status = x.Status.ToString(),
         ProbationDurationMonths = x.ProbationDurationMonths
         };

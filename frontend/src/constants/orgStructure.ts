@@ -99,6 +99,7 @@ export const workflowEntityTypeOptions = [
   { id: "HiringRequest", name: "Hiring Need" },
   { id: "JobRequisition", name: "Job Requisition" },
   { id: "JobOffer", name: "Job Offer" },
+  { id: "Appraisal", name: "Appraisal" },
 ];
 
 /** Recruitment levels a screening criterion can be scoped to (empty id = all steps). */

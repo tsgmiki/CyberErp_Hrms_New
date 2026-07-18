@@ -29,6 +29,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
     public class WorkflowApproverAuth(
         IRepository<WorkflowDefinition> definitions,
         IRepository<UserRole> userRoles,
+        IRepository<User> users,
         IOrgManagerResolver managerResolver,
         ICurrentUserService currentUser) : IWorkflowApproverAuth
     {
@@ -41,6 +42,14 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .Select(u => u.RoleId)
                     .ToListAsync())
                 .ToHashSet();
+        }
+
+        /// <summary>The current user's linked employee id (null for system/unlinked accounts).</summary>
+        private async Task<Guid?> CurrentEmployeeIdAsync()
+        {
+            var userId = currentUser.GetCurrentUserId();
+            if (userId is null) return null;
+            return await users.GetAll().Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
         }
 
         public async Task<(bool CanDecide, List<string> ApproverNames)> EvaluateAsync(
@@ -63,6 +72,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var canDecide = false;
             var names = new List<string>();
             HashSet<Guid>? roleIds = null;
+            Guid? myEmployeeId = null;
+            var myEmployeeLoaded = false;
 
             foreach (var a in approvers)
             {
@@ -82,13 +93,25 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                         }
                         break;
 
+                    case WorkflowApproverType.Subject:
+                        // The subject employee acts on their own step (self-service). No override — only them.
+                        names.Add(a.DisplayName);
+                        if (!myEmployeeLoaded) { myEmployeeId = await CurrentEmployeeIdAsync(); myEmployeeLoaded = true; }
+                        if (requesterEmployeeId.HasValue && myEmployeeId.HasValue && myEmployeeId.Value == requesterEmployeeId.Value)
+                            canDecide = true;
+                        break;
+
                     case WorkflowApproverType.ImmediateManager:
                     case WorkflowApproverType.UnitManager:
-                        var resolved = a.ApproverType == WorkflowApproverType.ImmediateManager
-                            ? (requesterEmployeeId.HasValue
-                                ? await managerResolver.ResolveImmediateManagerAsync(requesterEmployeeId.Value)
-                                : null)
-                            : await managerResolver.ResolveUnitManagerAsync(a.ApproverId, requesterEmployeeId);
+                    case WorkflowApproverType.SecondLevelManager:
+                        var resolved = a.ApproverType switch
+                        {
+                            WorkflowApproverType.ImmediateManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveImmediateManagerAsync(requesterEmployeeId.Value) : null,
+                            WorkflowApproverType.SecondLevelManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveSecondLevelManagerAsync(requesterEmployeeId.Value) : null,
+                            _ => await managerResolver.ResolveUnitManagerAsync(a.ApproverId, requesterEmployeeId),
+                        };
 
                         names.Add(resolved is null ? $"{a.DisplayName} (unresolved)" : $"{a.DisplayName}: {resolved.Name}");
                         if (resolved is not null && userId.HasValue && resolved.UserIds.Contains(userId.Value))

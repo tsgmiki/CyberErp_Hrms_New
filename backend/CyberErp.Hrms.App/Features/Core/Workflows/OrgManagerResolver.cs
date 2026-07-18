@@ -25,6 +25,10 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// <summary>The requester's effective manager(s), or null when none exist up the chain.</summary>
         Task<ResolvedManager?> ResolveImmediateManagerAsync(Guid requesterEmployeeId);
 
+        /// <summary>The requester's second-level manager(s) — the immediate manager's own manager (two-hop
+        /// climb). Null when there is no immediate manager, or none above them.</summary>
+        Task<ResolvedManager?> ResolveSecondLevelManagerAsync(Guid requesterEmployeeId);
+
         /// <summary>The effective manager(s) anchored at a specific unit (e.g. "Finance Head"), same climb rules.</summary>
         Task<ResolvedManager?> ResolveUnitManagerAsync(Guid organizationUnitId, Guid? requesterEmployeeId);
 
@@ -47,6 +51,27 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             if (unitId is null) return null; // unplaced employee — nothing to traverse
 
             return await ClimbAsync(unitId.Value, requesterEmployeeId);
+        }
+
+        public async Task<ResolvedManager?> ResolveSecondLevelManagerAsync(Guid requesterEmployeeId)
+        {
+            // First hop: the requester's immediate manager(s). Second hop: resolve the manager's own
+            // manager (anchored on that manager's employee id, which also excludes them from their own set).
+            var direct = await ResolveImmediateManagerAsync(requesterEmployeeId);
+            if (direct is null || direct.EmployeeIds.Count == 0) return null;
+
+            var employeeIds = new List<Guid>();
+            var names = new List<string>();
+            var userIds = new List<Guid>();
+            foreach (var managerEmpId in direct.EmployeeIds)
+            {
+                var second = await ResolveImmediateManagerAsync(managerEmpId);
+                if (second is null) continue;
+                foreach (var id in second.EmployeeIds) if (!employeeIds.Contains(id)) employeeIds.Add(id);
+                foreach (var uid in second.UserIds) if (!userIds.Contains(uid)) userIds.Add(uid);
+                if (!string.IsNullOrWhiteSpace(second.Name)) names.Add(second.Name);
+            }
+            return employeeIds.Count == 0 ? null : new ResolvedManager(employeeIds, string.Join(", ", names.Distinct()), userIds);
         }
 
         public Task<ResolvedManager?> ResolveUnitManagerAsync(Guid organizationUnitId, Guid? requesterEmployeeId) =>
