@@ -65,7 +65,7 @@ function DialogModal({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-xl"
+        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border/80 bg-card shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <header className="relative flex shrink-0 items-start justify-between gap-3 border-b border-modal-divider bg-[color-mix(in_srgb,var(--secondary)_32%,var(--card))] px-5 py-3">
@@ -89,7 +89,7 @@ function DialogModal({
           </button>
         </header>
 
-        <div className="px-5 py-4 text-sm leading-relaxed text-muted">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed text-muted">{children}</div>
 
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-modal-divider bg-[color-mix(in_srgb,var(--secondary)_18%,var(--card))] px-5 py-3">
           <button

@@ -297,7 +297,8 @@ namespace CyberErp.Hrms.Inf.Common
             {
                 DbUpdateException => true,
                 TimeoutException => true,
-                InvalidOperationException => true,
+                // NOT InvalidOperationException: domain state-machine guards throw it — retrying
+                // a business-rule violation can never succeed (and may repeat side effects).
                 HttpRequestException => true,
                 SocketException => true,
                 IOException => true,

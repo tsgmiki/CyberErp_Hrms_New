@@ -10,6 +10,7 @@ using Finbuckle.MultiTenant;
 using Finbuckle.MultiTenant.AspNetCore.Extensions;
 using Finbuckle.MultiTenant.Extensions;
 using CyberErp.Hrms.Inf;
+using CyberErp.Hrms.Inf.Common;
 using CyberErp.Hrms.Inf.Models;
 using CyberErp.Hrms.Inf.MultiTenant;
 using CyberErp.Hrms.App;
@@ -34,6 +35,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHrmsSession(this IServiceCollection services)
     {
         services.AddDistributedMemoryCache();
+        services.AddMemoryCache();   // per-user permission-link cache (EndpointPermissionService)
         services.AddSession(options =>
         {
             options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -49,10 +51,17 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddHrmsControllers(this IServiceCollection services)
     {
-        services.AddControllers()
+        services.AddControllers(options =>
+            {
+                // Server-side per-operation permission enforcement (opt-in via [RequirePermission]).
+                options.Filters.Add<PermissionAuthorizationFilter>();
+            })
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);
+                // Form-driven UI posts numeric fields as strings; accept them for int/decimal.
+                options.JsonSerializerOptions.NumberHandling =
+                    System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString;
             });
 
         return services;
@@ -87,9 +96,17 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHrmsDbContext(this IServiceCollection services, IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
-        services.AddDbContext<HrmsDbContext>(options =>
+        services.AddDbContext<HrmsDbContext>((sp, options) =>
         {
-            options.UseSqlServer(connectionString, b => b.MigrationsAssembly("CyberErp.Hrms.Inf"));
+            options.UseSqlServer(connectionString, b =>
+            {
+                b.MigrationsAssembly("CyberErp.Hrms.Inf");
+                // Safety net so a cold cache / stats refresh can't hard-fail with the 30s ADO default;
+                // real speed comes from the indexes, not this ceiling.
+                b.CommandTimeout(60);
+            });
+            // Audit-trail interceptor (resolved per-scope so it sees the current user/tenant).
+            options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
         });
         services.AddScoped<DbContext>(sp => sp.GetRequiredService<HrmsDbContext>());
 

@@ -24,7 +24,11 @@ export default async function saveModuleService(formData: FormData) {
   const isUpdate = typeof formDataObj.id !== "undefined" && formDataObj.id !== "" && formDataObj.id !== null;
 
   try {
-    const requestBody: Record<string, unknown> = { ...formDataObj };
+    const requestBody: Record<string, unknown> = {
+      ...formDataObj,
+      // SortOrder binds to an int server-side; FormData always yields strings.
+      sortOrder: Number(formDataObj.sortOrder || 0),
+    };
     if (!isUpdate) {
       delete requestBody.id;
     }

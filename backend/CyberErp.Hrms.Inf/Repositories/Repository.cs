@@ -25,8 +25,10 @@ namespace CyberErp.Hrms.Inf.Repositories
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {
-            // Skip tenant filter for Tenant and SubscriptionPlan (root entities)
-            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan")
+            // Skip tenant filter for Tenant and SubscriptionPlan (root entities) and for the generic
+            // lookup tables (GLOBAL reference data shared across all tenants).
+            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan"
+                || typeof(T).Name == "LookupCategory" || typeof(T).Name == "LookupCategoryList")
             {
                 return query;
             }
@@ -36,13 +38,48 @@ namespace CyberErp.Hrms.Inf.Repositories
             {
                 query = query.Where(e => e.TenantId == tenantId);
             }
+            return ApplyBranchFilter(query);
+        }
+
+        /// <summary>
+        /// Branch-level data isolation: a branch administrator only sees rows for their assigned
+        /// branch; Head Office (and users with no branch assignment) bypass the filter and see all.
+        /// </summary>
+        private IQueryable<T> ApplyBranchFilter(IQueryable<T> query)
+        {
+            if (_currentUserService.IsHeadOffice())
+            {
+                return query;
+            }
+
+            var branchId = _currentUserService.GetCurrentBranchId();
+            if (!branchId.HasValue)
+            {
+                // Not a branch-scoped user → unrestricted (e.g. tenant owner before branch assignment).
+                return query;
+            }
+
+            // A branch's own record: the branch admin only sees their branch.
+            if (typeof(T).Name == "Branch")
+            {
+                return query.Where(e => e.Id == branchId.Value);
+            }
+
+            // Branch-scoped entities (organization units, positions, audit log) filter by BranchId.
+            if (typeof(IBranchScoped).IsAssignableFrom(typeof(T)))
+            {
+                return query.Where(e => EF.Property<Guid?>(e, "BranchId") == branchId.Value);
+            }
+
             return query;
         }
 
         private void SetAuditFields(T entity, bool isNew)
         {
-            // Skip tenant validation for Tenant (root tenant entity doesn't need a TenantId)
-            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan")
+            // Skip tenant stamping for Tenant/SubscriptionPlan (root) and the GLOBAL lookup tables —
+            // lookups keep an empty TenantId so they are shared system-wide.
+            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan"
+                || typeof(T).Name == "LookupCategory" || typeof(T).Name == "LookupCategoryList")
             {
                 if (isNew)
                 {

@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { Header } from "@/components/header";
 import Spinner from "@/components/common/spinner/spinner";
 import Menu from "@/components/menu";
+import { RouteErrorBoundary } from "@/components/common/errorBoundary";
 
 export default function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -16,9 +17,13 @@ export default function DashboardLayout() {
       <div className="flex flex-1 flex-col min-w-0 min-h-screen relative">
         <Header />
         <main className="relative z-0 flex-1 overflow-auto p-2 md:p-2">
-          <Suspense fallback={<Spinner block />}>
-            <Outlet />
-          </Suspense>
+          {/* Page-level boundary: a crashing page keeps the sidebar/header, and navigating
+              elsewhere (route change) clears the error automatically. */}
+          <RouteErrorBoundary>
+            <Suspense fallback={<Spinner block />}>
+              <Outlet />
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
       </div>
     </div>

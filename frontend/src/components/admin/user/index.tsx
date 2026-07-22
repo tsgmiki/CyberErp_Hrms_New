@@ -13,7 +13,7 @@ function User() {
     <EntityModuleShell
       title="Users"
       headerDescription="Manage system users and credentials"
-      headerIcon={<Users className="h-6 w-6 text-red-600" />}
+      headerIcon={<Users className="h-6 w-6 text-primary" />}
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}

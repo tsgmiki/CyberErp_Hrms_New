@@ -5,6 +5,9 @@ export default interface OperationModel extends AbstractModel {
   moduleId: string;
   module?: string;
   link?: string;
+  filter?: string;
+  icon?: string;
+  sortOrder?: number;
   canView?: boolean;
   canAdd?: boolean;
   canEdit?: boolean;

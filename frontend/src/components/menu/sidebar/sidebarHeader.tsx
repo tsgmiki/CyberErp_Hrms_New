@@ -16,7 +16,7 @@ function SidebarHeader({ collapsed, onToggle }: SidebarHeaderProps) {
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm">
-          <Building2 className="w-4 h-4 text-primary-foreground" />
+          <Building2 className="w-4 h-4 text-on-accent" />
         </div>
         {!collapsed && <BrandTitle size="sm" />}
       </button>

@@ -9,7 +9,21 @@ public class User : BaseEntity, IAggregateRoot
     public string UserName { get; private set; } = string.Empty;
     public string Password { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// The employee this login account belongs to (nullable — system/owner accounts have none).
+    /// The relationship is owned by the User table (FK here). The user's branch scope and
+    /// head-office visibility are DERIVED from this employee's branch at login.
+    /// </summary>
+    public Guid? EmployeeId { get; private set; }
+
     private User() : base() { }
+
+    /// <summary>Links (or unlinks, when null) this login account to an employee record.</summary>
+    public void LinkEmployee(Guid? employeeId)
+    {
+        EmployeeId = employeeId;
+        base.Update();
+    }
 
     public static User Create(
         string fullName,

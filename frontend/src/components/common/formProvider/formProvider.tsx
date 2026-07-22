@@ -122,7 +122,7 @@ function FormBody({ form, children, inModal, formRef }: FormBodyProps) {
                   component={{
                     ...formColumn,
                     labelWidth: form.labelWidth,
-                    layout: formColumn.layout ?? "auth",
+                    layout: formColumn.layout ?? form.fieldLayout ?? "auth",
                   }}
                 />
               ))}
@@ -211,6 +211,7 @@ function FormBody({ form, children, inModal, formRef }: FormBodyProps) {
               component={{
                 ...formColumn,
                 labelWidth: form.labelWidth ?? formColumn.labelWidth,
+                layout: formColumn.layout ?? form.fieldLayout,
               }}
             />
           ))}

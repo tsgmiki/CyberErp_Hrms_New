@@ -9,6 +9,8 @@ namespace CyberErp.Hrms.Inf.Common
 
         private static readonly string[] UserIdCookieNames = { "UserId", "userId", "currentUserId", "CURRENTUSERID" };
         private static readonly string[] UserNameCookieNames = { "UserName", "userName", "currentUserName", "FullName", "fullName", "CURRENTUSERNAME" };
+        private static readonly string[] BranchIdCookieNames = { "BranchId", "branchId", "CURRENTBRANCHID" };
+        private static readonly string[] IsHeadOfficeCookieNames = { "IsHeadOffice", "isHeadOffice" };
 
         public CurrentUserService(IHttpContextAccessor httpContextAccessor)
         {
@@ -47,6 +49,40 @@ namespace CyberErp.Hrms.Inf.Common
             }
 
             return null;
+        }
+
+        public Guid? GetCurrentBranchId()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context == null) return null;
+
+            foreach (var cookieName in BranchIdCookieNames)
+            {
+                var cookieValue = context.Request.Cookies[cookieName];
+                if (!string.IsNullOrEmpty(cookieValue) && Guid.TryParse(cookieValue, out var branchId))
+                {
+                    return branchId;
+                }
+            }
+
+            return null;
+        }
+
+        public bool IsHeadOffice()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context == null) return false;
+
+            foreach (var cookieName in IsHeadOfficeCookieNames)
+            {
+                var cookieValue = context.Request.Cookies[cookieName];
+                if (!string.IsNullOrEmpty(cookieValue) && bool.TryParse(cookieValue, out var isHeadOffice))
+                {
+                    return isHeadOffice;
+                }
+            }
+
+            return false;
         }
     }
 }

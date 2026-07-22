@@ -14,7 +14,7 @@ function UserRole(props:{userId?:string}) {
     <EntityModuleShell
       title="User Roles"
       headerDescription="Assign roles to users"
-      headerIcon={<UserCog className="h-6 w-6 text-red-600" />}
+      headerIcon={<UserCog className="h-6 w-6 text-primary" />}
       showForm={showForm}
       onList={backHandler}
       onAdd={addHandler}

@@ -21,6 +21,8 @@ builder.Services
     .AddHrmsValidators()
     .AddHrmsDbContext(builder.Configuration)
     .AddHrmsMultiTenancy()
+    .AddHrmsBackgroundJobs(builder.Configuration)
+    .AddHrmsResponseCompression()
     .AddInfrastractureServices()
     .AddApplicationServices()
     .AddHrmsSwagger()

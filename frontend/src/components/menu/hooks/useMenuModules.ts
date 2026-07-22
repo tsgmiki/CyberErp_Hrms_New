@@ -57,5 +57,7 @@ export function useMenuModules() {
     isLoading,
     navigation,
     selectedSubsystem,
+    /** Raw menu feed (modules + role-visible operations) for the grouped sidebar. */
+    modules: modules?.data as ModuleModel[] | undefined,
   };
 }

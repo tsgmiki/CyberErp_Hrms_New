@@ -10,10 +10,13 @@ export function useListPermissions() {
   const permissions = store.PermissionData.value;
 
   return useMemo(() => {
+    // No permission backend loaded → don't hide toolbar tools (export, column picker).
+    // Once permissions are configured, honour the per-route canView flag.
+    const hasPermissions = Array.isArray(permissions) && permissions.length > 0;
     const match = permissions?.find(
       (entry) => entry.link && pathName.includes(String(entry.link)),
     );
-    const canView = match?.canView === true;
+    const canView = !hasPermissions || match?.canView === true;
 
     return {
       canExport: canView,

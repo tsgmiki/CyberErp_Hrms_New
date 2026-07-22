@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { parameterInitialData } from "@/constants/initialization";
 import type ParameterModel from "@/models/ParameterModel";
 import { fetchAllListRows } from "@/components/common/dataTableProvider/listFetchAll";
@@ -32,6 +32,10 @@ export function useEntityList<T = unknown>({
   const { data, isLoading } = useQuery({
     queryKey: [queryKey, param],
     queryFn: () => fetchPage(param),
+    // Keep the previous page's rows on screen while the next filter/page loads (e.g. switching org-unit
+    // tree nodes) — no loading flash or grid remount — and don't refetch an already-fresh page.
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const { mutate: deleteRecord } = useMutation({

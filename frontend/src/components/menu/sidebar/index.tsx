@@ -1,10 +1,6 @@
 import { cn } from "../utils/classNames";
-import { useMenuModules } from "../hooks/useMenuModules";
-import { useExpandedCategories } from "../hooks/useExpandedCategories";
 import SidebarHeader from "./sidebarHeader";
 import SidebarFooter from "./sidebarFooter";
-import BackToModules from "./backToModules";
-import SubsystemTitle from "./subsystemTitle";
 import SidebarNav from "./sidebarNav";
 
 interface SidebarProps {
@@ -13,9 +9,6 @@ interface SidebarProps {
 }
 
 function Sidebar({ collapsed, onToggle }: SidebarProps) {
-  const { navigation } = useMenuModules();
-  const { isCategoryExpanded, toggleCategory } = useExpandedCategories(navigation);
-
   return (
     <aside
       className={cn(
@@ -24,18 +17,7 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       <SidebarHeader collapsed={collapsed} onToggle={onToggle} />
-      <BackToModules collapsed={collapsed} show={navigation.isSubsystemSelected} />
-      <SubsystemTitle
-        collapsed={collapsed}
-        title={navigation.selectedSubsystem}
-        icon={navigation.selectedSubsystemIcon}
-      />
-      <SidebarNav
-        collapsed={collapsed}
-        navigation={navigation}
-        isCategoryExpanded={isCategoryExpanded}
-        toggleCategory={toggleCategory}
-      />
+      <SidebarNav collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
     </aside>
   );

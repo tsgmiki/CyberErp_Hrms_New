@@ -8,7 +8,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveModuleService from "@/services/admin/module/save";
 import getModule from "@/services/admin/module/get";
 import Loading from "../../common/loader/loader";
-import { subSystems } from "@/constants/subSystem";
+import getAllSubsystems from "@/services/admin/subsystem/getAll";
+import { parameterInitialData } from "@/constants/initialization";
+import { NAV_ICON_NAMES } from "@/components/menu/utils/lucideIconMap";
 
 const FormProvider = memo(FormProviders);
 
@@ -25,6 +27,13 @@ function ModuleForm(props: { id: string; setModuleId: (id: string) => void }) {
     queryKey: ["module", id],
     queryFn: () => getModule(id),
     enabled: typeof id != "undefined" && id != "",
+  });
+
+  // Subsystem master list (dbo.coreSubsystem) replaces the old hardcoded constant.
+  const { data: subsystems } = useQuery({
+    queryKey: ["subsystems", "options"],
+    queryFn: () => getAllSubsystems({ ...parameterInitialData, take: 200 }),
+    staleTime: 60_000,
   });
 
   const submitHandler = async (e: any) => {
@@ -76,17 +85,17 @@ function ModuleForm(props: { id: string; setModuleId: (id: string) => void }) {
           SubmitButton:'top',
           components: [
             {
-              name: "subSystem",
+              name: "subsystemId",
               label: "Sub System",
               placeholder: "Sub System",
               required: true,
-              value: formData.subSystem,
+              value: formData.subsystemId,
               displayValue: formData.subSystem,
-              error: formState?.zodErrors?.subSystem,
+              error: formState?.zodErrors?.subsystemId,
               type: "dropDown",
               onSelect: selectHandler,
-              data: subSystems?.map((item: any) => {
-                return { id: item.name, name: item.name };
+              data: subsystems?.data?.map((item: any) => {
+                return { id: item.id, name: item.name };
               }) as never,
             },
             {
@@ -97,6 +106,26 @@ function ModuleForm(props: { id: string; setModuleId: (id: string) => void }) {
               value: formData.name,
               onChange: changeHandler,
               error: formState?.zodErrors?.name,
+              type: "text",
+            },
+            {
+              name: "icon",
+              label: "Icon",
+              placeholder: "Icon",
+              value: formData.icon,
+              displayValue: formData.icon,
+              error: formState?.zodErrors?.icon,
+              type: "dropDown",
+              onSelect: selectHandler,
+              data: NAV_ICON_NAMES.map((n) => ({ id: n, name: n })) as never,
+            },
+            {
+              name: "sortOrder",
+              label: "Sort Order",
+              placeholder: "0",
+              value: formData.sortOrder,
+              onChange: changeHandler,
+              error: formState?.zodErrors?.sortOrder,
               type: "text",
             },
             {

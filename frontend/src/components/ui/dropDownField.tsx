@@ -10,6 +10,7 @@ import { SquarePlus } from "lucide-react";
 import SmallLoading from "../common/smallLoader/loader";
 import { useTranslation } from "react-i18next";
 import { FieldShell } from "./fieldShell";
+import { FloatingLabel } from "./floatingLabel";
 import { FORM_COMPACT_INPUT_CLASS, FORM_INPUT_CLASS, LIST_FILTER_CONTROL_CLASS } from "./fieldStyles";
 
 const DropDownField = ({
@@ -33,11 +34,12 @@ const DropDownField = ({
   compact,
   placeholder,
   layout,
+  floatingLabel,
 }: FormComponentModel & { compact?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
   const [currentValue, setCurrentValue] = useState({
-    id: value,
+    id: value ?? "",
     name: displayValue || "",
   });
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({
@@ -148,20 +150,11 @@ const DropDownField = ({
     }
   };
 
-  return (
-    <FieldShell
-      name={name}
-      label={label}
-      required={required}
-      labelWidth={labelWidth}
-      colSpan={colSpan}
-      error={error}
-      controlClassName={
-        compact ? `relative ${LIST_FILTER_CONTROL_CLASS}` : "relative w-full min-w-0"
-      }
-      layout={compact ? "toolbar" : layout ?? "horizontal"}
-      hideLabel={compact ? true : !label}
-    >
+  // Floating-label variant: the label acts as the placeholder and floats above once a value is
+  // selected or the user starts typing a search.
+  const useFloating = Boolean(floatingLabel && label && !compact);
+
+  const control = (
       <div className="w-full" ref={dropdownRef}>
         <div className="inline-flex w-full items-center" ref={containerRef}>
           <input
@@ -185,7 +178,7 @@ const DropDownField = ({
               onFocus?.();
               toggleDropdown();
             }}
-            placeholder={placeholder ? t(placeholder) : t("Select...")}
+            placeholder={useFloating ? " " : placeholder ? t(placeholder) : t("Select...")}
           />
 
           {showAdd && (
@@ -245,6 +238,32 @@ const DropDownField = ({
         )}
 
       </div>
+  );
+
+  if (useFloating) {
+    // Float when the control shows text (a selected value/label) or the user is searching.
+    return (
+      <FloatingLabel htmlFor={name} label={label as string} required={required} active={!!currentValue.name || !!localSearch}>
+        {control}
+      </FloatingLabel>
+    );
+  }
+
+  return (
+    <FieldShell
+      name={name}
+      label={label}
+      required={required}
+      labelWidth={labelWidth}
+      colSpan={colSpan}
+      error={error}
+      controlClassName={
+        compact ? `relative ${LIST_FILTER_CONTROL_CLASS}` : "relative w-full min-w-0"
+      }
+      layout={compact ? "toolbar" : layout ?? "horizontal"}
+      hideLabel={compact ? true : !label}
+    >
+      {control}
     </FieldShell>
   );
 };

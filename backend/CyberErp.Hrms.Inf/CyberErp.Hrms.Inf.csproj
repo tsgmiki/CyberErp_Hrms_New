@@ -6,12 +6,14 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" />
+    <PackageReference Include="Hangfire.Core" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="QuestPDF" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
     <PackageReference Include="Finbuckle.MultiTenant" />
     <PackageReference Include="Finbuckle.MultiTenant.EntityFrameworkCore" />
@@ -20,6 +22,10 @@
   <ItemGroup>
     <ProjectReference Include="..\CyberErp.Hrms.App\CyberErp.Hrms.App.csproj" />
     <ProjectReference Include="..\CyberErp.Hrms.Dom\CyberErp.Hrms.Dom.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Repositories\Core\Operations\GetById\" />
   </ItemGroup>
 
 </Project>

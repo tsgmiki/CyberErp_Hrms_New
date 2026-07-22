@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import DisplayOptions from "../displayOptions";
 import DropDownButton from "@/components/ui/dropDownButton";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
-import { exportListToExcel, exportListToPdf } from "./listExport";
 import {
   baseExportFormat,
   type ListExportFormatId,
@@ -85,6 +84,9 @@ function ListViewToolbar({
           labelFor,
         };
 
+        // PERFORMANCE: the export engines (xlsx + @react-pdf/renderer, ~2 MB raw) load ON DEMAND —
+        // statically importing them shipped the whole bundle with every list screen's first paint.
+        const { exportListToExcel, exportListToPdf } = await import("./listExport");
         if (fileKind === "excel") {
           await exportListToExcel(options);
         } else {

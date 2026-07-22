@@ -20,6 +20,9 @@ const CheckBoxField = ({
   colSpan,
 }: FormComponentModel) => {
   const { t } = useTranslation();
+  // A single checkbox labels itself inline (next to the box), so the shell label is hidden to
+  // avoid showing the text twice; a checkbox GROUP keeps the shell label as its group title.
+  const isSingle = !data || data.length === 0;
 
   return (
     <FieldShell
@@ -29,9 +32,9 @@ const CheckBoxField = ({
       labelWidth={labelWidth}
       colSpan={colSpan}
       error={error}
-      hideLabel={!label}
+      hideLabel={!label || isSingle}
     >
-      {!data || data.length === 0 ? (
+      {isSingle ? (
         <label className={FORM_OPTION_LABEL_CLASS}>
           <input
             className={className || FORM_CHECKBOX_CLASS}

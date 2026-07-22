@@ -1,12 +1,11 @@
 import { DataTableCheckbox } from "@/components/common/dataTableProvider/dataTableCheckbox";
-import type { PermissionField } from "./rolePermissionUtils";
+import type { PermissionField, PermissionMap } from "./rolePermissionUtils";
 import { getColumnCheckState, getPermissionField } from "./rolePermissionUtils";
-import type { PermissionState } from "./rolePermissionUtils";
 
 interface PermissionCheckboxProps {
   operationId: string;
   field: PermissionField;
-  permissions: PermissionState[];
+  permissions: PermissionMap;
   onChange: (operationId: string, field: PermissionField, checked: boolean) => void;
   ariaLabel: string;
 }
@@ -32,7 +31,7 @@ export function PermissionCheckbox({
 interface PermissionColumnHeaderProps {
   label: string;
   field: PermissionField;
-  permissions: PermissionState[];
+  permissions: PermissionMap;
   operationIds: string[];
   onCheckAll: (field: PermissionField, checked: boolean) => void;
 }

@@ -1,0 +1,319 @@
+<style>
+  :root{
+    --bg:#eef1f5; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f7;
+    --ink:#16202e; --ink-soft:#45536a; --muted:#7c899b; --border:#d9e0ea; --border-strong:#c3cdda;
+    --accent:#0f6e78; --accent-ink:#0a545c; --accent-soft:#dcedef;
+    --ok:#2c8a58; --ok-soft:#dcefe3; --warn:#a86a12; --warn-soft:#f4e8d2; --info:#2a6fb0; --info-soft:#dde9f5; --crit:#bb442c; --crit-soft:#f4ddd6;
+    --font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"Cascadia Code","SF Mono","JetBrains Mono",Consolas,monospace;
+    --maxw:920px; --radius:12px;
+    --shadow:0 1px 2px rgba(20,30,45,.04),0 6px 20px rgba(20,30,45,.06);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0e131a; --surface:#151d27; --surface-2:#1a2330; --surface-3:#202b39;
+      --ink:#e7edf4; --ink-soft:#aab7c7; --muted:#7c8a9c; --border:#28323f; --border-strong:#35414f;
+      --accent:#39b2bf; --accent-ink:#5fc6d1; --accent-soft:#123039;
+      --ok:#54b784; --ok-soft:#14352a; --warn:#d29a3c; --warn-soft:#3a2e18; --info:#5b9bd8; --info-soft:#16293c; --crit:#e0694f; --crit-soft:#3a201a;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#eef1f5; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f7;
+    --ink:#16202e; --ink-soft:#45536a; --muted:#7c899b; --border:#d9e0ea; --border-strong:#c3cdda;
+    --accent:#0f6e78; --accent-ink:#0a545c; --accent-soft:#dcedef;
+    --ok:#2c8a58; --ok-soft:#dcefe3; --warn:#a86a12; --warn-soft:#f4e8d2; --info:#2a6fb0; --info-soft:#dde9f5; --crit:#bb442c; --crit-soft:#f4ddd6;
+    --shadow:0 1px 2px rgba(20,30,45,.04),0 6px 20px rgba(20,30,45,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e131a; --surface:#151d27; --surface-2:#1a2330; --surface-3:#202b39;
+    --ink:#e7edf4; --ink-soft:#aab7c7; --muted:#7c8a9c; --border:#28323f; --border-strong:#35414f;
+    --accent:#39b2bf; --accent-ink:#5fc6d1; --accent-soft:#123039;
+    --ok:#54b784; --ok-soft:#14352a; --warn:#d29a3c; --warn-soft:#3a2e18; --info:#5b9bd8; --info-soft:#16293c; --crit:#e0694f; --crit-soft:#3a201a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);line-height:1.6;
+    font-size:16px;-webkit-font-smoothing:antialiased;letter-spacing:-.003em}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  a{color:var(--accent-ink);text-decoration:none}
+  h1,h2,h3{text-wrap:balance;line-height:1.2;letter-spacing:-.02em;margin:0}
+  .mono{font-family:var(--font-mono)}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);font-weight:600}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* header */
+  header{border-bottom:1px solid var(--border);background:
+    linear-gradient(180deg,color-mix(in srgb,var(--accent-soft) 55%,var(--surface)),var(--surface));}
+  .head-inner{padding:44px 0 34px}
+  .kicker{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+  .kicker .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  h1{font-size:clamp(28px,4.4vw,42px);font-weight:680}
+  .lede{color:var(--ink-soft);font-size:clamp(16px,2vw,18.5px);margin-top:14px;max-width:64ch}
+  .persona{color:var(--accent-ink);font-weight:600}
+
+  /* login callout */
+  .callout{margin-top:26px;display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center;
+    background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius);
+    padding:16px 20px;box-shadow:var(--shadow)}
+  .callout .lab{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:2px}
+  .callout .val{font-family:var(--font-mono);font-size:15px;color:var(--ink);font-weight:600}
+  .callout .rule{width:1px;align-self:stretch;background:var(--border)}
+
+  /* flow band */
+  .flow{margin:30px 0 6px}
+  .flow-scroll{overflow-x:auto;padding-bottom:6px}
+  .chain{display:flex;align-items:stretch;gap:0;min-width:640px}
+  .stage{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:14px 15px;position:relative;box-shadow:var(--shadow)}
+  .stage + .stage{margin-left:26px}
+  .stage::before{content:"→";position:absolute;left:-22px;top:50%;transform:translateY(-50%);
+    color:var(--accent);font-size:19px;font-weight:700}
+  .stage:first-child::before{display:none}
+  .stage .n{font-family:var(--font-mono);font-size:11px;color:var(--muted);letter-spacing:.08em}
+  .stage h3{font-size:15.5px;margin:3px 0 4px}
+  .stage p{margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.45}
+
+  section{padding:40px 0;border-top:1px solid var(--border)}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+  h2{font-size:clamp(21px,2.6vw,26px);font-weight:660}
+  .sec-sub{color:var(--ink-soft);max-width:66ch;margin:8px 0 22px;font-size:15.5px}
+
+  /* workflow card */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:22px 24px;box-shadow:var(--shadow);margin-bottom:20px}
+  .card > h3{font-size:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .tag{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.04em;
+    padding:3px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);white-space:nowrap}
+  .steps{list-style:none;margin:16px 0 0;padding:0;counter-reset:s}
+  .steps li{position:relative;padding:7px 0 7px 34px;border-top:1px dashed var(--border);font-size:14.5px;color:var(--ink-soft)}
+  .steps li:first-child{border-top:0}
+  .steps li::before{counter-increment:s;content:counter(s,decimal-leading-zero);position:absolute;left:0;top:7px;
+    font-family:var(--font-mono);font-size:11px;color:var(--accent);font-weight:600;letter-spacing:.02em}
+  .steps li b{color:var(--ink);font-weight:600}
+
+  .link-row{margin-top:18px;display:flex;gap:12px;align-items:flex-start;
+    background:var(--surface-2);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:8px;padding:13px 15px}
+  .link-row .ico{font-family:var(--font-mono);color:var(--accent);font-weight:700;font-size:13px;flex-shrink:0;margin-top:1px}
+  .link-row div{font-size:14px;color:var(--ink-soft)}
+  .link-row b{color:var(--ink)}
+  .ui-where{margin-top:12px;font-size:13px;color:var(--muted)}
+  .ui-where b{color:var(--ink-soft);font-weight:600}
+  .ui-where .path{font-family:var(--font-mono);font-size:12.5px;color:var(--accent-ink);background:var(--accent-soft);
+    padding:1px 6px;border-radius:5px}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:11.5px;font-weight:600;
+    padding:2px 8px;border-radius:20px;letter-spacing:.02em;white-space:nowrap}
+  .chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn{background:var(--warn-soft);color:var(--warn)}
+  .chip.info{background:var(--info-soft);color:var(--info)} .chip.crit{background:var(--crit-soft);color:var(--crit)}
+  .chip.acc{background:var(--accent-soft);color:var(--accent-ink)}
+
+  /* table */
+  .tbl-scroll{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px;background:var(--surface)}
+  thead th{background:var(--surface-3);text-align:left;font-family:var(--font-mono);font-size:11px;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--border)}
+  tbody td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--ink-soft);vertical-align:top}
+  tbody tr:last-child td{border-bottom:0}
+  tbody td:first-child{color:var(--ink);font-weight:560}
+  td .mono,.mono.val{font-family:var(--font-mono);font-size:13px}
+
+  /* result banner */
+  .result{display:flex;flex-wrap:wrap;align-items:center;gap:16px 22px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--ok-soft) 60%,var(--surface)),var(--surface));
+    border:1px solid var(--border-strong);border-radius:var(--radius);padding:20px 24px;box-shadow:var(--shadow)}
+  .result .big{font-family:var(--font-mono);font-size:30px;font-weight:700;color:var(--ok);line-height:1}
+  .result .lbl{font-size:14px;color:var(--ink-soft)}
+  .result .lbl b{color:var(--ink)}
+
+  .grid2{display:grid;grid-template-columns:1fr;gap:16px}
+  @media(min-width:680px){.grid2{grid-template-columns:1fr 1fr}}
+  .mini{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+  .mini .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .mini .v{font-size:15px;color:var(--ink);margin-top:3px;font-weight:560}
+
+  footer{border-top:1px solid var(--border);padding:28px 0 48px;color:var(--muted);font-size:13px}
+  code{font-family:var(--font-mono);font-size:.9em;background:var(--surface-3);padding:1px 5px;border-radius:5px;color:var(--ink)}
+  .note{font-size:13.5px;color:var(--muted);margin-top:10px}
+</style>
+
+<header>
+  <div class="wrap head-inner">
+    <div class="kicker"><span class="dot"></span><span class="eyebrow">HRMS · Cross-Module End-to-End Test</span></div>
+    <h1>From candidate to career plan — one connected journey</h1>
+    <p class="lede">A single verified walkthrough of how <b>Recruitment</b>, <b>Employee</b>, <b>Performance</b> and
+      <b>Career Development</b> hand data to one another. Every step below was executed against your live database and
+      persisted for you to open in the UI — following one person, <span class="persona">Meron Bekele</span>,
+      from job applicant to ranked successor.</p>
+
+    <div class="callout" role="group" aria-label="How to review in the UI">
+      <div>
+        <span class="lab">Review in your UI · login</span>
+        <span class="val">demo&nbsp;/&nbsp;Passw0rd!</span>
+      </div>
+      <div class="rule" aria-hidden="true"></div>
+      <div><span class="lab">Tenant</span><span class="val">demo</span></div>
+      <div class="rule" aria-hidden="true"></div>
+      <div><span class="lab">The employee</span><span class="val">Meron Bekele · #EMP-1001</span></div>
+      <div class="rule" aria-hidden="true"></div>
+      <div><span class="lab">Result</span><span class="val" style="color:var(--ok)">39 / 39 checks ✓</span></div>
+    </div>
+
+    <div class="flow">
+      <div class="flow-scroll">
+        <div class="chain">
+          <div class="stage"><span class="n">01 · Recruitment</span><h3>Hire</h3><p>Need → requisition → candidate → interview → offer → <b>hire</b>.</p></div>
+          <div class="stage"><span class="n">02 · Employee</span><h3>Onboard</h3><p>Employee created on the candidate's <b>shared person</b> — zero re-entry.</p></div>
+          <div class="stage"><span class="n">03 · Performance</span><h3>Appraise</h3><p>Appraisal scored &amp; <b>finalized</b> against the review cycle.</p></div>
+          <div class="stage"><span class="n">04 · Career Dev.</span><h3>Develop</h3><p>Career path, succession, goals &amp; development plans.</p></div>
+        </div>
+      </div>
+      <p class="note">The connectors above are literal: each stage writes the record the next one reads. The value of the chain is in the <b>links between the boxes</b> — documented below.</p>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- WORKFLOW 1 -->
+  <section style="border-top:0">
+    <div class="sec-head"><span class="eyebrow">Workflow 01</span><h2>Recruitment → a hired employee</h2></div>
+    <p class="sec-sub">The recruitment pipeline runs a candidate from application to a formal offer, then converts a
+      successful hire into a real employee record — reusing the identity captured at application time.</p>
+
+    <div class="card">
+      <h3>Recruit &amp; hire Meron Bekele <span class="tag">HC077–HC117</span></h3>
+      <ol class="steps">
+        <li><b>Hiring need raised</b> for a Senior Software Engineer in Engineering — submitted &amp; auto-approved (no approval chain configured). <span class="chip ok">Approved</span></li>
+        <li><b>Job requisition</b> created from the approved need, then <b>posted</b> internally &amp; externally. <span class="chip ok">Posted</span></li>
+        <li><b>Candidate registered</b> with consent; her name &amp; gender establish a shared <span class="mono">Person</span> record.</li>
+        <li><b>Compliance documents</b> uploaded — National ID, Guarantor Form, Medical Certificate, Signed Offer Letter (the hire gate).</li>
+        <li><b>Application</b> advanced through <span class="chip info">Screening</span> <span class="chip info">Shortlisted</span> <span class="chip info">Interview</span>, an <b>interview</b> scheduled with a panel, then moved to <span class="chip acc">Selected</span>.</li>
+        <li><b>Job offer</b> drafted at 52,000 (with the HC113 salary-deviation justification), submitted → sent → <b>accepted</b> by the candidate. <span class="chip ok">Accepted</span></li>
+        <li><b>Hire</b> — the accepted application is converted to an employee. <span class="chip crit">Gate: offer must be accepted + all compliance docs present</span></li>
+      </ol>
+      <div class="link-row">
+        <span class="ico">→→</span>
+        <div><b>Cross-module link — Recruitment creates the Employee.</b> The employee is built on the candidate's
+          <b>existing Person</b>, so name, contact, education/experience and documents carry over with no re-typing.
+          The candidate is marked <i>hired</i>, the application closes as <i>Hired</i>, and the accepted offer is stamped with the new employee id.</div>
+      </div>
+      <div class="ui-where"><b>See it in the UI:</b>
+        <span class="path">Recruitment ›</span> Hiring Requests → Requisitions → Candidates → Applications → Offers, and the <span class="path">Hire queue</span>. The candidate "Meron Bekele" shows as hired.</div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW 2 -->
+  <section>
+    <div class="sec-head"><span class="eyebrow">Workflow 02</span><h2>The employee record</h2></div>
+    <p class="sec-sub">The moment of hire produces a normal employee — the same record the whole HR system revolves around.</p>
+    <div class="card">
+      <h3>Meron Bekele is now an employee <span class="tag">EMP-1001</span></h3>
+      <div class="grid2">
+        <div class="mini"><span class="k">Position</span><div class="v">Senior Software Engineer · Engineering Dept.</div></div>
+        <div class="mini"><span class="k">Status</span><div class="v">Active · Permanent</div></div>
+        <div class="mini"><span class="k">Identity source</span><div class="v">Same Person as the candidate</div></div>
+        <div class="mini"><span class="k">Salary</span><div class="v tnum">52,000</div></div>
+      </div>
+      <div class="ui-where"><b>See it in the UI:</b>
+        <span class="path">Personnel › Employees</span> → open <b>Meron Bekele</b>. Her profile carries the tabs
+        Personal &amp; Identification, Education, Experience … and a <b>Development</b> tab (covered in Workflow 04).</div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW 3 -->
+  <section>
+    <div class="sec-head"><span class="eyebrow">Workflow 03</span><h2>Performance appraisal</h2></div>
+    <p class="sec-sub">Performance evaluates the employee against her position's competencies within a review cycle — and, when finalized, its result feeds Career Development.</p>
+    <div class="card">
+      <h3>Appraise &amp; finalize <span class="tag">HC118–HC147</span></h3>
+      <ol class="steps">
+        <li><b>Appraisal generated</b> for Meron in the <i>2026 Annual Review</i> cycle — seeded with competency lines from her position (<b>Software Design</b>, <b>Communication</b>).</li>
+        <li><b>Manager scores</b> each competency <span class="mono">4 / 5</span>.</li>
+        <li><b>Finalized</b> — overall score computed as <span class="mono">4.00 / 5</span> (= <b>80%</b> normalized). <span class="chip ok">Completed</span></li>
+      </ol>
+      <div class="link-row">
+        <span class="ico">→→</span>
+        <div><b>Cross-module trigger (HC153).</b> Finalizing the appraisal <b>automatically recomputed</b> Meron's
+          succession readiness — no manual action — because a completed appraisal changes her performance history.
+          (Delivered through an extension point, so Performance stays decoupled from Career Development.)</div>
+      </div>
+      <div class="ui-where"><b>See it in the UI:</b> <span class="path">Performance › Appraisals</span> → Meron's 2026 appraisal, status <b>Completed</b>, overall <b>4.00</b>.</div>
+    </div>
+  </section>
+
+  <!-- WORKFLOW 4 -->
+  <section>
+    <div class="sec-head"><span class="eyebrow">Workflow 04</span><h2>Career development &amp; the integrations</h2></div>
+    <p class="sec-sub">Career Development places the employee on a path and a succession plan, and pulls performance +
+      competency data together. This is where the modules visibly connect.</p>
+
+    <div class="card">
+      <h3>Career path &amp; succession <span class="tag">HC148–HC169</span></h3>
+      <ol class="steps">
+        <li><b>Career path</b> "Engineering Leadership Track" (Senior Engineer → Engineering Manager) — Meron assigned, step 1 complete. <span class="chip acc tnum">50% progress</span></li>
+        <li><b>Succession</b> — the Engineering Manager role flagged critical; a plan created; Meron listed <b>#1 successor</b>, initially <span class="chip warn">Not ready</span>.</li>
+      </ol>
+      <div class="link-row">
+        <span class="ico">↺</span>
+        <div><b>HC153 — readiness auto-refreshed.</b> After the appraisal was finalized (Workflow 03), her readiness
+          moved from <span class="chip warn">Not ready</span> to <span class="chip ok">Ready in 1–2 years</span>
+          (<b class="tnum">56.6%</b>) — competency coverage blended with the fresh 80% performance score.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Where Performance ↔ Career meet <span class="tag">Integration A–D</span></h3>
+      <div class="link-row"><span class="ico">163</span><div><b>Performance-aware career suggestions (HC163).</b> Suggested paths are scored by <b>fit = competency match + performance</b>. The Engineering Leadership Track scores <b class="tnum">90%</b> fit (100% competency match + 80% appraisal).</div></div>
+      <div class="link-row"><span class="ico">167</span><div><b>Goals aligned to company objectives (HC167).</b> Two development goals — <i>Develop: Leadership</i>, <i>Develop: Strategic Thinking</i> — were generated from her gap and <b>aligned to the org objective "Deliver Platform v2"</b>.</div></div>
+      <div class="link-row"><span class="ico">130</span><div><b>Gap → Individual Development Plans (HC130 / HC155).</b> The competency gap became two structured IDPs (one career, one succession) on the Performance engine, each with actions <b>tied to the specific missing competencies</b>.</div></div>
+      <div class="link-row"><span class="ico">158</span><div><b>Employee 360 "Development" tab (HC158).</b> One view on Meron's profile now shows her appraisal, career-path progress, succession candidacy &amp; readiness, next-step gap, and mentorships — bridging both modules.</div></div>
+      <div class="ui-where"><b>See it in the UI:</b>
+        <span class="path">Personnel › Employees</span> → Meron → <b>Development</b> tab; and
+        <span class="path">Career Development ›</span> Career Paths · Employee Career Paths · Succession Plans.</div>
+    </div>
+  </section>
+
+  <!-- DB EVIDENCE -->
+  <section>
+    <div class="sec-head"><span class="eyebrow">Verification</span><h2>The data flow, straight from the database</h2></div>
+    <p class="sec-sub">Read directly from your <span class="mono">CERP</span> database after the run — the physical evidence that each module wrote what the next one reads.</p>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>Connection</th><th>What the database shows</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>Recruitment → Employee</td><td>Candidate "Meron Bekele" and Employee <span class="mono">EMP-1001</span> share the <b>same Person</b>; candidate linked &amp; hired.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Recruitment pipeline</td><td>Application = <b>Hired</b>, Offer = <b>Accepted</b> (52,000), offer stamped with the employee id.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Performance</td><td>Appraisal <b>Completed</b>, overall score <span class="mono tnum">4.00</span>, 2 competency lines.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Performance → Career (HC153)</td><td>Successor rank 1, readiness <b>Ready1To2Years</b>, score <span class="mono tnum">56.60</span> — auto-refreshed.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Career → Performance (HC167)</td><td>2 goals, both aligned to org objective <b>"Deliver Platform v2"</b>.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Career → Performance (HC130/HC155)</td><td>2 development plans, each with 2 <b>competency-linked</b> actions.</td><td><span class="chip ok">verified</span></td></tr>
+          <tr><td>Career path</td><td>Assignment on "Engineering Leadership Track", Active, <span class="mono tnum">50%</span> progress.</td><td><span class="chip ok">verified</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RESULT -->
+  <section>
+    <div class="sec-head"><span class="eyebrow">Outcome</span><h2>Result</h2></div>
+    <div class="result">
+      <span class="big tnum">39/39</span>
+      <div class="lbl"><b>All cross-module checks passed.</b> No disconnected logic and no application bugs were found —
+        every gate behaved correctly (salary-deviation justification, interview-stage ordering, compliance-document
+        hiring gate). The only corrections were to the test script's own input values.</div>
+    </div>
+    <div class="grid2" style="margin-top:18px">
+      <div class="mini"><span class="k">Modules exercised</span><div class="v">Recruitment · Employee · Performance · Career Development</div></div>
+      <div class="mini"><span class="k">Data location</span><div class="v">CERP database · tenant <span class="mono">demo</span> (persisted)</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <div>Generated from an executed end-to-end run against the running API (localhost:5014) and the CERP database.
+      To re-run: <code>node e2e_full.mjs demo demo</code>. Sign in as <code>demo / Passw0rd!</code> to explore the data in the UI.</div>
+  </footer>
+</main>

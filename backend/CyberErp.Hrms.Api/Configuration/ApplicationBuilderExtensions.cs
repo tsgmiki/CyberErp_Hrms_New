@@ -26,6 +26,7 @@ namespace CyberErp.Hrms.Api.Configuration
         public static WebApplication UseHrmsMiddlewarePipeline(this WebApplication app)
         {
             app.UseMiddleware<ExceptionMiddleware>();
+            app.UseResponseCompression();
             app.UseForwardedHeaders();
             app.UseRouting();
             app.UseCors("AllowFrontend");
@@ -33,6 +34,9 @@ namespace CyberErp.Hrms.Api.Configuration
             app.UseSession();
             app.UseHrmsAuthentication();
             app.UseAuthorization();
+
+            // After authentication: the dashboard's filter needs the resolved user.
+            app.UseHrmsBackgroundJobsDashboard();
 
             app.MapControllers();
             app.MapAccountEndpoints();

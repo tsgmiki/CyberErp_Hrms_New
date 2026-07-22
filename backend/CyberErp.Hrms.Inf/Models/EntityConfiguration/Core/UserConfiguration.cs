@@ -29,6 +29,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .IsRequired()
                 .HasMaxLength(255);
 
+            // Login resolves users by name BEFORE the tenant is known (LoginRepository) — without
+            // this index every sign-in scans the whole User table.
+            builder.HasIndex(u => u.UserName);
+
             // NodaTime Instant conversion for CreatedAt
             builder.Property(u => u.CreatedAt)
                 .HasConversion(
@@ -48,6 +52,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(u => u.RowVersion)
                 ;
+
+            // The User owns the relationship to Employee (FK in the User table). SET NULL on
+            // employee deletion — the login account survives, just unlinked.
+            builder.HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(u => u.EmployeeId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

@@ -36,5 +36,22 @@ export default interface ParameterModel {
   operationId?: string;
   reportCategory?: string;
   userId?: string;
+  parentId?: string;
+  /** Restrict positions to vacant (open) ones — used by the employee placement dropdown. */
+  isVacant?: boolean;
+  /** Filters the salary-scale grid to a single job grade. */
+  jobGradeId?: string;
+  /** Filters custom-field definitions to a single owner form (Employee/Education/…). */
+  ownerType?: string;
+  /** Filters dynamic forms to a single owning module (e.g. "Employee"). */
+  module?: string;
+  /** Filters personnel actions to one movement type (Transfer / Promotion / Demotion). */
+  movementType?: string;
+  /** Filters training needs to one type (Local / Abroad). */
+  needType?: string;
+  /** Filters training sessions to one catalog course. */
+  courseId?: string;
+  /** Filters training enrollments to one session. */
+  sessionId?: string;
 
 }

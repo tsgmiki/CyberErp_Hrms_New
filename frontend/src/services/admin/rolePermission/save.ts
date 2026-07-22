@@ -1,77 +1,55 @@
 import errorMessageParser from "@/components/util/errorMessageParser";
 import isValidJson from "@/components/util/validateJson";
-import { RolePermissionSchema } from "@/components/util/validation";
+import type { PermissionState } from "@/components/admin/rolePermission/rolePermissionUtils";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-export default async function saveRolePermissionService(formData: FormData) {
-  const formDataObj = Object.fromEntries(formData);
+export interface SaveRolePermissionsResult {
+  status: "success" | "error";
+  message: string;
+}
 
-  const result = RolePermissionSchema.safeParse({
-    ...formDataObj,
-    isRelatedToApplication:
-      formDataObj.isRelatedToApplication == "true" ? true : false,
-  });
-
-  if (!result.success) {
-    const zodErrors = result.error.flatten().fieldErrors;
-    return {
-      status: "error",
-      message: "Validation failed",
-      zodErrors,
-    };
-  }
+/**
+ * Bulk-upserts one role's permission matrix — a direct JSON call to the backend contract
+ * (POST /RolePermission { roleId, items[] }). Deliberately NOT FormData/Zod based: the matrix is
+ * plain structured state, so nothing is serialized through hidden form fields.
+ */
+export default async function saveRolePermissions(
+  roleId: string,
+  details: PermissionState[],
+): Promise<SaveRolePermissionsResult> {
+  if (!roleId) return { status: "error", message: "Select a role first." };
 
   try {
-    const details = JSON.parse(formDataObj.details as string);
-
-    const response = await fetch(
-      `${API_BASE_URL}/RolePermission`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(
-          { 
-           roleId: formDataObj.roleId,
-           items:(details as any[]).map((a) => {
-             return {
-               ...a,
-               roleId: formDataObj.roleId,
-               canView: a.canView == "true" ? true : false,
-               canAdd: a.canAdd == "true" ? true : false,
-               canEdit: a.canEdit == "true" ? true : false,
-               canApprove: a.canApprove == "true" ? true : false,
-               canDelete: a.canDelete == "true" ? true : false,
-             };
-           })}
-        ),
-      }
-    );
+    const response = await fetch(`${API_BASE_URL}/RolePermission`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roleId,
+        items: details.map((d) => ({
+          roleId,
+          operationId: d.operationId,
+          canView: d.canView === "true",
+          canAdd: d.canAdd === "true",
+          canEdit: d.canEdit === "true",
+          canDelete: d.canDelete === "true",
+          canApprove: d.canApprove === "true",
+        })),
+      }),
+    });
 
     if (!response.ok) {
       const text = await response.text();
-      const result = isValidJson(text) ? JSON.parse(text) : { message: text };
-      const message = errorMessageParser(result.errors || result);
+      const parsed = isValidJson(text) ? JSON.parse(text) : { message: text };
       return {
         status: "error",
-        message,
-        zodErrors: {},
+        message: errorMessageParser(parsed.errors || parsed) || "Saving failed",
       };
     }
 
-    return {
-      status: "success",
-      message: "Successfully saved",
-      zodErrors: {},
-    };
-  } catch (error) {
-    return {
-      status: "error",
-      message: "Network error",
-      zodErrors: {},
-    };
+    return { status: "success", message: "Permissions saved" };
+  } catch {
+    return { status: "error", message: "Network error" };
   }
 }
