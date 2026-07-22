@@ -10,7 +10,7 @@ import Loading from "../../common/loader/loader";
 import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
 import saveTalentReview from "@/services/admin/talentReview/save";
 import getTalentReview from "@/services/admin/talentReview/get";
-import { talentReviewStatusOptions } from "@/constants/careerDevelopment";
+import { talentReviewStatusOptions, talentReviewStatusLabel } from "@/constants/careerDevelopment";
 
 const FormProvider = memo(FormProviders);
 const NineBoxGrid = memo(lazy(() => import("./nineBoxGrid")));
@@ -84,12 +84,22 @@ function TalentReviewForm({ id, setId }: { id: string; setId: (id: string) => vo
                       { name: "name", label: "Name", required: true, placeholder: "e.g. 2026 Talent Review", value: formData.name, onChange: changeHandler, error: formState?.zodErrors?.name, type: "text" },
                       { name: "cycle", label: "Cycle", placeholder: "e.g. 2026", value: formData.cycle, onChange: changeHandler, type: "text" },
                       { name: "status", label: "Status", required: true, type: "dropDown", onSelect: selectHandler,
-                        value: formData.status ?? "Draft", displayValue: talentReviewStatusOptions.find((o) => o.id === (formData.status ?? "Draft"))?.name, data: talentReviewStatusOptions as never },
+                        value: formData.status ?? "Draft", displayValue: talentReviewStatusLabel(formData.status ?? "Draft"), data: talentReviewStatusOptions as never },
                       { name: "notes", label: "Notes", value: formData.notes, onChange: changeHandler, type: "textarea", colSpan: "full" },
                       { name: "id", value: formData.id, type: "hidden" },
                     ],
                   }}
                 />
+                {formData.status === "PendingApproval" && (
+                  <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
+                    This review is awaiting workflow approval — calibration starts once the chain approves it (see My Approvals).
+                  </p>
+                )}
+                {formData.status === "Rejected" && (
+                  <p className="rounded-md bg-error/10 px-3 py-2 text-xs text-error">
+                    This review was rejected by the approval workflow. Saving it resubmits it for approval.
+                  </p>
+                )}
                 <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
               </div>
             ),

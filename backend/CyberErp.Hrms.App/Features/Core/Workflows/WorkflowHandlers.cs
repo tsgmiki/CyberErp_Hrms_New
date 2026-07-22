@@ -550,6 +550,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             // HC160 — a succession plan for a critical role is endorsed by the manager then HR before it goes live.
             (WorkflowEntityTypes.SuccessionPlan, "Succession Plan Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
+            // HC149 — a talent-review / calibration session is endorsed before assessment begins.
+            (WorkflowEntityTypes.TalentReview, "Talent Review Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.RewardNomination, "Reward Nomination Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
             // HC228 — a salary revision affects payroll cost; HR proposes, Finance + Executive sign off.

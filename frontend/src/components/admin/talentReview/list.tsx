@@ -6,11 +6,14 @@ import deleteTalentReview from "@/services/admin/talentReview/delete";
 import type { TalentReviewModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
+import { talentReviewStatusLabel } from "@/constants/careerDevelopment";
 
 const STATUS_TONE: Record<string, string> = {
   Completed: "bg-success/15 text-success",
   InProgress: "bg-info/15 text-info",
   Draft: "bg-muted/30 text-muted",
+  PendingApproval: "bg-warning/15 text-warning",
+  Rejected: "bg-error/15 text-error",
 };
 
 function TalentReviewList({ editHandler }: { editHandler: (id: string) => void }) {
@@ -22,7 +25,7 @@ function TalentReviewList({ editHandler }: { editHandler: (id: string) => void }
           <button type="button" onClick={() => r.id && editHandler(r.id)} className="font-semibold">{t}</button>) },
         { name: "cycle", label: "Cycle" },
         { name: "status", label: "Status", render: (v: string) => (
-          <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[v] ?? "bg-muted/30 text-muted"}`}>{v}</span>) },
+          <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[v] ?? "bg-muted/30 text-muted"}`}>{talentReviewStatusLabel(v)}</span>) },
         { name: "Action", label: "Action", render: (_t: unknown, r: TalentReviewModel) => (
           <GridAction id={r.id || ""} record={r} showAdd={false} showEdit showDelete
             editHandler={editHandler} deleteHandler={() => r.id && list.deleteRecord(r.id)} />) },

@@ -616,6 +616,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.CareerPathChangeRequestWorkflowHandler>();
             // HC160 — succession plans route through the generic approval engine when a definition is active.
             services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.SuccessionPlanWorkflowHandler>();
+            // HC149 — talent-review sessions likewise (approve → calibration begins, reject → resubmittable).
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.TalentReviewWorkflowHandler>();
 
             // Employee 360 development profile (Performance ↔ Career Development bridge, HC158).
             services.AddScoped<Features.Core.CareerDevelopment.IGetEmployeeDevelopmentProfile, Features.Core.CareerDevelopment.GetEmployeeDevelopmentProfile>();

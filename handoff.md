@@ -39,6 +39,21 @@
 
 ## 1. Most recent changes (latest first)
 
+00T. **Talent Review approval workflow (2026-07-22, BE+FE, NO migration — mirrors item 00S).**
+    `WorkflowEntityTypes.TalentReview` + seed default ("Talent Review Approval": Manager Review →
+    HR Approval). `TalentReviewStatus` gained `PendingApproval(3)`/`Rejected(4)`; transitions
+    `MarkPendingApproval` / **`ApproveViaWorkflow` → InProgress** (approval opens calibration
+    directly; Draft stays the pre-submission state of direct mode) / `RejectViaWorkflow` →
+    Rejected. `SaveTalentReview`: same force-pending on create, `EnsureNoRunningAsync` gates on
+    update/delete, resubmit-on-save of a Rejected review. EXTRA vs succession:
+    **`SaveTalentAssessment` 400s while the review is PendingApproval or Rejected** — calibration
+    is the review's substance, so it must not proceed under an unapproved session
+    (`IRepository<TalentReview>` injected for the status probe). `TalentReviewWorkflowHandler`
+    registered in DI. FE: `talentReviewStatusLabels`/`Label`, list badge tones (Pending=warning,
+    Rejected=error), form banners, "Talent Review" in `workflowEntityTypeOptions`. E2E
+    `talentreview_wf_e2e.mjs` **29/29** (direct mode, forced pending, edit/delete/assessment
+    gates, approve→InProgress→assessment OK, reject→blocked→resubmit→approve, role-approver inbox).
+
 000. **MEGA-COMMIT (2026-07-22): everything built 2026-07-16 → 2026-07-22 committed as one batch**
     (~600 files). Modules, each E2E-verified in its session: **§3.10 Compensation & Benefit +
     Medical Benefit + Insurance + Loan + Trip** (masters, lifecycles, HR→Finance→Exec workflow

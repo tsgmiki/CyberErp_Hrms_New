@@ -117,6 +117,7 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
     public class SaveTalentAssessment(
         IRepository<TalentAssessment> repository,
         IRepository<TalentRating> ratingRepository,
+        IRepository<TalentReview> reviewRepository,
         IValidator<SaveTalentAssessmentDto> validator,
         ILogger<SaveTalentAssessment> logger) : ISaveTalentAssessment
     {
@@ -124,6 +125,16 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
         {
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            // Calibration cannot proceed under a review that has not cleared (or has failed) approval.
+            var reviewStatus = await reviewRepository.GetAll()
+                .Where(r => r.Id == dto.TalentReviewId)
+                .Select(r => (TalentReviewStatus?)r.Status)
+                .FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(TalentReview), dto.TalentReviewId.ToString());
+            if (reviewStatus is TalentReviewStatus.PendingApproval or TalentReviewStatus.Rejected)
+                throw new ValidationException(nameof(dto.TalentReviewId),
+                    "This talent review is awaiting workflow approval — assessments can be recorded once it is approved.");
 
             // One assessment per employee per review.
             if (await repository.GetAll().AnyAsync(x => x.TalentReviewId == dto.TalentReviewId

@@ -32,7 +32,7 @@ Registered `services.AddScoped<IWorkflowEntityHandler, XxxHandler>()`; engine in
 `IEnumerable<IWorkflowEntityHandler>` and picks the first whose `Supports` returns true.
 Handlers: `EmployeeMovementWorkflowHandler`, `DisciplinaryMeasureWorkflowHandler`,
 `EmployeeTerminationWorkflowHandler`, `LeaveRequestWorkflowHandler`, `AnnualLeaveWorkflowHandler`,
-`CareerPathChangeRequestWorkflowHandler`, `SuccessionPlanWorkflowHandler`,
+`CareerPathChangeRequestWorkflowHandler`, `SuccessionPlanWorkflowHandler`, `TalentReviewWorkflowHandler`,
 `SalaryRevisionWorkflowHandler`, `MedicalClaimWorkflowHandler`, `InsuranceClaimWorkflowHandler`,
 `LoanWorkflowHandler`, `TripRequestWorkflowHandler`, `TrainingNeedWorkflowHandler`,
 `RewardNominationWorkflowHandler` (+ the appraisal flow, which drives the engine via
@@ -46,6 +46,13 @@ Subject/Immediate-Manager dynamic approvers); approve → `Active`, reject → `
 editable — saving a Rejected plan RESUBMITS it through the chain; the requested status is ignored so
 approval can't be bypassed). Update/delete are gated by `EnsureNoRunningAsync` while an instance runs.
 No definition → plans save directly with the requested status (engine's opt-in philosophy).
+
+**Talent Review approval (HC149, 2026-07-22).** `EntityType = "TalentReview"`. Mirrors the
+succession-plan flow (force-pending on create, gates, resubmit-on-reject) with two differences:
+(1) **approve → `InProgress`** — approval opens calibration directly; `Draft` is only reachable in
+direct (no-definition) mode; (2) **`SaveTalentAssessment` rejects (400) while the review is
+`PendingApproval` or `Rejected`** — 9-box calibration is the review's substance and must not
+proceed under an unapproved session.
 
 **Service API** — `IWorkflowService`:
 ```

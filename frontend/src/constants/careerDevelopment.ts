@@ -7,11 +7,24 @@ export const riskLevelOptions = opt([
   ["High", "High"],
 ]);
 
+/** User-selectable (operational) review statuses. */
 export const talentReviewStatusOptions = opt([
   ["Draft", "Draft"],
   ["InProgress", "In Progress"],
   ["Completed", "Completed"],
 ]);
+
+/** All review statuses incl. the workflow-owned ones (set by the approval engine, never picked by hand). */
+export const talentReviewStatusLabels = opt([
+  ["Draft", "Draft"],
+  ["InProgress", "In Progress"],
+  ["Completed", "Completed"],
+  ["PendingApproval", "Pending Approval"],
+  ["Rejected", "Rejected"],
+]);
+
+export const talentReviewStatusLabel = (id?: string) =>
+  talentReviewStatusLabels.find((o) => o.id === id)?.name ?? id ?? "";
 
 /** 9-box band (1 = Low … 3 = High) for both performance and potential axes. */
 export const bandOptions = [

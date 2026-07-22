@@ -102,6 +102,7 @@ export const workflowEntityTypeOptions = [
   { id: "Appraisal", name: "Appraisal" },
   { id: "CareerPathChangeRequest", name: "Career Path Change" },
   { id: "SuccessionPlan", name: "Succession Plan" },
+  { id: "TalentReview", name: "Talent Review" },
   { id: "RewardNomination", name: "Reward Nomination" },
   { id: "SalaryRevision", name: "Salary Revision" },
   { id: "MedicalClaim", name: "Medical Claim" },

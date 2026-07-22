@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,9 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
     // ---- Handlers -----------------------------------------------------------
     public class SaveTalentReview(
         IRepository<TalentReview> repository,
+        IRepository<WorkflowDefinition> workflowDefinitions,
+        IWorkflowService workflowService,
+        IWorkflowGate workflowGate,
         IValidator<SaveTalentReviewDto> validator,
         ILogger<SaveTalentReview> logger) : ISaveTalentReview
     {
@@ -91,14 +95,45 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
 
             var status = Enum.Parse<TalentReviewStatus>(dto.Status);
 
+            // HC149 — when an active approval chain governs talent reviews, a session must pass
+            // through it before calibration begins. Without one the module operates directly.
+            var workflowActive = await workflowDefinitions.GetAll()
+                .AnyAsync(d => d.EntityType == WorkflowEntityTypes.TalentReview && d.IsActive);
+
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
+                // No edits while an approval is in flight.
+                await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.TalentReview, dto.Id.Value);
+
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(TalentReview), dto.Id.Value.ToString());
+
+                // Approval outcomes are workflow-owned: a Rejected/parked review cannot be hand-flipped
+                // to an operational status — saving it RESUBMITS the review through the chain instead.
+                var resubmit = workflowActive && entity.Status
+                    is TalentReviewStatus.Rejected or TalentReviewStatus.PendingApproval;
+                if (resubmit)
+                {
+                    await workflowService.EnsureStartableAsync(WorkflowEntityTypes.TalentReview, null);
+                    status = TalentReviewStatus.PendingApproval;
+                }
+
                 entity.Update(dto.Name, dto.Cycle, dto.OrganizationUnitId, status, dto.Notes);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
+
+                if (resubmit)
+                    await workflowService.StartIfDefinedAsync(
+                        WorkflowEntityTypes.TalentReview, entity.Id, null,
+                        $"Talent review '{entity.Name}' (resubmitted)");
                 return entity.Id;
+            }
+
+            if (workflowActive)
+            {
+                // Fail BEFORE persisting when the chain could never complete (unresolvable approvers).
+                await workflowService.EnsureStartableAsync(WorkflowEntityTypes.TalentReview, null);
+                status = TalentReviewStatus.PendingApproval;
             }
 
             var created = TalentReview.Create(dto.Name, dto.Cycle, dto.OrganizationUnitId, dto.Notes);
@@ -106,22 +141,63 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
                 created.Update(dto.Name, dto.Cycle, dto.OrganizationUnitId, status, dto.Notes);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Created TalentReview {Id} ({Name})", created.Id, created.Name);
+
+            if (workflowActive)
+                await workflowService.StartIfDefinedAsync(
+                    WorkflowEntityTypes.TalentReview, created.Id, null,
+                    $"Talent review '{created.Name}'");
+
+            logger.LogInformation("Created TalentReview {Id} ({Name}){Workflow}", created.Id, created.Name,
+                workflowActive ? " — submitted for approval" : string.Empty);
             return created.Id;
         }
     }
 
     public class DeleteTalentReview(
         IRepository<TalentReview> repository,
+        IWorkflowGate workflowGate,
         ILogger<DeleteTalentReview> logger) : IDeleteTalentReview
     {
         public async Task DeleteAsync(Guid id)
         {
+            await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.TalentReview, id);
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(TalentReview), id.ToString());
             repository.Delete(entity); // FK cascade removes its assessments + ratings
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted TalentReview {Id}", id);
+        }
+    }
+
+    /// <summary>
+    /// Applies the workflow outcome to a talent review (HC149): approval moves the session straight
+    /// into calibration (InProgress), rejection returns it to an editable Rejected state.
+    /// </summary>
+    public class TalentReviewWorkflowHandler(
+        IRepository<TalentReview> repository,
+        ILogger<TalentReviewWorkflowHandler> logger) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.TalentReview, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var review = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == entityId);
+            if (review is null) return; // deleted mid-flight — nothing to apply
+            review.ApproveViaWorkflow();
+            repository.UpdateAsync(review);
+            await repository.SaveChangesAsync();
+            logger.LogInformation("TalentReview {Id} approved via workflow — now InProgress", entityId);
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var review = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == entityId);
+            if (review is null) return;
+            review.RejectViaWorkflow();
+            repository.UpdateAsync(review);
+            await repository.SaveChangesAsync();
+            logger.LogInformation("TalentReview {Id} rejected via workflow", entityId);
         }
     }
 
