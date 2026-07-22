@@ -11,6 +11,7 @@ namespace CyberErp.Hrms.App.Features.Core.Modules.Update;
 
 public class UpdateModuleHandler(
     IRepository<Module> repository,
+    IRepository<Subsystem> subsystemRepository,
     IUnitOfWork unitOfWork,
     IValidator<UpdateModuleRequest> validator,
     ILogger<UpdateModuleHandler> logger)
@@ -28,7 +29,11 @@ public class UpdateModuleHandler(
         if (module == null)
             throw new NotFoundException(nameof(Module), request.Id.ToString());
 
-        module.Update(request.SubSystem, request.Name, request.Icon);
+        var subsystemExists = await subsystemRepository.GetAll().AnyAsync(s => s.Id == request.SubsystemId, ct);
+        if (!subsystemExists)
+            throw new Common.Exceptions.ValidationException(nameof(request.SubsystemId), "Subsystem not found.");
+
+        module.Update(request.SubsystemId, request.Name, request.Icon, request.SortOrder);
 
         repository.UpdateAsync(module);
         await unitOfWork.SaveChangesAsync(ct);
@@ -38,7 +43,7 @@ public class UpdateModuleHandler(
         return new ModuleResult
         {
             Id = module.Id,
-            SubSystem = module.SubSystem,
+            SubsystemId = module.SubsystemId,
             Name = module.Name,
             Icon = module.Icon,
             CreatedBy = module.CreatedBy,

@@ -234,15 +234,28 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public async Task<IActionResult> Resolve([FromBody] ResolveAppraisalAppealDto dto) { await resolveHandler.ResolveAsync(dto); return Ok(new { message = "Appeal resolved" }); }
     }
 
+    /// <summary>Role-scoped, searchable employee options for performance comboboxes
+    /// (HR admin → all, manager → unit + child units, employee → self only).</summary>
+    public class EmployeeOptionsController(IGetEmployeeOptions handler) : BaseController
+    {
+        [HttpGet]
+        public Task<EmployeeOptionsDto> Get([FromQuery] string? search, [FromQuery] Guid? exclude) => handler.GetAsync(search, exclude);
+    }
+
     /// <summary>Peer assessment of appraisals (HC127).</summary>
     public class AppraisalPeerController(
         IInviteAppraisalPeers inviteHandler,
         ISubmitAppraisalPeerReview submitHandler,
         IRemoveAppraisalPeerReview removeHandler,
-        IGetAppraisalPeerReviews getHandler) : BaseController
+        IGetAppraisalPeerReviews getHandler,
+        IGetMyPeerReviews getMineHandler) : BaseController
     {
         [HttpGet]
         public Task<List<AppraisalPeerReviewDto>> Get([FromQuery] Guid appraisalId) => getHandler.GetAsync(appraisalId);
+
+        /// <summary>The current user's own peer-review assignments (the peer reviewer's worklist).</summary>
+        [HttpGet("mine")]
+        public Task<List<MyPeerReviewDto>> Mine() => getMineHandler.GetAsync();
 
         [HttpPost("invite")]
         public async Task<IActionResult> Invite([FromBody] InviteAppraisalPeersDto dto) { await inviteHandler.InviteAsync(dto); return Ok(new { message = "Peers invited" }); }

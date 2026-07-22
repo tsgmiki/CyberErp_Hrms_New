@@ -14,15 +14,42 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Module> builder)
         {
-            builder.ToTable("Module", "Core");
+            builder.ToTable("coreModule", "dbo");
 
             builder.HasKey(m => m.Id);
 
-            builder.Property(m => m.SubSystem).IsRequired().HasMaxLength(200);
             builder.Property(m => m.Name).IsRequired().HasMaxLength(200);
             builder.Property(m => m.Icon).HasMaxLength(200);
+            builder.Property(m => m.SortOrder).HasDefaultValue(0);
 
+            builder.HasOne(m => m.Subsystem)
+                .WithMany()
+                .HasForeignKey(m => m.SubsystemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.Navigation(m => m.Subsystem).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            builder.HasIndex(m => m.SubsystemId);
             builder.Navigation(m => m.Operations).UsePropertyAccessMode(PropertyAccessMode.Field);
+        }
+    }
+
+    /// <summary>
+    /// Master subsystem list (dbo.coreSubsystem) — the ERP-wide table the HRMS now maps.
+    /// Modules reference a subsystem via the SubsystemId FK.
+    /// </summary>
+    public class SubsystemConfiguration : IEntityTypeConfiguration<Subsystem>
+    {
+        public void Configure(EntityTypeBuilder<Subsystem> builder)
+        {
+            builder.ToTable("coreSubsystem", "dbo");
+
+            builder.HasKey(s => s.Id);
+
+            builder.Property(s => s.Name).IsRequired().HasMaxLength(200);
+            builder.Property(s => s.Code).IsRequired().HasMaxLength(50);
+            builder.Property(s => s.SortOrder).HasDefaultValue(0);
+
+            builder.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
         }
     }
 
@@ -30,7 +57,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Operation> builder)
         {
-            builder.ToTable("Operation", "Core");
+            builder.ToTable("coreOperation", "dbo");
 
             builder.HasKey(o => o.Id);
 
@@ -38,6 +65,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.Link).IsRequired().HasMaxLength(400);
             builder.Property(o => o.Filter).IsRequired().HasMaxLength(400);
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(200);
+            builder.Property(o => o.SortOrder).HasDefaultValue(0);
 
             builder.HasOne(o => o.Module)
                 .WithMany(m => m.Operations)

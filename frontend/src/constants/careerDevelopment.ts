@@ -33,11 +33,24 @@ export const successionHorizonOptions = opt([
   ["LongTerm", "Long term"],
 ]);
 
+/** User-selectable (operational) plan statuses. */
 export const successionPlanStatusOptions = opt([
   ["Active", "Active"],
   ["OnHold", "On hold"],
   ["Closed", "Closed"],
 ]);
+
+/** All plan statuses incl. the workflow-owned ones (set by the approval engine, never picked by hand). */
+export const successionPlanStatusLabels = opt([
+  ["Active", "Active"],
+  ["OnHold", "On hold"],
+  ["Closed", "Closed"],
+  ["PendingApproval", "Pending Approval"],
+  ["Rejected", "Rejected"],
+]);
+
+export const successionPlanStatusLabel = (id?: string) =>
+  successionPlanStatusLabels.find((o) => o.id === id)?.name ?? id ?? "";
 
 export const successionActionTypeOptions = opt([
   ["Mentorship", "Mentorship"],

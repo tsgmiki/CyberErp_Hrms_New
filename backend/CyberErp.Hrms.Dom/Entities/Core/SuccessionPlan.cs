@@ -14,7 +14,11 @@ public enum SuccessionPlanStatus
 {
     Active = 0,
     OnHold = 1,
-    Closed = 2
+    Closed = 2,
+    /// <summary>Awaiting workflow approval (HC160 — set on submission when an approval chain is configured).</summary>
+    PendingApproval = 3,
+    /// <summary>Rejected by the approval workflow; editable and resubmittable.</summary>
+    Rejected = 4
 }
 
 /// <summary>
@@ -58,6 +62,29 @@ public class SuccessionPlan : BaseEntity, IAggregateRoot, IAuditable
         Horizon = horizon;
         Status = status;
         Notes = notes;
+        base.Update();
+    }
+
+    /// <summary>Parks the plan awaiting approval (an active workflow definition governs this tenant).</summary>
+    public void MarkPendingApproval()
+    {
+        Status = SuccessionPlanStatus.PendingApproval;
+        base.Update();
+    }
+
+    /// <summary>Workflow callback — an approved plan goes live.</summary>
+    public void ApproveViaWorkflow()
+    {
+        if (Status != SuccessionPlanStatus.PendingApproval) return; // idempotent
+        Status = SuccessionPlanStatus.Active;
+        base.Update();
+    }
+
+    /// <summary>Workflow callback — a rejected plan stays editable for resubmission.</summary>
+    public void RejectViaWorkflow()
+    {
+        if (Status != SuccessionPlanStatus.PendingApproval) return;
+        Status = SuccessionPlanStatus.Rejected;
         base.Update();
     }
 }

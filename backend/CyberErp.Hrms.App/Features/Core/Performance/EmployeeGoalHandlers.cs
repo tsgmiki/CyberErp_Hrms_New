@@ -144,6 +144,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
         IRepository<OrganizationalObjective> objectiveRepository,
+        IPerformanceVisibilityService visibility,
         IValidator<SaveEmployeeGoalDto> validator,
         ILogger<SaveEmployeeGoal> logger) : ISaveEmployeeGoal
     {
@@ -151,6 +152,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         {
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            // Scope gate: an employee manages only their OWN goals; a manager their subtree's; HR all.
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException(nameof(dto.EmployeeId),
+                    "You can only manage goals for yourself or for employees in your unit.");
 
             if (!await employeeRepository.GetAll().AnyAsync(e => e.Id == dto.EmployeeId))
                 throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
@@ -169,6 +175,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 var entity = await repository.GetAll().Include(x => x.ActionItems)
                         .FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(EmployeeGoal), dto.Id.Value.ToString());
+                // The EXISTING record must also be in scope (blocks hijacking another employee's goal).
+                if (!await visibility.CanAccessEmployeeAsync(entity.EmployeeId))
+                    throw new ValidationException(nameof(dto.Id), "You do not have access to this goal.");
 
                 // Old action-item rows are replaced wholesale.
                 foreach (var old in entity.ActionItems.ToList())
@@ -202,12 +211,15 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class DeleteEmployeeGoal(
         IRepository<EmployeeGoal> repository,
+        IPerformanceVisibilityService visibility,
         ILogger<DeleteEmployeeGoal> logger) : IDeleteEmployeeGoal
     {
         public async Task DeleteAsync(Guid id)
         {
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(EmployeeGoal), id.ToString());
+            if (!await visibility.CanAccessEmployeeAsync(entity.EmployeeId))
+                throw new ValidationException(nameof(id), "You do not have access to this goal.");
             repository.Delete(entity);   // action items cascade
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeGoal {Id}", id);
@@ -218,13 +230,16 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<EmployeeGoal> repository,
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
-        IRepository<OrganizationalObjective> objectiveRepository) : IGetEmployeeGoalById
+        IRepository<OrganizationalObjective> objectiveRepository,
+        IPerformanceVisibilityService visibility) : IGetEmployeeGoalById
     {
         public async Task<EmployeeGoalDto> GetAsync(Guid id)
         {
             var entity = await repository.GetAll().Include(x => x.ActionItems).AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(EmployeeGoal), id.ToString());
+            if (!await visibility.CanAccessEmployeeAsync(entity.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this goal.");
             var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
                 .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
             var cycleName = await reviewCycleRepository.GetAll().Where(c => c.Id == entity.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
@@ -239,7 +254,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<EmployeeGoal> repository,
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
-        IRepository<OrganizationalObjective> objectiveRepository) : IGetAllEmployeeGoals
+        IRepository<OrganizationalObjective> objectiveRepository,
+        IPerformanceVisibilityService visibility) : IGetAllEmployeeGoals
     {
         public async Task<PaginatedResponse<EmployeeGoalDto>> GetAsync(GetAllRequest request)
         {
@@ -247,6 +263,26 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll().Include(x => x.ActionItems).AsNoTracking();
+
+            // Role-based visibility as a single SQL predicate: admin → all; manager → own + their unit
+            // subtree's employees; employee → own goals only.
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+            {
+                var myEmp = scope.EmployeeId ?? Guid.Empty;
+                if (scope.IsManager)
+                {
+                    var unitIds = scope.UnitIds;
+                    var emps = employeeRepository.GetAll();
+                    query = query.Where(g => g.EmployeeId == myEmp ||
+                        emps.Any(e => e.Id == g.EmployeeId && e.Position != null && unitIds.Contains(e.Position.OrganizationUnitId)));
+                }
+                else
+                {
+                    query = query.Where(g => g.EmployeeId == myEmp);
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(request.SearchText))
                 query = query.Where(x => x.Title.Contains(request.SearchText.Trim()));
             if (request.EmployeeId.HasValue)
@@ -262,19 +298,37 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var goals = await query.OrderByDescending(x => x.StartDate).ThenBy(x => x.Title)
                 .Skip(skip).Take(take).ToListAsync();
 
-            var employees = employeeRepository.GetAll();
-            var cycles = reviewCycleRepository.GetAll();
-            var objectives = objectiveRepository.GetAll();
+            // PERFORMANCE: batch-load the display names for the page in 3 queries total (was 3 PER ROW).
+            var empIds = goals.Select(g => g.EmployeeId).Distinct().ToList();
+            var cycleIds = goals.Select(g => g.ReviewCycleId).Distinct().ToList();
+            var objIds = goals.Where(g => g.OrganizationalObjectiveId.HasValue)
+                .Select(g => g.OrganizationalObjectiveId!.Value).Distinct().ToList();
+
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+            var cycleNames = await reviewCycleRepository.GetAll().AsNoTracking()
+                .Where(c => cycleIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+            var objectiveTitles = objIds.Count == 0
+                ? new Dictionary<Guid, string>()
+                : await objectiveRepository.GetAll().AsNoTracking()
+                    .Where(o => objIds.Contains(o.Id))
+                    .Select(o => new { o.Id, o.Title })
+                    .ToDictionaryAsync(x => x.Id, x => x.Title);
+
             var data = new List<EmployeeGoalDto>(goals.Count);
             foreach (var g in goals)
             {
-                var employeeName = await employees.Where(e => e.Id == g.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                var cycleName = await cycles.Where(c => c.Id == g.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
-                var objectiveTitle = g.OrganizationalObjectiveId.HasValue
-                    ? await objectives.Where(o => o.Id == g.OrganizationalObjectiveId.Value).Select(o => o.Title).FirstOrDefaultAsync()
-                    : null;
-                data.Add(EmployeeGoalMapper.Map(g, employeeName, cycleName, objectiveTitle));
+                data.Add(EmployeeGoalMapper.Map(
+                    g,
+                    employeeNames.GetValueOrDefault(g.EmployeeId, ""),
+                    cycleNames.GetValueOrDefault(g.ReviewCycleId),
+                    g.OrganizationalObjectiveId.HasValue
+                        ? objectiveTitles.GetValueOrDefault(g.OrganizationalObjectiveId.Value)
+                        : null));
             }
 
             return new PaginatedResponse<EmployeeGoalDto> { Total = total, Data = data };

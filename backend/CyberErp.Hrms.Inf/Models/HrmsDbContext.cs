@@ -152,6 +152,65 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<Achievement> Achievement { get; set; }
     public DbSet<RecognitionBadge> RecognitionBadge { get; set; }
     public DbSet<EmployeeRecognition> EmployeeRecognition { get; set; }
+    public DbSet<AwardCategory> AwardCategory { get; set; }
+    public DbSet<RecognitionProgram> RecognitionProgram { get; set; }
+    public DbSet<AllowanceType> AllowanceType { get; set; }
+    public DbSet<EmployeeAllowance> EmployeeAllowance { get; set; }
+    public DbSet<SalaryRevision> SalaryRevision { get; set; }
+    public DbSet<SalaryRevisionLine> SalaryRevisionLine { get; set; }
+    public DbSet<BenefitPlan> BenefitPlan { get; set; }
+    public DbSet<EmployeeBenefitEnrollment> EmployeeBenefitEnrollment { get; set; }
+    public DbSet<TaxBracket> TaxBracket { get; set; }
+    public DbSet<CompensationRequest> CompensationRequest { get; set; }
+    public DbSet<MedicalProvider> MedicalProvider { get; set; }
+    public DbSet<MedicalPlan> MedicalPlan { get; set; }
+    public DbSet<MedicalServiceContract> MedicalServiceContract { get; set; }
+    public DbSet<MedicalEnrollment> MedicalEnrollment { get; set; }
+    public DbSet<MedicalBeneficiary> MedicalBeneficiary { get; set; }
+    public DbSet<MedicalClaim> MedicalClaim { get; set; }
+    public DbSet<MedicalClaimAttachment> MedicalClaimAttachment { get; set; }
+    public DbSet<InsurancePolicy> InsurancePolicy { get; set; }
+    public DbSet<InsurancePremiumSchedule> InsurancePremiumSchedule { get; set; }
+    public DbSet<InsuranceClaim> InsuranceClaim { get; set; }
+    public DbSet<InsuranceClaimAttachment> InsuranceClaimAttachment { get; set; }
+    public DbSet<LoanType> LoanType { get; set; }
+    public DbSet<Loan> Loan { get; set; }
+    public DbSet<LoanGuarantor> LoanGuarantor { get; set; }
+    public DbSet<LoanRepaymentScheduleLine> LoanRepaymentScheduleLine { get; set; }
+    public DbSet<PerDiemRate> PerDiemRate { get; set; }
+    public DbSet<TripBudget> TripBudget { get; set; }
+    public DbSet<TripRequest> TripRequest { get; set; }
+    public DbSet<TripExpense> TripExpense { get; set; }
+    public DbSet<RewardNomination> RewardNomination { get; set; }
+    public DbSet<RewardPointsTransaction> RewardPointsTransaction { get; set; }
+    public DbSet<RewardDisbursement> RewardDisbursement { get; set; }
+    public DbSet<TrainingCategory> TrainingCategory { get; set; }
+    public DbSet<TrainingCourse> TrainingCourse { get; set; }
+    public DbSet<TrainingNeed> TrainingNeed { get; set; }
+    public DbSet<TrainingSession> TrainingSession { get; set; }
+    public DbSet<TrainingEnrollment> TrainingEnrollment { get; set; }
+    public DbSet<TrainingBudget> TrainingBudget { get; set; }
+    public DbSet<LearningPath> LearningPath { get; set; }
+    public DbSet<LearningPathStep> LearningPathStep { get; set; }
+    public DbSet<EmployeeTrainingCertificate> EmployeeTrainingCertificate { get; set; }
+    public DbSet<TrainingProviderPayment> TrainingProviderPayment { get; set; }
+    public DbSet<LearningCommunity> LearningCommunity { get; set; }
+    public DbSet<LearningCommunityMember> LearningCommunityMember { get; set; }
+    public DbSet<LearningCommunityPost> LearningCommunityPost { get; set; }
+    public DbSet<CommunityPostReaction> CommunityPostReaction { get; set; }
+    public DbSet<Suggestion> Suggestion { get; set; }
+    public DbSet<Grievance> Grievance { get; set; }
+    public DbSet<GrievanceNote> GrievanceNote { get; set; }
+    public DbSet<Announcement> Announcement { get; set; }
+    public DbSet<CompanyAsset> CompanyAsset { get; set; }
+    public DbSet<TerminationAssetRecovery> TerminationAssetRecovery { get; set; }
+    public DbSet<ExitQuestionnaire> ExitQuestionnaire { get; set; }
+    public DbSet<ExitInterview> ExitInterview { get; set; }
+    public DbSet<TerminationSettlement> TerminationSettlement { get; set; }
+    public DbSet<SettlementLine> SettlementLine { get; set; }
+    public DbSet<Survey> Survey { get; set; }
+    public DbSet<SurveyResponse> SurveyResponse { get; set; }
+    public DbSet<SurveyCompletion> SurveyCompletion { get; set; }
     public DbSet<AppraisalAppeal> AppraisalAppeal { get; set; }
     public DbSet<WorkforcePlan> WorkforcePlan { get; set; }
     public DbSet<WorkforcePlanLine> WorkforcePlanLine { get; set; }
@@ -173,6 +232,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<UserRole> UserRole { get; set; }
     public DbSet<Module> Module { get; set; }
     public DbSet<Operation> Operation { get; set; }
+    public DbSet<Subsystem> Subsystem { get; set; }
     public DbSet<RolePermission> RolePermission { get; set; }
     public DbSet<WorkflowDefinition> WorkflowDefinition { get; set; }
     public DbSet<WorkflowStep> WorkflowStep { get; set; }
@@ -348,6 +408,65 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new AchievementConfiguration());
         modelBuilder.ApplyConfiguration(new RecognitionBadgeConfiguration());
         modelBuilder.ApplyConfiguration(new EmployeeRecognitionConfiguration());
+        modelBuilder.ApplyConfiguration(new AwardCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new AllowanceTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeAllowanceConfiguration());
+        modelBuilder.ApplyConfiguration(new SalaryRevisionConfiguration());
+        modelBuilder.ApplyConfiguration(new SalaryRevisionLineConfiguration());
+        modelBuilder.ApplyConfiguration(new BenefitPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeBenefitEnrollmentConfiguration());
+        modelBuilder.ApplyConfiguration(new TaxBracketConfiguration());
+        modelBuilder.ApplyConfiguration(new CompensationRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalProviderConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalServiceContractConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalEnrollmentConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalBeneficiaryConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalClaimConfiguration());
+        modelBuilder.ApplyConfiguration(new MedicalClaimAttachmentConfiguration());
+        modelBuilder.ApplyConfiguration(new InsurancePolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new InsurancePremiumScheduleConfiguration());
+        modelBuilder.ApplyConfiguration(new InsuranceClaimConfiguration());
+        modelBuilder.ApplyConfiguration(new InsuranceClaimAttachmentConfiguration());
+        modelBuilder.ApplyConfiguration(new LoanTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new LoanConfiguration());
+        modelBuilder.ApplyConfiguration(new LoanGuarantorConfiguration());
+        modelBuilder.ApplyConfiguration(new LoanRepaymentScheduleLineConfiguration());
+        modelBuilder.ApplyConfiguration(new PerDiemRateConfiguration());
+        modelBuilder.ApplyConfiguration(new TripBudgetConfiguration());
+        modelBuilder.ApplyConfiguration(new TripRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new TripExpenseConfiguration());
+        modelBuilder.ApplyConfiguration(new RecognitionProgramConfiguration());
+        modelBuilder.ApplyConfiguration(new RewardNominationConfiguration());
+        modelBuilder.ApplyConfiguration(new RewardPointsTransactionConfiguration());
+        modelBuilder.ApplyConfiguration(new RewardDisbursementConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingCategoryConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingCourseConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingNeedConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingSessionConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingEnrollmentConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingBudgetConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningPathConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningPathStepConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeTrainingCertificateConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingProviderPaymentConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningCommunityConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningCommunityMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningCommunityPostConfiguration());
+        modelBuilder.ApplyConfiguration(new CommunityPostReactionConfiguration());
+        modelBuilder.ApplyConfiguration(new SuggestionConfiguration());
+        modelBuilder.ApplyConfiguration(new GrievanceConfiguration());
+        modelBuilder.ApplyConfiguration(new GrievanceNoteConfiguration());
+        modelBuilder.ApplyConfiguration(new AnnouncementConfiguration());
+        modelBuilder.ApplyConfiguration(new CompanyAssetConfiguration());
+        modelBuilder.ApplyConfiguration(new TerminationAssetRecoveryConfiguration());
+        modelBuilder.ApplyConfiguration(new ExitQuestionnaireConfiguration());
+        modelBuilder.ApplyConfiguration(new ExitInterviewConfiguration());
+        modelBuilder.ApplyConfiguration(new TerminationSettlementConfiguration());
+        modelBuilder.ApplyConfiguration(new SettlementLineConfiguration());
+        modelBuilder.ApplyConfiguration(new SurveyConfiguration());
+        modelBuilder.ApplyConfiguration(new SurveyResponseConfiguration());
+        modelBuilder.ApplyConfiguration(new SurveyCompletionConfiguration());
         modelBuilder.ApplyConfiguration(new AppraisalAppealConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanConfiguration());
         modelBuilder.ApplyConfiguration(new WorkforcePlanLineConfiguration());
@@ -369,6 +488,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new UserRoleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleConfiguration());
         modelBuilder.ApplyConfiguration(new OperationConfiguration());
+        modelBuilder.ApplyConfiguration(new SubsystemConfiguration());
         modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowDefinitionConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowStepConfiguration());

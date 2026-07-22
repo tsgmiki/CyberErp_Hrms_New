@@ -775,7 +775,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class GetJobApplicationById(
         IRepository<JobApplication> repository,
         IRepository<Candidate> candidateRepository,
-        IRepository<JobRequisition> requisitionRepository) : IGetJobApplicationById
+        IRepository<JobRequisition> requisitionRepository,
+        IRepository<User> userRepository,
+        IRepository<CriterionEvaluator> evaluatorRepository,
+        ICurrentUserService currentUser) : IGetJobApplicationById
     {
         public async Task<JobApplicationDto> GetAsync(Guid id)
         {
@@ -784,6 +787,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     .Include(x => x.CriterionScores)
                     .FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobApplication), id.ToString());
+
+            // Same evaluator visibility as the list: an assigned criterion evaluator may only open
+            // applications of the requisitions they are assigned to. HR / unconstrained users see all.
+            var evaluatorContext = await EvaluationGuard.GetContextAsync(
+                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+            if (evaluatorContext.IsConstrained && !evaluatorContext.AssignedRequisitionIds.Contains(a.RequisitionId))
+                throw new ValidationException("access", "You do not have access to this application.");
 
             var candidate = await candidateRepository.GetAll()
                 .Where(c => c.Id == a.CandidateId)

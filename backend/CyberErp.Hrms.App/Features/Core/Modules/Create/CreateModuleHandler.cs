@@ -10,6 +10,7 @@ namespace CyberErp.Hrms.App.Features.Core.Modules.Create;
 
 public class CreateModuleHandler(
     IRepository<Module> repository,
+    IRepository<Subsystem> subsystemRepository,
     IUnitOfWork unitOfWork,
     IValidator<CreateModuleRequest> validator,
     ILogger<CreateModuleHandler> logger)
@@ -21,7 +22,12 @@ public class CreateModuleHandler(
         if (!validationResult.IsValid)
             throw new AppValidationException(validationResult.Errors);
 
-        var module = Module.Create(request.SubSystem, request.Name, request.Icon);
+        var subsystemExists = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions
+            .AnyAsync(subsystemRepository.GetAll(), s => s.Id == request.SubsystemId, ct);
+        if (!subsystemExists)
+            throw new Common.Exceptions.ValidationException(nameof(request.SubsystemId), "Subsystem not found.");
+
+        var module = Module.Create(request.SubsystemId, request.Name, request.Icon, request.SortOrder);
 
         await repository.AddAsync(module);
         await unitOfWork.SaveChangesAsync(ct);
@@ -31,7 +37,7 @@ public class CreateModuleHandler(
         return new ModuleResult
         {
             Id = module.Id,
-            SubSystem = module.SubSystem,
+            SubsystemId = module.SubsystemId,
             Name = module.Name,
             Icon = module.Icon,
             CreatedAt = module.CreatedAt.InUtc().ToString()

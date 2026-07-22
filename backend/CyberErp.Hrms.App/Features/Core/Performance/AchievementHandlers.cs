@@ -155,13 +155,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(x => x.AchievementDate).Skip(skip).Take(take).ToListAsync();
 
-            var employees = employeeRepository.GetAll();
+            // PERFORMANCE: batch-load the employee names for the page in ONE query (was one per row).
+            var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
             var data = new List<AchievementDto>(rows.Count);
             foreach (var r in rows)
             {
-                var employeeName = await employees.Where(e => e.Id == r.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                data.Add(AchievementMapper.Map(r, employeeName));
+                data.Add(AchievementMapper.Map(r, employeeNames.GetValueOrDefault(r.EmployeeId)));
             }
             return new PaginatedResponse<AchievementDto> { Total = total, Data = data };
         }

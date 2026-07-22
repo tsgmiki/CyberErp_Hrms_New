@@ -12,7 +12,9 @@ import {
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { isString } from "@tiptap/react";
+
+// Local helper — do NOT import tiptap into the hot table path just for a string check.
+const isString = (v: unknown): v is string => typeof v === "string";
 
 function SortIcon({
   columnName,
@@ -44,9 +46,10 @@ const DataTable = ({
   getGroupLabel,
   GetChildren,
   rowIdKey,
-  key: keyField,
 }: DataTableModel) => {
-  const rowKeyField = rowIdKey ?? keyField ?? "id";
+  // NOTE: don't read `key` off props — React strips it, so it's always undefined (and warns).
+  // The row-id field comes through `rowIdKey` (DataTableProvider forwards dataTable.key into it).
+  const rowKeyField = rowIdKey ?? "id";
   const { t } = useTranslation();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());

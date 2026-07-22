@@ -41,7 +41,17 @@ const COLUMNS: ChildColumn<DisciplinaryMeasureModel>[] = [
       </span>
     ),
   },
-  { name: "effectiveDate", label: "Effective", render: fmtDate },
+  {
+    name: "validUntil",
+    label: "Lifetime / Impact",
+    render: (v, r) => (
+      <span className="inline-flex items-center gap-1.5">
+        <span className="text-xs text-muted">{v ? `until ${fmtDate(v)}` : "open-ended"}</span>
+        {r.affectsPromotion && <span className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">Promo</span>}
+        {r.affectsReward && <span className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">Reward</span>}
+      </span>
+    ),
+  },
 ];
 
 function DisciplineSection({ employeeId }: { employeeId: string }) {
@@ -77,6 +87,7 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
             ...record,
             violationDate: fmtDate(record.violationDate),
             effectiveDate: fmtDate(record.effectiveDate),
+            validUntil: fmtDate(record.validUntil),
           }
         : { measureType: "VerbalWarning", status: "Open" },
     );
@@ -91,6 +102,10 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
   }, []);
   const selectHandler = useCallback((name: string, r: any) => {
     setFormData((p) => ({ ...p, [name]: r.id }));
+  }, []);
+  const checkHandler = useCallback((e: any) => {
+    const { name, checked } = e.target;
+    setFormData((p) => ({ ...p, [name]: checked }));
   }, []);
 
   const submitHandler = async (e: any) => {
@@ -160,6 +175,18 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
               {
                 name: "effectiveDate", label: "Effective Date", type: "date",
                 value: formData.effectiveDate, onChange: changeHandler,
+              },
+              {
+                name: "validUntil", label: "Valid Until (lifetime)", type: "date",
+                value: formData.validUntil, onChange: changeHandler,
+              },
+              {
+                name: "affectsPromotion", label: "Blocks promotion", type: "checkbox",
+                value: formData.affectsPromotion ? "true" : "", onChange: checkHandler,
+              },
+              {
+                name: "affectsReward", label: "Blocks reward", type: "checkbox",
+                value: formData.affectsReward ? "true" : "", onChange: checkHandler,
               },
               { name: "description", label: "Description", value: formData.description, onChange: changeHandler, type: "textarea", colSpan: "full" },
               { name: "resolution", label: "Resolution", value: formData.resolution, onChange: changeHandler, type: "textarea", colSpan: "full" },

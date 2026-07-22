@@ -7,9 +7,8 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveAchievement from "@/services/admin/achievement/save";
 import getAchievement from "@/services/admin/achievement/get";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import Loading from "../../common/loader/loader";
-import { parameterInitialData } from "@/constants/initialization";
 import { achievementCategoryOptions } from "@/constants/performance";
 
 const FormProvider = memo(FormProviders);
@@ -28,12 +27,6 @@ function AchievementForm(props: { id: string; setId: (id: string) => void }) {
     queryKey: ["achievement", id],
     queryFn: () => getAchievement(id),
     enabled: typeof id != "undefined" && id != "",
-  });
-
-  const [empParam, setEmpParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees, isLoading: isEmpLoading } = useQuery({
-    queryKey: ["employees", empParam],
-    queryFn: () => getAllEmployee(empParam),
   });
 
   const submitHandler = async (e: any) => {
@@ -80,14 +73,19 @@ function AchievementForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            // Server-search picker (20 projected rows) — the hidden field carries the id into FormData.
             {
-              name: "employeeId", label: "Employee", placeholder: "Select employee", required: true, type: "dropDown",
-              value: formData.employeeId, displayValue: formData.employeeName,
+              name: "employeePicker", label: "Employee", required: true, type: "custom",
               error: formState?.zodErrors?.employeeId,
-              param: empParam, setParam: setEmpParam as any, isLoading: isEmpLoading,
-              onSelect: selectHandler,
-              data: employees?.data?.map((e) => ({ id: e.id, name: `${e.employeeNumber} — ${e.fullName ?? ""}` })) as never,
+              customChildren: (
+                <EmployeePicker
+                  value={formData.employeeId}
+                  displayValue={formData.employeeName}
+                  onSelect={(eid, name) => setFormData((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                />
+              ),
             },
+            { name: "employeeId", value: formData.employeeId, type: "hidden" },
             {
               name: "category", label: "Category", type: "dropDown", onSelect: selectHandler,
               value: formData.category, displayValue: formData.category,

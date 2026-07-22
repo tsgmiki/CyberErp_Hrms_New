@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -45,6 +45,11 @@ export interface TreeViewProps {
   collapsible?: boolean;
   /** Expand-all / collapse-all control in the header. Default true. */
   showExpandAll?: boolean;
+  /**
+   * Node ids to start COLLAPSED (applied once, when first non-empty — safe for async-loaded
+   * trees). Omit for the default all-expanded behaviour; the user can still toggle freely after.
+   */
+  defaultCollapsedIds?: string[];
   /** Extra classes for the expanded panel container. */
   className?: string;
 }
@@ -164,11 +169,21 @@ function TreeView({
   rootLabel,
   collapsible = true,
   showExpandAll = true,
+  defaultCollapsedIds,
   className = "",
 }: TreeViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  // Apply the initial-collapse default ONCE when it first becomes available (trees usually load
+  // async, so the mount-time state can't see it). After that the user's toggles are untouched.
+  const [defaultApplied, setDefaultApplied] = useState(false);
+  useEffect(() => {
+    if (defaultApplied || !defaultCollapsedIds || defaultCollapsedIds.length === 0) return;
+    setDefaultApplied(true);
+    setCollapsed(new Set(defaultCollapsedIds));
+  }, [defaultApplied, defaultCollapsedIds]);
 
   const toggle = (id: string) =>
     setCollapsed((prev) => {

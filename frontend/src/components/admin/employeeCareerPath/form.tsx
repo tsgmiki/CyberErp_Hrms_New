@@ -14,13 +14,12 @@ import { getCareerPathSuggestions } from "@/services/admin/careerPath/suggestion
 import { getRecommendations, createDevelopmentGoals } from "@/services/admin/employeeCareerPath/recommendations";
 import { createDevelopmentPlanFromCareerPath } from "@/services/admin/employeeCareerPath/developmentPlan";
 import getAllOrganizationalObjective from "@/services/admin/organizationalObjective/getAll";
-import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllCareerPath from "@/services/admin/careerPath/getAll";
 import getAllCareerPathStep from "@/services/admin/careerPathStep/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import { parameterInitialData } from "@/constants/initialization";
 import { careerStepProgressStatusOptions, employeeCareerPathStatusOptions } from "@/constants/careerDevelopment";
 
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 const label = (opts: { id: string; name: string }[], v?: string) => opts.find((o) => o.id === v)?.name ?? (v ?? "");
 type StepStatus = { status?: string; completedDate?: string };
 
@@ -42,7 +41,6 @@ function EmployeeCareerPathForm({ id, setId }: { id: string; setId: (id: string)
     enabled: typeof id != "undefined" && id != "",
   });
 
-  const { data: employees } = useQuery({ queryKey: ["employees", "assignPicker"], queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }), staleTime: 60_000 });
   const { data: paths } = useQuery({ queryKey: ["careerPaths", "assignPicker"], queryFn: () => getAllCareerPath({ ...parameterInitialData, take: 300 }), staleTime: 60_000 });
   const { data: steps } = useQuery({
     queryKey: ["careerPathSteps", form.careerPathId, "assign"],
@@ -56,11 +54,9 @@ function EmployeeCareerPathForm({ id, setId }: { id: string; setId: (id: string)
     staleTime: 60_000, enabled: !!id,
   });
 
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
   const pathOptions = useMemo(() => (paths?.data ?? []).map((p) => ({ id: p.id!, name: `${p.name} (${p.code})` })), [paths]);
   const objectiveOptions = useMemo(() => (objectives?.data ?? []).map((o) => ({ id: o.id!, name: o.title ?? "" })), [objectives]);
   const stepOptions = useMemo(() => (steps?.data ?? []).map((s) => ({ id: s.id!, name: `#${s.stepOrder} ${s.name}` })), [steps]);
-  const eName = (v?: string) => employeeOptions.find((o) => o.id === v)?.name ?? "";
   const pName = (v?: string) => pathOptions.find((o) => o.id === v)?.name ?? "";
 
   useEffect(() => {
@@ -138,7 +134,15 @@ function EmployeeCareerPathForm({ id, setId }: { id: string; setId: (id: string)
             content: (
               <div className="min-h-[15rem] space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <FormUtility component={{ name: "employeeId", label: "Employee", required: true, type: "dropDown", layout: "auth", value: form.employeeId, displayValue: form.employeeName ?? eName(form.employeeId), data: employeeOptions as never, onSelect: (_n, r: any) => { set("employeeId", r.id); set("employeeName", r.name); } }} />
+                  {/* Server-search picker — the employee table is never bulk-loaded (10k+ scale). */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted">Employee *</label>
+                    <EmployeePicker
+                      value={form.employeeId}
+                      displayValue={form.employeeName}
+                      onSelect={(eid, name) => { set("employeeId", eid); set("employeeName", name); }}
+                    />
+                  </div>
                   <FormUtility component={{ name: "careerPathId", label: "Career Path", required: true, type: "dropDown", layout: "auth", value: form.careerPathId, displayValue: form.careerPathName ?? pName(form.careerPathId), data: pathOptions as never, onSelect: (_n, r: any) => { set("careerPathId", r.id); set("careerPathName", r.name); set("currentStepId", undefined); } }} />
                   <FormUtility component={{ name: "currentStepId", label: "Current Step", type: "dropDown", layout: "auth", value: form.currentStepId, displayValue: label(stepOptions, form.currentStepId), data: stepOptions as never, onSelect: (_n, r: any) => set("currentStepId", r.id) }} />
                   <FormUtility component={{ name: "status", label: "Status", type: "dropDown", layout: "auth", value: form.status, displayValue: label(employeeCareerPathStatusOptions, form.status), data: employeeCareerPathStatusOptions as never, onSelect: (_n, r: any) => set("status", r.id) }} />

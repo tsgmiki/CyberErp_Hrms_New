@@ -1,5 +1,5 @@
 "use client";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { UserRound, Star } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "@/components/common/modal";
@@ -14,14 +14,12 @@ import getAllTalentAssessment from "@/services/admin/talentAssessment/getAll";
 import getTalentAssessment from "@/services/admin/talentAssessment/get";
 import { saveTalentAssessment } from "@/services/admin/talentAssessment/save";
 import deleteTalentAssessment from "@/services/admin/talentAssessment/delete";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import { identifyHipos } from "@/services/admin/talentReview/identifyHipos";
 import { toast } from "@/components/common/toast";
 import { Sparkles } from "lucide-react";
 import { parameterInitialData } from "@/constants/initialization";
 import { bandOptions, bandLabel, readinessLevelOptions } from "@/constants/careerDevelopment";
-
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 
 function Assessments({ reviewId }: { reviewId: string }) {
   const queryClient = useQueryClient();
@@ -36,13 +34,6 @@ function Assessments({ reviewId }: { reviewId: string }) {
     queryFn: () => getAllTalentAssessment({ ...parameterInitialData, take: 200, parentId: reviewId }),
     enabled: !!reviewId,
   });
-  const { data: employees } = useQuery({
-    queryKey: ["employees", "assessmentPicker"],
-    queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }),
-    staleTime: 60_000,
-    enabled: open,
-  });
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["talentAssessments", reviewId] });
     queryClient.invalidateQueries({ queryKey: ["talentReview", reviewId, "nine-box"] });
@@ -92,8 +83,6 @@ function Assessments({ reviewId }: { reviewId: string }) {
     { name: "readiness", label: "Readiness", render: (v) => readinessLevelOptions.find((o) => o.id === v)?.name ?? String(v ?? "") },
   ];
 
-  const eName = (id?: string) => employeeOptions.find((o) => o.id === id)?.name ?? "";
-
   const runIdentifyHiPos = async () => {
     const r = await identifyHipos(reviewId);
     invalidate();
@@ -139,7 +128,15 @@ function Assessments({ reviewId }: { reviewId: string }) {
                   keepMounted: true,
                   content: (
                     <div className="grid min-h-[15rem] grid-cols-1 gap-4 sm:grid-cols-2">
-                      <FormUtility component={{ name: "employeeId", label: "Employee", required: true, type: "dropDown", layout: "auth", value: form.employeeId, displayValue: eName(form.employeeId), data: employeeOptions as never, onSelect: (_n, r: any) => set("employeeId", r.id) }} />
+                      {/* Server-search picker — no bulk employee load (10k+ scale). */}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted">Employee *</label>
+                        <EmployeePicker
+                          value={form.employeeId}
+                          displayValue={form.employeeName}
+                          onSelect={(eid, name) => { set("employeeId", eid); set("employeeName", name); }}
+                        />
+                      </div>
                       <FormUtility component={{ name: "readiness", label: "Readiness", type: "dropDown", layout: "auth", value: form.readiness, displayValue: readinessLevelOptions.find((o) => o.id === form.readiness)?.name, data: readinessLevelOptions as never, onSelect: (_n, r: any) => set("readiness", r.id) }} />
                       <FormUtility component={{ name: "performanceBand", label: "Performance", type: "dropDown", layout: "auth", value: String(form.performanceBand ?? 2), displayValue: bandLabel(Number(form.performanceBand ?? 2)), data: bandOptions as never, onSelect: (_n, r: any) => set("performanceBand", Number(r.id)) }} />
                       <FormUtility component={{ name: "potentialBand", label: "Potential", type: "dropDown", layout: "auth", value: String(form.potentialBand ?? 2), displayValue: bandLabel(Number(form.potentialBand ?? 2)), data: bandOptions as never, onSelect: (_n, r: any) => set("potentialBand", Number(r.id)) }} />
@@ -173,7 +170,12 @@ function Assessments({ reviewId }: { reviewId: string }) {
                           <RepeatHeader cols={["Rater", "Role", "Perf.", "Pot.", ""]} className="grid-cols-[1fr_120px_80px_80px_36px]" />
                           {ratings.map((r, i) => (
                             <RepeatRow key={i} className="grid-cols-[1fr_120px_80px_80px_36px]">
-                              <FormUtility component={{ name: `rater-${i}`, label: "", placeholder: "Select rater…", type: "dropDown", value: r.raterEmployeeId, displayValue: eName(r.raterEmployeeId), data: employeeOptions as never, onSelect: (_n, x: any) => setRating(i, { raterEmployeeId: x.id }) }} />
+                              <EmployeePicker
+                                value={r.raterEmployeeId}
+                                displayValue={r.raterName ?? (r.raterEmployeeId ? "(rater on file)" : "")}
+                                placeholder="Select rater…"
+                                onSelect={(eid, name) => setRating(i, { raterEmployeeId: eid, raterName: name })}
+                              />
                               <input className={FORM_INPUT_CLASS} placeholder="Role" value={r.raterRole ?? ""} onChange={(e) => setRating(i, { raterRole: e.target.value })} />
                               <input type="number" step="0.1" className={FORM_INPUT_CLASS} placeholder="0.0" value={r.performanceScore ?? ""} onChange={(e) => setRating(i, { performanceScore: e.target.value as never })} />
                               <input type="number" step="0.1" className={FORM_INPUT_CLASS} placeholder="0.0" value={r.potentialScore ?? ""} onChange={(e) => setRating(i, { potentialScore: e.target.value as never })} />

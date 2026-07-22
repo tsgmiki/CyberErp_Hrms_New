@@ -53,6 +53,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     HireDate = e.HireDate,
                     ProbationEndDate = e.ProbationEndDate
                 })
+                .Take(100)   // dashboard widget — never return an unbounded list on a large tenant
                 .ToListAsync();
 
             foreach (var r in rows)
@@ -89,6 +90,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     e.EmployeeNumber,
                     e.DateOfBirth
                 })
+                .Take(100)   // dashboard widget — never return an unbounded list on a large tenant
                 .ToListAsync();
 
             return rows.Select(r =>

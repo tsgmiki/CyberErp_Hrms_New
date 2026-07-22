@@ -42,6 +42,7 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<AuditSaveChangesInterceptor>();
 
             services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+            services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<Models.HrmsDbContext>()));
             services.AddScoped<IAuthentication, Authentication>();
             services.AddScoped<ITokenStore, TokenStore>();
             services.AddScoped<ITokenParser, TokenParser>();
@@ -53,6 +54,12 @@ namespace CyberErp.Hrms.Inf
 
             // Operations - GetAll using repository pattern
             services.AddScoped<IGetAllOperationsRepository, GetAllOperationsRepository>();
+
+            // Dynamic navigation — module list + permission-filtered menu feed
+            services.AddScoped<App.Features.Core.Modules.GetAll.IGetAllModuleRepository,
+                Repositories.Core.Modules.GetAllModuleRepository>();
+            services.AddScoped<App.Features.Core.Modules.GetOperations.IGetModuleWithOperationsRepository,
+                Repositories.Core.Modules.GetModuleWithOperationsRepository>();
 
             return services;
         }

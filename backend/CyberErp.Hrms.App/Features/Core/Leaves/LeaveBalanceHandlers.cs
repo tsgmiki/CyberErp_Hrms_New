@@ -53,10 +53,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface ISetLeaveBalance { Task SetAsync(SetLeaveBalanceDto dto); }
 
     // ---- Get balances for an employee ---------------------------------------
-    public class GetLeaveBalances(IRepository<LeaveBalance> repository) : IGetLeaveBalances
+    public class GetLeaveBalances(
+        IRepository<LeaveBalance> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetLeaveBalances
     {
         public async Task<List<LeaveBalanceDto>> GetAsync(Guid employeeId, Guid? fiscalYearId)
         {
+            // HR admin, the employee themselves, or their manager (subtree) only.
+            if (!await visibility.CanAccessEmployeeAsync(employeeId))
+                throw new ValidationException("access", "You do not have access to this employee's leave balances.");
+
             var query = repository.GetAll().Where(b => b.EmployeeId == employeeId);
             if (fiscalYearId.HasValue && fiscalYearId.Value != Guid.Empty)
                 query = query.Where(b => b.FiscalYearId == fiscalYearId.Value);

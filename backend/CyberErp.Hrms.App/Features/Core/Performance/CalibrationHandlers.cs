@@ -205,10 +205,15 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<CalibrationSession> repository,
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
-        IRepository<OrganizationUnit> organizationUnitRepository) : IGetCalibrationSessionById
+        IRepository<OrganizationUnit> organizationUnitRepository,
+        IPerformanceVisibilityService visibility) : IGetCalibrationSessionById
     {
         public async Task<CalibrationSessionDto> GetAsync(Guid id)
         {
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+                throw new ValidationException("access", "Only HR can view calibration sessions.");
+
             var session = await repository.GetAll().Include(s => s.Items).AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Id == id)
                 ?? throw new NotFoundException(nameof(CalibrationSession), id.ToString());
@@ -218,17 +223,20 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 : null;
 
             var dto = CalibrationMapper.MapHeader(session, cycleName, unitName);
-            var employees = employeeRepository.GetAll();
+            // PERFORMANCE: batch-load the cohort's employee names in ONE query (was one per item).
+            var empIds = session.Items.Select(i => i.EmployeeId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
             foreach (var item in session.Items.OrderBy(i => i.EmployeeId))
             {
-                var name = await employees.Where(e => e.Id == item.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
                 dto.Items.Add(new CalibrationItemDto
                 {
                     Id = item.Id,
                     AppraisalId = item.AppraisalId,
                     EmployeeId = item.EmployeeId,
-                    EmployeeName = name,
+                    EmployeeName = employeeNames.GetValueOrDefault(item.EmployeeId),
                     OriginalScore = item.OriginalScore,
                     CalibratedScore = item.CalibratedScore,
                     Justification = item.Justification,
@@ -241,10 +249,15 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetAllCalibrationSessions(
         IRepository<CalibrationSession> repository,
-        IRepository<ReviewCycle> reviewCycleRepository) : IGetAllCalibrationSessions
+        IRepository<ReviewCycle> reviewCycleRepository,
+        IPerformanceVisibilityService visibility) : IGetAllCalibrationSessions
     {
         public async Task<PaginatedResponse<CalibrationSessionDto>> GetAsync(GetAllRequest request)
         {
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+                throw new ValidationException("access", "Only HR can view calibration sessions.");
+
             var skip = int.TryParse(request.Skip, out var s) ? s : 0;
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
@@ -258,12 +271,18 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
-            var cycles = reviewCycleRepository.GetAll();
+
+            // PERFORMANCE: batch-load the cycle names for the page in ONE query (was one per row).
+            var cycleIds = rows.Select(r => r.ReviewCycleId).Distinct().ToList();
+            var cycleNames = await reviewCycleRepository.GetAll().AsNoTracking()
+                .Where(c => cycleIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
             var data = new List<CalibrationSessionDto>(rows.Count);
             foreach (var r in rows)
             {
-                var cycleName = await cycles.Where(c => c.Id == r.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
-                data.Add(CalibrationMapper.MapHeader(r, cycleName, null));
+                data.Add(CalibrationMapper.MapHeader(r, cycleNames.GetValueOrDefault(r.ReviewCycleId), null));
             }
             return new PaginatedResponse<CalibrationSessionDto> { Total = total, Data = data };
         }

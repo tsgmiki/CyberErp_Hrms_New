@@ -2,7 +2,7 @@ using FluentValidation;
 
 namespace CyberErp.Hrms.App.Features.Core.Operations.Update;
 
-public record UpdateOperationRequest(Guid Id, Guid ModuleId, string Name, string Link, string Filter, string Icon);
+public record UpdateOperationRequest(Guid Id, Guid ModuleId, string Name, string Link, string Filter, string Icon, int SortOrder = 0);
 
 public class UpdateOperationRequestValidator : AbstractValidator<UpdateOperationRequest>
 {

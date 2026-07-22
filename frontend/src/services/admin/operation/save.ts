@@ -26,7 +26,13 @@ export default async function saveOperationService(formData: FormData) {
   const isUpdate = typeof formDataObj.id !== "undefined" && formDataObj.id !== "" && formDataObj.id !== null;
 
   try {
-    const requestBody: Record<string, unknown> = { ...formDataObj };
+    const requestBody: Record<string, unknown> = {
+      ...formDataObj,
+      // Server-side record has non-nullable Filter/Icon and an int SortOrder.
+      filter: (formDataObj.filter as string) || "",
+      icon: (formDataObj.icon as string) || "Circle",
+      sortOrder: Number(formDataObj.sortOrder || 0),
+    };
     if (!isUpdate) {
       delete requestBody.id;
     }

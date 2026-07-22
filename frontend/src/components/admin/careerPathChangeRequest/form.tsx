@@ -10,12 +10,11 @@ import Loading from "../../common/loader/loader";
 import saveChangeRequest from "@/services/admin/careerPathChangeRequest/save";
 import getChangeRequest from "@/services/admin/careerPathChangeRequest/get";
 import { submitChangeRequest, approveChangeRequest, rejectChangeRequest } from "@/services/admin/careerPathChangeRequest/actions";
-import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllCareerPath from "@/services/admin/careerPath/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import { parameterInitialData } from "@/constants/initialization";
 
 const FormProvider = memo(FormProviders);
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 const STATUS_TONE: Record<string, string> = {
   Draft: "bg-muted/30 text-muted", Submitted: "bg-info/15 text-info", Approved: "bg-success/15 text-success", Rejected: "bg-error/15 text-error",
 };
@@ -35,11 +34,8 @@ function ChangeRequestForm({ id, setId }: { id: string; setId: (id: string) => v
     enabled: typeof id != "undefined" && id != "",
   });
 
-  const { data: employees } = useQuery({ queryKey: ["employees", "crPicker"], queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }), staleTime: 60_000 });
   const { data: paths } = useQuery({ queryKey: ["careerPaths", "crPicker"], queryFn: () => getAllCareerPath({ ...parameterInitialData, take: 300 }), staleTime: 60_000 });
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
   const pathOptions = useMemo(() => (paths?.data ?? []).map((p) => ({ id: p.id!, name: `${p.name} (${p.code})` })), [paths]);
-  const eName = (v?: string) => employeeOptions.find((o) => o.id === v)?.name ?? "";
   const pName = (v?: string) => pathOptions.find((o) => o.id === v)?.name ?? "";
 
   const submitHandler = async (e: any) => {
@@ -89,8 +85,16 @@ function ChangeRequestForm({ id, setId }: { id: string; setId: (id: string) => v
           isPending: isLoading,
           SubmitButton: "top",
           components: [
-            { name: "employeeId", label: "Employee", required: true, type: "dropDown", onSelect: selectHandler,
-              value: formData.employeeId, displayValue: formData.employeeName ?? eName(formData.employeeId), error: formState?.zodErrors?.employeeId, data: employeeOptions as never },
+            // Server-search picker (no bulk employee load); the hidden field carries the id into FormData.
+            { name: "employeePicker", label: "Employee", required: true, type: "custom", error: formState?.zodErrors?.employeeId,
+              customChildren: (
+                <EmployeePicker
+                  value={formData.employeeId}
+                  displayValue={formData.employeeName}
+                  onSelect={(eid, name) => setFormData((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                />
+              ) },
+            { name: "employeeId", value: formData.employeeId, type: "hidden" },
             { name: "currentCareerPathId", label: "Current Career Path", type: "dropDown", onSelect: selectHandler,
               value: formData.currentCareerPathId, displayValue: pName(formData.currentCareerPathId), data: pathOptions as never },
             { name: "requestedCareerPathId", label: "Requested Career Path", required: true, type: "dropDown", onSelect: selectHandler,

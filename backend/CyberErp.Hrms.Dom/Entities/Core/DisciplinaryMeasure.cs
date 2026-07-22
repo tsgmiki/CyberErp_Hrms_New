@@ -41,6 +41,24 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
     public DateTime? EffectiveDate { get; private set; }
     public string? Resolution { get; private set; }
 
+    /// <summary>
+    /// HC222 — the employee (work-unit representative) who raised the case. Snapshot reference,
+    /// no FK, stamped from the caller on creation; null when raised directly by HR/system.
+    /// </summary>
+    public Guid? RaisedByEmployeeId { get; private set; }
+
+    /// <summary>
+    /// HC223 — end of the measure's "lifetime": the date after which it no longer counts against
+    /// bonus/promotion eligibility. Null means it stays effective until the case is Cancelled.
+    /// </summary>
+    public DateTime? ValidUntil { get; private set; }
+
+    /// <summary>HC223/HC225 — while active (within lifetime), this measure blocks promotion.</summary>
+    public bool AffectsPromotion { get; private set; }
+
+    /// <summary>HC223/HC225 — while active (within lifetime), this measure blocks reward/bonus.</summary>
+    public bool AffectsReward { get; private set; }
+
     private DisciplinaryMeasure() : base() { }
 
     public static DisciplinaryMeasure Create(
@@ -51,7 +69,11 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         DisciplinaryStatus status = DisciplinaryStatus.Open,
         string? description = null,
         DateTime? effectiveDate = null,
-        string? resolution = null)
+        string? resolution = null,
+        DateTime? validUntil = null,
+        bool affectsPromotion = false,
+        bool affectsReward = false,
+        Guid? raisedByEmployeeId = null)
     {
         if (employeeId == Guid.Empty)
             throw new ArgumentException("Employee is required.", nameof(employeeId));
@@ -67,7 +89,11 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
             Status = status,
             Description = description,
             EffectiveDate = effectiveDate,
-            Resolution = resolution
+            Resolution = resolution,
+            ValidUntil = validUntil,
+            AffectsPromotion = affectsPromotion,
+            AffectsReward = affectsReward,
+            RaisedByEmployeeId = raisedByEmployeeId
         };
     }
 
@@ -85,7 +111,10 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         DisciplinaryStatus status,
         string? description,
         DateTime? effectiveDate,
-        string? resolution)
+        string? resolution,
+        DateTime? validUntil,
+        bool affectsPromotion,
+        bool affectsReward)
     {
         if (string.IsNullOrWhiteSpace(violationType))
             throw new ArgumentException("Violation type cannot be empty.", nameof(violationType));
@@ -97,6 +126,10 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         Description = description;
         EffectiveDate = effectiveDate;
         Resolution = resolution;
+        ValidUntil = validUntil;
+        AffectsPromotion = affectsPromotion;
+        AffectsReward = affectsReward;
+        // RaisedByEmployeeId is immutable — the original submitter never changes.
         base.Update();
     }
 }

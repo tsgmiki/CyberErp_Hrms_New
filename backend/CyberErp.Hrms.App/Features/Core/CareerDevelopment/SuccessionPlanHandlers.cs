@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -89,6 +90,9 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
     public class SaveSuccessionPlan(
         IRepository<SuccessionPlan> repository,
         IRepository<CriticalPosition> criticalPositionRepository,
+        IRepository<WorkflowDefinition> workflowDefinitions,
+        IWorkflowService workflowService,
+        IWorkflowGate workflowGate,
         IValidator<SaveSuccessionPlanDto> validator,
         ILogger<SaveSuccessionPlan> logger) : ISaveSuccessionPlan
     {
@@ -103,32 +107,105 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
             var horizon = Enum.Parse<SuccessionHorizon>(dto.Horizon);
             var status = Enum.Parse<SuccessionPlanStatus>(dto.Status);
 
+            // HC160 — when an active approval chain governs succession plans, a plan must pass through
+            // it before going live. Without one the module operates directly (engine philosophy).
+            var workflowActive = await workflowDefinitions.GetAll()
+                .AnyAsync(d => d.EntityType == WorkflowEntityTypes.SuccessionPlan && d.IsActive);
+
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
+                // No edits while an approval is in flight.
+                await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.SuccessionPlan, dto.Id.Value);
+
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(SuccessionPlan), dto.Id.Value.ToString());
+
+                // Approval outcomes are workflow-owned: a Rejected/parked plan cannot be hand-flipped
+                // to Active — saving it RESUBMITS the plan through the chain instead.
+                var resubmit = workflowActive && entity.Status
+                    is SuccessionPlanStatus.Rejected or SuccessionPlanStatus.PendingApproval;
+                if (resubmit)
+                {
+                    await workflowService.EnsureStartableAsync(WorkflowEntityTypes.SuccessionPlan, null);
+                    status = SuccessionPlanStatus.PendingApproval;
+                }
+
                 entity.Update(dto.CriticalPositionId, dto.Name, horizon, status, dto.Notes);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
+
+                if (resubmit)
+                    await workflowService.StartIfDefinedAsync(
+                        WorkflowEntityTypes.SuccessionPlan, entity.Id, null,
+                        $"Succession plan '{entity.Name}' (resubmitted)");
                 return entity.Id;
+            }
+
+            if (workflowActive)
+            {
+                // Fail BEFORE persisting when the chain could never complete (unresolvable approvers).
+                await workflowService.EnsureStartableAsync(WorkflowEntityTypes.SuccessionPlan, null);
+                status = SuccessionPlanStatus.PendingApproval;
             }
 
             var created = SuccessionPlan.Create(dto.CriticalPositionId, dto.Name, horizon, status, dto.Notes);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Created SuccessionPlan {Id} ({Name})", created.Id, created.Name);
+
+            if (workflowActive)
+                await workflowService.StartIfDefinedAsync(
+                    WorkflowEntityTypes.SuccessionPlan, created.Id, null,
+                    $"Succession plan '{created.Name}'");
+
+            logger.LogInformation("Created SuccessionPlan {Id} ({Name}){Workflow}", created.Id, created.Name,
+                workflowActive ? " — submitted for approval" : string.Empty);
             return created.Id;
         }
     }
 
-    public class DeleteSuccessionPlan(IRepository<SuccessionPlan> repository) : IDeleteSuccessionPlan
+    public class DeleteSuccessionPlan(
+        IRepository<SuccessionPlan> repository,
+        IWorkflowGate workflowGate) : IDeleteSuccessionPlan
     {
         public async Task DeleteAsync(Guid id)
         {
+            await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.SuccessionPlan, id);
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(SuccessionPlan), id.ToString());
             repository.Delete(entity); // cascade removes candidates + their dev-actions/knowledge-transfer
             await repository.SaveChangesAsync();
+        }
+    }
+
+    /// <summary>
+    /// Applies the workflow outcome to a succession plan (HC160): approval activates the plan,
+    /// rejection returns it to an editable Rejected state for resubmission.
+    /// </summary>
+    public class SuccessionPlanWorkflowHandler(
+        IRepository<SuccessionPlan> repository,
+        ILogger<SuccessionPlanWorkflowHandler> logger) : IWorkflowEntityHandler
+    {
+        public bool Supports(string entityType) =>
+            string.Equals(entityType, WorkflowEntityTypes.SuccessionPlan, StringComparison.OrdinalIgnoreCase);
+
+        public async Task OnApprovedAsync(string entityType, Guid entityId)
+        {
+            var plan = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == entityId);
+            if (plan is null) return; // deleted mid-flight — nothing to apply
+            plan.ApproveViaWorkflow();
+            repository.UpdateAsync(plan);
+            await repository.SaveChangesAsync();
+            logger.LogInformation("SuccessionPlan {Id} approved via workflow — now Active", entityId);
+        }
+
+        public async Task OnRejectedAsync(string entityType, Guid entityId)
+        {
+            var plan = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == entityId);
+            if (plan is null) return;
+            plan.RejectViaWorkflow();
+            repository.UpdateAsync(plan);
+            await repository.SaveChangesAsync();
+            logger.LogInformation("SuccessionPlan {Id} rejected via workflow", entityId);
         }
     }
 

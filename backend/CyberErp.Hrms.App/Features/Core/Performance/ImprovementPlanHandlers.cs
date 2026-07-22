@@ -241,13 +241,16 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetImprovementPlanById(
         IRepository<PerformanceImprovementPlan> repository,
-        IRepository<Employee> employeeRepository) : IGetImprovementPlanById
+        IRepository<Employee> employeeRepository,
+        IPerformanceVisibilityService visibility) : IGetImprovementPlanById
     {
         public async Task<ImprovementPlanDto> GetAsync(Guid id)
         {
             var entity = await repository.GetAll().Include(x => x.Objectives).AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(PerformanceImprovementPlan), id.ToString());
+            if (!await visibility.CanAccessEmployeeAsync(entity.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this improvement plan.");
             var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
                 .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
             return ImprovementPlanMapper.Map(entity, employeeName);
@@ -256,7 +259,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetAllImprovementPlans(
         IRepository<PerformanceImprovementPlan> repository,
-        IRepository<Employee> employeeRepository) : IGetAllImprovementPlans
+        IRepository<Employee> employeeRepository,
+        IPerformanceVisibilityService visibility) : IGetAllImprovementPlans
     {
         public async Task<PaginatedResponse<ImprovementPlanDto>> GetAsync(GetAllRequest request)
         {
@@ -264,6 +268,25 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll().Include(x => x.Objectives).AsNoTracking();
+
+            // Role-based visibility: admin → all; manager → own + unit-subtree; employee → own only.
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+            {
+                var myEmp = scope.EmployeeId ?? Guid.Empty;
+                if (scope.IsManager)
+                {
+                    var unitIds = scope.UnitIds;
+                    var emps = employeeRepository.GetAll();
+                    query = query.Where(p => p.EmployeeId == myEmp ||
+                        emps.Any(e => e.Id == p.EmployeeId && e.Position != null && unitIds.Contains(e.Position.OrganizationUnitId)));
+                }
+                else
+                {
+                    query = query.Where(p => p.EmployeeId == myEmp);
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(request.SearchText))
                 query = query.Where(x => x.Title.Contains(request.SearchText.Trim()));
             if (request.EmployeeId.HasValue)
@@ -274,13 +297,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(x => x.StartDate).Skip(skip).Take(take).ToListAsync();
 
-            var employees = employeeRepository.GetAll();
+            // PERFORMANCE: batch-load the employee names for the page in ONE query (was one per row).
+            var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
             var data = new List<ImprovementPlanDto>(rows.Count);
             foreach (var r in rows)
             {
-                var employeeName = await employees.Where(e => e.Id == r.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                data.Add(ImprovementPlanMapper.Map(r, employeeName));
+                data.Add(ImprovementPlanMapper.Map(r, employeeNames.GetValueOrDefault(r.EmployeeId)));
             }
             return new PaginatedResponse<ImprovementPlanDto> { Total = total, Data = data };
         }

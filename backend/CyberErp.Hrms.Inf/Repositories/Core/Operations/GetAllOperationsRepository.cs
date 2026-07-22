@@ -45,7 +45,8 @@ public class GetAllOperationsRepository(
                 Module = x.Module.Name,
                 Link = x.Link,
                 Filter = x.Filter,
-                Icon = x.Icon
+                Icon = x.Icon,
+                SortOrder = x.SortOrder
             })
             .ToListAsync(ct);
 

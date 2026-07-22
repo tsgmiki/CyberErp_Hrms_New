@@ -39,6 +39,44 @@
 
 ## 1. Most recent changes (latest first)
 
+000. **MEGA-COMMIT (2026-07-22): everything built 2026-07-16 → 2026-07-22 committed as one batch**
+    (~600 files). Modules, each E2E-verified in its session: **§3.10 Compensation & Benefit +
+    Medical Benefit + Insurance + Loan + Trip** (masters, lifecycles, HR→Finance→Exec workflow
+    chains, CB3 deductions-engine feed, Hangfire settlement reminders, self-service screens);
+    **§3.8 Training** (needs w/ per-type workflow, sessions/enrollments/budgets, learning paths,
+    certificates, CPD, provider payments, communities); **§3.9 Engagement** (anonymous-safe
+    suggestions, grievances, targeted announcements, surveys) + **§3.9.3 Disciplinary cases**
+    (eligibility service + reward/promotion hard-block gates); **§3.7.3 Employee Transfer**
+    (deferred execution, assessment endpoint, transfer notices) + **§3.7.4 Reward & Recognition**
+    (nominations w/ workflow, points ledger, disbursements, recognition wall); **strict RBAC**
+    (deny-by-default menu, `[RequirePermission]` opt-in endpoint filter w/ 60s cached
+    `EndpointPermissionService`, `IPerformanceVisibilityService` data scoping); **dynamic
+    navigation** (`SeedDefaultMenu`); **standard report catalog** (13 seeded SP-driven reports +
+    modernized viewer: tree first-open expands only first group, Save `#63d91d` / Email
+    `#eea522`); **Role Permissions matrix rebuilt** self-contained (flat, client-side roleId
+    filtering, direct JSON save); **10k-user performance pass** (9 N+1 batch fixes, lazy
+    xlsx/react-pdf/tiptap, EmployeePicker swaps, `IX_User_UserName`); **Talent Review →
+    Succession bridge** (candidate-profile talent outcome row + HiPo suggested-candidates
+    endpoint/chips); **Succession Plan approval workflow** (next item + `logic.md` §1).
+    Committed on `feature/hrms-buildout`; NOT yet pushed.
+
+00S. **Succession Plan approval workflow (2026-07-22, BE+FE, NO migration).**
+    `WorkflowEntityTypes.SuccessionPlan` + seed default ("Succession Plan Approval": Manager
+    Review → HR Approval). `SuccessionPlanStatus` gained `PendingApproval(3)`/`Rejected(4)`
+    (string-stored, ≤20 chars → no migration) + transitions `MarkPendingApproval` /
+    `ApproveViaWorkflow` / `RejectViaWorkflow` (idempotent, only from PendingApproval).
+    `SaveSuccessionPlan`: when an active definition exists, create/resubmit FORCES status to
+    PendingApproval (`EnsureStartableAsync` pre-persist, `StartIfDefinedAsync(employeeId:null)` —
+    a plan is position-scoped, no subject); update/delete gated by `EnsureNoRunningAsync`; saving
+    a **Rejected** plan resubmits it (approval outcomes are workflow-owned, no hand-flip to
+    Active). `SuccessionPlanWorkflowHandler` (approve→Active, reject→Rejected) registered in DI.
+    FE: status badge tones + `successionPlanStatusLabels`/`Label` (selectable options stay the 3
+    operational ones), pending/rejected info banners on the form, and
+    `workflowEntityTypeOptions` (constants/orgStructure.ts) **synced with the full backend
+    registry** (was missing 11 newer processes). E2E `succession_wf_e2e.mjs` 25 checks + 8-check
+    role-approver inbox rerun — all pass. GOTCHA: My Approvals only lists steps that NAME the
+    user; open steps (no approvers) are actionable from `/workflow` but never appear in the inbox.
+
 00. **Employee & Candidate Education/Experience unified via a SHARED component (BE+FE, NO migration).**
     The two modules now render the SAME section components, so the forms are identical and custom
     fields defined once reflect in both. **Uncommitted.**

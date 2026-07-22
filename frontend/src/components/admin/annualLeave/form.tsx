@@ -64,9 +64,11 @@ function AnnualLeaveForm({
     enabled: viewing,
   });
 
+  // Only needed for the open picker (HR profile-tab style callers pass a locked employee instead).
   const { data: employees } = useQuery({
     queryKey: ["employees", lookupParam],
     queryFn: () => getAllEmployee(lookupParam),
+    enabled: !viewing && !lockedEmployeeId,
   });
   // The employee's ledgers (LeaveBalance rows) — the user picks the annual-leave one to charge.
   const { data: balances } = useQuery({

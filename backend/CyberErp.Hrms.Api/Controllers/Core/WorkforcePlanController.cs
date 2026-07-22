@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.WorkforcePlans;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// anchored to the approved establishment, with budget control, workflow approval and the
     /// approved-demand feed consumed by recruitment.
     /// </summary>
+    [RequirePermission("workforcePlan", "establishmentOverview", "hiringRequest", "jobRequisition")]
     public class WorkforcePlanController(
         ISaveWorkforcePlan saveHandler,
         IGetWorkforcePlanById getByIdHandler,

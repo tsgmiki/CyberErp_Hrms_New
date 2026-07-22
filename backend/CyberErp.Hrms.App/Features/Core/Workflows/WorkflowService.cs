@@ -29,6 +29,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task<bool> HasRunningAsync(string entityTypePrefix, Guid entityId);
         /// <summary>Throws a 400 when a running workflow governs the record.</summary>
         Task EnsureNoRunningAsync(string entityTypePrefix, Guid entityId);
+        /// <summary>
+        /// Set-based variant for LIST handlers: which of <paramref name="entityIds"/> have a running
+        /// workflow — ONE query for the whole page instead of one per row.
+        /// </summary>
+        Task<HashSet<Guid>> RunningIdsAsync(string entityTypePrefix, IReadOnlyCollection<Guid> entityIds);
     }
 
     public interface IWorkflowService
@@ -70,6 +75,18 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 i.EntityId == entityId &&
                 i.EntityType.StartsWith(entityTypePrefix) &&
                 i.Status == WorkflowInstanceStatus.Running);
+
+        public async Task<HashSet<Guid>> RunningIdsAsync(string entityTypePrefix, IReadOnlyCollection<Guid> entityIds)
+        {
+            if (entityIds.Count == 0) return [];
+            var running = await instances.GetAll().AsNoTracking()
+                .Where(i => entityIds.Contains(i.EntityId) &&
+                            i.EntityType.StartsWith(entityTypePrefix) &&
+                            i.Status == WorkflowInstanceStatus.Running)
+                .Select(i => i.EntityId)
+                .ToListAsync();
+            return [.. running];
+        }
 
         public async Task EnsureNoRunningAsync(string entityTypePrefix, Guid entityId)
         {

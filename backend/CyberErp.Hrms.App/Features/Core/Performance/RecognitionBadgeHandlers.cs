@@ -19,6 +19,12 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public string? Icon { get; set; }
         public bool IsActive { get; set; }
         public int SortOrder { get; set; }
+        public string RewardKind { get; set; } = nameof(Dom.Entities.Core.RewardKind.Badge);
+        public decimal? MonetaryValue { get; set; }
+        public int PointsValue { get; set; }
+        public string? Criteria { get; set; }
+        public decimal? AutoGrantMinScore { get; set; }
+        public Guid? AwardCategoryId { get; set; }
     }
 
     public class CreateRecognitionBadgeDto
@@ -29,6 +35,13 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public string? Icon { get; set; }
         public bool IsActive { get; set; } = true;
         public int SortOrder { get; set; }
+        /// <summary>Badge | Certificate | GiftCard | MonetaryBonus (HC177).</summary>
+        public string RewardKind { get; set; } = nameof(Dom.Entities.Core.RewardKind.Badge);
+        public decimal? MonetaryValue { get; set; }
+        public int PointsValue { get; set; }
+        public string? Criteria { get; set; }
+        public decimal? AutoGrantMinScore { get; set; }
+        public Guid? AwardCategoryId { get; set; }
     }
 
     public class UpdateRecognitionBadgeDto : CreateRecognitionBadgeDto
@@ -44,6 +57,14 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             RuleFor(x => x.Description).MaximumLength(1000);
             RuleFor(x => x.Color).MaximumLength(20);
             RuleFor(x => x.Icon).MaximumLength(50);
+            RuleFor(x => x.RewardKind)
+                .Must(k => Enum.TryParse<RewardKind>(k, true, out _))
+                .WithMessage("Reward kind must be Badge, Certificate, GiftCard or MonetaryBonus.");
+            RuleFor(x => x.MonetaryValue).GreaterThanOrEqualTo(0).When(x => x.MonetaryValue.HasValue);
+            RuleFor(x => x.PointsValue).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.Criteria).MaximumLength(1000);
+            RuleFor(x => x.AutoGrantMinScore).InclusiveBetween(0, 100).When(x => x.AutoGrantMinScore.HasValue)
+                .WithMessage("Auto-grant threshold is a percentage between 0 and 100.");
         }
     }
 
@@ -74,7 +95,13 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             Color = b.Color,
             Icon = b.Icon,
             IsActive = b.IsActive,
-            SortOrder = b.SortOrder
+            SortOrder = b.SortOrder,
+            RewardKind = b.RewardKind.ToString(),
+            MonetaryValue = b.MonetaryValue,
+            PointsValue = b.PointsValue,
+            Criteria = b.Criteria,
+            AutoGrantMinScore = b.AutoGrantMinScore,
+            AwardCategoryId = b.AwardCategoryId
         };
     }
 
@@ -92,7 +119,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name))
                 throw new DuplicateException(nameof(RecognitionBadge), nameof(dto.Name), dto.Name);
 
-            var entity = RecognitionBadge.Create(dto.Name, dto.Description, dto.Color, dto.Icon, dto.IsActive, dto.SortOrder);
+            var entity = RecognitionBadge.Create(dto.Name, dto.Description, dto.Color, dto.Icon, dto.IsActive, dto.SortOrder,
+                Enum.Parse<RewardKind>(dto.RewardKind, true), dto.MonetaryValue, dto.PointsValue,
+                dto.Criteria, dto.AutoGrantMinScore, dto.AwardCategoryId);
             await repository.AddAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created RecognitionBadge {Id} ({Name})", entity.Id, entity.Name);
@@ -115,7 +144,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             if (await repository.GetAll().AnyAsync(x => x.Name == dto.Name && x.Id != dto.Id))
                 throw new DuplicateException(nameof(RecognitionBadge), nameof(dto.Name), dto.Name);
 
-            entity.Update(dto.Name, dto.Description, dto.Color, dto.Icon, dto.IsActive, dto.SortOrder);
+            entity.Update(dto.Name, dto.Description, dto.Color, dto.Icon, dto.IsActive, dto.SortOrder,
+                Enum.Parse<RewardKind>(dto.RewardKind, true), dto.MonetaryValue, dto.PointsValue,
+                dto.Criteria, dto.AutoGrantMinScore, dto.AwardCategoryId);
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Updated RecognitionBadge {Id}", entity.Id);
@@ -125,6 +156,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     public class DeleteRecognitionBadge(
         IRepository<RecognitionBadge> repository,
         IRepository<EmployeeRecognition> recognitionRepository,
+        IRepository<RewardNomination> nominationRepository,
+        IRepository<RecognitionProgram> programRepository,
         ILogger<DeleteRecognitionBadge> logger) : IDeleteRecognitionBadge
     {
         public async Task DeleteAsync(Guid id)
@@ -133,6 +166,10 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 ?? throw new NotFoundException(nameof(RecognitionBadge), id.ToString());
             if (await recognitionRepository.GetAll().AnyAsync(r => r.RecognitionBadgeId == id))
                 throw new ValidationException(nameof(id), "Cannot delete a badge that has been granted to employees.");
+            if (await nominationRepository.GetAll().AnyAsync(n => n.RecognitionBadgeId == id))
+                throw new ValidationException(nameof(id), "Cannot delete a badge that nominations reference.");
+            if (await programRepository.GetAll().AnyAsync(p => p.RecognitionBadgeId == id))
+                throw new ValidationException(nameof(id), "Cannot delete a badge that recognition programs reference.");
 
             repository.Delete(entity);
             await repository.SaveChangesAsync();

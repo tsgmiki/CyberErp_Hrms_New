@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { FileBarChart } from "lucide-react";
 import DataTableProvider from "@/components/common/dataTableProvider/dataTableProvider";
 import GridDataTableProvider from "@/components/common/dataTableProvider/gridDataTableProvider";
 import { useListPage } from "@/components/common/dataTableProvider/useListPage";
@@ -178,26 +179,38 @@ function ReportResult() {
   if (error) return <div className="p-6 text-sm text-error">{error}</div>;
   if (!result) return <Loading />;
 
+  const grandSalary = grouped ? (result.summaries ?? []).reduce((a, s) => a + (Number(s.SalaryTotal) || 0), 0) : 0;
+
   return (
     <div className="flex h-screen min-h-0 flex-col gap-3 bg-background p-4 text-foreground">
-      <div className="shrink-0">
-        <h2 className="text-base font-semibold">
-          {result.reportName} <span className="text-sm font-normal text-muted">({result.total} {t("rows")})</span>
-        </h2>
-        {grouped && (
-          <p className="mt-0.5 text-xs text-muted">
-            {t("Grouped by")}: {groupFields.map((f) => colByField[f]?.label ?? f).join(" ▸ ")}
-            {(result.summaries?.length ?? 0) > 0 && (
-              <span className="ml-2 text-muted">
-                · {result.summaries!.length} {t("groups")}
-                {(() => {
-                  const grand = (result.summaries ?? []).reduce((a, s) => a + (Number(s.SalaryTotal) || 0), 0);
-                  return grand ? ` · ${t("Salary")}: ${fmtCell(grand, "currency")}` : "";
-                })()}
-              </span>
-            )}
-          </p>
-        )}
+      {/* Enterprise header strip: icon badge + report identity + meta chips. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <FileBarChart className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-base font-semibold text-foreground">{result.reportName}</h2>
+          {grouped && (
+            <p className="truncate text-xs text-muted">
+              {t("Grouped by")}: {groupFields.map((f) => colByField[f]?.label ?? f).join(" ▸ ")}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
+            <b className="tabular-nums">{result.total}</b> {t("rows")}
+          </span>
+          {grouped && (result.summaries?.length ?? 0) > 0 && (
+            <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
+              <b className="tabular-nums">{result.summaries!.length}</b> {t("groups")}
+            </span>
+          )}
+          {grouped && grandSalary > 0 && (
+            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-foreground">
+              {t("Salary")}: <b className="tabular-nums">{fmtCell(grandSalary, "currency")}</b>
+            </span>
+          )}
+        </div>
       </div>
       {displayMode === "grid"
         ? <GridDataTableProvider dataTable={dataTable} />

@@ -1,9 +1,11 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Roles;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("role", "userRole", "rolePermission")]
     public class RoleController(
         ISaveRole saveHandler,
         IGetAllRoles getAllHandler,
@@ -32,6 +34,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
     }
 
+    [RequirePermission("userRole")]
     public class UserRoleController(
         ISaveUserRole saveHandler,
         IGetAllUserRoles getAllHandler,
@@ -60,6 +63,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
     }
 
+    [RequirePermission("user", "userRole")]
     public class UserController(
         IGetAllUsers getAllHandler,
         CyberErp.Hrms.App.Features.Core.Users.IGetUserById getByIdHandler,

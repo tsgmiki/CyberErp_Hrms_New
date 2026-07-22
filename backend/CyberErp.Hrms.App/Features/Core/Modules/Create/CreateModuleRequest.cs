@@ -2,15 +2,14 @@ using FluentValidation;
 
 namespace CyberErp.Hrms.App.Features.Core.Modules.Create;
 
-public record CreateModuleRequest(string SubSystem, string Name, string? Icon);
+public record CreateModuleRequest(Guid SubsystemId, string Name, string? Icon, int SortOrder = 0);
 
 public class CreateModuleRequestValidator : AbstractValidator<CreateModuleRequest>
 {
     public CreateModuleRequestValidator()
     {
-        RuleFor(x => x.SubSystem)
-            .NotEmpty().WithMessage("SubSystem is required.")
-            .MaximumLength(200).WithMessage("SubSystem must not exceed 200 characters.");
+        RuleFor(x => x.SubsystemId)
+            .NotEmpty().WithMessage("Subsystem is required.");
 
         RuleFor(x => x.Name)
             .NotEmpty().WithMessage("Name is required.")

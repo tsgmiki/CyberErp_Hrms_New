@@ -81,16 +81,24 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 step.RuleFor(s => s.ApproverRole).MaximumLength(200);
                 step.RuleForEach(s => s.Approvers).ChildRules(a =>
                 {
-                    // ImmediateManager carries no principal id (resolved per-request from the org
-                    // tree); User/Role need a user/role id and UnitManager the target unit id.
+                    // Dynamic / self approver types carry no principal id (resolved per-request from the org
+                    // tree / the instance subject): ImmediateManager, SecondLevelManager, Subject. User/Role
+                    // need a user/role id and UnitManager the target unit id.
                     a.RuleFor(x => x.ApproverId).NotEmpty()
-                        .When(x => !string.Equals(x.ApproverType, "ImmediateManager", StringComparison.OrdinalIgnoreCase));
+                        .When(x => !IsNoTargetIdType(x.ApproverType));
                     a.RuleFor(x => x.ApproverType).NotEmpty()
                         .Must(v => Enum.TryParse<Dom.Entities.Core.WorkflowApproverType>(v, true, out _))
-                        .WithMessage("ApproverType must be User, Role, ImmediateManager or UnitManager.");
+                        .WithMessage("ApproverType must be User, Role, ImmediateManager, UnitManager, SecondLevelManager or Subject.");
                 });
             });
         }
+
+        /// <summary>Approver types resolved per-request (no configured target id): ImmediateManager,
+        /// SecondLevelManager and Subject.</summary>
+        private static bool IsNoTargetIdType(string? approverType) =>
+            string.Equals(approverType, "ImmediateManager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(approverType, "SecondLevelManager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(approverType, "Subject", StringComparison.OrdinalIgnoreCase);
     }
 
     public class WorkflowInstanceDto

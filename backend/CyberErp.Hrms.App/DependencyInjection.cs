@@ -157,6 +157,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IDeleteEmployee, DeleteEmployee>();
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
+            services.AddScoped<IGetMyEmployee, GetMyEmployee>();
             services.AddScoped<IUploadEmployeePhoto, UploadEmployeePhoto>();
             services.AddScoped<IGetEmployeePhoto, GetEmployeePhoto>();
             services.AddScoped<IGetEmployeesOnProbation, GetEmployeesOnProbation>();
@@ -178,12 +179,23 @@ namespace CyberErp.Hrms.App
             // Personnel actions: transfers / promotions / demotions + discipline (HC015-HC029)
             services.AddScoped<ISaveEmployeeMovement, SaveEmployeeMovement>();
             services.AddScoped<IGetEmployeeMovements, GetEmployeeMovements>();
+            services.AddScoped<IGetAllEmployeeMovements, GetAllEmployeeMovements>();
+            services.AddScoped<IGetEmployeeMovementById, GetEmployeeMovementById>();
+            services.AddScoped<IAssessEmployeeTransfer, AssessEmployeeTransfer>();
+            services.AddScoped<IMovementNotifier, MovementNotifier>();
             services.AddScoped<IExecuteEmployeeMovement, ExecuteEmployeeMovement>();
+            services.AddScoped<IApproveEmployeeMovement, ApproveEmployeeMovement>();
+            services.AddScoped<IExecuteDueMovements, ExecuteDueMovements>();
             services.AddScoped<ICancelEmployeeMovement, CancelEmployeeMovement>();
             services.AddScoped<IDeleteEmployeeMovement, DeleteEmployeeMovement>();
             services.AddScoped<ISaveDisciplinaryMeasure, SaveDisciplinaryMeasure>();
             services.AddScoped<IGetDisciplinaryMeasures, GetDisciplinaryMeasures>();
+            services.AddScoped<IGetDisciplinaryMeasureById, GetDisciplinaryMeasureById>();
+            services.AddScoped<IGetDisciplinaryCases, GetDisciplinaryCases>();
+            services.AddScoped<IGetDisciplinaryEligibility, GetDisciplinaryEligibility>();
             services.AddScoped<IDeleteDisciplinaryMeasure, DeleteDisciplinaryMeasure>();
+            services.AddScoped<IDisciplinaryNotifier, DisciplinaryNotifier>();
+            services.AddScoped<IDisciplinaryEligibilityService, DisciplinaryEligibilityService>();
 
             // Termination & clearance (offboarding)
             services.AddScoped<ISaveEmployeeTermination, SaveEmployeeTermination>();
@@ -226,6 +238,11 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IOrgManagerResolver, OrgManagerResolver>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeMovementWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, DisciplinaryMeasureWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, SalaryRevisionWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, MedicalClaimWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, InsuranceClaimWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, LoanWorkflowHandler>();
+            services.AddScoped<IWorkflowEntityHandler, TripRequestWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeTerminationWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, WorkforcePlanWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, HiringRequestWorkflowHandler>();
@@ -361,6 +378,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetDocumentMergeFields, GetDocumentMergeFields>();
             services.AddScoped<IGenerateEmployeeDocument, GenerateEmployeeDocument>();
             services.AddScoped<IGenerateAnnualLeaveDocument, GenerateAnnualLeaveDocument>();
+            services.AddScoped<IGenerateMovementDocument, GenerateMovementDocument>();
 
             // Generic report engine (SP-driven; ported from the reference APSmart module).
             services.AddScoped<Features.Core.Reports.IGetReportCatalog, Features.Core.Reports.GetReportCatalog>();
@@ -368,6 +386,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Reports.IGetReportFieldValues, Features.Core.Reports.GetReportFieldValues>();
             services.AddScoped<Features.Core.Reports.IGenerateReport, Features.Core.Reports.GenerateReport>();
             services.AddScoped<Features.Core.Reports.ISaveReport, Features.Core.Reports.SaveReport>();
+            services.AddScoped<Features.Core.Reports.ISeedDefaultReports, Features.Core.Reports.SeedDefaultReports>();
             services.AddScoped<Features.Core.Reports.IDeleteReport, Features.Core.Reports.DeleteReport>();
             services.AddScoped<Features.Core.Reports.IGetReportById, Features.Core.Reports.GetReportById>();
             services.AddScoped<Features.Core.Reports.IGetAllReports, Features.Core.Reports.GetAllReports>();
@@ -440,6 +459,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Performance.IGenerateAppraisal, Features.Core.Performance.GenerateAppraisal>();
             services.AddScoped<Features.Core.Performance.ISaveAppraisalScores, Features.Core.Performance.SaveAppraisalScores>();
             services.AddScoped<Features.Core.Performance.ISubmitAppraisalSelfAssessment, Features.Core.Performance.SubmitAppraisalSelfAssessment>();
+            services.AddScoped<Features.Core.Performance.IPerformanceVisibilityService, Features.Core.Performance.PerformanceVisibilityService>();
+            services.AddScoped<Features.Core.Performance.IGetEmployeeOptions, Features.Core.Performance.GetEmployeeOptions>();
             services.AddScoped<Features.Core.Performance.IAppraisalWorkflowService, Features.Core.Performance.AppraisalWorkflowService>();
             services.AddScoped<Features.Core.Performance.ICompleteAppraisal, Features.Core.Performance.CompleteAppraisal>();
             services.AddScoped<Features.Core.Performance.IReviewerSignOffAppraisal, Features.Core.Performance.ReviewerSignOffAppraisal>();
@@ -464,6 +485,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Performance.ISubmitAppraisalPeerReview, Features.Core.Performance.SubmitAppraisalPeerReview>();
             services.AddScoped<Features.Core.Performance.IRemoveAppraisalPeerReview, Features.Core.Performance.RemoveAppraisalPeerReview>();
             services.AddScoped<Features.Core.Performance.IGetAppraisalPeerReviews, Features.Core.Performance.GetAppraisalPeerReviews>();
+            services.AddScoped<Features.Core.Performance.IGetMyPeerReviews, Features.Core.Performance.GetMyPeerReviews>();
             services.AddScoped<Features.Core.Performance.ICreateCalibrationSession, Features.Core.Performance.CreateCalibrationSession>();
             services.AddScoped<Features.Core.Performance.ISaveCalibrationItem, Features.Core.Performance.SaveCalibrationItem>();
             services.AddScoped<Features.Core.Performance.IFinalizeCalibrationSession, Features.Core.Performance.FinalizeCalibrationSession>();
@@ -542,6 +564,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.CareerDevelopment.IComputeSuccessionCandidateReadiness, Features.Core.CareerDevelopment.ComputeSuccessionCandidateReadiness>();
             services.AddScoped<Features.Core.CareerDevelopment.IGetSuccessionCandidateProfile, Features.Core.CareerDevelopment.GetSuccessionCandidateProfile>();
             services.AddScoped<Features.Core.CareerDevelopment.IIdentifyHiPos, Features.Core.CareerDevelopment.IdentifyHiPos>();
+            services.AddScoped<Features.Core.CareerDevelopment.ISuggestSuccessionCandidates, Features.Core.CareerDevelopment.SuggestSuccessionCandidates>();
 
             AddCareerPath(services);
         }
@@ -591,6 +614,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.CareerDevelopment.IGetCareerPathRecommendations, Features.Core.CareerDevelopment.GetCareerPathRecommendations>();
             services.AddScoped<Features.Core.CareerDevelopment.ICreateDevelopmentGoals, Features.Core.CareerDevelopment.CreateDevelopmentGoals>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.CareerPathChangeRequestWorkflowHandler>();
+            // HC160 — succession plans route through the generic approval engine when a definition is active.
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.SuccessionPlanWorkflowHandler>();
 
             // Employee 360 development profile (Performance ↔ Career Development bridge, HC158).
             services.AddScoped<Features.Core.CareerDevelopment.IGetEmployeeDevelopmentProfile, Features.Core.CareerDevelopment.GetEmployeeDevelopmentProfile>();
@@ -598,6 +623,325 @@ namespace CyberErp.Hrms.App
             // Gap → Individual Development Plan (HC130/HC155) + auto-refresh readiness on appraisal completion (HC153).
             services.AddScoped<Features.Core.CareerDevelopment.ICreateDevelopmentPlanFromGap, Features.Core.CareerDevelopment.CreateDevelopmentPlanFromGap>();
             services.AddScoped<Features.Core.Performance.IAppraisalCompletedHandler, Features.Core.CareerDevelopment.SuccessionReadinessRefreshHandler>();
+
+            // Reward & Recognition (§3.7.4, HC177–HC186).
+            // §3.10.1 Compensation & Benefit — CB1 (allowance catalogue + per-employee allowances)
+            services.AddScoped<Features.Core.Compensation.ISaveAllowanceType, Features.Core.Compensation.SaveAllowanceType>();
+            services.AddScoped<Features.Core.Compensation.IDeleteAllowanceType, Features.Core.Compensation.DeleteAllowanceType>();
+            services.AddScoped<Features.Core.Compensation.IGetAllowanceTypeById, Features.Core.Compensation.GetAllowanceTypeById>();
+            services.AddScoped<Features.Core.Compensation.IGetAllAllowanceTypes, Features.Core.Compensation.GetAllAllowanceTypes>();
+            services.AddScoped<Features.Core.Compensation.ISaveEmployeeAllowance, Features.Core.Compensation.SaveEmployeeAllowance>();
+            services.AddScoped<Features.Core.Compensation.IGetEmployeeAllowances, Features.Core.Compensation.GetEmployeeAllowances>();
+            services.AddScoped<Features.Core.Compensation.IDeleteEmployeeAllowance, Features.Core.Compensation.DeleteEmployeeAllowance>();
+            services.AddScoped<Features.Core.Compensation.IGetCompensationSummary, Features.Core.Compensation.GetCompensationSummary>();
+            // CB2 — salary revision planning + simulation (HC228)
+            services.AddScoped<Features.Core.Compensation.ISimulateSalaryRevision, Features.Core.Compensation.SimulateSalaryRevision>();
+            services.AddScoped<Features.Core.Compensation.ISaveSalaryRevision, Features.Core.Compensation.SaveSalaryRevision>();
+            services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionById, Features.Core.Compensation.GetSalaryRevisionById>();
+            services.AddScoped<Features.Core.Compensation.IGetAllSalaryRevisions, Features.Core.Compensation.GetAllSalaryRevisions>();
+            services.AddScoped<Features.Core.Compensation.ISetSalaryRevisionLine, Features.Core.Compensation.SetSalaryRevisionLine>();
+            services.AddScoped<Features.Core.Compensation.ISubmitSalaryRevision, Features.Core.Compensation.SubmitSalaryRevision>();
+            services.AddScoped<Features.Core.Compensation.IApproveSalaryRevision, Features.Core.Compensation.ApproveSalaryRevision>();
+            services.AddScoped<Features.Core.Compensation.IApplySalaryRevision, Features.Core.Compensation.ApplySalaryRevision>();
+            services.AddScoped<Features.Core.Compensation.IDeleteSalaryRevision, Features.Core.Compensation.DeleteSalaryRevision>();
+            // CB3 — benefit plans, enrollment, tax config, deductions (HC230–232)
+            services.AddScoped<Features.Core.Compensation.ISaveBenefitPlan, Features.Core.Compensation.SaveBenefitPlan>();
+            services.AddScoped<Features.Core.Compensation.IDeleteBenefitPlan, Features.Core.Compensation.DeleteBenefitPlan>();
+            services.AddScoped<Features.Core.Compensation.IGetBenefitPlanById, Features.Core.Compensation.GetBenefitPlanById>();
+            services.AddScoped<Features.Core.Compensation.IGetAllBenefitPlans, Features.Core.Compensation.GetAllBenefitPlans>();
+            services.AddScoped<Features.Core.Compensation.IEnrollBenefit, Features.Core.Compensation.EnrollBenefit>();
+            services.AddScoped<Features.Core.Compensation.IWaiveBenefit, Features.Core.Compensation.WaiveBenefit>();
+            services.AddScoped<Features.Core.Compensation.ITerminateBenefit, Features.Core.Compensation.TerminateBenefit>();
+            services.AddScoped<Features.Core.Compensation.IGetEmployeeBenefits, Features.Core.Compensation.GetEmployeeBenefits>();
+            services.AddScoped<Features.Core.Compensation.ISaveTaxBracket, Features.Core.Compensation.SaveTaxBracket>();
+            services.AddScoped<Features.Core.Compensation.IDeleteTaxBracket, Features.Core.Compensation.DeleteTaxBracket>();
+            services.AddScoped<Features.Core.Compensation.IGetAllTaxBrackets, Features.Core.Compensation.GetAllTaxBrackets>();
+            services.AddScoped<Features.Core.Compensation.IGetTaxBracketById, Features.Core.Compensation.GetTaxBracketById>();
+
+            // Per-operation endpoint authorization (enforces RolePermission.CanView on [RequirePermission] actions)
+            services.AddScoped<Common.Authorization.IEndpointPermissionService, Common.Authorization.EndpointPermissionService>();
+            services.AddScoped<Features.Core.Compensation.IGetPayrollDeductions, Features.Core.Compensation.GetPayrollDeductions>();
+            // CB4 — employee self-service (HC233/234)
+            services.AddScoped<Features.Core.Compensation.IGetMyCompensation, Features.Core.Compensation.GetMyCompensation>();
+            services.AddScoped<Features.Core.Compensation.ISubmitCompensationRequest, Features.Core.Compensation.SubmitCompensationRequest>();
+            services.AddScoped<Features.Core.Compensation.IGetCompensationRequests, Features.Core.Compensation.GetCompensationRequests>();
+            services.AddScoped<Features.Core.Compensation.IResolveCompensationRequest, Features.Core.Compensation.ResolveCompensationRequest>();
+            // §3.10.2 Medical Benefit — MB1 (providers, plans, contracts)
+            services.AddScoped<Features.Core.Medical.ISaveMedicalProvider, Features.Core.Medical.SaveMedicalProvider>();
+            services.AddScoped<Features.Core.Medical.IDeleteMedicalProvider, Features.Core.Medical.DeleteMedicalProvider>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalProviderById, Features.Core.Medical.GetMedicalProviderById>();
+            services.AddScoped<Features.Core.Medical.IGetAllMedicalProviders, Features.Core.Medical.GetAllMedicalProviders>();
+            services.AddScoped<Features.Core.Medical.ISaveMedicalPlan, Features.Core.Medical.SaveMedicalPlan>();
+            services.AddScoped<Features.Core.Medical.IDeleteMedicalPlan, Features.Core.Medical.DeleteMedicalPlan>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalPlanById, Features.Core.Medical.GetMedicalPlanById>();
+            services.AddScoped<Features.Core.Medical.IGetAllMedicalPlans, Features.Core.Medical.GetAllMedicalPlans>();
+            services.AddScoped<Features.Core.Medical.ISaveMedicalContract, Features.Core.Medical.SaveMedicalContract>();
+            services.AddScoped<Features.Core.Medical.IDeleteMedicalContract, Features.Core.Medical.DeleteMedicalContract>();
+            services.AddScoped<Features.Core.Medical.IGetAllMedicalContracts, Features.Core.Medical.GetAllMedicalContracts>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalContractById, Features.Core.Medical.GetMedicalContractById>();
+            // MB2 — enrollment + beneficiaries
+            services.AddScoped<Features.Core.Medical.ISaveMedicalEnrollment, Features.Core.Medical.SaveMedicalEnrollment>();
+            services.AddScoped<Features.Core.Medical.IGetEmployeeMedicalEnrollments, Features.Core.Medical.GetEmployeeMedicalEnrollments>();
+            services.AddScoped<Features.Core.Medical.IGetMyMedicalEnrollments, Features.Core.Medical.GetMyMedicalEnrollments>();
+            services.AddScoped<Features.Core.Medical.ISetMedicalEnrollmentStatus, Features.Core.Medical.SetMedicalEnrollmentStatus>();
+            services.AddScoped<Features.Core.Medical.IAddMedicalBeneficiary, Features.Core.Medical.AddMedicalBeneficiary>();
+            services.AddScoped<Features.Core.Medical.IRemoveMedicalBeneficiary, Features.Core.Medical.RemoveMedicalBeneficiary>();
+            services.AddScoped<Features.Core.Medical.IDeleteMedicalEnrollment, Features.Core.Medical.DeleteMedicalEnrollment>();
+            // MB3 — claims lifecycle + expense reports
+            services.AddScoped<Features.Core.Medical.ISubmitMedicalClaim, Features.Core.Medical.SubmitMedicalClaim>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalClaims, Features.Core.Medical.GetMedicalClaims>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalClaimById, Features.Core.Medical.GetMedicalClaimById>();
+            services.AddScoped<Features.Core.Medical.IDownloadMedicalClaimAttachment, Features.Core.Medical.DownloadMedicalClaimAttachment>();
+            services.AddScoped<Features.Core.Medical.IApproveMedicalClaim, Features.Core.Medical.ApproveMedicalClaim>();
+            services.AddScoped<Features.Core.Medical.IRejectMedicalClaim, Features.Core.Medical.RejectMedicalClaim>();
+            services.AddScoped<Features.Core.Medical.IMarkMedicalClaimPaid, Features.Core.Medical.MarkMedicalClaimPaid>();
+            services.AddScoped<Features.Core.Medical.IGetMedicalExpenseReport, Features.Core.Medical.GetMedicalExpenseReport>();
+
+            // §3.10.3 Insurance Management — I1 (policies + premium schedule)
+            services.AddScoped<Features.Core.Insurance.ISaveInsurancePolicy, Features.Core.Insurance.SaveInsurancePolicy>();
+            services.AddScoped<Features.Core.Insurance.IDeleteInsurancePolicy, Features.Core.Insurance.DeleteInsurancePolicy>();
+            services.AddScoped<Features.Core.Insurance.IGetInsurancePolicyById, Features.Core.Insurance.GetInsurancePolicyById>();
+            services.AddScoped<Features.Core.Insurance.IGetAllInsurancePolicies, Features.Core.Insurance.GetAllInsurancePolicies>();
+            services.AddScoped<Features.Core.Insurance.IGeneratePremiumSchedule, Features.Core.Insurance.GeneratePremiumSchedule>();
+            services.AddScoped<Features.Core.Insurance.IAddPremiumSchedule, Features.Core.Insurance.AddPremiumSchedule>();
+            services.AddScoped<Features.Core.Insurance.IRemovePremiumSchedule, Features.Core.Insurance.RemovePremiumSchedule>();
+            services.AddScoped<Features.Core.Insurance.IMarkInsurancePremiumPaid, Features.Core.Insurance.MarkInsurancePremiumPaid>();
+            services.AddScoped<Features.Core.Insurance.ISubmitInsuranceClaim, Features.Core.Insurance.SubmitInsuranceClaim>();
+            services.AddScoped<Features.Core.Insurance.IGetInsuranceClaims, Features.Core.Insurance.GetInsuranceClaims>();
+            services.AddScoped<Features.Core.Insurance.IGetInsuranceClaimById, Features.Core.Insurance.GetInsuranceClaimById>();
+            services.AddScoped<Features.Core.Insurance.IDownloadInsuranceClaimAttachment, Features.Core.Insurance.DownloadInsuranceClaimAttachment>();
+            services.AddScoped<Features.Core.Insurance.IApproveInsuranceClaim, Features.Core.Insurance.ApproveInsuranceClaim>();
+            services.AddScoped<Features.Core.Insurance.IRejectInsuranceClaim, Features.Core.Insurance.RejectInsuranceClaim>();
+            services.AddScoped<Features.Core.Insurance.IMarkInsuranceClaimPaid, Features.Core.Insurance.MarkInsuranceClaimPaid>();
+
+            // §3.10.4 Employee Loan — L1 (loan types + requests + guarantors + schedule + workflow)
+            services.AddScoped<Features.Core.Loans.ISaveLoanType, Features.Core.Loans.SaveLoanType>();
+            services.AddScoped<Features.Core.Loans.IDeleteLoanType, Features.Core.Loans.DeleteLoanType>();
+            services.AddScoped<Features.Core.Loans.IGetLoanTypeById, Features.Core.Loans.GetLoanTypeById>();
+            services.AddScoped<Features.Core.Loans.IGetAllLoanTypes, Features.Core.Loans.GetAllLoanTypes>();
+            services.AddScoped<Features.Core.Loans.IRequestLoan, Features.Core.Loans.RequestLoan>();
+            services.AddScoped<Features.Core.Loans.IGetLoans, Features.Core.Loans.GetLoans>();
+            services.AddScoped<Features.Core.Loans.IGetLoanById, Features.Core.Loans.GetLoanById>();
+            services.AddScoped<Features.Core.Loans.IApproveLoan, Features.Core.Loans.ApproveLoan>();
+            services.AddScoped<Features.Core.Loans.IRejectLoan, Features.Core.Loans.RejectLoan>();
+            services.AddScoped<Features.Core.Loans.ICancelLoan, Features.Core.Loans.CancelLoan>();
+            services.AddScoped<Features.Core.Loans.IDisburseLoan, Features.Core.Loans.DisburseLoan>();
+            services.AddScoped<Features.Core.Loans.IRecordLoanRepayment, Features.Core.Loans.RecordLoanRepayment>();
+            services.AddScoped<Features.Core.Loans.IIncrementLoanInstallment, Features.Core.Loans.IncrementLoanInstallment>();
+            services.AddScoped<Features.Core.Loans.IGiveLoanConsent, Features.Core.Loans.GiveLoanConsent>();
+
+            // §3.10.5 Trip Management — T1 (per-diem rates + travel budgets)
+            services.AddScoped<Features.Core.Trips.ISavePerDiemRate, Features.Core.Trips.SavePerDiemRate>();
+            services.AddScoped<Features.Core.Trips.IDeletePerDiemRate, Features.Core.Trips.DeletePerDiemRate>();
+            services.AddScoped<Features.Core.Trips.IGetAllPerDiemRates, Features.Core.Trips.GetAllPerDiemRates>();
+            services.AddScoped<Features.Core.Trips.IGetPerDiemRateById, Features.Core.Trips.GetPerDiemRateById>();
+            services.AddScoped<Features.Core.Trips.ISaveTripBudget, Features.Core.Trips.SaveTripBudget>();
+            services.AddScoped<Features.Core.Trips.IDeleteTripBudget, Features.Core.Trips.DeleteTripBudget>();
+            services.AddScoped<Features.Core.Trips.IGetAllTripBudgets, Features.Core.Trips.GetAllTripBudgets>();
+            services.AddScoped<Features.Core.Trips.IGetTripBudgetById, Features.Core.Trips.GetTripBudgetById>();
+            services.AddScoped<Features.Core.Trips.IRequestTrip, Features.Core.Trips.RequestTrip>();
+            services.AddScoped<Features.Core.Trips.IGetTrips, Features.Core.Trips.GetTrips>();
+            services.AddScoped<Features.Core.Trips.IGetTripById, Features.Core.Trips.GetTripById>();
+            services.AddScoped<Features.Core.Trips.IApproveTrip, Features.Core.Trips.ApproveTrip>();
+            services.AddScoped<Features.Core.Trips.IRejectTrip, Features.Core.Trips.RejectTrip>();
+            services.AddScoped<Features.Core.Trips.ICancelTrip, Features.Core.Trips.CancelTrip>();
+            services.AddScoped<Features.Core.Trips.ITransitionTrip, Features.Core.Trips.TransitionTrip>();
+            services.AddScoped<Features.Core.Trips.IAddTripExpense, Features.Core.Trips.AddTripExpense>();
+            services.AddScoped<Features.Core.Trips.IRemoveTripExpense, Features.Core.Trips.RemoveTripExpense>();
+            services.AddScoped<Features.Core.Trips.IGetTripBudgetUtilization, Features.Core.Trips.GetTripBudgetUtilization>();
+            services.AddScoped<Features.Core.Trips.IDisburseTripAdvance, Features.Core.Trips.DisburseTripAdvance>();
+            services.AddScoped<Features.Core.Trips.ISettleTrip, Features.Core.Trips.SettleTrip>();
+            services.AddScoped<Features.Core.Trips.IGetTripAgingReport, Features.Core.Trips.GetTripAgingReport>();
+            services.AddScoped<Features.Core.Trips.ITripSettlementReminder, Features.Core.Trips.TripSettlementReminder>();
+
+            services.AddScoped<Features.Core.Rewards.ISaveAwardCategory, Features.Core.Rewards.SaveAwardCategory>();
+            services.AddScoped<Features.Core.Rewards.IDeleteAwardCategory, Features.Core.Rewards.DeleteAwardCategory>();
+            services.AddScoped<Features.Core.Rewards.IGetAwardCategoryById, Features.Core.Rewards.GetAwardCategoryById>();
+            services.AddScoped<Features.Core.Rewards.IGetAllAwardCategories, Features.Core.Rewards.GetAllAwardCategories>();
+            services.AddScoped<Features.Core.Rewards.ISaveRecognitionProgram, Features.Core.Rewards.SaveRecognitionProgram>();
+            services.AddScoped<Features.Core.Rewards.IDeleteRecognitionProgram, Features.Core.Rewards.DeleteRecognitionProgram>();
+            services.AddScoped<Features.Core.Rewards.IGetRecognitionProgramById, Features.Core.Rewards.GetRecognitionProgramById>();
+            services.AddScoped<Features.Core.Rewards.IGetAllRecognitionPrograms, Features.Core.Rewards.GetAllRecognitionPrograms>();
+            services.AddScoped<Features.Core.Rewards.ISaveRewardNomination, Features.Core.Rewards.SaveRewardNomination>();
+            services.AddScoped<Features.Core.Rewards.IDeleteRewardNomination, Features.Core.Rewards.DeleteRewardNomination>();
+            services.AddScoped<Features.Core.Rewards.IGetRewardNominationById, Features.Core.Rewards.GetRewardNominationById>();
+            services.AddScoped<Features.Core.Rewards.IGetAllRewardNominations, Features.Core.Rewards.GetAllRewardNominations>();
+            services.AddScoped<Features.Core.Rewards.IApproveRewardNomination, Features.Core.Rewards.ApproveRewardNomination>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.RewardNominationWorkflowHandler>();
+            services.AddScoped<Features.Core.Rewards.IGetRewardPoints, Features.Core.Rewards.GetRewardPoints>();
+            services.AddScoped<Features.Core.Rewards.IRedeemRewardPoints, Features.Core.Rewards.RedeemRewardPoints>();
+            services.AddScoped<Features.Core.Rewards.IGetAllRewardDisbursements, Features.Core.Rewards.GetAllRewardDisbursements>();
+            services.AddScoped<Features.Core.Rewards.IMarkRewardDisbursementPaid, Features.Core.Rewards.MarkRewardDisbursementPaid>();
+            services.AddScoped<Features.Core.Rewards.IExportRewardDisbursements, Features.Core.Rewards.ExportRewardDisbursements>();
+            services.AddScoped<Features.Core.Rewards.IGetRecognitionWall, Features.Core.Rewards.GetRecognitionWall>();
+            // HC181 — auto-grant badges from completed appraisals.
+            services.AddScoped<Features.Core.Performance.IAppraisalCompletedHandler, Features.Core.Rewards.AppraisalAutoGrantHandler>();
+
+            // Training & Development (§3.8, HC187–HC202) — Phase TD1: catalog + needs.
+            services.AddScoped<Features.Core.Training.ISaveTrainingCategory, Features.Core.Training.SaveTrainingCategory>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingCategory, Features.Core.Training.DeleteTrainingCategory>();
+            services.AddScoped<Features.Core.Training.IGetTrainingCategoryById, Features.Core.Training.GetTrainingCategoryById>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingCategories, Features.Core.Training.GetAllTrainingCategories>();
+            services.AddScoped<Features.Core.Training.ISaveTrainingCourse, Features.Core.Training.SaveTrainingCourse>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingCourse, Features.Core.Training.DeleteTrainingCourse>();
+            services.AddScoped<Features.Core.Training.IGetTrainingCourseById, Features.Core.Training.GetTrainingCourseById>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingCourses, Features.Core.Training.GetAllTrainingCourses>();
+            services.AddScoped<Features.Core.Training.ISaveTrainingNeed, Features.Core.Training.SaveTrainingNeed>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingNeed, Features.Core.Training.DeleteTrainingNeed>();
+            services.AddScoped<Features.Core.Training.ICancelTrainingNeed, Features.Core.Training.CancelTrainingNeed>();
+            services.AddScoped<Features.Core.Training.IGetTrainingNeedById, Features.Core.Training.GetTrainingNeedById>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingNeeds, Features.Core.Training.GetAllTrainingNeeds>();
+            services.AddScoped<Features.Core.Training.ITrainingNeedDecision, Features.Core.Training.TrainingNeedDecision>();
+            services.AddScoped<Features.Core.Training.IGetTrainingNeedSuggestions, Features.Core.Training.GetTrainingNeedSuggestions>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.TrainingNeedWorkflowHandler>();
+
+            // Phase TD2 — delivery: sessions, enrollments, budgets (HC190/HC197/HC198/HC199).
+            services.AddScoped<Features.Core.Training.ISaveTrainingSession, Features.Core.Training.SaveTrainingSession>();
+            services.AddScoped<Features.Core.Training.ICreateTrainingSessionSeries, Features.Core.Training.CreateTrainingSessionSeries>();
+            services.AddScoped<Features.Core.Training.IRescheduleTrainingSession, Features.Core.Training.RescheduleTrainingSession>();
+            services.AddScoped<Features.Core.Training.ICompleteTrainingSession, Features.Core.Training.CompleteTrainingSession>();
+            services.AddScoped<Features.Core.Training.ICancelTrainingSession, Features.Core.Training.CancelTrainingSession>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingSession, Features.Core.Training.DeleteTrainingSession>();
+            services.AddScoped<Features.Core.Training.IGetTrainingSessionById, Features.Core.Training.GetTrainingSessionById>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingSessions, Features.Core.Training.GetAllTrainingSessions>();
+            services.AddScoped<Features.Core.Training.IEnrollTraining, Features.Core.Training.EnrollTraining>();
+            services.AddScoped<Features.Core.Training.IRecordTrainingParticipation, Features.Core.Training.RecordTrainingParticipation>();
+            services.AddScoped<Features.Core.Training.ISubmitTrainingFeedback, Features.Core.Training.SubmitTrainingFeedback>();
+            services.AddScoped<Features.Core.Training.IWithdrawTrainingEnrollment, Features.Core.Training.WithdrawTrainingEnrollment>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingEnrollment, Features.Core.Training.DeleteTrainingEnrollment>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingEnrollments, Features.Core.Training.GetAllTrainingEnrollments>();
+            services.AddScoped<Features.Core.Training.ISaveTrainingBudget, Features.Core.Training.SaveTrainingBudget>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingBudget, Features.Core.Training.DeleteTrainingBudget>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingBudgets, Features.Core.Training.GetAllTrainingBudgets>();
+            services.AddScoped<Features.Core.Training.IGetTrainingBudgetUtilization, Features.Core.Training.GetTrainingBudgetUtilization>();
+
+            // Phase TD3 — learning paths, certification + CPD, provider payments (HC193/HC200/HC202).
+            services.AddScoped<Features.Core.Training.ISaveLearningPath, Features.Core.Training.SaveLearningPath>();
+            services.AddScoped<Features.Core.Training.IDeleteLearningPath, Features.Core.Training.DeleteLearningPath>();
+            services.AddScoped<Features.Core.Training.IGetLearningPathById, Features.Core.Training.GetLearningPathById>();
+            services.AddScoped<Features.Core.Training.IGetAllLearningPaths, Features.Core.Training.GetAllLearningPaths>();
+            services.AddScoped<Features.Core.Training.IGetLearningPathProgress, Features.Core.Training.GetLearningPathProgress>();
+            services.AddScoped<Features.Core.Training.IIssueTrainingCertificate, Features.Core.Training.IssueTrainingCertificate>();
+            services.AddScoped<Features.Core.Training.ISaveTrainingCertificate, Features.Core.Training.SaveTrainingCertificate>();
+            services.AddScoped<Features.Core.Training.IRenewTrainingCertificate, Features.Core.Training.RenewTrainingCertificate>();
+            services.AddScoped<Features.Core.Training.IDeleteTrainingCertificate, Features.Core.Training.DeleteTrainingCertificate>();
+            services.AddScoped<Features.Core.Training.IGetAllTrainingCertificates, Features.Core.Training.GetAllTrainingCertificates>();
+            services.AddScoped<Features.Core.Training.IGetExpiringTrainingCertificates, Features.Core.Training.GetExpiringTrainingCertificates>();
+            services.AddScoped<Features.Core.Training.IGetCpdSummary, Features.Core.Training.GetCpdSummary>();
+            services.AddScoped<Features.Core.Training.IGetAllProviderPayments, Features.Core.Training.GetAllProviderPayments>();
+            services.AddScoped<Features.Core.Training.IMarkProviderPaymentPaid, Features.Core.Training.MarkProviderPaymentPaid>();
+            services.AddScoped<Features.Core.Training.IExportProviderPayments, Features.Core.Training.ExportProviderPayments>();
+            services.AddScoped<Features.Core.DocumentTemplates.IGenerateTrainingCertificate, Features.Core.DocumentTemplates.GenerateTrainingCertificate>();
+
+            // Phase TD6 — social learning: communities + discussion threads (HC198/HC199).
+            services.AddScoped<Features.Core.Training.ISaveLearningCommunity, Features.Core.Training.SaveLearningCommunity>();
+            services.AddScoped<Features.Core.Training.IDeleteLearningCommunity, Features.Core.Training.DeleteLearningCommunity>();
+            services.AddScoped<Features.Core.Training.IJoinLearningCommunity, Features.Core.Training.JoinLearningCommunity>();
+            services.AddScoped<Features.Core.Training.ILeaveLearningCommunity, Features.Core.Training.LeaveLearningCommunity>();
+            services.AddScoped<Features.Core.Training.IGetAllLearningCommunities, Features.Core.Training.GetAllLearningCommunities>();
+            services.AddScoped<Features.Core.Training.IGetCommunityPosts, Features.Core.Training.GetCommunityPosts>();
+            services.AddScoped<Features.Core.Training.ICreateCommunityPost, Features.Core.Training.CreateCommunityPost>();
+            services.AddScoped<Features.Core.Training.IDeleteCommunityPost, Features.Core.Training.DeleteCommunityPost>();
+            services.AddScoped<Features.Core.Training.IReactToCommunityPost, Features.Core.Training.ReactToCommunityPost>();
+            services.AddScoped<Features.Core.Training.IGetCommunityAnalytics, Features.Core.Training.GetCommunityAnalytics>();
+            services.AddScoped<Features.Core.Rewards.IGetPointsLeaderboard, Features.Core.Rewards.GetPointsLeaderboard>();
+
+            // Employee Engagement (§3.9.1) — Phase E1: suggestions, grievances, announcements.
+            services.AddScoped<Features.Core.Engagement.ISubmitSuggestion, Features.Core.Engagement.SubmitSuggestion>();
+            services.AddScoped<Features.Core.Engagement.IRespondSuggestion, Features.Core.Engagement.RespondSuggestion>();
+            services.AddScoped<Features.Core.Engagement.IDeleteSuggestion, Features.Core.Engagement.DeleteSuggestion>();
+            services.AddScoped<Features.Core.Engagement.IGetAllSuggestions, Features.Core.Engagement.GetAllSuggestions>();
+            services.AddScoped<Features.Core.Engagement.ISubmitGrievance, Features.Core.Engagement.SubmitGrievance>();
+            services.AddScoped<Features.Core.Engagement.IAssignGrievance, Features.Core.Engagement.AssignGrievance>();
+            services.AddScoped<Features.Core.Engagement.IResolveGrievance, Features.Core.Engagement.ResolveGrievance>();
+            services.AddScoped<Features.Core.Engagement.ICloseGrievance, Features.Core.Engagement.CloseGrievance>();
+            services.AddScoped<Features.Core.Engagement.IAddGrievanceNote, Features.Core.Engagement.AddGrievanceNote>();
+            services.AddScoped<Features.Core.Engagement.IGetGrievanceById, Features.Core.Engagement.GetGrievanceById>();
+            services.AddScoped<Features.Core.Engagement.IGetAllGrievances, Features.Core.Engagement.GetAllGrievances>();
+            services.AddScoped<Features.Core.Engagement.ISaveAnnouncement, Features.Core.Engagement.SaveAnnouncement>();
+            services.AddScoped<Features.Core.Engagement.IDeleteAnnouncement, Features.Core.Engagement.DeleteAnnouncement>();
+            services.AddScoped<Features.Core.Engagement.IGetAllAnnouncements, Features.Core.Engagement.GetAllAnnouncements>();
+            services.AddScoped<Features.Core.Engagement.IGetAnnouncementFeed, Features.Core.Engagement.GetAnnouncementFeed>();
+
+            // Exit / Separation (§3.9.2) — Phase X1: initiation gates, notifications, exit letters.
+            services.AddScoped<Features.Core.Employees.ITerminationNotifier, Features.Core.Employees.TerminationNotifier>();
+            services.AddScoped<Features.Core.DocumentTemplates.IGenerateTerminationDocument, Features.Core.DocumentTemplates.GenerateTerminationDocument>();
+
+            // Phase X2 — asset recovery (HC214/HC215).
+            services.AddScoped<Features.Core.Employees.ISaveCompanyAsset, Features.Core.Employees.SaveCompanyAsset>();
+            services.AddScoped<Features.Core.Employees.IDeleteCompanyAsset, Features.Core.Employees.DeleteCompanyAsset>();
+            services.AddScoped<Features.Core.Employees.IAssignCompanyAsset, Features.Core.Employees.AssignCompanyAsset>();
+            services.AddScoped<Features.Core.Employees.IReturnCompanyAsset, Features.Core.Employees.ReturnCompanyAsset>();
+            services.AddScoped<Features.Core.Employees.IGetAllCompanyAssets, Features.Core.Employees.GetAllCompanyAssets>();
+            services.AddScoped<Features.Core.Employees.IGetAssetRecoveries, Features.Core.Employees.GetAssetRecoveries>();
+            services.AddScoped<Features.Core.Employees.IResolveAssetRecovery, Features.Core.Employees.ResolveAssetRecovery>();
+
+            // Phase X3 — exit interviews + final settlements (HC216–HC219).
+            services.AddScoped<Features.Core.Employees.IGetExitQuestionnaire, Features.Core.Employees.GetExitQuestionnaire>();
+            services.AddScoped<Features.Core.Employees.ISaveExitQuestionnaire, Features.Core.Employees.SaveExitQuestionnaire>();
+            services.AddScoped<Features.Core.Employees.ILaunchExitInterview, Features.Core.Employees.LaunchExitInterview>();
+            services.AddScoped<Features.Core.Employees.ISubmitExitInterview, Features.Core.Employees.SubmitExitInterview>();
+            services.AddScoped<Features.Core.Employees.IGetExitInterview, Features.Core.Employees.GetExitInterview>();
+            services.AddScoped<Features.Core.Employees.IBuildTerminationSettlement, Features.Core.Employees.BuildTerminationSettlement>();
+            services.AddScoped<Features.Core.Employees.IUpdateSettlementLines, Features.Core.Employees.UpdateSettlementLines>();
+            services.AddScoped<Features.Core.Employees.IApproveTerminationSettlement, Features.Core.Employees.ApproveTerminationSettlement>();
+            services.AddScoped<Features.Core.Employees.IMarkTerminationSettlementPaid, Features.Core.Employees.MarkTerminationSettlementPaid>();
+            services.AddScoped<Features.Core.Employees.IGetTerminationSettlement, Features.Core.Employees.GetTerminationSettlement>();
+            services.AddScoped<Features.Core.DocumentTemplates.IGenerateSettlementDocument, Features.Core.DocumentTemplates.GenerateSettlementDocument>();
+
+            // Phase E2 — surveys & polls (HC204).
+            services.AddScoped<Features.Core.Engagement.ISaveSurvey, Features.Core.Engagement.SaveSurvey>();
+            services.AddScoped<Features.Core.Engagement.IOpenSurvey, Features.Core.Engagement.OpenSurvey>();
+            services.AddScoped<Features.Core.Engagement.ICloseSurvey, Features.Core.Engagement.CloseSurvey>();
+            services.AddScoped<Features.Core.Engagement.IDeleteSurvey, Features.Core.Engagement.DeleteSurvey>();
+            services.AddScoped<Features.Core.Engagement.IGetAllSurveys, Features.Core.Engagement.GetAllSurveys>();
+            services.AddScoped<Features.Core.Engagement.IGetSurveyFeed, Features.Core.Engagement.GetSurveyFeed>();
+            services.AddScoped<Features.Core.Engagement.IGetSurveyById, Features.Core.Engagement.GetSurveyById>();
+            services.AddScoped<Features.Core.Engagement.ISubmitSurveyResponse, Features.Core.Engagement.SubmitSurveyResponse>();
+            services.AddScoped<Features.Core.Engagement.IGetSurveyResults, Features.Core.Engagement.GetSurveyResults>();
+
+            // Dynamic navigation — subsystem master list + menu seeding, plus the template-era
+            // Module/Operation feature handlers (IFeatureHandler style) now exposed via controllers.
+            services.AddScoped<Features.Core.Roles.ISaveRolePermissions, Features.Core.Roles.SaveRolePermissions>();
+            services.AddScoped<Features.Core.Roles.IGetAllRolePermissions, Features.Core.Roles.GetAllRolePermissions>();
+            services.AddScoped<Features.Core.Roles.IDeleteRolePermission, Features.Core.Roles.DeleteRolePermission>();
+            services.AddScoped<Features.Core.Subsystems.ISaveSubsystem, Features.Core.Subsystems.SaveSubsystem>();
+            services.AddScoped<Features.Core.Subsystems.IGetAllSubsystems, Features.Core.Subsystems.GetAllSubsystems>();
+            services.AddScoped<Features.Core.Subsystems.IDeleteSubsystem, Features.Core.Subsystems.DeleteSubsystem>();
+            services.AddScoped<Features.Core.Modules.ISeedDefaultMenu, Features.Core.Modules.SeedDefaultMenu>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.Create.CreateModuleRequest, Features.Core.Modules.DTOs.ModuleResult>,
+                Features.Core.Modules.Create.CreateModuleHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.Update.UpdateModuleRequest, Features.Core.Modules.DTOs.ModuleResult>,
+                Features.Core.Modules.Update.UpdateModuleHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.Delete.DeleteModuleRequest, Features.Core.Modules.DTOs.ModuleResult?>,
+                Features.Core.Modules.Delete.DeleteModuleHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.GetAll.GetAllModulesRequest, Common.DTOs.PaginatedResponse<Features.Core.Modules.DTOs.GetModuleDto>>,
+                Features.Core.Modules.GetAll.GetAllModulesHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.GetById.GetModuleByIdRequest, Features.Core.Modules.DTOs.GetModuleDto?>,
+                Features.Core.Modules.GetById.GetModuleByIdHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Modules.GetOperations.GetModuleWithOperationsRequest, IEnumerable<Features.Core.Modules.DTOs.GetModuleWithOperationResult>>,
+                Features.Core.Modules.GetOperations.GetModuleWithOperationsHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Operations.Create.CreateOperationRequest, Features.Core.Operations.DTOs.OperationResult>,
+                Features.Core.Operations.Create.CreateOperationHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Operations.Update.UpdateOperationRequest, Features.Core.Operations.DTOs.OperationResult>,
+                Features.Core.Operations.Update.UpdateOperationHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Operations.Delete.DeleteOperationRequest, Features.Core.Operations.DTOs.OperationResult?>,
+                Features.Core.Operations.Delete.DeleteOperationHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Operations.GetAll.GetAllOperationsRequest, Common.DTOs.PaginatedResponse<Features.Core.Operations.DTOs.OperationDto>>,
+                Features.Core.Operations.GetAll.GetAllOperationsHandler>();
+            services.AddScoped<
+                Common.Handlers.IFeatureHandler<Features.Core.Operations.GetById.GetOperationByIdRequest, Features.Core.Operations.DTOs.OperationDto?>,
+                Features.Core.Operations.GetById.GetOperationByIdHandler>();
         }
     }
 }

@@ -31,7 +31,21 @@ Task OnRejectedAsync(string entityType, Guid entityId);   // apply the rejected 
 Registered `services.AddScoped<IWorkflowEntityHandler, XxxHandler>()`; engine injects
 `IEnumerable<IWorkflowEntityHandler>` and picks the first whose `Supports` returns true.
 Handlers: `EmployeeMovementWorkflowHandler`, `DisciplinaryMeasureWorkflowHandler`,
-`EmployeeTerminationWorkflowHandler`, `LeaveRequestWorkflowHandler`.
+`EmployeeTerminationWorkflowHandler`, `LeaveRequestWorkflowHandler`, `AnnualLeaveWorkflowHandler`,
+`CareerPathChangeRequestWorkflowHandler`, `SuccessionPlanWorkflowHandler`,
+`SalaryRevisionWorkflowHandler`, `MedicalClaimWorkflowHandler`, `InsuranceClaimWorkflowHandler`,
+`LoanWorkflowHandler`, `TripRequestWorkflowHandler`, `TrainingNeedWorkflowHandler`,
+`RewardNominationWorkflowHandler` (+ the appraisal flow, which drives the engine via
+`AdvanceToStepAsync`).
+
+**Succession Plan approval (HC160, 2026-07-22).** `EntityType = "SuccessionPlan"`. Statuses:
+the 3 operational ones (`Active`/`OnHold`/`Closed`) plus workflow-owned `PendingApproval`/`Rejected`.
+With an active definition, `SaveSuccessionPlan` forces a created plan to `PendingApproval` and starts
+the instance (`employeeId: null` — a plan is position-scoped, so definitions must not use
+Subject/Immediate-Manager dynamic approvers); approve → `Active`, reject → `Rejected` (still
+editable — saving a Rejected plan RESUBMITS it through the chain; the requested status is ignored so
+approval can't be bypassed). Update/delete are gated by `EnsureNoRunningAsync` while an instance runs.
+No definition → plans save directly with the requested status (engine's opt-in philosophy).
 
 **Service API** — `IWorkflowService`:
 ```

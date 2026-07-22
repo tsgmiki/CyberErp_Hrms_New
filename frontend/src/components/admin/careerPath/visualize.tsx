@@ -1,28 +1,18 @@
 "use client";
-import { memo, useMemo, useState } from "react";
+import { memo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Milestone, CheckCircle2, Circle } from "lucide-react";
-import { FormUtility } from "@/components/common/formProvider/formUtility";
 import { getCareerPathVisualize } from "@/services/admin/careerPath/visualize";
-import getAllEmployee from "@/services/admin/employee/getAll";
-import { parameterInitialData } from "@/constants/initialization";
+import EmployeePicker from "@/components/common/employeePicker";
 import { careerStepProgressStatusOptions } from "@/constants/careerDevelopment";
 import Loading from "../../common/loader/loader";
 
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 const progressLabel = (v?: string) => careerStepProgressStatusOptions.find((o) => o.id === v)?.name ?? v ?? "";
 
 /** Career-path ladder (HC166) with an optional employee overlay of progress + competency gaps (HC164/HC165). */
 function CareerPathLadder({ pathId }: { pathId: string }) {
-  const [employeeId, setEmployeeId] = useState<string>("");
-
-  const { data: employees } = useQuery({
-    queryKey: ["employees", "ladderPicker"],
-    queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }),
-    staleTime: 60_000,
-  });
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
-  const eName = (id?: string) => employeeOptions.find((o) => o.id === id)?.name ?? "";
+  const [overlay, setOverlay] = useState<{ id: string; name: string } | null>(null);
+  const employeeId = overlay?.id ?? "";
 
   const { data, isLoading } = useQuery({
     queryKey: ["careerPathVisualize", pathId, employeeId],
@@ -35,10 +25,16 @@ function CareerPathLadder({ pathId }: { pathId: string }) {
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h3 className="mr-auto flex items-center gap-2 text-sm font-semibold text-foreground"><Milestone size={15} /> Path Ladder</h3>
         <div className="w-72">
-          <FormUtility component={{ name: "ladderEmployee", label: "", type: "dropDown", layout: "auth", placeholder: "Overlay an employee…", value: employeeId, displayValue: eName(employeeId), data: employeeOptions as never, onSelect: (_n, r: any) => setEmployeeId(r.id) }} />
+          {/* Server-search picker — no bulk employee load (10k+ scale). */}
+          <EmployeePicker
+            value={employeeId}
+            displayValue={overlay?.name}
+            placeholder="Overlay an employee…"
+            onSelect={(eid, name) => setOverlay({ id: eid, name })}
+          />
         </div>
         {employeeId && (
-          <button type="button" onClick={() => setEmployeeId("")} className="rounded border border-border px-2 py-1 text-xs text-muted hover:text-foreground">Clear</button>
+          <button type="button" onClick={() => setOverlay(null)} className="rounded border border-border px-2 py-1 text-xs text-muted hover:text-foreground">Clear</button>
         )}
       </div>
 

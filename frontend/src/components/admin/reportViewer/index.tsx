@@ -5,8 +5,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3, FileBarChart, History as HistoryIcon,
   CalendarClock, ListChecks, Plus, Shield, Trash2, X, Play, Pencil, Power, UserRound, GripVertical, Layers,
+  Mail, Bookmark, RotateCcw,
 } from "lucide-react";
 import InputField from "@/components/ui/inputField";
+import ButtonField from "@/components/ui/buttonField";
 import CheckBoxField from "@/components/ui/checkBoxField";
 import { FloatingLabel } from "@/components/ui/floatingLabel";
 import { FORM_INPUT_CLASS } from "@/components/ui/fieldStyles";
@@ -27,15 +29,12 @@ import DialogModal from "@/components/common/dialog";
 import { toast } from "@/components/common/toast";
 import Loading from "@/components/common/loader/loader";
 import EmptyState from "@/components/common/emptyState";
-import InventoryLayout from "@/components/common/inventoryLayout";
+import SearchBar from "@/components/common/searchBar/searchBar";
+import { EntityModuleShell } from "@/template";
 import { FormUtility } from "@/components/common/formProvider/formUtility";
 import { parameterInitialData } from "@/constants/initialization";
 import ReportCatalogTree from "./reportCatalogTree";
 import ReportCriteria from "./reportCriteria";
-
-const INPUT =
-  "w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none";
-const LABEL = "block text-xs font-medium text-muted mb-1";
 
 /** '#' range convention (ported): "HireDate#" expands to HireDate1 (From) / HireDate2 (To). */
 const rangeNames = (field: string): [string, string] => [field.replace("#", "1"), field.replace("#", "2")];
@@ -370,6 +369,18 @@ function ReportViewer() {
   const { data: catalog, isLoading: catalogLoading } = useQuery({
     queryKey: ["reportCatalog"], queryFn: getReportCatalog,
   });
+
+  // First open: auto-select the FIRST report of the FIRST catalog group (one-shot — never
+  // overrides a report the user has since chosen).
+  const [autoSelected, setAutoSelected] = useState(false);
+  useEffect(() => {
+    if (autoSelected || selected) return;
+    const first = catalog?.[0]?.reports?.[0];
+    if (first) {
+      setAutoSelected(true);
+      setSelected(first);
+    }
+  }, [autoSelected, selected, catalog]);
   const { data: schema, isFetching: schemaLoading } = useQuery({
     queryKey: ["reportSchema", selected?.reportKey],
     queryFn: () => getReportSchema(selected!.reportKey),
@@ -771,11 +782,11 @@ function ReportViewer() {
   ] as DataTableColumnModel[];
 
   return (
-    <InventoryLayout
+    <EntityModuleShell
       title={t("Reports")}
-      headerDescription={t("Generic stored-procedure-driven reports")}
+      headerDescription={t("Run, schedule and e-mail the standard report catalog")}
       headerIcon={<BarChart3 className="h-6 w-6 text-primary" />}
-      showForm={false} onList={() => {}} hideAdd hideBack
+      showForm={false} onList={() => {}} onAdd={() => {}} hideAdd hideBack
     >
       <div className="flex h-full min-h-[32rem] gap-4 p-2">
         {/* ---- Report catalog tree (shared, reusable TreeView) ---- */}
@@ -817,25 +828,26 @@ function ReportViewer() {
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                   {/* Top-right controls (legacy order: Grouping → Fields → Restricted Roles). The
                       Grouping button appears ONLY for a pivot report (schema.grouping.supportsGrouping). */}
-                  <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
-                    <h3 className="text-sm font-semibold">{schema?.reportName ?? selected.reportName}</h3>
-                    <div className="flex items-center gap-3 text-xs font-medium">
+                  <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-5 py-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-foreground">{schema?.reportName ?? selected.reportName}</h3>
+                      {schema?.description ? (
+                        <p className="truncate text-xs text-muted">{schema.description}</p>
+                      ) : null}
+                    </div>
+                    {/* Configuration toolbar (legacy order: Grouping → Fields → Restricted Roles) —
+                        quiet outline/secondary controls so Generate below stays the single primary CTA. */}
+                    <div className="flex shrink-0 items-center gap-2">
                       {schema?.grouping?.supportsGrouping && (
-                        <button type="button" onClick={openGrouping}
-                          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-semibold transition-colors ${
-                            groupBy.length > 0
-                              ? "border-primary/40 bg-primary/10 text-primary"
-                              : "border-border text-foreground hover:border-primary/40 hover:text-primary"}`}
-                          title={t("Group this report — pick and order the grouping levels") ?? "Grouping"}>
-                          <Layers size={13} /> {t("Grouping")}{groupBy.length > 0 ? ` · ${groupBy.length}` : ""}
-                        </button>
+                        <ButtonField
+                          value={groupBy.length > 0 ? `${t("Grouping")} · ${groupBy.length}` : t("Grouping")}
+                          variant={groupBy.length > 0 ? "secondary" : "outline"}
+                          icon={<Layers size={14} />}
+                          onClick={openGrouping}
+                        />
                       )}
-                      <button type="button" onClick={openFields} className="inline-flex items-center gap-1 text-primary hover:underline">
-                        <ListChecks size={13} /> {t("Fields")}
-                      </button>
-                      <button type="button" onClick={openRestrict} className="inline-flex items-center gap-1 text-primary hover:underline">
-                        <Shield size={13} /> {t("Restricted Roles")}
-                      </button>
+                      <ButtonField value={t("Fields")} variant="outline" icon={<ListChecks size={14} />} onClick={openFields} />
+                      <ButtonField value={t("Restricted Roles")} variant="outline" icon={<Shield size={14} />} onClick={openRestrict} />
                     </div>
                   </div>
 
@@ -844,21 +856,23 @@ function ReportViewer() {
                     <ReportCriteria fields={schema?.fields ?? []} loading={schemaLoading} renderField={renderField} />
                   </div>
 
-                  {/* Sticky action bar (legacy: left = Save Report; right = Email + Generate) */}
-                  <div className="flex shrink-0 items-center justify-between border-t border-border bg-card px-5 py-3">
-                    <button type="button" onClick={() => { setDlgName(""); setDlgMsg(null); setDialog("save"); }}
-                      className="rounded-md bg-success px-3.5 py-2 text-xs font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90">
-                      {t("Save Report")}
-                    </button>
+                  {/* Sticky action bar — Save (green) / Email (amber) per the product's brand colors;
+                      Generate stays the standard primary. */}
+                  <div className="flex shrink-0 items-center justify-between border-t border-border bg-muted/20 px-5 py-3">
+                    <ButtonField
+                      value={t("Save")}
+                      className="!border-transparent !bg-[#63d91d] !text-white hover:!opacity-90"
+                      icon={<Bookmark size={14} />}
+                      onClick={() => { setDlgName(""); setDlgMsg(null); setDialog("save"); }}
+                    />
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={openEmail}
-                        className="rounded-md bg-warning px-3.5 py-2 text-xs font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90">
-                        {t("Email")}
-                      </button>
-                      <button type="button" onClick={generate} disabled={schemaLoading}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-xs font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50">
-                        <Play size={13} /> {t("Generate")}
-                      </button>
+                      <ButtonField
+                        value={t("Email")}
+                        className="!border-transparent !bg-[#eea522] !text-white hover:!opacity-90"
+                        icon={<Mail size={14} />}
+                        onClick={openEmail}
+                      />
+                      <ButtonField value={t("Generate")} variant="primary" icon={<Play size={14} />} disabled={schemaLoading} onClick={generate} />
                     </div>
                   </div>
                 </div>
@@ -867,16 +881,20 @@ function ReportViewer() {
               {/* ---- TAB 2: Schedule ---- */}
               {tab === "schedule" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-                  <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
-                    <h3 className="text-sm font-semibold">{t("Schedules")} — {selected.reportName}</h3>
-                    <button type="button" onClick={() => openSchedule()}
-                      className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90">
-                      <Plus className="h-3.5 w-3.5" /> {t("Add")}
-                    </button>
+                  <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-5 py-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-foreground">{t("Schedules")}</h3>
+                      <p className="truncate text-xs text-muted">{selected.reportName}</p>
+                    </div>
+                    <ButtonField value={t("Add Schedule")} variant="primary" icon={<Plus size={14} />} onClick={() => openSchedule()} />
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto p-3">
                     {(schedules ?? []).length === 0
-                      ? <p className="py-6 text-center text-sm text-muted">{t("No schedules yet — use Add.")}</p>
+                      ? <EmptyState
+                          icon={<CalendarClock className="h-6 w-6" />}
+                          title={t("No schedules yet")}
+                          description={t("Automate this report: add a schedule to run it on a cadence and e-mail the results.")}
+                        />
                       : <DataTableProvider dataTable={{ columns: scheduleColumns, data: schedules ?? [], pagination: "None", search: "None" }} />}
                   </div>
                 </div>
@@ -885,10 +903,19 @@ function ReportViewer() {
               {/* ---- TAB 3: History (standard grid + search) ---- */}
               {tab === "history" && (
                 <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-                  <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-3">
-                    <h3 className="text-sm font-semibold">{t("History")} — {selected.reportName}</h3>
-                    <input className={`${INPUT} max-w-56`} placeholder={t("Search…") ?? "Search"} value={historySearch}
-                      onChange={(e) => setHistorySearch(e.target.value)} />
+                  <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-muted/20 px-5 py-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-foreground">{t("History")}</h3>
+                      <p className="truncate text-xs text-muted">{selected.reportName}</p>
+                    </div>
+                    <div className="w-64 shrink-0">
+                      <SearchBar
+                        value={historySearch}
+                        onChange={setHistorySearch}
+                        onClear={() => setHistorySearch("")}
+                        placeholder={t("Search runs…")}
+                      />
+                    </div>
                   </div>
                   <div className="min-h-0 flex-1 overflow-y-auto p-3">
                     <DataTableProvider dataTable={{ columns: historyColumns, data: historyRows, pagination: "None", search: "None" }} />
@@ -903,31 +930,34 @@ function ReportViewer() {
       {/* Dialogs */}
       {dialog && (
         <Modal visible size={dialog === "schedule" ? "lg" : "md"}
-          title={dialog === "fields" ? t("Report Fields") : dialog === "grouping" ? t("Report Grouping") : dialog === "schedule" ? (editId ? t("Edit Schedule") : t("Add Schedule")) : dialog === "email" ? t("Email Report") : dialog === "save" ? t("Save Report") : t("Restricted Roles")}
+          title={dialog === "fields" ? t("Report Fields") : dialog === "grouping" ? t("Report Grouping") : dialog === "schedule" ? (editId ? t("Edit Schedule") : t("Add Schedule")) : dialog === "email" ? t("Email Report") : dialog === "save" ? t("Save Filter") : t("Restricted Roles")}
           description={selected?.reportName}
           onClose={() => setDialog(null)}
           footer={
             dialog === "fields" || dialog === "grouping" ? (
-              // reference popbuttons: Reset (yellow, left) | Cancel (grey) + Close (green, right)
+              // Standard footer: Reset (quiet, left) | Cancel + Apply (single primary, right)
               <div className="flex w-full items-center justify-between">
-                <button type="button" onClick={dialog === "fields" ? resetFields : resetGrouping}
-                  className="rounded-md bg-warning px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90">{t("Reset")}</button>
+                <ButtonField value={t("Reset")} variant="outline" icon={<RotateCcw size={14} />}
+                  onClick={dialog === "fields" ? resetFields : resetGrouping} />
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary">{t("Cancel")}</button>
-                  <button type="button" onClick={dialog === "fields" ? commitFields : commitGrouping} className="rounded-md bg-success px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90">{t("Close")}</button>
+                  <ButtonField value={t("Cancel")} variant="outline" onClick={() => setDialog(null)} />
+                  <ButtonField value={t("Apply")} variant="primary"
+                    onClick={dialog === "fields" ? commitFields : commitGrouping} />
                 </div>
               </div>
             ) : (
               <>
-                <button type="button" onClick={() => setDialog(null)} className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary">{t("Cancel")}</button>
-                <button type="button" disabled={dlgBusy
+                <ButtonField value={t("Cancel")} variant="outline" onClick={() => setDialog(null)} />
+                <ButtonField
+                  value={dlgBusy ? t("Working…") : dialog === "email" ? t("Send") : t("Save")}
+                  variant="primary"
+                  icon={dialog === "email" ? <Mail size={14} /> : undefined}
+                  disabled={dlgBusy
                     || (dialog === "email" && (eForm.userIds.size === 0 && eForm.roleIds.size === 0 && !eForm.emails.trim() && !eForm.isCc))
                     || (dialog === "schedule" && (!schedReportKey || (sForm.userIds.size === 0 && sForm.roleIds.size === 0)))
                     || (dialog === "save" && !dlgName.trim())}
                   onClick={submitDialog}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50">
-                  {dlgBusy ? t("Working…") : dialog === "email" ? t("Send") : t("Save")}
-                </button>
+                />
               </>
             )
           }>
@@ -964,17 +994,12 @@ function ReportViewer() {
                       value: schedReportKey, displayValue: allReports.find((r) => r.id === schedReportKey)?.name ?? "",
                       data: allReports, onSelect: (_n: string, item: { id: string | number }) => initTemplate(String(item.id)),
                     }} />
-                    <div>
-                      <label className={LABEL}>{t("Output Format")}</label>
-                      <div className="flex gap-4 pt-0.5">
-                        {[{ v: 1, label: "CSV" }, { v: 0, label: t("Tab") }].map((o) => (
-                          <label key={o.v} className="flex items-center gap-1.5 text-sm">
-                            <input type="radio" name="schedfmt" className="accent-primary" checked={schedFormat === o.v} onChange={() => setSchedFormat(o.v)} />
-                            {o.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
+                    <FormUtility component={{
+                      name: "schedfmt", type: "radio", label: t("Output Format"),
+                      value: String(schedFormat),
+                      data: [{ id: "1", name: "CSV" }, { id: "0", name: t("Tab") }],
+                      onChange: (e) => setSchedFormat(Number(e.target.value)),
+                    }} />
                     <div className="border-t border-border pt-3">
                       {schedSchemaLoading && <Loading />}
                       {!schedReportKey && <p className="py-4 text-center text-sm text-muted">{t("Select a report to configure its filter criteria.")}</p>}
@@ -1080,15 +1105,12 @@ function ReportViewer() {
                   value: eForm.subject, onChange: (e) => setEForm((p) => ({ ...p, subject: e.target.value })) }} />
                 <FormUtility component={{ name: "email-message", type: "textarea", label: t("Message"), required: true, floatingLabel: true, rowNo: 3,
                   value: eForm.body, onChange: (e) => setEForm((p) => ({ ...p, body: e.target.value })) }} />
-                <div><label className={LABEL}>{t("Output Format")}</label>
-                  <div className="flex gap-4 pt-0.5">
-                    {[{ v: 1, label: "CSV" }, { v: 0, label: t("Tab") }].map((o) => (
-                      <label key={o.v} className="flex items-center gap-1.5 text-sm">
-                        <input type="radio" name="emailfmt" className="accent-primary" checked={eForm.outputFormat === o.v} onChange={() => setEForm((p) => ({ ...p, outputFormat: o.v }))} />
-                        {o.label}
-                      </label>
-                    ))}
-                  </div></div>
+                <FormUtility component={{
+                  name: "emailfmt", type: "radio", label: t("Output Format"),
+                  value: String(eForm.outputFormat),
+                  data: [{ id: "1", name: "CSV" }, { id: "0", name: t("Tab") }],
+                  onChange: (e) => setEForm((p) => ({ ...p, outputFormat: Number(e.target.value) })),
+                }} />
               </div>
             )}
             {dialog === "restrict" && (
@@ -1115,7 +1137,7 @@ function ReportViewer() {
       >
         <span>{confirm?.message}</span>
       </DialogModal>
-    </InventoryLayout>
+    </EntityModuleShell>
   );
 }
 

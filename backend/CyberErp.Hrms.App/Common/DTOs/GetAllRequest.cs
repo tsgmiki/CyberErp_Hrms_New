@@ -81,6 +81,21 @@ namespace CyberErp.Hrms.App.Common.DTOs
 
         /// <summary>Appraisal worklist: restrict to records the current user must act on at their current stage.</summary>
         public bool? AssignedToMe { get; set; }
+
+        /// <summary>Filters personnel actions to one movement type (Transfer / Promotion / Demotion).</summary>
+        public string? MovementType { get; set; }
+
+        /// <summary>Filters training needs to one type (Local / Abroad).</summary>
+        public string? NeedType { get; set; }
+
+        /// <summary>Filters training sessions to one catalog course.</summary>
+        public Guid? CourseId { get; set; }
+
+        /// <summary>Filters training enrollments to one session.</summary>
+        public Guid? SessionId { get; set; }
+
+        /// <summary>Filters communities to one kind (Learning / InterestGroup / Club).</summary>
+        public string? Kind { get; set; }
     }
 }
 

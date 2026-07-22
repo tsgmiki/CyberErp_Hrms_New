@@ -9,6 +9,7 @@ public class Operation : BaseEntity
     public string Link { get; private set; } = string.Empty;
     public string Filter { get; private set; } = string.Empty;
     public string Icon { get; private set; } = string.Empty;
+    public int SortOrder { get; private set; }
     public Module Module { get; private set; } = null!;
 
     private Operation() : base() { }
@@ -18,7 +19,8 @@ public class Operation : BaseEntity
         string name,
         string link,
         string filter,
-        string icon)
+        string icon,
+        int sortOrder = 0)
     {
         if (moduleId == Guid.Empty)
             throw new ArgumentException("Module ID cannot be empty.", nameof(moduleId));
@@ -35,7 +37,8 @@ public class Operation : BaseEntity
             Name = name,
             Link = link,
             Filter = filter,
-            Icon = icon
+            Icon = icon,
+            SortOrder = sortOrder
             // TenantId, CreatedBy will be set by Repository.AddAsync()
         };
     }
@@ -45,7 +48,8 @@ public class Operation : BaseEntity
         string name,
         string link,
         string filter,
-        string icon)
+        string icon,
+        int? sortOrder = null)
     {
         if (moduleId == Guid.Empty)
             throw new ArgumentException("Module ID cannot be empty.", nameof(moduleId));
@@ -61,6 +65,8 @@ public class Operation : BaseEntity
         Link = link;
         Filter = filter;
         Icon = icon;
+        if (sortOrder.HasValue)
+            SortOrder = sortOrder.Value;
         base.Update();
     }
 }

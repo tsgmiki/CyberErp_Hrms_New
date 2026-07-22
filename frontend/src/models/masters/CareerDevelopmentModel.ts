@@ -37,6 +37,8 @@ export interface NineBoxModel {
 export interface TalentRatingModel {
   id?: string;
   raterEmployeeId?: string;
+  /** Client-side display name captured by the picker (the backend DTO carries only the id). */
+  raterName?: string;
   raterRole?: string;
   performanceScore?: number;
   potentialScore?: number;
@@ -132,6 +134,13 @@ export interface ReadinessComputationModel {
   competencyRequired: number;
   hasAppraisal: boolean;
 }
+export interface TalentReviewOutcomeModel {
+  reviewName?: string;
+  performanceBand: number;
+  potentialBand: number;
+  isHiPo: boolean;
+  readiness: string;
+}
 export interface SuccessionCandidateProfileModel {
   successionCandidateId: string;
   employeeId: string;
@@ -140,6 +149,17 @@ export interface SuccessionCandidateProfileModel {
   readinessScore?: number;
   performance?: EmployeePerformanceSummaryModel;
   gap?: CompetencyGapModel;
+  /** Latest talent-review outcome (HC158 bridge) — null when the employee was never assessed. */
+  talentReview?: TalentReviewOutcomeModel | null;
+}
+/** A talent-review HiPo proposed as a successor (Talent Review → Succession hand-off). */
+export interface SuggestedSuccessorModel {
+  employeeId: string;
+  employeeName?: string;
+  reviewName?: string;
+  performanceBand: number;
+  potentialBand: number;
+  readiness: string;
 }
 export interface IdentifyHiPosResultModel {
   flagged: number;

@@ -102,6 +102,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IRepository<EmployeeEducation> educationRepository,
         IRepository<EmployeeExperience> experienceRepository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<DynamicFormRecord> recordRepository) : IGetEmployeeDocuments
     {
         public async Task<List<EmployeeDocumentDto>> GetAsync(string ownerType, Guid ownerId, string? ownerField)
@@ -118,6 +119,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .Select(r => (Guid?)r.OwnerId).FirstOrDefaultAsync();
                 if (recordEmployeeId is null) throw new NotFoundException(owner.ToString(), ownerId.ToString());
                 await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, recordEmployeeId.Value);
+                if (!await visibility.CanAccessEmployeeAsync(recordEmployeeId.Value))
+                    throw new ValidationException("access", "You do not have access to this employee's documents.");
             }
             else
             {
@@ -147,13 +150,16 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class DownloadEmployeeDocument(
         IRepository<EmployeeDocument> repository,
-        IRepository<Employee> employeeRepository) : IDownloadEmployeeDocument
+        IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility) : IDownloadEmployeeDocument
     {
         public async Task<(byte[] Content, string ContentType, string FileName)> GetAsync(Guid documentId)
         {
             var doc = await repository.GetAll().FirstOrDefaultAsync(d => d.Id == documentId)
                 ?? throw new NotFoundException(nameof(EmployeeDocument), documentId.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, doc.EmployeeId);
+            if (!await visibility.CanAccessEmployeeAsync(doc.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this employee's documents.");
             return (doc.Content, doc.ContentType, doc.FileName);
         }
     }
@@ -161,6 +167,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class DeleteEmployeeDocument(
         IRepository<EmployeeDocument> repository,
         IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ILogger<DeleteEmployeeDocument> logger) : IDeleteEmployeeDocument
     {
         public async Task DeleteAsync(Guid documentId)
@@ -168,6 +175,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var doc = await repository.GetAll().FirstOrDefaultAsync(d => d.Id == documentId)
                 ?? throw new NotFoundException(nameof(EmployeeDocument), documentId.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, doc.EmployeeId);
+            if (!await visibility.CanAccessEmployeeAsync(doc.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this employee's documents.");
 
             repository.Delete(doc);
             await repository.SaveChangesAsync();

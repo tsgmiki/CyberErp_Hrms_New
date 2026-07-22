@@ -34,7 +34,7 @@ public class DeleteModuleHandler(
         return new ModuleResult
         {
             Id = module.Id,
-            SubSystem = module.SubSystem,
+            SubsystemId = module.SubsystemId,
             Name = module.Name,
             Icon = module.Icon,
             CreatedBy = module.CreatedBy,

@@ -187,12 +187,15 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class StartAppraisalAppealReview(
         IRepository<AppraisalAppeal> repository,
+        IAppraisalWorkflowService workflowService,
         ILogger<StartAppraisalAppealReview> logger) : IStartAppraisalAppealReview
     {
         public async Task StartAsync(Guid id)
         {
             var appeal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(AppraisalAppeal), id.ToString());
+            if (!await workflowService.CanAdministerAsync())
+                throw new ValidationException(nameof(id), "Only an HR administrator can review appeals.");
             if (appeal.Status != AppealStatus.Open)
                 throw new ValidationException(nameof(id), "Only an open appeal can be moved to review.");
             appeal.StartReview();
@@ -203,6 +206,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class ResolveAppraisalAppeal(
         IRepository<AppraisalAppeal> repository,
+        IAppraisalWorkflowService workflowService,
         IPerformanceHistoryWriter history,
         IValidator<ResolveAppraisalAppealDto> validator,
         ILogger<ResolveAppraisalAppeal> logger) : IResolveAppraisalAppeal
@@ -214,6 +218,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var appeal = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(AppraisalAppeal), dto.Id.ToString());
+            if (!await workflowService.CanAdministerAsync())
+                throw new ValidationException(nameof(dto.Id), "Only an HR administrator can resolve appeals.");
             if (appeal.Status is AppealStatus.Resolved or AppealStatus.Rejected)
                 throw new ValidationException(nameof(dto.Id), "This appeal has already been closed.");
 
@@ -244,12 +250,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetAppraisalAppealById(
         IRepository<AppraisalAppeal> repository,
-        IRepository<Employee> employeeRepository) : IGetAppraisalAppealById
+        IRepository<Employee> employeeRepository,
+        IAppraisalWorkflowService workflowService) : IGetAppraisalAppealById
     {
         public async Task<AppraisalAppealDto> GetAsync(Guid id)
         {
             var entity = await repository.GetAll().AsNoTracking().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(AppraisalAppeal), id.ToString());
+            // Visibility: the appealing employee or an HR administrator.
+            var myEmp = await workflowService.CurrentEmployeeIdAsync();
+            if (!(myEmp.HasValue && myEmp.Value == entity.EmployeeId) && !await workflowService.CanAdministerAsync())
+                throw new ValidationException("access", "You do not have access to this appeal.");
             var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
                 .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
             return AppraisalAppealMapper.Map(entity, employeeName);
@@ -258,7 +269,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetAllAppraisalAppeals(
         IRepository<AppraisalAppeal> repository,
-        IRepository<Employee> employeeRepository) : IGetAllAppraisalAppeals
+        IRepository<Employee> employeeRepository,
+        IAppraisalWorkflowService workflowService) : IGetAllAppraisalAppeals
     {
         public async Task<PaginatedResponse<AppraisalAppealDto>> GetAsync(GetAllRequest request)
         {
@@ -266,6 +278,12 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll().AsNoTracking();
+            // Non-admin visibility: only the caller's own appeals (empty-guid match = none for unlinked accounts).
+            if (!await workflowService.CanAdministerAsync())
+            {
+                var myEmp = await workflowService.CurrentEmployeeIdAsync() ?? Guid.Empty;
+                query = query.Where(x => x.EmployeeId == myEmp);
+            }
             if (request.EmployeeId.HasValue)
                 query = query.Where(x => x.EmployeeId == request.EmployeeId.Value);
             if (request.ObjectiveId.HasValue)   // reused as appraisalId filter
@@ -276,13 +294,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var total = await query.CountAsync();
             var rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
 
-            var employees = employeeRepository.GetAll();
+            // PERFORMANCE: batch-load the employee names for the page in ONE query (was one per row).
+            var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
             var data = new List<AppraisalAppealDto>(rows.Count);
             foreach (var r in rows)
             {
-                var employeeName = await employees.Where(e => e.Id == r.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                data.Add(AppraisalAppealMapper.Map(r, employeeName));
+                data.Add(AppraisalAppealMapper.Map(r, employeeNames.GetValueOrDefault(r.EmployeeId)));
             }
             return new PaginatedResponse<AppraisalAppealDto> { Total = total, Data = data };
         }

@@ -1,79 +1,14 @@
-import { useCallback, useState } from "react";
-import {
-  LayoutDashboard,
-  Network,
-  Briefcase,
-  BriefcaseBusiness,
-  Layers,
-  Coins,
-  Tags,
-  MapPin,
-  CalendarDays,
-  CalendarClock,
-  CalendarRange,
-  CalendarCheck,
-  CalendarCog,
-  SlidersHorizontal,
-  BookOpenCheck,
-  Building,
-  ScrollText,
-  Users,
-  ListPlus,
-  FileText,
-  UsersRound,
-  Building2,
-  ShieldCheck,
-  ChevronDown,
-  GitPullRequestArrow,
-  GitBranch,
-  UserCog,
-  KeyRound,
-  UserCheck,
-  UserX,
-  ClipboardCheck,
-  Target,
-  ClipboardList,
-  LayoutGrid,
-  UserPlus,
-  FilePlus2,
-  Megaphone,
-  Star,
-  Gauge,
-  Shapes,
-  Sparkles,
-  ClipboardType,
-  Award,
-  Goal,
-  ListChecks,
-  Scale,
-  GraduationCap,
-  TrendingUp,
-  Medal,
-  Gavel,
-  BarChart3,
-  type LucideIcon,
-  ShieldAlert,
-  Grid3x3,
-  GitBranchPlus,
-  Rocket,
-  Route as RouteIcon,
-  UserRoundCog,
-  Handshake,
-} from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { LayoutDashboard, ChevronDown, PanelsTopLeft, type LucideIcon } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import store from "@/store";
-import type { SidebarNavigationModel } from "../utils/menuTypes";
-import CategoryGroup from "./categoryGroup";
-import ModuleListItem from "./moduleListItem";
-import NavItem from "./navItem";
+import type { ModuleModel } from "@/models";
+import { useMenuModules } from "../hooks/useMenuModules";
+import { resolveNavIcon } from "../utils/lucideIconMap";
 import MenuNavLink from "../navLink";
 
 interface SidebarNavProps {
   collapsed: boolean;
-  navigation: SidebarNavigationModel;
-  isCategoryExpanded: (key: string) => boolean;
-  toggleCategory: (key: string) => void;
 }
 
 interface NavLinkDef {
@@ -90,138 +25,12 @@ interface NavGroupDef {
   links: NavLinkDef[];
 }
 
-/** Primary navigation. Grouped statically until the Module/Operation menu API exists. */
-const MAIN_LINKS: NavLinkDef[] = [
-  { to: "/", label: "Dashboard", Icon: LayoutDashboard, end: true },
-];
-
-const NAV_GROUPS: NavGroupDef[] = [
-  {
-    key: "personnel",
-    label: "Personnel",
-    Icon: UsersRound,
-    links: [
-      { to: "/employee", label: "Employees", Icon: Users },
-      { to: "/terminationList", label: "Termination List", Icon: UserX },
-      { to: "/employeeField", label: "Custom Fields", Icon: ListPlus },
-      { to: "/documentTemplate", label: "Document Templates", Icon: FileText },
-    ],
-  },
-  {
-    key: "organization",
-    label: "Organization",
-    Icon: Building2,
-    links: [
-      { to: "/branch", label: "Branches", Icon: Building },
-      { to: "/organizationUnit", label: "Organization Structure", Icon: Network },
-      { to: "/positionClass", label: "Position Classes", Icon: BriefcaseBusiness },
-      { to: "/position", label: "Positions", Icon: Briefcase },
-      { to: "/jobGrade", label: "Job Grades", Icon: Layers },
-      { to: "/salaryScale", label: "Salary Scale", Icon: Coins },
-      { to: "/jobCategory", label: "Job Categories", Icon: Tags },
-      { to: "/workLocation", label: "Work Locations", Icon: MapPin },
-    ],
-  },
-  {
-    key: "planning",
-    label: "Planning",
-    Icon: Target,
-    links: [
-      { to: "/workforcePlan", label: "Workforce Plans", Icon: ClipboardList },
-      { to: "/establishmentOverview", label: "Establishment Overview", Icon: LayoutGrid },
-    ],
-  },
-  {
-    key: "recruitment",
-    label: "Recruitment",
-    Icon: UserPlus,
-    links: [
-      { to: "/hiringRequest", label: "Hiring Requests", Icon: FilePlus2 },
-      { to: "/jobRequisition", label: "Job Requisitions", Icon: Megaphone },
-      { to: "/candidate", label: "Candidates", Icon: Users },
-      { to: "/jobApplication", label: "Applications", Icon: ClipboardList },
-      { to: "/hireEmployee", label: "Hire Employee", Icon: UserCheck },
-      { to: "/talentPool", label: "Talent Pool", Icon: Star },
-      { to: "/offerLetterTemplate", label: "Offer Letter Template", Icon: ScrollText },
-    ],
-  },
-  {
-    key: "performance",
-    label: "Performance",
-    Icon: Award,
-    links: [
-      { to: "/performanceDashboard", label: "Performance Dashboard", Icon: BarChart3 },
-      { to: "/organizationalObjective", label: "Organizational Objectives", Icon: Goal },
-      { to: "/employeeGoal", label: "Employee Goals", Icon: ListChecks },
-      { to: "/appraisal", label: "Appraisals", Icon: ClipboardCheck },
-      { to: "/appraisalAppeal", label: "Appeals", Icon: Gavel },
-      { to: "/calibration", label: "Calibration", Icon: Scale },
-      { to: "/developmentPlan", label: "Development Plans", Icon: GraduationCap },
-      { to: "/improvementPlan", label: "Improvement Plans", Icon: TrendingUp },
-      { to: "/achievement", label: "Achievements", Icon: Medal },
-      { to: "/recognition", label: "Recognition", Icon: Sparkles },
-      { to: "/recognitionBadge", label: "Recognition Badges", Icon: Award },
-      { to: "/reviewCycle", label: "Review Cycles", Icon: CalendarClock },
-      { to: "/appraisalTemplate", label: "Appraisal Templates", Icon: ClipboardType },
-      { to: "/ratingScale", label: "Rating Scales", Icon: Gauge },
-      { to: "/competency", label: "Competencies", Icon: Sparkles },
-      { to: "/competencyCategory", label: "Competency Categories", Icon: Shapes },
-      { to: "/positionCompetency", label: "Position Competencies", Icon: Target },
-    ],
-  },
-  {
-    key: "careerDevelopment",
-    label: "Career Development",
-    Icon: Rocket,
-    links: [
-      { to: "/criticalPosition", label: "Critical Positions", Icon: ShieldAlert },
-      { to: "/talentReview", label: "Talent Reviews", Icon: Grid3x3 },
-      { to: "/successionPlan", label: "Succession Plans", Icon: GitBranchPlus },
-      { to: "/careerPath", label: "Career Paths", Icon: RouteIcon },
-      { to: "/employeeCareerPath", label: "Employee Career Paths", Icon: UserRoundCog },
-      { to: "/mentorship", label: "Mentorships", Icon: Handshake },
-      { to: "/careerPathChangeRequest", label: "Path Change Requests", Icon: GitPullRequestArrow },
-    ],
-  },
-  {
-    key: "attendanceLeave",
-    label: "Attendance & Leave",
-    Icon: CalendarRange,
-    links: [
-      { to: "/annualLeave", label: "Annual Leave", Icon: CalendarCheck },
-      { to: "/annualLeaveLedger", label: "Annual Leave Ledger", Icon: BookOpenCheck },
-      { to: "/leaveType", label: "Leave Types", Icon: CalendarDays },
-      { to: "/annualLeaveSetting", label: "Leave Settings", Icon: SlidersHorizontal },
-      { to: "/holiday", label: "Holidays", Icon: CalendarClock },
-      { to: "/workWeekConfiguration", label: "Work Week", Icon: CalendarRange },
-      { to: "/fiscalYear", label: "Fiscal Years", Icon: CalendarCog },
-    ],
-  },
-  {
-    key: "reports",
-    label: "Reports",
-    Icon: BarChart3,
-    links: [
-      { to: "/reports", label: "Reports", Icon: BarChart3 },
-      { to: "/reportDefinition", label: "Report Definitions", Icon: SlidersHorizontal },
-    ],
-  },
-  {
-    key: "system",
-    label: "System",
-    Icon: ShieldCheck,
-    links: [
-      { to: "/workflow", label: "Workflow Tracking", Icon: GitPullRequestArrow },
-      { to: "/workflowDefinition", label: "Workflow Definitions", Icon: GitBranch },
-      { to: "/clearanceDepartment", label: "Clearance Departments", Icon: ClipboardCheck },
-      { to: "/formBuilder", label: "Form Builder", Icon: LayoutGrid },
-      { to: "/user", label: "Users", Icon: UserCog },
-      { to: "/role", label: "Roles", Icon: KeyRound },
-      { to: "/userRole", label: "User Roles", Icon: UserCheck },
-      { to: "/auditLog", label: "Audit Trail", Icon: ScrollText },
-    ],
-  },
-];
+/**
+ * The ONLY fixed entry is the app home. Every group and link below it is generated at runtime
+ * from the coreSubsystem / coreModule / coreOperation tables (via GET /Module/WithOperations) —
+ * there is no hardcoded menu. Configure it under System → Menu Modules / Menu Operations.
+ */
+const HOME_LINK: NavLinkDef = { to: "/", label: "Dashboard", Icon: LayoutDashboard, end: true };
 
 const ROW_BASE =
   "group relative flex items-center rounded-lg text-[13px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground";
@@ -281,16 +90,34 @@ function NavGroup({
   );
 }
 
-function SidebarNav({
-  collapsed,
-  navigation,
-  isCategoryExpanded,
-  toggleCategory,
-}: SidebarNavProps) {
-  const { isSubsystemSelected, entries } = navigation;
-  const { pathname } = useLocation();
+/**
+ * Maps the DB menu feed onto the sidebar's group shape: each coreModule becomes a collapsible
+ * group, each of its role-visible coreOperation rows becomes a link. Icons are lucide-react
+ * names stored on the rows. Order follows the SortOrder applied server-side.
+ */
+function buildDynamicGroups(modules: ModuleModel[] | undefined): NavGroupDef[] {
+  return (modules ?? [])
+    .map((m) => ({
+      key: m.id ?? m.name ?? "",
+      label: m.name ?? "",
+      Icon: resolveNavIcon(m.icon),
+      links: (m.operations ?? [])
+        .filter((op) => op.canView !== false && op.link)
+        .map((op) => ({
+          to: op.link!.startsWith("/") ? op.link! : `/${op.link}`,
+          label: op.name ?? "",
+          Icon: resolveNavIcon(op.icon),
+        })),
+    }))
+    .filter((g) => g.links.length > 0);
+}
 
-  const collapsedItems = entries.flatMap((entry) => entry.flatItems);
+function SidebarNav({ collapsed }: SidebarNavProps) {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const { modules, isLoading } = useMenuModules();
+
+  const navGroups = useMemo(() => buildDynamicGroups(modules), [modules]);
 
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>(() => {
     try {
@@ -312,23 +139,44 @@ function SidebarNav({
     });
   }, []);
 
-  const handleSelectSubsystem = (subsystem: string) => {
-    store.ModuleData.value = { name: subsystem };
-  };
-
   // A group stays open if it holds the active route, even when the user collapsed it.
   const groupHasActive = (group: NavGroupDef) =>
     group.links.some((l) => pathname === l.to || pathname.startsWith(`${l.to}/`));
 
+  const showLoading = isLoading && navGroups.length === 0;
+  const showEmpty = !isLoading && navGroups.length === 0;
+
   return (
     <nav className="sidebar-scroll flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
-      {MAIN_LINKS.map((def) => (
-        <NavLinkRow key={def.to} def={def} collapsed={collapsed} />
-      ))}
+      <NavLinkRow def={HOME_LINK} collapsed={collapsed} />
+
+      {/* Menu still loading — placeholder rows so the sidebar doesn't flash empty. */}
+      {showLoading && !collapsed && (
+        <div className="space-y-2 px-1 pt-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-7 animate-pulse rounded-md bg-sidebar-accent/50" />
+          ))}
+        </div>
+      )}
+
+      {/* No rows in coreModule/coreOperation for this tenant — offer a bootstrap link (admins). */}
+      {showEmpty && !collapsed && (
+        <div className="px-1 pt-4 text-xs text-muted-foreground">
+          <p className="mb-2 px-2">{t("No menu has been configured yet.")}</p>
+          <MenuNavLink
+            to="/module"
+            className={`${ROW_BASE} gap-2.5 px-3 py-2`}
+            activeClassName={ROW_ACTIVE}
+          >
+            <PanelsTopLeft className="h-[18px] w-[18px] shrink-0" />
+            <span className="truncate">{t("Set up menu")}</span>
+          </MenuNavLink>
+        </div>
+      )}
 
       {/* Collapsed rail: a flat, icon-only list with dividers between groups. */}
       {collapsed &&
-        NAV_GROUPS.map((group) => (
+        navGroups.map((group) => (
           <div key={group.key}>
             <div className="mx-2 my-2 border-t border-sidebar-border" aria-hidden />
             {group.links.map((def) => (
@@ -337,9 +185,9 @@ function SidebarNav({
           </div>
         ))}
 
-      {/* Expanded: collapsible grouped sections. */}
+      {/* Expanded: collapsible grouped sections, one per module. */}
       {!collapsed &&
-        NAV_GROUPS.map((group) => (
+        navGroups.map((group) => (
           <NavGroup
             key={group.key}
             group={group}
@@ -347,43 +195,6 @@ function SidebarNav({
             onToggle={() => toggleGroup(group.key)}
           />
         ))}
-
-      {/* Dynamic module navigation (populated once the Module/Operation API exists). */}
-      {collapsed && isSubsystemSelected && (
-        <div className="space-y-0.5 pt-1">
-          {collapsedItems.map((item) => (
-            <NavItem key={item.id} item={item} collapsed />
-          ))}
-        </div>
-      )}
-
-      {!collapsed &&
-        entries.map((entry) => {
-          const showCategories = isSubsystemSelected;
-          return (
-            <div key={entry.id}>
-              {!showCategories && (
-                <ModuleListItem
-                  entry={entry}
-                  collapsed={collapsed}
-                  onSelectSubsystem={!isSubsystemSelected ? handleSelectSubsystem : undefined}
-                />
-              )}
-              {showCategories && (
-                <div className="space-y-0.5">
-                  {entry.categories.map((category) => (
-                    <CategoryGroup
-                      key={category.key}
-                      category={category}
-                      expanded={isCategoryExpanded(category.key)}
-                      onToggle={() => toggleCategory(category.key)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
     </nav>
   );
 }

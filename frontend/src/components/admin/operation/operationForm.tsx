@@ -10,6 +10,7 @@ import getOperation from "@/services/admin/operation/get";
 import getAllModule from "@/services/admin/module/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
+import { NAV_ICON_NAMES } from "@/components/menu/utils/lucideIconMap";
 
 const FormProvider = memo(FormProviders);
 
@@ -129,6 +130,26 @@ function OperationForm(props: {
               value: formData.link,
               onChange: changeHandler,
               error: formState?.zodErrors?.link,
+              type: "text",
+            },
+            {
+              name: "icon",
+              label: "Icon",
+              placeholder: "Icon",
+              value: formData.icon,
+              displayValue: formData.icon,
+              error: formState?.zodErrors?.icon,
+              type: "dropDown",
+              onSelect: selectHandler,
+              data: NAV_ICON_NAMES.map((n) => ({ id: n, name: n })) as never,
+            },
+            {
+              name: "sortOrder",
+              label: "Sort Order",
+              placeholder: "0",
+              value: formData.sortOrder,
+              onChange: changeHandler,
+              error: formState?.zodErrors?.sortOrder,
               type: "text",
             },
             {

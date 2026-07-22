@@ -291,17 +291,26 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     }
 
     // ---- Reads --------------------------------------------------------------
-    public class GetLeaveRequestById(IRepository<LeaveRequest> repository) : IGetLeaveRequestById
+    public class GetLeaveRequestById(
+        IRepository<LeaveRequest> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetLeaveRequestById
     {
         public async Task<LeaveRequestDto> GetAsync(Guid id)
         {
-            return await repository.GetAll().Where(r => r.Id == id).Select(LeaveRequestMapper.Projection)
+            var dto = await repository.GetAll().Where(r => r.Id == id).Select(LeaveRequestMapper.Projection)
                 .FirstOrDefaultAsync()
                 ?? throw new NotFoundException(nameof(LeaveRequest), id.ToString());
+            // HR admin, the employee themselves, or their manager (subtree) only.
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this leave request.");
+            return dto;
         }
     }
 
-    public class GetAllLeaveRequests(IRepository<LeaveRequest> repository) : IGetAllLeaveRequests
+    public class GetAllLeaveRequests(
+        IRepository<LeaveRequest> repository,
+        IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility) : IGetAllLeaveRequests
     {
         public async Task<PaginatedResponse<LeaveRequestDto>> GetAsync(GetAllRequest request)
         {
@@ -309,6 +318,25 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // Role-based visibility: HR admin sees all, a manager their unit subtree, else own only.
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+            {
+                var myEmp = scope.EmployeeId ?? Guid.Empty;
+                if (scope.IsManager)
+                {
+                    var unitIds = scope.UnitIds;
+                    var emps = employeeRepository.GetAll();
+                    query = query.Where(x => x.EmployeeId == myEmp ||
+                        emps.Any(e => e.Id == x.EmployeeId && e.Position != null && unitIds.Contains(e.Position.OrganizationUnitId)));
+                }
+                else
+                {
+                    query = query.Where(x => x.EmployeeId == myEmp);
+                }
+            }
+
             if (request.EmployeeId.HasValue && request.EmployeeId.Value != Guid.Empty)
                 query = query.Where(x => x.EmployeeId == request.EmployeeId.Value);
             if (!string.IsNullOrWhiteSpace(request.Status) &&

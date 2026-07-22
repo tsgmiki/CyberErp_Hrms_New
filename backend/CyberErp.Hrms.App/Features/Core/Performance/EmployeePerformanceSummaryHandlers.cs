@@ -55,10 +55,14 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<PerformanceImprovementPlan> pipRepository,
         IRepository<AppraisalAppeal> appealRepository,
         IRepository<Achievement> achievementRepository,
-        IRepository<EmployeeRecognition> recognitionRepository) : IGetEmployeePerformanceSummary
+        IRepository<EmployeeRecognition> recognitionRepository,
+        IPerformanceVisibilityService visibility) : IGetEmployeePerformanceSummary
     {
         public async Task<EmployeePerformanceSummaryDto> GetAsync(Guid employeeId)
         {
+            if (!await visibility.CanAccessEmployeeAsync(employeeId))
+                throw new ValidationException("access", "You do not have access to this employee's performance summary.");
+
             var employee = await employeeRepository.GetAll().AsNoTracking().FirstOrDefaultAsync(e => e.Id == employeeId)
                 ?? throw new NotFoundException(nameof(Employee), employeeId.ToString());
             var employeeName = await employeeRepository.GetAll().Where(e => e.Id == employeeId)

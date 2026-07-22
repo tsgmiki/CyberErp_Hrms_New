@@ -430,6 +430,10 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                                 : throw new NotFoundException("OrganizationUnit", a.ApproverId.ToString())),
                         WorkflowApproverType.ImmediateManager =>
                             new WorkflowApproverSpec(type, Guid.Empty, "Immediate Manager"),
+                        WorkflowApproverType.SecondLevelManager =>
+                            new WorkflowApproverSpec(type, Guid.Empty, "Second-Level Manager"),
+                        WorkflowApproverType.Subject =>
+                            new WorkflowApproverSpec(type, Guid.Empty, "Subject (the employee)"),
                         _ => throw new ValidationException("approverType", $"Unknown approver type '{a.ApproverType}'.")
                     };
                     approvers.Add(spec);
@@ -543,6 +547,33 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("HR Review", "HR"), ("Approving Authority", null)]),
             (WorkflowEntityTypes.CareerPathChangeRequest, "Career Path Change Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
+            // HC160 — a succession plan for a critical role is endorsed by the manager then HR before it goes live.
+            (WorkflowEntityTypes.SuccessionPlan, "Succession Plan Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
+            (WorkflowEntityTypes.RewardNomination, "Reward Nomination Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
+            // HC228 — a salary revision affects payroll cost; HR proposes, Finance + Executive sign off.
+            (WorkflowEntityTypes.SalaryRevision, "Salary Revision Approval",
+                [("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
+            // HC242 — a medical claim is reviewed by HR then Finance before reimbursement.
+            (WorkflowEntityTypes.MedicalClaim, "Medical Claim Approval",
+                [("HR Review", "HR"), ("Finance Review", "Finance")]),
+            // HC249 — an insurance coverage claim is reviewed by HR then Finance before the insurer payout.
+            (WorkflowEntityTypes.InsuranceClaim, "Insurance Claim Approval",
+                [("HR Review", "HR"), ("Finance Review", "Finance")]),
+            // HC251/HC259 — a staff loan is endorsed by HR, then Finance and Executive before disbursement.
+            (WorkflowEntityTypes.EmployeeLoan, "Employee Loan Approval",
+                [("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
+            // HC261 — per-scope trip chains; an international trip carries an extra Executive sign-off.
+            (WorkflowEntityTypes.TripLocal, "Local Trip Approval",
+                [("HR Approval", "HR")]),
+            (WorkflowEntityTypes.TripInternational, "International Trip Approval",
+                [("HR Review", "HR"), ("Executive Approval", "Executive")]),
+            // HC188/HC201 — per-type training chains; the costlier Abroad type carries an extra step.
+            (WorkflowEntityTypes.TrainingNeedLocal, "Local Training Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
+            (WorkflowEntityTypes.TrainingNeedAbroad, "Abroad Training Approval",
+                [("Manager Review", null), ("HR Approval", null), ("Executive Approval", "Executive")]),
         ];
 
         public async Task<int> SeedAsync()
@@ -561,21 +592,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             }
 
             // Appraisal routing carries real approver TYPES (not open steps): the subject employee acts on their
-            // own self-assessment + final signature, the manager / second-level manager on their reviews. Step
-            // NAMES must equal the AppraisalStage values — the appraisal keeps its instance in lockstep by name.
-            // HrSignOff is left open so an admin can attach the HR role/users on the workflow-config screen.
+            // own self-assessment + final signature, the manager / second-level manager on their reviews. Built
+            // by the Performance module (shared with the generate-time auto-ensure) so the definition is identical.
             if (!existing.Contains(WorkflowEntityTypes.Appraisal))
             {
-                var appr = WorkflowDefinition.Create("Appraisal Routing", WorkflowEntityTypes.Appraisal,
-                    "Collaborative appraisal routing (self → manager → 2nd-level → employee sign-off → HR)");
-                appr.SetSteps(new[]
-                {
-                    new WorkflowStepSpec("SelfAssessment", null, [new WorkflowApproverSpec(WorkflowApproverType.Subject, Guid.Empty, "Employee (self)")]),
-                    new WorkflowStepSpec("ManagerReview", null, [new WorkflowApproverSpec(WorkflowApproverType.ImmediateManager, Guid.Empty, "Immediate Manager")]),
-                    new WorkflowStepSpec("SecondLevelReview", null, [new WorkflowApproverSpec(WorkflowApproverType.SecondLevelManager, Guid.Empty, "Second-Level Manager")]),
-                    new WorkflowStepSpec("EmployeeAcknowledgment", null, [new WorkflowApproverSpec(WorkflowApproverType.Subject, Guid.Empty, "Employee (self)")]),
-                    new WorkflowStepSpec("HrSignOff", "HR", null),
-                });
+                var appr = Performance.AppraisalWorkflowService.BuildDefaultDefinition();
                 await repository.AddAsync(appr);
                 SaveWorkflowDefinition.StampStepTenant(appr);
                 created++;

@@ -45,5 +45,13 @@ export default interface ParameterModel {
   ownerType?: string;
   /** Filters dynamic forms to a single owning module (e.g. "Employee"). */
   module?: string;
+  /** Filters personnel actions to one movement type (Transfer / Promotion / Demotion). */
+  movementType?: string;
+  /** Filters training needs to one type (Local / Abroad). */
+  needType?: string;
+  /** Filters training sessions to one catalog course. */
+  courseId?: string;
+  /** Filters training enrollments to one session. */
+  sessionId?: string;
 
 }

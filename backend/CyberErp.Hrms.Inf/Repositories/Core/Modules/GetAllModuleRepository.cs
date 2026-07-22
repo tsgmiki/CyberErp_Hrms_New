@@ -25,7 +25,7 @@ public class GetAllModuleRepository(
         if (!string.IsNullOrWhiteSpace(request.SearchText))
         {
             var searchLower = request.SearchText.ToLower();
-            query = query.Where(m => m.SubSystem.ToLower().Contains(searchLower) ||
+            query = query.Where(m => m.Subsystem.Name.ToLower().Contains(searchLower) ||
                                      m.Name.ToLower().Contains(searchLower));
         }
 
@@ -51,9 +51,11 @@ public class GetAllModuleRepository(
         var data = await query.Select(m => new GetModuleDto
         {
             Id = m.Id,
-            SubSystem = m.SubSystem,
+            SubsystemId = m.SubsystemId,
+            SubSystem = m.Subsystem.Name,
             Name = m.Name,
-            Icon = m.Icon
+            Icon = m.Icon,
+            SortOrder = m.SortOrder
         }).ToListAsync(ct);
 
         return new PaginatedResponse<GetModuleDto>

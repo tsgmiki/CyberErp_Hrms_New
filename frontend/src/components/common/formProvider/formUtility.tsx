@@ -4,7 +4,7 @@ import InputField from "@/components/ui/inputField";
 import RadioField from "@/components/ui/radioField";
 import SelectField from "@/components/ui/selectField";
 import TextreaField from "@/components/ui/textreaField";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import type { FormComponentModel } from "@/models";
 import FileUploadField from "../../ui/fileUploadField";
 import CheckboxDropDownField from "../../ui/checkboxListField";
@@ -12,9 +12,12 @@ import MultiSelectField from "../../ui/multiSelectField";
 import CheckBoxField from "../../ui/checkBoxField";
 import DateField from "../../ui/dateField";
 import CustomField from "@/components/ui/customField";
-import HtmlEditorField from "@/components/ui/htmlEditorField";
 import FormSection from "./formSection";
 import { FORM_INPUT_CLASS, getFieldCellClass } from "./formLayout";
+
+// PERFORMANCE: the rich-text editor drags the whole tiptap toolkit into the bundle. It loads
+// lazily so the (many) forms without an "editor" field never pay for it.
+const HtmlEditorField = lazy(() => import("@/components/ui/htmlEditorField"));
 
 function mergeClass(...parts: Array<string | false | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -59,18 +62,22 @@ function FormFieldRenderer({ component }: { component: FormComponentModel }) {
   if (component.type === "hidden" || component.type === "label") {
     return (
       <div className={cellClass}>
+        {/* Controlled hidden field for FormData serialization — always a string (never undefined)
+            so it can't flip uncontrolled↔controlled; readOnly since it has no onChange. */}
         <input
-          hidden
+          type="hidden"
           name={component.name}
-          defaultValue={component.value}
-          value={component.value}
+          value={component.value ?? ""}
+          readOnly
         />
       </div>
     );
   }
 
+  // NOTE: no `key` here. A `key` inside a spread (`<Field {...common}/>`) is a React-19 anti-pattern
+  // (it warns and handles the key unreliably); each field is a single child + the parent already keys
+  // the FormFieldRenderer, so no key is needed on the field itself.
   const common = {
-    key: component.name,
     name: component.name,
     label: component.label,
     maxLength: component.maxLength,
@@ -193,11 +200,13 @@ function FormFieldRenderer({ component }: { component: FormComponentModel }) {
       break;
     case "editor":
       field = (
-        <HtmlEditorField
-          {...common}
-          type="editor"
-          onHtmlChange={component.onHtmlChange}
-        />
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-md border border-border bg-secondary/20" />}>
+          <HtmlEditorField
+            {...common}
+            type="editor"
+            onHtmlChange={component.onHtmlChange}
+          />
+        </Suspense>
       );
       break;
     default:

@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Recruitment;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// and the customizable, tokenized letter body rendered into the offer PDF that is e-mailed to
     /// the candidate on approval.
     /// </summary>
+    [RequirePermission("offerLetterTemplate", "jobApplication", "jobRequisition")]
     public class OfferLetterTemplateController(
         IGetOfferLetterTemplate getTemplate,
         ISaveOfferLetterTemplate saveTemplate,

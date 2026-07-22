@@ -13,6 +13,20 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+/** Seeds the standard HRMS report catalog for the current tenant (idempotent; mirrors menu seeding). */
+export async function seedDefaultReports(): Promise<{ ok: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/Report/seed-defaults`, {
+    method: "POST",
+    credentials: "include",
+  });
+  const text = await response.text();
+  const parsed = isValidJson(text) ? JSON.parse(text) : { message: text };
+  if (!response.ok) {
+    return { ok: false, message: errorMessageParser(parsed.errors || parsed) || "Seeding failed" };
+  }
+  return { ok: true, message: parsed?.message ?? "Standard reports seeded" };
+}
+
 // ---- Viewer -----------------------------------------------------------------
 
 /** Active reports grouped by category (the report menu). */

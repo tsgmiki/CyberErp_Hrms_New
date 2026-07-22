@@ -132,6 +132,12 @@ export const UserSchema = z
 
 export const ModuleSchema = z.object({
   name: z.string().min(2, "Name is Required").max(200),
+  subsystemId: z.string().min(2, "Sub System is Required").max(200),
+});
+
+export const SubsystemSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  code: z.string().min(1, "Code is Required").max(50),
 });
 
 export const OperationSchema = z.object({
@@ -1423,6 +1429,38 @@ export const RecognitionSchema = z.object({
   recognizedOn: z.string().min(1, "Date is Required"),
 });
 
+// ===== Reward & Recognition §3.7.4 (HC177–HC186) =====
+export const AwardCategorySchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
+});
+
+export const RecognitionProgramSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
+  period: z.string().min(1, "Period is Required"),
+});
+
+export const RewardNominationSchema = z.object({
+  nomineeEmployeeId: z.string().min(1, "Nominee is Required"),
+  recognitionBadgeId: z.string().min(1, "Award is Required"),
+  reason: z.string().min(2, "Reason is Required").max(1000),
+});
+
+// ===== Training & Development §3.8 (HC187–HC202) =====
+export const TrainingCategorySchema = z.object({
+  name: z.string().min(2, "Name is Required").max(150),
+});
+
+export const TrainingCourseSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+  deliveryMode: z.string().min(1, "Delivery Mode is Required"),
+});
+
+export const TrainingSessionSchema = z.object({
+  trainingCourseId: z.string().min(1, "Course is Required"),
+  startDate: z.string().min(1, "Start Date is Required"),
+  endDate: z.string().min(1, "End Date is Required"),
+});
+
 // ===== Career Development §3.7.A — Succession Planning =====
 export const CriticalPositionSchema = z.object({
   positionId: z.string().min(1, "Position is Required"),
@@ -1457,4 +1495,42 @@ export const MentorshipSchema = z.object({
 export const CareerPathChangeRequestSchema = z.object({
   employeeId: z.string().min(1, "Employee is Required"),
   requestedCareerPathId: z.string().min(1, "Requested career path is Required"),
+});
+
+// ===== Compensation §3.10.3 — Insurance =====
+export const InsurancePolicySchema = z.object({
+  policyNumber: z.string().min(1, "Policy number is Required").max(50),
+  insurerName: z.string().min(1, "Insurer is Required").max(200),
+});
+
+// ===== Compensation §3.10.2 — Medical =====
+export const MedicalProviderSchema = z.object({
+  name: z.string().min(1, "Name is Required").max(200),
+});
+export const MedicalPlanSchema = z.object({
+  name: z.string().min(1, "Name is Required").max(200),
+});
+export const MedicalContractSchema = z.object({
+  medicalProviderId: z.string().min(1, "Provider is Required"),
+});
+
+// ===== Compensation §3.10.4 — Employee Loan =====
+export const LoanTypeSchema = z.object({
+  name: z.string().min(1, "Name is Required").max(150),
+});
+
+// ===== Compensation §3.10.5 — Trip =====
+export const PerDiemRateSchema = z.object({
+  jobGradeId: z.string().min(1, "Job grade is Required"),
+});
+export const TripBudgetSchema = z.object({
+  fiscalYear: z.string().min(1, "Fiscal year is Required"),
+});
+
+// ===== Compensation §3.10.1 — Compensation & Benefit =====
+export const AllowanceTypeSchema = z.object({
+  name: z.string().min(1, "Name is Required").max(150),
+});
+export const BenefitPlanSchema = z.object({
+  name: z.string().min(1, "Name is Required").max(200),
 });

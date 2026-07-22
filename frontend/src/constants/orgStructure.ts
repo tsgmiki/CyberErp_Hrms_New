@@ -100,6 +100,17 @@ export const workflowEntityTypeOptions = [
   { id: "JobRequisition", name: "Job Requisition" },
   { id: "JobOffer", name: "Job Offer" },
   { id: "Appraisal", name: "Appraisal" },
+  { id: "CareerPathChangeRequest", name: "Career Path Change" },
+  { id: "SuccessionPlan", name: "Succession Plan" },
+  { id: "RewardNomination", name: "Reward Nomination" },
+  { id: "SalaryRevision", name: "Salary Revision" },
+  { id: "MedicalClaim", name: "Medical Claim" },
+  { id: "InsuranceClaim", name: "Insurance Claim" },
+  { id: "EmployeeLoan", name: "Employee Loan" },
+  { id: "TripRequest.Local", name: "Local Trip" },
+  { id: "TripRequest.International", name: "International Trip" },
+  { id: "TrainingNeed.Local", name: "Local Training" },
+  { id: "TrainingNeed.Abroad", name: "Abroad Training" },
 ];
 
 /** Recruitment levels a screening criterion can be scoped to (empty id = all steps). */
@@ -135,6 +146,73 @@ export const movementTypeOptions = ["Transfer", "Promotion", "Demotion"].map((v)
   id: v,
   name: v,
 }));
+
+/** What a Transfer changes (HC171). */
+export const transferKindOptions = ["Role", "Department", "Location"].map((v) => ({
+  id: v,
+  name: v,
+}));
+
+/** What an award materially confers (HC177). */
+export const rewardKindOptions = [
+  { id: "Badge", name: "Badge" },
+  { id: "Certificate", name: "Certificate" },
+  { id: "GiftCard", name: "Gift Card" },
+  { id: "MonetaryBonus", name: "Monetary Bonus" },
+  { id: "PointsBased", name: "Points Based" },
+  { id: "RisingStar", name: "Rising Star" },
+];
+
+/** Recognition-program cadence (HC182). */
+export const programPeriodOptions = [
+  { id: "Monthly", name: "Monthly" },
+  { id: "Quarterly", name: "Quarterly" },
+  { id: "Annual", name: "Annual" },
+  { id: "AdHoc", name: "Ad hoc" },
+];
+
+/** How a course is delivered (HC196). */
+export const trainingDeliveryModeOptions = [
+  { id: "InPerson", name: "In Person" },
+  { id: "Online", name: "Online" },
+  { id: "Hybrid", name: "Hybrid" },
+];
+
+/** Where the training is delivered (HC187) — drives the approval chain. */
+export const trainingNeedTypeOptions = [
+  { id: "Local", name: "Local" },
+  { id: "Abroad", name: "Abroad" },
+];
+
+export const trainingNeedPriorityOptions = [
+  { id: "Low", name: "Low" },
+  { id: "Medium", name: "Medium" },
+  { id: "High", name: "High" },
+  { id: "Critical", name: "Critical" },
+];
+
+/** Who delivers a session (HC197). */
+export const trainerTypeOptions = [
+  { id: "Internal", name: "Internal" },
+  { id: "External", name: "External" },
+];
+
+/** Session recurrence for the series helper (HC197). */
+export const sessionRecurrenceOptions = [
+  { id: "", name: "One-off (no repeat)" },
+  { id: "Weekly", name: "Weekly" },
+  { id: "Monthly", name: "Monthly" },
+];
+
+/** Trackable company property kinds (HC214). */
+export const assetCategoryOptions = [
+  { id: "ITEquipment", name: "IT Equipment" },
+  { id: "AccessCard", name: "Access Card" },
+  { id: "Key", name: "Office Key" },
+  { id: "Vehicle", name: "Vehicle" },
+  { id: "Tool", name: "Tool" },
+  { id: "Other", name: "Other" },
+];
 
 /** Disciplinary sanctions. */
 export const measureTypeOptions = [

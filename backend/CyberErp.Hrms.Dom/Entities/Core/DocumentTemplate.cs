@@ -13,7 +13,15 @@ public enum DocumentTemplateType
     IdCard = 2,
     Other = 3,
     ClearanceCertificate = 4,
-    AnnualLeaveRequest = 5
+    AnnualLeaveRequest = 5,
+    /// <summary>Formal transfer notice (HC174): new role, location, start date and reporting line.</summary>
+    TransferNotice = 6,
+    /// <summary>Digital certificate for a completed training (HC200).</summary>
+    TrainingCertificate = 7,
+    /// <summary>Exit letters (HC211): resignation acceptance / termination notice.</summary>
+    TerminationNotice = 8,
+    /// <summary>Final settlement letter (HC218) with the worksheet lines.</summary>
+    SettlementLetter = 9
 }
 
 /// <summary>

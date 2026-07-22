@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddHrmsSession(this IServiceCollection services)
     {
         services.AddDistributedMemoryCache();
+        services.AddMemoryCache();   // per-user permission-link cache (EndpointPermissionService)
         services.AddSession(options =>
         {
             options.IdleTimeout = TimeSpan.FromMinutes(30);
@@ -50,7 +51,11 @@ public static class ServiceCollectionExtensions
 
     public static IServiceCollection AddHrmsControllers(this IServiceCollection services)
     {
-        services.AddControllers()
+        services.AddControllers(options =>
+            {
+                // Server-side per-operation permission enforcement (opt-in via [RequirePermission]).
+                options.Filters.Add<PermissionAuthorizationFilter>();
+            })
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.ConfigureForNodaTime(DateTimeZoneProviders.Tzdb);

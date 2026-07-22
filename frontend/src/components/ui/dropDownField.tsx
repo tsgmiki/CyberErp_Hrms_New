@@ -39,7 +39,7 @@ const DropDownField = ({
   const [open, setOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState("");
   const [currentValue, setCurrentValue] = useState({
-    id: value,
+    id: value ?? "",
     name: displayValue || "",
   });
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({

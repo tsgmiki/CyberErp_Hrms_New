@@ -1,5 +1,5 @@
 "use client";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import React from "react";
 import { Handshake, CalendarClock } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,13 +8,11 @@ import { StatusMessage } from "../../common/statusMessage/status";
 import Loading from "../../common/loader/loader";
 import { FormUtility } from "@/components/common/formProvider/formUtility";
 import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
+import EmployeePicker from "@/components/common/employeePicker";
 import saveMentorship from "@/services/admin/mentorship/save";
 import getMentorship from "@/services/admin/mentorship/get";
-import getAllEmployee from "@/services/admin/employee/getAll";
-import { parameterInitialData } from "@/constants/initialization";
 import { mentorshipContextOptions, mentorshipStatusOptions } from "@/constants/careerDevelopment";
 
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 const label = (opts: { id: string; name: string }[], v?: string) => opts.find((o) => o.id === v)?.name ?? (v ?? "");
 
 function MentorshipForm({ id, setId }: { id: string; setId: (id: string) => void }) {
@@ -29,14 +27,6 @@ function MentorshipForm({ id, setId }: { id: string; setId: (id: string) => void
     queryFn: () => getMentorship(id),
     enabled: typeof id != "undefined" && id != "",
   });
-
-  const { data: employees } = useQuery({
-    queryKey: ["employees", "mentorshipPicker"],
-    queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }),
-    staleTime: 60_000,
-  });
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
-  const eName = (v?: string) => employeeOptions.find((o) => o.id === v)?.name ?? "";
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -73,8 +63,29 @@ function MentorshipForm({ id, setId }: { id: string; setId: (id: string) => void
             keepMounted: true,
             content: (
               <div className="grid min-h-[15rem] grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormUtility component={{ name: "mentorEmployeeId", label: "Mentor", required: true, type: "dropDown", layout: "auth", value: formData.mentorEmployeeId, displayValue: formData.mentorName ?? eName(formData.mentorEmployeeId), error: formState?.zodErrors?.mentorEmployeeId, data: employeeOptions as never, onSelect: selectHandler }} />
-                <FormUtility component={{ name: "menteeEmployeeId", label: "Mentee", required: true, type: "dropDown", layout: "auth", value: formData.menteeEmployeeId, displayValue: formData.menteeName ?? eName(formData.menteeEmployeeId), error: formState?.zodErrors?.menteeEmployeeId, data: employeeOptions as never, onSelect: selectHandler }} />
+                {/* Server-search picker — the employee table is never bulk-loaded (10k+ scale). */}
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Mentor *</label>
+                  <EmployeePicker
+                    value={formData.mentorEmployeeId}
+                    displayValue={formData.mentorName}
+                    onSelect={(eid, name) => setFormData((p) => ({ ...p, mentorEmployeeId: eid, mentorName: name }))}
+                  />
+                  {formState?.zodErrors?.mentorEmployeeId && (
+                    <p className="mt-1 text-xs text-error">{formState.zodErrors.mentorEmployeeId[0]}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-muted">Mentee *</label>
+                  <EmployeePicker
+                    value={formData.menteeEmployeeId}
+                    displayValue={formData.menteeName}
+                    onSelect={(eid, name) => setFormData((p) => ({ ...p, menteeEmployeeId: eid, menteeName: name }))}
+                  />
+                  {formState?.zodErrors?.menteeEmployeeId && (
+                    <p className="mt-1 text-xs text-error">{formState.zodErrors.menteeEmployeeId[0]}</p>
+                  )}
+                </div>
                 <FormUtility component={{ name: "context", label: "Context", required: true, type: "dropDown", layout: "auth", value: formData.context ?? "General", displayValue: label(mentorshipContextOptions, formData.context ?? "General"), data: mentorshipContextOptions as never, onSelect: selectHandler }} />
                 <FormUtility component={{ name: "status", label: "Status", required: true, type: "dropDown", layout: "auth", value: formData.status ?? "Active", displayValue: label(mentorshipStatusOptions, formData.status ?? "Active"), data: mentorshipStatusOptions as never, onSelect: selectHandler }} />
               </div>
@@ -99,6 +110,9 @@ function MentorshipForm({ id, setId }: { id: string; setId: (id: string) => void
       />
 
       <input type="hidden" name="id" value={formData.id ?? ""} readOnly />
+      {/* EmployeePicker holds no named input — these carry the ids into the FormData submit. */}
+      <input type="hidden" name="mentorEmployeeId" value={formData.mentorEmployeeId ?? ""} readOnly />
+      <input type="hidden" name="menteeEmployeeId" value={formData.menteeEmployeeId ?? ""} readOnly />
 
       <div className="flex items-center justify-end border-t border-border pt-3">
         <button type="submit" disabled={isLoading} className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-on-accent transition-colors hover:bg-primary-hover disabled:opacity-50">{isLoading ? "Saving…" : "Save Mentorship"}</button>

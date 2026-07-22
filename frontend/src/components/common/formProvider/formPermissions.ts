@@ -22,16 +22,22 @@ export function useFormPermissions(
   const pathName = useLocation().pathname;
 
   return useMemo(() => {
-    const routePermission = permissions?.find((p) =>
-      pathName.includes(p.link as string),
-    );
+    // Match on a full path segment, NOT a raw substring — otherwise a sibling route whose link is a
+    // prefix of another (e.g. "/loan" ⊂ "/loanType", "/trip" ⊂ "/tripBudget") would wrongly inherit
+    // the shorter route's permissions and disable Save. Still matches nested routes ("/loan/123").
+    const matchesRoute = (link?: string) => {
+      if (!link) return false;
+      return pathName === link || pathName.startsWith(`${link}/`);
+    };
+
+    const routePermission = permissions?.find((p) => matchesRoute(p.link as string));
 
     const blockedByRoute =
       typeof permissions !== "undefined" &&
       permissions.length > 0 &&
       permissions.some(
         (p) =>
-          pathName.includes(p.link as string) &&
+          matchesRoute(p.link as string) &&
           (p.canAdd === false || p.canEdit === false),
       );
 

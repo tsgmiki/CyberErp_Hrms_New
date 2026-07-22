@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CyberErp.Hrms.App.Common.DTOs;
+using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -43,10 +44,16 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public interface IGetPerformanceHistory { Task<List<PerformanceHistoryDto>> GetAsync(string entityType, Guid entityId); }
 
-    public class GetPerformanceHistory(IRepository<PerformanceHistory> repository) : IGetPerformanceHistory
+    public class GetPerformanceHistory(
+        IRepository<PerformanceHistory> repository,
+        IPerformanceVisibilityService visibility) : IGetPerformanceHistory
     {
         public async Task<List<PerformanceHistoryDto>> GetAsync(string entityType, Guid entityId)
         {
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+                throw new ValidationException("access", "Only HR can view performance history.");
+
             return await repository.GetAll().AsNoTracking()
                 .Where(h => h.EntityType == entityType && h.EntityId == entityId)
                 .OrderByDescending(h => h.CreatedAt)

@@ -10,12 +10,23 @@ public enum MovementType
     Demotion = 2
 }
 
-/// <summary>Lifecycle of a personnel action: recorded → executed against the employee master (or cancelled).</summary>
+/// <summary>Lifecycle of a personnel action: recorded → (optionally approved, awaiting its effective
+/// date) → executed against the employee master (or cancelled).</summary>
 public enum MovementStatus
 {
     Pending = 0,
     Completed = 1,
-    Cancelled = 2
+    Cancelled = 2,
+    /// <summary>Workflow-approved but future-dated — a scheduler executes it on the effective date (HC176).</summary>
+    Approved = 3
+}
+
+/// <summary>What a Transfer changes (HC171): the role, the department/unit, or the work location.</summary>
+public enum TransferKind
+{
+    Role = 0,
+    Department = 1,
+    Location = 2
 }
 
 /// <summary>
@@ -50,6 +61,14 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
     public string? Remark { get; private set; }
     public DateTime? ExecutedAt { get; private set; }
 
+    // Transfer-request details (HC170/HC171/HC173).
+    /// <summary>What the transfer changes (Role / Department / Location) — Transfer rows only.</summary>
+    public TransferKind? TransferKind { get; private set; }
+    /// <summary>Who initiated the request (employee self-service, their manager, or HR) — audit snapshot, no FK.</summary>
+    public Guid? RequestedByEmployeeId { get; private set; }
+    /// <summary>Estimated relocation cost for budget-impact tracking (HC173) — Transfer rows only.</summary>
+    public decimal? RelocationExpense { get; private set; }
+
     private EmployeeMovement() : base() { }
 
     public static EmployeeMovement Create(
@@ -58,11 +77,12 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
         DateTime effectiveDate,
         Guid? fromPositionId, Guid? fromSalaryScaleId, decimal? fromSalary, Guid? fromBranchId,
         Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary,
-        string? reason = null, string? remark = null)
+        string? reason = null, string? remark = null,
+        TransferKind? transferKind = null, Guid? requestedByEmployeeId = null, decimal? relocationExpense = null)
     {
         if (employeeId == Guid.Empty)
             throw new ArgumentException("Employee is required.", nameof(employeeId));
-        Guard(movementType, toPositionId, toSalaryScaleId, toSalary);
+        Guard(movementType, toPositionId, toSalaryScaleId, toSalary, transferKind, relocationExpense);
 
         return new EmployeeMovement
         {
@@ -77,7 +97,10 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
             ToSalaryScaleId = toSalaryScaleId,
             ToSalary = toSalary,
             Reason = reason,
-            Remark = remark
+            Remark = remark,
+            TransferKind = transferKind,
+            RequestedByEmployeeId = requestedByEmployeeId,
+            RelocationExpense = relocationExpense
         };
     }
 
@@ -86,10 +109,11 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
         MovementType movementType,
         DateTime effectiveDate,
         Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary,
-        string? reason, string? remark)
+        string? reason, string? remark,
+        TransferKind? transferKind = null, decimal? relocationExpense = null)
     {
         EnsurePending();
-        Guard(movementType, toPositionId, toSalaryScaleId, toSalary);
+        Guard(movementType, toPositionId, toSalaryScaleId, toSalary, transferKind, relocationExpense);
         MovementType = movementType;
         EffectiveDate = effectiveDate;
         ToPositionId = toPositionId;
@@ -97,12 +121,23 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
         ToSalary = toSalary;
         Reason = reason;
         Remark = remark;
+        TransferKind = transferKind;
+        RelocationExpense = relocationExpense;
+        base.Update();
+    }
+
+    /// <summary>Workflow-approved but future-dated (HC176): parked until the scheduler executes it on
+    /// the effective date. Immutable except for execution or cancellation.</summary>
+    public void MarkApproved()
+    {
+        EnsurePending();
+        Status = MovementStatus.Approved;
         base.Update();
     }
 
     public void MarkExecuted(Guid? resolvedToBranchId)
     {
-        EnsurePending();
+        EnsureExecutable();
         ToBranchId = resolvedToBranchId;
         Status = MovementStatus.Completed;
         ExecutedAt = DateTime.UtcNow;
@@ -111,7 +146,7 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
 
     public void Cancel()
     {
-        EnsurePending();
+        EnsureExecutable();   // Pending or Approved (a parked future-dated action can still be called off)
         Status = MovementStatus.Cancelled;
         base.Update();
     }
@@ -122,7 +157,15 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
             throw new InvalidOperationException($"A {Status} movement can no longer be modified.");
     }
 
-    private static void Guard(MovementType type, Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary)
+    /// <summary>Execution/cancellation applies to recorded (Pending) or approved-awaiting-date rows.</summary>
+    private void EnsureExecutable()
+    {
+        if (Status is not (MovementStatus.Pending or MovementStatus.Approved))
+            throw new InvalidOperationException($"A {Status} movement can no longer be modified.");
+    }
+
+    private static void Guard(MovementType type, Guid? toPositionId, Guid? toSalaryScaleId, decimal? toSalary,
+        TransferKind? transferKind, decimal? relocationExpense)
     {
         if (type == MovementType.Transfer && !toPositionId.HasValue)
             throw new ArgumentException("A transfer requires a target position.", nameof(toPositionId));
@@ -134,5 +177,10 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
             throw new ArgumentException("A promotion/demotion must change at least the position, salary scale or salary.", nameof(toSalaryScaleId));
         if (toSalary is < 0)
             throw new ArgumentException("Salary cannot be negative.", nameof(toSalary));
+        // Transfer-request details apply to transfers only (HC171/HC173).
+        if (type != MovementType.Transfer && (transferKind.HasValue || relocationExpense.HasValue))
+            throw new ArgumentException("Transfer kind and relocation expense apply to transfers only.", nameof(transferKind));
+        if (relocationExpense is < 0)
+            throw new ArgumentException("Relocation expense cannot be negative.", nameof(relocationExpense));
     }
 }

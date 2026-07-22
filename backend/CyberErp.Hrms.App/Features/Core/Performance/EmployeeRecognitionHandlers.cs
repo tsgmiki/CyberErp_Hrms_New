@@ -56,6 +56,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<EmployeeRecognition> repository,
         IRepository<Employee> employeeRepository,
         IRepository<RecognitionBadge> badgeRepository,
+        IRepository<RewardPointsTransaction> pointsRepository,
+        IRepository<RewardDisbursement> disbursementRepository,
         IPerformanceHistoryWriter history,
         IValidator<SaveEmployeeRecognitionDto> validator,
         ILogger<SaveEmployeeRecognition> logger) : ISaveEmployeeRecognition
@@ -67,8 +69,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             if (!await employeeRepository.GetAll().AnyAsync(e => e.Id == dto.EmployeeId))
                 throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
-            if (!await badgeRepository.GetAll().AnyAsync(b => b.Id == dto.RecognitionBadgeId))
-                throw new NotFoundException(nameof(RecognitionBadge), dto.RecognitionBadgeId.ToString());
+            var badge = await badgeRepository.GetAll().AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == dto.RecognitionBadgeId)
+                ?? throw new NotFoundException(nameof(RecognitionBadge), dto.RecognitionBadgeId.ToString());
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
@@ -83,6 +86,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var created = EmployeeRecognition.Create(dto.EmployeeId, dto.RecognitionBadgeId, dto.Citation, dto.RecognizedOn, dto.IsPublic);
             await repository.AddAsync(created);
+            // HC180/HC185 — a direct grant carries the badge's reward value like any approved nomination.
+            await Rewards.RewardGrantShared.ApplyGrantSideEffectsAsync(created, badge, pointsRepository, disbursementRepository);
             await history.WriteAsync("Recognition", created.Id, "Recognized", $"Recognition granted: {dto.Citation}.");
             await repository.SaveChangesAsync();
             logger.LogInformation("Created EmployeeRecognition {Id}", created.Id);
@@ -92,12 +97,35 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class DeleteEmployeeRecognition(
         IRepository<EmployeeRecognition> repository,
+        IRepository<RewardPointsTransaction> pointsRepository,
+        IRepository<RewardDisbursement> disbursementRepository,
         ILogger<DeleteEmployeeRecognition> logger) : IDeleteEmployeeRecognition
     {
         public async Task DeleteAsync(Guid id)
         {
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(EmployeeRecognition), id.ToString());
+
+            // Keep the ledger consistent: reverse points the grant earned and cancel its unpaid payment.
+            var earned = await pointsRepository.GetAll()
+                .Where(x => x.ReferenceId == id && x.Source == RewardPointsSource.Recognition)
+                .SumAsync(x => (int?)x.Points) ?? 0;
+            if (earned > 0)
+            {
+                var reversal = RewardPointsTransaction.Create(entity.EmployeeId, -earned, RewardPointsSource.Adjustment,
+                    DateTime.UtcNow.Date, id, "Reversal — recognition deleted");
+                if (string.IsNullOrEmpty(reversal.TenantId)) reversal.TenantId = entity.TenantId;
+                await pointsRepository.AddAsync(reversal);
+            }
+            var pendingPayments = await disbursementRepository.GetAll()
+                .Where(x => x.EmployeeRecognitionId == id && x.Status == DisbursementStatus.Pending)
+                .ToListAsync();
+            foreach (var payment in pendingPayments)
+            {
+                payment.Cancel();
+                disbursementRepository.UpdateAsync(payment);
+            }
+
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted EmployeeRecognition {Id}", id);
@@ -159,13 +187,18 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
             var badgeIds = rows.Select(r => r.RecognitionBadgeId).Distinct().ToList();
             var badges = await badgeRepository.GetAll().Where(b => badgeIds.Contains(b.Id)).ToDictionaryAsync(b => b.Id);
-            var employees = employeeRepository.GetAll();
+
+            // PERFORMANCE: batch-load the employee names for the page in ONE query (was one per row).
+            var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().AsNoTracking()
+                .Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
             var data = new List<EmployeeRecognitionDto>(rows.Count);
             foreach (var r in rows)
             {
-                var employeeName = await employees.Where(e => e.Id == r.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                data.Add(EmployeeRecognitionMapper.Map(r, employeeName, badges.GetValueOrDefault(r.RecognitionBadgeId)));
+                data.Add(EmployeeRecognitionMapper.Map(r, employeeNames.GetValueOrDefault(r.EmployeeId), badges.GetValueOrDefault(r.RecognitionBadgeId)));
             }
             return new PaginatedResponse<EmployeeRecognitionDto> { Total = total, Data = data };
         }

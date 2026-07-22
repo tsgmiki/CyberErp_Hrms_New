@@ -9,6 +9,7 @@ import {
   Ban,
   Hourglass,
   BadgeCheck,
+  FileText,
 } from "lucide-react";
 import type { EmployeeTerminationModel, TerminationClearanceModel } from "@/models";
 import {
@@ -22,6 +23,10 @@ import Modal from "@/components/common/modal";
 import { useCustomFields } from "./customFieldsHook";
 import { StatusMessage } from "../../common/statusMessage/status";
 import { terminationTypeOptions } from "@/constants/orgStructure";
+import AssetRecoveryPanel from "./assetRecoveryPanel";
+import ExitLetterModal from "./exitLetterModal";
+import ExitInterviewPanel from "./exitInterviewPanel";
+import ExitSettlementPanel from "./exitSettlementPanel";
 
 const FormProvider = memo(FormProviders);
 const fmtDate = (v?: string) => (v ? v.slice(0, 10) : "—");
@@ -80,6 +85,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [confirmFinalize, setConfirmFinalize] = useState(false);
+  const [showLetter, setShowLetter] = useState(false);
   const [formState, setFormState] = useState<any>({});
   const [formData, setFormData] = useState<EmployeeTerminationModel>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -185,6 +191,13 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
               </span>
             </h3>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLetter(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-foreground hover:bg-secondary/40"
+              >
+                <FileText size={14} /> {t("Exit Letter")}
+              </button>
               {active.status === "ClearanceInProgress" && (
                 <button
                   type="button"
@@ -270,7 +283,24 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
               </div>
             </div>
           )}
+
+          {/* Company-asset recovery checklist (HC214/HC215) */}
+          {active.id && active.status === "ClearanceInProgress" && (
+            <AssetRecoveryPanel terminationId={active.id} />
+          )}
+
+          {/* Exit interview + final settlement (HC216–HC219) — once the case is approved */}
+          {active.id && active.status === "ClearanceInProgress" && (
+            <>
+              <ExitInterviewPanel terminationId={active.id} />
+              <ExitSettlementPanel terminationId={active.id} />
+            </>
+          )}
         </div>
+      )}
+
+      {showLetter && active?.id && (
+        <ExitLetterModal terminationId={active.id} onClose={() => setShowLetter(false)} />
       )}
 
       {/* Case history */}

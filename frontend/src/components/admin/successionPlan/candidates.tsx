@@ -1,6 +1,6 @@
 "use client";
-import { memo, useCallback, useMemo, useState } from "react";
-import { Target, Gauge, UserSearch, UserRound, GraduationCap, BookOpen, ListChecks } from "lucide-react";
+import { memo, useCallback, useState } from "react";
+import { Target, Gauge, UserSearch, UserRound, GraduationCap, BookOpen, ListChecks, Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "@/components/common/modal";
 import { FormUtility } from "@/components/common/formProvider/formUtility";
@@ -18,14 +18,16 @@ import { getCompetencyGap } from "@/services/admin/successionCandidate/gap";
 import { createDevelopmentPlanFromSuccession } from "@/services/admin/successionCandidate/developmentPlan";
 import { computeReadiness } from "@/services/admin/successionCandidate/readiness";
 import { getCandidateProfile } from "@/services/admin/successionCandidate/profile";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import getSuggestedSuccessors from "@/services/admin/successionPlan/suggested";
+import EmployeePicker from "@/components/common/employeePicker";
 import { parameterInitialData } from "@/constants/initialization";
 import {
   readinessLevelOptions, successionActionTypeOptions, successionActionStatusOptions, knowledgeTransferStatusOptions,
 } from "@/constants/careerDevelopment";
 
-const empName = (e: any) => `${e.fullName ?? `${e.firstName ?? ""} ${e.grandFatherName ?? ""}`.trim()}${e.employeeNumber ? ` (${e.employeeNumber})` : ""}`;
 const label = (opts: { id: string; name: string }[], v?: string) => opts.find((o) => o.id === v)?.name ?? (v ?? "");
+/** 9-box band display (1=Low, 2=Medium, 3=High). */
+const bandName = (b?: number) => ["—", "Low", "Medium", "High"][b ?? 0] ?? "—";
 
 function Candidates({ planId }: { planId: string }) {
   const queryClient = useQueryClient();
@@ -45,13 +47,13 @@ function Candidates({ planId }: { planId: string }) {
     queryFn: () => getAllSuccessionCandidate({ ...parameterInitialData, take: 200, parentId: planId }),
     enabled: !!planId,
   });
-  const { data: employees } = useQuery({
-    queryKey: ["employees", "candidatePicker"],
-    queryFn: () => getAllEmployee({ ...parameterInitialData, take: 500 }),
-    staleTime: 60_000, enabled: open,
+  // Talent Review → Succession hand-off: HiPos from talent reviews not yet on this plan,
+  // offered as one-click suggestions when adding a successor.
+  const { data: suggestions } = useQuery({
+    queryKey: ["successionSuggestions", planId],
+    queryFn: () => getSuggestedSuccessors(planId),
+    enabled: !!planId && open && !form.id,
   });
-  const employeeOptions = useMemo(() => (employees?.data ?? []).map((e) => ({ id: e.id!, name: empName(e) })), [employees]);
-  const eName = (id?: string) => employeeOptions.find((o) => o.id === id)?.name ?? "";
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["successionCandidates", planId] });
     queryClient.invalidateQueries({ queryKey: ["successionPlan", planId, "chart"] });
@@ -130,7 +132,39 @@ function Candidates({ planId }: { planId: string }) {
                   keepMounted: true,
                   content: (
                     <div className="grid min-h-[15rem] grid-cols-1 gap-4 sm:grid-cols-2">
-                      <FormUtility component={{ name: "employeeId", label: "Successor", required: true, type: "dropDown", layout: "auth", value: form.employeeId, displayValue: eName(form.employeeId), data: employeeOptions as never, onSelect: (_n, r: any) => set("employeeId", r.id) }} />
+                      {/* Talent Review → Succession hand-off: HiPos flagged in reviews, one click to nominate. */}
+                      {!form.id && (suggestions?.length ?? 0) > 0 && (
+                        <div className="sm:col-span-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+                          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-primary">
+                            <Sparkles size={13} /> Suggested from Talent Review (HiPo)
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {suggestions!.map((s) => (
+                              <button
+                                key={s.employeeId}
+                                type="button"
+                                onClick={() => { set("employeeId", s.employeeId); set("employeeName", s.employeeName); }}
+                                title={`${s.reviewName ?? "Talent review"} — Performance: ${bandName(s.performanceBand)}, Potential: ${bandName(s.potentialBand)}`}
+                                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                  form.employeeId === s.employeeId
+                                    ? "border-primary bg-primary/15 font-semibold text-primary"
+                                    : "border-border bg-card text-foreground hover:border-primary/50 hover:text-primary"}`}
+                              >
+                                {s.employeeName} · {bandName(s.performanceBand)}/{bandName(s.potentialBand)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {/* Server-search picker — no bulk employee load (10k+ scale). */}
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted">Successor *</label>
+                        <EmployeePicker
+                          value={form.employeeId}
+                          displayValue={form.employeeName}
+                          onSelect={(eid, name) => { set("employeeId", eid); set("employeeName", name); }}
+                        />
+                      </div>
                       <FormUtility component={{ name: "readiness", label: "Readiness", type: "dropDown", layout: "auth", value: form.readiness, displayValue: label(readinessLevelOptions, form.readiness), data: readinessLevelOptions as never, onSelect: (_n, r: any) => set("readiness", r.id) }} />
                       <FormUtility component={{ name: "rank", label: "Rank", type: "text", inputType: "number", layout: "auth", value: form.rank, onChange: (e) => set("rank", e.target.value) }} />
                       <FormUtility component={{ name: "readinessScore", label: "Readiness Score (0–100)", type: "text", inputType: "number", layout: "auth", value: form.readinessScore, onChange: (e) => set("readinessScore", e.target.value) }} />
@@ -216,12 +250,28 @@ function Candidates({ planId }: { planId: string }) {
                         <p className="text-xs text-muted">Use the actions above to compute readiness, view the performance profile, or analyze the competency gap.</p>
                       )}
                       {profile && (
-                        <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/60 bg-background/50 p-3 text-xs sm:grid-cols-4">
-                          <Stat label="Latest appraisal" value={profile.performance?.latestAppraisal?.overallScore != null ? String(profile.performance.latestAppraisal.overallScore) : "—"} />
-                          <Stat label="Active goals" value={String(profile.performance?.activeGoals ?? 0)} />
-                          <Stat label="Achievements" value={String(profile.performance?.achievementsCount ?? 0)} />
-                          <Stat label="Recognitions" value={String(profile.performance?.recognitionsCount ?? 0)} />
-                        </div>
+                        <>
+                          <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/60 bg-background/50 p-3 text-xs sm:grid-cols-4">
+                            <Stat label="Latest appraisal" value={profile.performance?.latestAppraisal?.overallScore != null ? String(profile.performance.latestAppraisal.overallScore) : "—"} />
+                            <Stat label="Active goals" value={String(profile.performance?.activeGoals ?? 0)} />
+                            <Stat label="Achievements" value={String(profile.performance?.achievementsCount ?? 0)} />
+                            <Stat label="Recognitions" value={String(profile.performance?.recognitionsCount ?? 0)} />
+                          </div>
+                          {/* HC158: the talent-review outcome closes the loop — what the review panel
+                              concluded about this person, next to the role-specific readiness. */}
+                          <div className="mt-2 grid grid-cols-2 gap-2 rounded-lg border border-border/60 bg-background/50 p-3 text-xs sm:grid-cols-4">
+                            {profile.talentReview ? (
+                              <>
+                                <Stat label="Talent review" value={profile.talentReview.reviewName ?? "—"} />
+                                <Stat label="9-box (Perf × Potential)" value={`${bandName(profile.talentReview.performanceBand)} × ${bandName(profile.talentReview.potentialBand)}`} />
+                                <Stat label="HiPo" value={profile.talentReview.isHiPo ? "Yes" : "No"} />
+                                <Stat label="Panel readiness" value={label(readinessLevelOptions, profile.talentReview.readiness)} />
+                              </>
+                            ) : (
+                              <p className="col-span-full text-muted">Not yet assessed in a talent review — consider including this employee in the next review cycle.</p>
+                            )}
+                          </div>
+                        </>
                       )}
                       {gap && (
                         <div className="mt-2 text-xs">

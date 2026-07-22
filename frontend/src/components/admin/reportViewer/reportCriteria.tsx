@@ -52,16 +52,23 @@ function ReportCriteria({ fields, loading, renderField }: ReportCriteriaProps) {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-4">
-      {rows.map((row) =>
-        row.length === 2 ? (
-          <div key={row[0].field} className="grid grid-cols-2 gap-3">
-            {row.map(renderField)}
-          </div>
-        ) : (
-          <div key={row[0].field}>{renderField(row[0])}</div>
-        ),
-      )}
+    <div className="mx-auto w-full max-w-2xl">
+      {/* Selection-screen section header (enterprise ERP convention). */}
+      <div className="mb-4 flex items-center gap-2 border-b border-border pb-2">
+        <SlidersHorizontal className="h-4 w-4 text-primary" />
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">{t("Filter Criteria")}</h4>
+      </div>
+      <div className="grid grid-cols-1 gap-4">
+        {rows.map((row) =>
+          row.length === 2 ? (
+            <div key={row[0].field} className="grid grid-cols-2 gap-3">
+              {row.map(renderField)}
+            </div>
+          ) : (
+            <div key={row[0].field}>{renderField(row[0])}</div>
+          ),
+        )}
+      </div>
     </div>
   );
 }

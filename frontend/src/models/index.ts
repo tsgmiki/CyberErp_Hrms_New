@@ -4,6 +4,7 @@ export type { default as UserModel } from "./masters/UserModel";
 export type { default as ParameterModel } from "./ParameterModel";
 export type { default as ModuleModel } from "./masters/ModuleModel";
 export type { default as OperationModel } from "./masters/OperationModel";
+export type { default as SubsystemModel } from "./masters/SubsystemModel";
 export type { default as RolePermissionModel } from "./masters/RolePermissionModel";
 export type { default as ChangePasswordModel } from "./masters/ChangePasswordModel";
 export type { default as RoleModel } from "./masters/RoleModel";
@@ -68,6 +69,8 @@ export type {
   EmployeeDocumentModel,
   EmployeeMovementModel,
   DisciplinaryMeasureModel,
+  DisciplinaryBlockModel,
+  DisciplinaryEligibilityModel,
   EmployeeTerminationModel,
   TerminationClearanceModel,
   TerminatedEmployeeModel,
@@ -145,6 +148,7 @@ export type {
   AppraisalLineModel,
   AppraisalAppealModel,
   AppraisalPeerReviewModel,
+  MyPeerReviewModel,
   CalibrationSessionModel,
   CalibrationItemModel,
   PerformanceHistoryModel,
@@ -155,10 +159,70 @@ export type {
   AchievementModel,
   RecognitionBadgeModel,
   EmployeeRecognitionModel,
+  AwardCategoryModel,
+  RecognitionProgramModel,
+  RewardNominationModel,
+  RewardPointsTransactionModel,
+  RewardPointsSummaryModel,
+  RewardDisbursementModel,
+  RecognitionWallItemModel,
   PerformanceDashboardModel,
   RatingDistributionRowModel,
   EmployeePerformanceSummaryModel,
 } from "./masters/PerformanceModel";
+
+export type {
+  AllowanceTypeModel,
+  EmployeeAllowanceModel,
+  CompensationSummaryModel,
+  SalaryRevisionModel,
+  SalaryRevisionLineModel,
+  SalarySimulationModel,
+  BenefitPlanModel,
+  BenefitEnrollmentModel,
+  TaxBracketModel,
+  DeductionLineModel,
+  PayrollDeductionsModel,
+  MyCompensationModel,
+  CompensationRequestModel,
+} from "./masters/CompensationModel";
+
+export type {
+  MedicalProviderModel,
+  MedicalPlanModel,
+  MedicalContractModel,
+  MedicalBeneficiaryModel,
+  MedicalEnrollmentModel,
+  MedicalClaimAttachmentMetaModel,
+  MedicalClaimModel,
+  MedicalExpenseRowModel,
+  MedicalExpenseReportModel,
+} from "./masters/MedicalModel";
+
+export type {
+  InsurancePremiumScheduleModel,
+  InsurancePolicyModel,
+  InsuranceClaimAttachmentMetaModel,
+  InsuranceClaimModel,
+} from "./masters/InsuranceModel";
+
+export type {
+  LoanTypeModel,
+  LoanGuarantorModel,
+  LoanScheduleLineModel,
+  LoanModel,
+} from "./masters/LoanModel";
+
+export type {
+  PerDiemRateModel,
+  TripBudgetModel,
+  TripBudgetUtilizationModel,
+  TripExpenseModel,
+  TripRequestModel,
+  TripAgingItemModel,
+  TripAgingRowModel,
+  TripAgingReportModel,
+} from "./masters/TripModel";
 
 export type {
   CriticalPositionModel,
@@ -177,6 +241,8 @@ export type {
   CompetencyGapModel,
   ReadinessComputationModel,
   SuccessionCandidateProfileModel,
+  TalentReviewOutcomeModel,
+  SuggestedSuccessorModel,
   IdentifyHiPosResultModel,
   CareerPathModel,
   CareerPathStepCompetencyModel,
@@ -199,3 +265,40 @@ export type {
   DevMentorshipModel,
   EmployeeDevelopmentProfileModel,
 } from "./masters/CareerDevelopmentModel";
+export type {
+  TrainingCategoryModel,
+  TrainingCourseModel,
+  TrainingNeedModel,
+  TrainingNeedSuggestionModel,
+  TrainingSessionModel,
+  TrainingEnrollmentModel,
+  TrainingBudgetModel,
+  TrainingBudgetUtilizationModel,
+  LearningPathModel,
+  LearningPathStepModel,
+  LearningPathProgressModel,
+  LearningPathProgressStepModel,
+  TrainingCertificateModel,
+  CpdEntryModel,
+  CpdSummaryModel,
+  TrainingProviderPaymentModel,
+  LearningCommunityModel,
+  CommunityPostModel,
+  CompanyAssetModel,
+  AssetRecoveryModel,
+  ExitQuestionModel,
+  ExitInterviewModel,
+  SettlementLineModel,
+  TerminationSettlementModel,
+} from "./masters/TrainingModel";
+
+export type {
+  SuggestionModel,
+  GrievanceModel,
+  GrievanceNoteModel,
+  AnnouncementModel,
+  SurveyModel,
+  SurveyQuestionModel,
+  SurveyQuestionResultModel,
+  SurveyResultsModel,
+} from "./masters/EngagementModel";

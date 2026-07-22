@@ -12,7 +12,6 @@ import {
   reviewerSignOffAppraisal,
   hrCloseAppraisal,
   inviteAppraisalPeers,
-  submitAppraisalPeer,
   removeAppraisalPeer,
   getPerformanceHistory,
   acknowledgeAppraisal,
@@ -20,9 +19,8 @@ import {
   submitAppraisalAppeal,
 } from "@/services/admin/appraisal";
 import { printAppraisalReport } from "./report";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import { appraisalStageLabel } from "@/constants/performance";
-import { parameterInitialData } from "@/constants/initialization";
 import { StatusMessage } from "../../common/statusMessage/status";
 import Loading from "../../common/loader/loader";
 import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
@@ -66,7 +64,7 @@ function AppraisalScoring({ id }: Props) {
   const [formState, setFormState] = useState<any>({});
   const [isBusy, setIsBusy] = useState(false);
   const [invitePeerId, setInvitePeerId] = useState("");
-  const [peerScores, setPeerScores] = useState<Record<string, string>>({});
+  const [invitePeerName, setInvitePeerName] = useState("");
   const [empSig, setEmpSig] = useState("");
   const [mgrSig, setMgrSig] = useState("");
   const [reviewerSig, setReviewerSig] = useState("");
@@ -75,8 +73,6 @@ function AppraisalScoring({ id }: Props) {
   const [appealComments, setAppealComments] = useState("");
   const [appealFollowUp, setAppealFollowUp] = useState(false);
 
-  const [empParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees } = useQuery({ queryKey: ["employees", empParam], queryFn: () => getAllEmployee(empParam) });
   const { data: historyRows } = useQuery({
     queryKey: ["performanceHistory", "Appraisal", id],
     queryFn: () => getPerformanceHistory("Appraisal", id),
@@ -93,8 +89,13 @@ function AppraisalScoring({ id }: Props) {
   }, [appraisal]);
 
   const stage = appraisal?.stage;
-  const selfEditable = stage === "SelfAssessment";
-  const mgrEditable = stage === "ManagerReview";
+  // Editable only when it is BOTH the right stage AND the current user is the authorized actor for it
+  // (the workflow engine resolves this): the employee owns self-assessment, the manager owns manager review.
+  const canAct = appraisal?.canActCurrentStage ?? false;
+  const selfEditable = stage === "SelfAssessment" && canAct;
+  const mgrEditable = stage === "ManagerReview" && canAct;
+  // Peer administration (invite/remove) belongs to the resolved manager or an HR administrator.
+  const canManagePeers = !!(appraisal?.canManagerSign || appraisal?.canAdminister);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["appraisal", id] });
@@ -109,15 +110,7 @@ function AppraisalScoring({ id }: Props) {
     setFormState(result);
     setIsBusy(false);
     setInvitePeerId("");
-    if (result.status === "success") refresh();
-  };
-
-  const submitPeer = async (reviewId: string) => {
-    setIsBusy(true);
-    const raw = peerScores[reviewId];
-    const result = await submitAppraisalPeer({ id: reviewId, score: raw === "" || raw == null ? null : Number(raw) });
-    setFormState(result);
-    setIsBusy(false);
+    setInvitePeerName("");
     if (result.status === "success") refresh();
   };
 
@@ -172,29 +165,41 @@ function AppraisalScoring({ id }: Props) {
     value: unknown,
   ) => setter((p) => p.map((l) => (l.id === lineId ? { ...l, [field]: value } : l)));
 
-  const save = async (scope: "Self" | "Manager") => {
-    setIsBusy(true);
+  /** Persist the current grid for a scope, returning the result (no busy/refresh side-effects). */
+  const persistScores = (scope: "Self" | "Manager") => {
     const build = (lines: AppraisalLineModel[]) =>
       lines.map((l) => ({
         lineId: l.id as string,
         score: scope === "Self" ? numOrNull(l.selfScore) : numOrNull(l.managerScore),
         comments: scope === "Self" ? l.selfComments : l.managerComments,
       }));
-    const result = await saveAppraisalScores({
+    return saveAppraisalScores({
       id,
       scope,
       comments: scope === "Self" ? selfComments : managerComments,
       goals: build(goals),
       competencies: build(competencies),
     });
+  };
+
+  const save = async (scope: "Self" | "Manager") => {
+    setIsBusy(true);
+    const result = await persistScores(scope);
     setFormState(result);
     setIsBusy(false);
     if (result.status === "success") refresh();
   };
 
-  const runAction = async (fn: () => Promise<any>) => {
+  /**
+   * Save the current scores for a scope, THEN run the transition — so the manager (or employee) never loses
+   * the scores they just typed by forgetting to click Save first (the cause of the spurious
+   * "Score at least one goal or competency" error on Complete).
+   */
+  const saveThen = async (scope: "Self" | "Manager", transition: () => Promise<any>) => {
     setIsBusy(true);
-    const result = await fn();
+    const saved = await persistScores(scope);
+    if (saved.status !== "success") { setFormState(saved); setIsBusy(false); return; }
+    const result = await transition();
     setFormState(result);
     setIsBusy(false);
     if (result.status === "success") refresh();
@@ -257,8 +262,15 @@ function AppraisalScoring({ id }: Props) {
     </div>
   );
 
-  // Optional manager counter-signature — available once the manager review is complete, before lock.
-  const managerCounterSign = stage && ["SecondLevelReview", "EmployeeAcknowledgment", "HrSignOff"].includes(stage) ? (
+  // Read-only notice for viewers who are not the current stage's authorized actor.
+  const awaitingNotice = (
+    <p className="rounded-lg border border-dashed border-border bg-card/40 p-4 text-center text-xs text-muted">
+      {t("Awaiting")} <span className="font-medium text-foreground">{appraisal.currentStageActorName || t("the assigned approver")}</span> — {t("you do not have permission to act on this step.")}
+    </p>
+  );
+
+  // Optional manager counter-signature — only the resolved manager, once their review is complete.
+  const managerCounterSign = appraisal.canManagerSign && stage && ["SecondLevelReview", "EmployeeAcknowledgment", "HrSignOff"].includes(stage) ? (
     <div className="rounded-md border border-border p-3">
       <label className="mb-1 block text-xs font-medium text-muted">{t("Manager Signature")} ({t("optional")})</label>
       <div className="flex flex-wrap items-center gap-2">
@@ -284,6 +296,7 @@ function AppraisalScoring({ id }: Props) {
     if (stage === "SecondLevelReview") {
       return (
         <div className="space-y-4">
+          {!canAct ? awaitingNotice : (
           <div className="rounded-md border border-border p-3">
             <p className="mb-2 text-xs font-semibold text-muted">{t("Second-level reviewer")}</p>
             <label className="mb-1 block text-xs font-medium text-muted">{t("High-level comments")}</label>
@@ -297,6 +310,7 @@ function AppraisalScoring({ id }: Props) {
             </div>
             <p className="mt-2 text-xs text-muted">{t("Signing off routes the appraisal back to the employee for their final signature.")}</p>
           </div>
+          )}
           {managerCounterSign}
         </div>
       );
@@ -318,6 +332,8 @@ function AppraisalScoring({ id }: Props) {
               {appraisal.reviewerComments && <p className="mt-1 text-muted">{appraisal.reviewerComments}</p>}
             </div>
           )}
+          {/* The decision belongs to the appraisee ALONE — everyone else sees a read-only notice. */}
+          {!canAct ? awaitingNotice : (
           <div className="rounded-md border border-border p-3">
             <p className="mb-2 text-xs font-semibold text-muted">{t("Employee decision")}</p>
             <div className="flex flex-wrap items-center gap-2">
@@ -340,6 +356,7 @@ function AppraisalScoring({ id }: Props) {
               </div>
             </div>
           </div>
+          )}
           {managerCounterSign}
         </div>
       );
@@ -352,6 +369,7 @@ function AppraisalScoring({ id }: Props) {
             {sigCard("Employee", appraisal.employeeSignature, appraisal.employeeSignedAt, true)}
             {appraisal.reviewerSignature ? sigCard("Reviewer", appraisal.reviewerSignature, appraisal.reviewerSignedAt) : null}
           </div>
+          {!canAct ? awaitingNotice : (
           <div className="rounded-md border border-border p-3">
             <p className="mb-2 text-xs font-semibold text-muted">{t("HR final sign-off")}</p>
             <div className="flex flex-wrap items-center gap-2">
@@ -362,6 +380,7 @@ function AppraisalScoring({ id }: Props) {
             </div>
             <p className="mt-2 text-xs text-muted">{t("HR does not rate — this final signature closes the cycle and locks the document.")}</p>
           </div>
+          )}
           {managerCounterSign}
         </div>
       );
@@ -466,7 +485,7 @@ function AppraisalScoring({ id }: Props) {
             key: "peers",
             label: "Peer Reviews",
             Icon: Users,
-            description: "Invite peers and capture their scores (HC127)",
+            description: "Invite peers — each submits their own 360° feedback from their My Peer Reviews screen (HC127)",
             content: (
               <div>
                 {appraisal.peerAverageScore != null && (
@@ -478,7 +497,9 @@ function AppraisalScoring({ id }: Props) {
                 )}
 
                 {(appraisal.peerReviews?.length ?? 0) === 0 ? (
-                  <p className="py-3 text-center text-sm text-muted">{t("No peers invited yet.")}</p>
+                  <p className="py-3 text-center text-sm text-muted">
+                    {canManagePeers ? t("No peers invited yet.") : t("Peer feedback is collected independently — individual responses are not shown here.")}
+                  </p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-border">
                     <table className="w-full text-[13px]">
@@ -494,25 +515,14 @@ function AppraisalScoring({ id }: Props) {
                         {(appraisal.peerReviews ?? []).map((p) => (
                           <tr key={p.id} className="border-b border-border/60 last:border-0">
                             <td className="px-2 py-2 text-foreground">{p.peerEmployeeName}</td>
-                            <td className="px-2 py-2 text-muted">{p.status}</td>
-                            <td className="px-2 py-2">
-                              {p.status === "Submitted" ? (
-                                <span className="text-foreground">{p.score ?? "—"}</span>
-                              ) : (
-                                <input type="number" step="any" className="w-20 rounded-md border border-border bg-card px-2 py-1 text-sm" value={peerScores[p.id as string] ?? ""} onChange={(e) => setPeerScores((s) => ({ ...s, [p.id as string]: e.target.value }))} />
-                              )}
-                            </td>
+                            <td className="px-2 py-2 text-muted">{p.status === "Submitted" ? t("Submitted") : t("Awaiting peer")}</td>
+                            <td className="px-2 py-2 text-foreground">{p.status === "Submitted" ? (p.score ?? "—") : "—"}</td>
                             <td className="px-2 py-1.5 text-right">
-                              <div className="flex justify-end gap-1">
-                                {p.status !== "Submitted" && (
-                                  <button type="button" disabled={isBusy} onClick={() => submitPeer(p.id as string)} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs font-semibold hover:bg-secondary/40 disabled:opacity-50">
-                                    <Send className="h-3 w-3" /> {t("Submit")}
-                                  </button>
-                                )}
+                              {canManagePeers && (
                                 <button type="button" disabled={isBusy} onClick={() => removePeer(p.id as string)} className="rounded p-1 text-error hover:bg-error/10" title={t("Remove") ?? ""}>
                                   <Trash2 className="h-4 w-4" />
                                 </button>
-                              </div>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -521,17 +531,19 @@ function AppraisalScoring({ id }: Props) {
                   </div>
                 )}
 
-                <div className="mt-3 flex items-end gap-2">
-                  <select className="rounded-md border border-border bg-card px-2.5 py-1.5 text-sm sm:w-72" value={invitePeerId} onChange={(e) => setInvitePeerId(e.target.value)}>
-                    <option value="">{t("Select a peer to invite")}</option>
-                    {(employees?.data ?? []).map((e) => (
-                      <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
-                    ))}
-                  </select>
-                  <button type="button" disabled={isBusy || !invitePeerId} onClick={invitePeer} className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
-                    <UserPlus className="h-3.5 w-3.5" /> {t("Invite Peer")}
-                  </button>
-                </div>
+                {/* Peer invitations belong to the manager / HR — not the appraisee or bystanders.
+                    Role-scoped searchable picker: a manager only sees their unit + child units. */}
+                {canManagePeers && (
+                  <div className="mt-3 flex items-end gap-2">
+                    <div className="w-full sm:w-72">
+                      {/* excludeId: the appraisee can never be offered as their own peer reviewer. */}
+                      <EmployeePicker value={invitePeerId} displayValue={invitePeerName} excludeId={appraisal.employeeId} placeholder={t("Search a peer to invite…") ?? ""} onSelect={(pid, name) => { setInvitePeerId(pid); setInvitePeerName(name); }} />
+                    </div>
+                    <button type="button" disabled={isBusy || !invitePeerId} onClick={invitePeer} className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+                      <UserPlus className="h-3.5 w-3.5" /> {t("Invite Peer")}
+                    </button>
+                  </div>
+                )}
               </div>
             ),
           },
@@ -576,7 +588,7 @@ function AppraisalScoring({ id }: Props) {
               <button type="button" disabled={isBusy} onClick={() => save("Self")} className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary/40 disabled:opacity-50">
                 <Save className="h-4 w-4" /> {t("Save Self Assessment")}
               </button>
-              <button type="button" disabled={isBusy} onClick={() => runAction(() => submitAppraisalSelf(id))} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+              <button type="button" disabled={isBusy} onClick={() => saveThen("Self", () => submitAppraisalSelf(id))} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
                 <Send className="h-4 w-4" /> {t("Submit for Manager Review")}
               </button>
             </>
@@ -586,7 +598,7 @@ function AppraisalScoring({ id }: Props) {
               <button type="button" disabled={isBusy} onClick={() => save("Manager")} className="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-secondary/40 disabled:opacity-50">
                 <Save className="h-4 w-4" /> {t("Save Manager Scores")}
               </button>
-              <button type="button" disabled={isBusy} onClick={() => runAction(() => completeAppraisal(id))} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
+              <button type="button" disabled={isBusy} onClick={() => saveThen("Manager", () => completeAppraisal(id))} className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-on-accent hover:opacity-90 disabled:opacity-50">
                 <CheckCircle2 className="h-4 w-4" /> {t("Complete Manager Review")}
               </button>
             </>

@@ -29,6 +29,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .IsRequired()
                 .HasMaxLength(255);
 
+            // Login resolves users by name BEFORE the tenant is known (LoginRepository) — without
+            // this index every sign-in scans the whole User table.
+            builder.HasIndex(u => u.UserName);
+
             // NodaTime Instant conversion for CreatedAt
             builder.Property(u => u.CreatedAt)
                 .HasConversion(

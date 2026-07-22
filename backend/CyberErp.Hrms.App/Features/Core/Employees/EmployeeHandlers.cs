@@ -18,6 +18,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public interface IGetEmployeeById { Task<EmployeeDto> GetAsync(Guid id); }
     public interface IGetAllEmployees { Task<PaginatedResponse<EmployeeDto>> GetAsync(GetAllRequest request); }
 
+    /// <summary>The signed-in user's linked employee identity (self-service screens). Null when unlinked.</summary>
+    public class MyEmployeeDto
+    {
+        public Guid Id { get; set; }
+        public string? EmployeeNumber { get; set; }
+        public string? FullName { get; set; }
+    }
+    public interface IGetMyEmployee { Task<MyEmployeeDto?> GetAsync(); }
+
     // ---- Shared helpers -------------------------------------------------------
 
     internal static class EmployeeShared
@@ -305,10 +314,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class GetEmployeeById(
         IRepository<Employee> repository,
+        Performance.IPerformanceVisibilityService visibility,
         ICustomFieldService customFields) : IGetEmployeeById
     {
         public async Task<EmployeeDto> GetAsync(Guid id)
         {
+            // Role-based visibility: HR admin, the employee themselves, or their manager (subtree).
+            if (!await visibility.CanAccessEmployeeAsync(id))
+                throw new ValidationException("access", "You do not have access to this employee.");
+
             var dto = await repository.GetAll()
                 .Where(e => e.Id == id)
                 .Select(EmployeeShared.Projection)
@@ -322,10 +336,36 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         }
     }
 
+    // ---- My employee (self-service identity) ------------------------------------
+
+    public class GetMyEmployee(
+        IRepository<Employee> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetMyEmployee
+    {
+        public async Task<MyEmployeeDto?> GetAsync()
+        {
+            var scope = await visibility.GetScopeAsync();
+            if (scope.EmployeeId is null) return null;    // account without an employee link
+
+            return await repository.GetAll().AsNoTracking()
+                .Where(e => e.Id == scope.EmployeeId.Value)
+                .Select(e => new MyEmployeeDto
+                {
+                    Id = e.Id,
+                    EmployeeNumber = e.EmployeeNumber,
+                    FullName = e.Person != null
+                        ? (e.Person.FirstName + " " + e.Person.GrandFatherName).Trim()
+                        : null,
+                })
+                .FirstOrDefaultAsync();
+        }
+    }
+
     // ---- Get all (paged) --------------------------------------------------------
 
     public class GetAllEmployees(
-        IRepository<Employee> repository) : IGetAllEmployees
+        IRepository<Employee> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetAllEmployees
     {
         public async Task<PaginatedResponse<EmployeeDto>> GetAsync(GetAllRequest request)
         {
@@ -333,6 +373,24 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // Role-based visibility as a single SQL predicate: HR admin sees all, a manager sees their
+            // unit subtree, everyone else sees only their own record (the directory is not public).
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+            {
+                var myEmp = scope.EmployeeId ?? Guid.Empty;
+                if (scope.IsManager)
+                {
+                    var unitIds = scope.UnitIds;
+                    query = query.Where(x => x.Id == myEmp ||
+                        (x.Position != null && unitIds.Contains(x.Position.OrganizationUnitId)));
+                }
+                else
+                {
+                    query = query.Where(x => x.Id == myEmp);
+                }
+            }
 
             // parentId scopes to a SINGLE organization unit — strictly the selected node, derived through
             // the assigned position (the org unit is not stored on the employee). Descendant units are

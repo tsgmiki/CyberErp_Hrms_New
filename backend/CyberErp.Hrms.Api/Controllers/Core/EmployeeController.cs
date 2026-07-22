@@ -14,11 +14,16 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IUploadEmployeePhoto uploadPhotoHandler,
         IGetEmployeePhoto getPhotoHandler,
         IGetEmployeesOnProbation onProbationHandler,
-        IGetUpcomingRetirements upcomingRetirementsHandler) : BaseController
+        IGetUpcomingRetirements upcomingRetirementsHandler,
+        IGetMyEmployee myEmployeeHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<EmployeeDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>The signed-in user's own employee identity (self-service screens). Null body when the account has no employee link.</summary>
+        [HttpGet("me")]
+        public Task<MyEmployeeDto?> Me() => myEmployeeHandler.GetAsync();
 
         /// <summary>Dashboard analytics: active employees currently on probation.</summary>
         [HttpGet("on-probation")]

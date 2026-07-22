@@ -537,6 +537,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.Description).HasMaxLength(1000);
             builder.Property(x => x.Color).HasMaxLength(20);
             builder.Property(x => x.Icon).HasMaxLength(50);
+            builder.Property(x => x.RewardKind).IsRequired().HasConversion<string>().HasMaxLength(30);
+            builder.Property(x => x.MonetaryValue).HasPrecision(18, 2);
+            builder.Property(x => x.Criteria).HasMaxLength(1000);
+            builder.Property(x => x.AutoGrantMinScore).HasPrecision(5, 2);
+
+            builder.HasOne<AwardCategory>()
+                .WithMany()
+                .HasForeignKey(x => x.AwardCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
         }
@@ -575,6 +584,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Citation).IsRequired().HasMaxLength(1000);
+            builder.Property(x => x.SourceRef).HasMaxLength(100);
 
             builder.HasOne<Employee>()
                 .WithMany()
@@ -586,7 +596,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.HasIndex(x => new { x.TenantId, x.EmployeeId });
-            builder.HasIndex(x => new { x.TenantId, x.IsPublic });
+            // Serves the public recognition wall (HC184): filter on IsPublic, newest first.
+            builder.HasIndex(x => new { x.TenantId, x.IsPublic, x.RecognizedOn });
         }
     }
 }

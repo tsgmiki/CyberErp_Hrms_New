@@ -229,8 +229,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<TerminationClearance> clearanceRepository,
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
         IRepository<Employee> employeeRepository,
+        IRepository<CompanyAsset> assetRepository,
+        IRepository<TerminationAssetRecovery> recoveryRepository,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
+        Performance.IPerformanceVisibilityService visibility,
+        ITerminationNotifier notifier,
         ICustomFieldService customFields,
         IValidator<SaveEmployeeTerminationDto> validator,
         ILogger<SaveEmployeeTermination> logger) : ISaveEmployeeTermination
@@ -252,6 +256,17 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
 
             var type = Enum.Parse<TerminationType>(dto.TerminationType, true);
+
+            // HC209 — initiation matrix: HR records anything; a manager acts within their subtree;
+            // an employee may request their OWN exit, and only a VOLUNTARY one (resignation /
+            // early-retirement request) — involuntary cases belong to their manager or HR.
+            var scope = await visibility.GetScopeAsync();
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException("employeeId", "The employee is outside your scope.");
+            var isSelf = scope.EmployeeId.HasValue && scope.EmployeeId.Value == dto.EmployeeId;
+            if (isSelf && !scope.IsAdmin && type == TerminationType.Involuntary)
+                throw new ValidationException("terminationType",
+                    "You can request a voluntary exit (resignation / early retirement) — involuntary cases are recorded by your manager or HR.");
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
@@ -292,9 +307,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (!await workflowGate.HasRunningAsync(WorkflowEntityTypes.Termination, created.Id))
             {
                 await TerminationShared.BeginClearanceAsync(created, clearanceRepository, clearanceDepartmentRepository);
+                // HC215 — the asset-recovery checklist opens with the clearance phase.
+                await AssetRecoveryShared.GenerateChecklistAsync(created.Id, created.EmployeeId, created.TenantId,
+                    assetRepository, recoveryRepository);
                 repository.UpdateAsync(created);
                 await repository.SaveChangesAsync();
             }
+
+            // HC209/HC220 — every stakeholder receives the request (best-effort, never blocks).
+            await notifier.SubmittedAsync(created.Id);
 
             return created.Id;
         }
@@ -307,12 +328,16 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
         IRepository<UserRole> userRoleRepository,
         ICurrentUserService currentUser,
+        Performance.IPerformanceVisibilityService visibility,
         ICustomFieldService customFields,
         IWorkflowGate workflowGate) : IGetEmployeeTerminations
     {
         public async Task<List<EmployeeTerminationDto>> GetAsync(Guid employeeId)
         {
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, employeeId);
+            // Same visibility rule as the save path: the employee themselves, their manager, or HR.
+            if (!await visibility.CanAccessEmployeeAsync(employeeId))
+                throw new ValidationException("access", "You do not have access to this employee's termination records.");
 
             // Read-only DTO mapping — no change tracking for the case + clearance entities.
             var rows = await repository.GetAll()
@@ -352,6 +377,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 return (canDecide, names);
             }
 
+            // One set-based query for the page's workflow flags (was one query PER termination row).
+            var initiatedIds = rows.Where(t => t.Status == TerminationStatus.Initiated).Select(t => t.Id).ToList();
+            var runningIds = await workflowGate.RunningIdsAsync(WorkflowEntityTypes.Termination, initiatedIds);
+
             var result = new List<EmployeeTerminationDto>();
             foreach (var t in rows)
             {
@@ -366,8 +395,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     Reason = t.Reason,
                     Remarks = t.Remarks,
                     SettledAt = t.SettledAt,
-                    AwaitingWorkflow = t.Status == TerminationStatus.Initiated
-                        && await workflowGate.HasRunningAsync(WorkflowEntityTypes.Termination, t.Id),
+                    AwaitingWorkflow = t.Status == TerminationStatus.Initiated && runningIds.Contains(t.Id),
                     Clearances = t.Clearances
                         .OrderBy(c => c.Department)
                         .Select(c =>
@@ -446,6 +474,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
         IRepository<Employee> employeeRepository,
         IRepository<Position> positionRepository,
+        IRepository<TerminationAssetRecovery> assetRecoveryRepository,
+        ITerminationNotifier notifier,
         ILogger<FinalizeEmployeeTermination> logger) : IFinalizeEmployeeTermination
     {
         public async Task FinalizeAsync(Guid id)
@@ -485,6 +515,16 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 throw new ValidationException("clearances",
                     $"All assigned approvers must complete their clearance before settlement. Awaiting: {string.Join(", ", awaitingApprovers)}.");
 
+            // HC215 — settlement waits for the company property: every checklist item must be
+            // recovered or explicitly waived (assets are concrete; nothing auto-clears).
+            var outstandingAssets = await assetRecoveryRepository.GetAll().AsNoTracking()
+                .Where(r => r.TerminationId == id && r.Status == AssetRecoveryStatus.Outstanding)
+                .Select(r => r.AssetName)
+                .ToListAsync();
+            if (outstandingAssets.Count > 0)
+                throw new ValidationException("assets",
+                    $"Company assets are still outstanding: {string.Join(", ", outstandingAssets)}. Recover or waive them before settlement.");
+
             // Any remaining not-yet-cleared items belong to departments with NO assigned approver, so
             // there is nobody to sign them off — auto-resolve them on settlement (traceable via note).
             foreach (var c in termination.Clearances.Where(c => c.Status != ClearanceStatus.Cleared))
@@ -508,6 +548,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             await repository.SaveChangesAsync();
             logger.LogInformation("Settled EmployeeTermination {Id}: employee {EmployeeId} terminated, position {PositionId} reopened",
                 id, employee.Id, oldPositionId);
+            await notifier.SettledAsync(id);   // HC220 — best-effort
         }
     }
 
@@ -688,6 +729,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeTermination> repository,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
+        ITerminationNotifier notifier,
         ILogger<CancelEmployeeTermination> logger) : ICancelEmployeeTermination
     {
         public async Task CancelAsync(Guid id)
@@ -704,6 +746,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             repository.UpdateAsync(termination);
             await repository.SaveChangesAsync();
             logger.LogInformation("Cancelled EmployeeTermination {Id}", id);
+            await notifier.CancelledAsync(id);   // HC220 — best-effort
         }
     }
 

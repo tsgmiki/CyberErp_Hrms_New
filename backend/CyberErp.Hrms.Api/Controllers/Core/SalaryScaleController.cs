@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.SalaryScales;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Salary scale (coreSalaryScale). The list is always filtered by <c>jobGradeId</c>.</summary>
+    [RequirePermission("salaryScale", "employee", "position", "positionClass", "jobApplication", "jobRequisition")]
     public class SalaryScaleController(
         ISaveSalaryScale saveHandler,
         IGetSalaryScaleById getByIdHandler,

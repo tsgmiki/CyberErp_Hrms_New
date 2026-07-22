@@ -6,6 +6,15 @@ import deleteSuccessionPlan from "@/services/admin/successionPlan/delete";
 import type { SuccessionPlanModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
+import { successionPlanStatusLabel } from "@/constants/careerDevelopment";
+
+const STATUS_TONE: Record<string, string> = {
+  Active: "bg-success/15 text-success",
+  OnHold: "bg-warning/15 text-warning",
+  Closed: "bg-muted/30 text-muted",
+  PendingApproval: "bg-info/15 text-info",
+  Rejected: "bg-error/15 text-error",
+};
 
 function SuccessionPlanList({ editHandler }: { editHandler: (id: string) => void }) {
   const list = useEntityList({ queryKey: "successionPlans", fetchPage: getAllSuccessionPlan, deleteById: deleteSuccessionPlan });
@@ -18,7 +27,8 @@ function SuccessionPlanList({ editHandler }: { editHandler: (id: string) => void
             <span className="block text-xs text-muted">{r.roleTitle}</span>
           </button>) },
         { name: "horizon", label: "Horizon" },
-        { name: "status", label: "Status" },
+        { name: "status", label: "Status", render: (v: string) => (
+          <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[v] ?? "bg-muted/30 text-muted"}`}>{successionPlanStatusLabel(v)}</span>) },
         { name: "Action", label: "Action", render: (_t: unknown, r: SuccessionPlanModel) => (
           <GridAction id={r.id || ""} record={r} showAdd={false} showEdit showDelete
             editHandler={editHandler} deleteHandler={() => r.id && list.deleteRecord(r.id)} />) },

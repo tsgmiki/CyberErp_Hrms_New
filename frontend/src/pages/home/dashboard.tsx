@@ -400,8 +400,11 @@ function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["myApprovals"] });
     queryClient.invalidateQueries({ queryKey: ["workflows"] });
     queryClient.invalidateQueries({ queryKey: ["workflowStats"] });
-    queryClient.invalidateQueries({ queryKey: ["workforcePlans"] });
-    queryClient.invalidateQueries({ queryKey: ["employees"] });
+    // Broad entity caches are only MARKED stale (no immediate refetch storm) — they reload the
+    // next time their screens are visited. A root ["employees"] refetch would re-fire every
+    // mounted employee query (incl. heavy pickers) app-wide.
+    queryClient.invalidateQueries({ queryKey: ["workforcePlans"], refetchType: "none" });
+    queryClient.invalidateQueries({ queryKey: ["employees"], refetchType: "none" });
     setApprovalDecision(null);
     setApprovalComment("");
   }, [approvalDecision, approvalComment, queryClient]);

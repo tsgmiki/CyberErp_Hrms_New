@@ -6,7 +6,6 @@ import { useTranslation } from "react-i18next";
 import { LayoutGrid, Users, UserCheck, UserX, FileSpreadsheet } from "lucide-react";
 import DropDownField from "@/components/ui/dropDownField";
 import Loading from "@/components/common/loader/loader";
-import { exportListToExcel } from "@/components/common/dataTableProvider/listExport";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { getEstablishment } from "@/services/admin/workforcePlan";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
@@ -85,14 +84,16 @@ function EstablishmentOverview() {
           <button
             type="button"
             disabled={(rows ?? []).length === 0}
-            onClick={() =>
+            onClick={async () => {
+              // Export engine loads on demand (keeps xlsx out of the screen's initial bundle).
+              const { exportListToExcel } = await import("@/components/common/dataTableProvider/listExport");
               exportListToExcel({
                 title: unitName ? `Establishment - ${unitName}` : "Establishment Overview",
                 data: (rows ?? []) as unknown as Record<string, unknown>[],
                 columns: EXPORT_COLUMNS,
                 labelFor: (key) => t(key),
-              })
-            }
+              });
+            }}
             title={t("Export for management and regulatory reporting (HC074)")}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:border-primary hover:text-primary disabled:opacity-50"
           >

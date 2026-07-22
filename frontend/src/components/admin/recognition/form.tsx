@@ -7,8 +7,8 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveRecognition from "@/services/admin/recognition/save";
 import getRecognition from "@/services/admin/recognition/get";
-import getAllEmployee from "@/services/admin/employee/getAll";
 import getAllRecognitionBadge from "@/services/admin/recognitionBadge/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { yesNoOptions, boolId, yesNoLabel } from "@/constants/leave";
@@ -31,11 +31,6 @@ function RecognitionForm(props: { id: string; setId: (id: string) => void }) {
     enabled: typeof id != "undefined" && id != "",
   });
 
-  const [empParam, setEmpParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees, isLoading: isEmpLoading } = useQuery({
-    queryKey: ["employees", empParam],
-    queryFn: () => getAllEmployee(empParam),
-  });
   const [badgeParam, setBadgeParam] = useState({ ...parameterInitialData, take: 200 });
   const { data: badges, isLoading: isBadgeLoading } = useQuery({
     queryKey: ["recognitionBadges", badgeParam],
@@ -86,14 +81,19 @@ function RecognitionForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            // Server-search picker (20 projected rows) — the hidden field carries the id into FormData.
             {
-              name: "employeeId", label: "Employee", placeholder: "Select employee", required: true, type: "dropDown",
-              value: formData.employeeId, displayValue: formData.employeeName,
+              name: "employeePicker", label: "Employee", required: true, type: "custom",
               error: formState?.zodErrors?.employeeId,
-              param: empParam, setParam: setEmpParam as any, isLoading: isEmpLoading,
-              onSelect: selectHandler,
-              data: employees?.data?.map((e) => ({ id: e.id, name: `${e.employeeNumber} — ${e.fullName ?? ""}` })) as never,
+              customChildren: (
+                <EmployeePicker
+                  value={formData.employeeId}
+                  displayValue={formData.employeeName}
+                  onSelect={(eid, name) => setFormData((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                />
+              ),
             },
+            { name: "employeeId", value: formData.employeeId, type: "hidden" },
             {
               name: "recognitionBadgeId", label: "Badge", placeholder: "Select badge", required: true, type: "dropDown",
               value: formData.recognitionBadgeId, displayValue: formData.badgeName,

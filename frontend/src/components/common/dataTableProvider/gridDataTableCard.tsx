@@ -1,9 +1,10 @@
 import type { DataTableColumnModel } from "@/models";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { isString } from "@tiptap/react";
 import type { GridColumnLayout } from "./gridColumnLayout";
 import { DataTableCheckbox } from "./dataTableCheckbox";
+
+const isString = (v: unknown): v is string => typeof v === "string";
 
 interface GridDataTableCardProps {
   row: Record<string, unknown>;

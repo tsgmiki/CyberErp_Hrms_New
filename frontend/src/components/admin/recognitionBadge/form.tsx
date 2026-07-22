@@ -7,11 +7,13 @@ import React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveRecognitionBadge from "@/services/admin/recognitionBadge/save";
 import getRecognitionBadge from "@/services/admin/recognitionBadge/get";
+import getAllAwardCategory from "@/services/admin/awardCategory/getAll";
 import Loading from "../../common/loader/loader";
-import { activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
+import { activeStatusOptions, activeId, activeLabel, rewardKindOptions } from "@/constants/orgStructure";
+import { parameterInitialData } from "@/constants/initialization";
 
 const FormProvider = memo(FormProviders);
-const NEW_DEFAULTS: RecognitionBadgeModel = { isActive: true, color: "#F59E0B" };
+const NEW_DEFAULTS: RecognitionBadgeModel = { isActive: true, color: "#F59E0B", rewardKind: "Badge" };
 
 function RecognitionBadgeForm(props: { id: string; setId: (id: string) => void }) {
   const { id, setId } = props;
@@ -26,6 +28,12 @@ function RecognitionBadgeForm(props: { id: string; setId: (id: string) => void }
     queryKey: ["recognitionBadge", id],
     queryFn: () => getRecognitionBadge(id),
     enabled: typeof id != "undefined" && id != "",
+  });
+
+  const [catParam, setCatParam] = useState({ ...parameterInitialData, take: 100 });
+  const { data: categories, isLoading: isCatLoading } = useQuery({
+    queryKey: ["awardCategories", catParam],
+    queryFn: () => getAllAwardCategory(catParam),
   });
 
   const submitHandler = async (e: any) => {
@@ -79,7 +87,25 @@ function RecognitionBadgeForm(props: { id: string; setId: (id: string) => void }
             },
             { name: "color", label: "Color", placeholder: "#F59E0B", value: formData.color, onChange: changeHandler, type: "text" },
             { name: "icon", label: "Icon", placeholder: "Trophy", value: formData.icon, onChange: changeHandler, type: "text" },
+            {
+              name: "rewardKind", label: "Reward Kind", type: "dropDown", onSelect: selectHandler,
+              value: formData.rewardKind,
+              displayValue: rewardKindOptions.find((o) => o.id === formData.rewardKind)?.name,
+              data: rewardKindOptions as never,
+            },
+            { name: "monetaryValue", label: "Monetary Value", placeholder: "Gift card / bonus amount", value: formData.monetaryValue, onChange: changeHandler, inputType: "number", type: "text" },
+            { name: "pointsValue", label: "Reward Points", placeholder: "Points credited on grant", value: formData.pointsValue, onChange: changeHandler, inputType: "number", type: "text" },
+            { name: "autoGrantMinScore", label: "Auto-Grant ≥ Score %", placeholder: "e.g. 85 — blank = manual only", value: formData.autoGrantMinScore, onChange: changeHandler, inputType: "number", type: "text" },
+            {
+              name: "awardCategoryId", label: "Award Category", placeholder: "Select category", type: "dropDown",
+              value: formData.awardCategoryId,
+              displayValue: categories?.data?.find((c) => c.id === formData.awardCategoryId)?.name,
+              param: catParam, setParam: setCatParam as any, isLoading: isCatLoading,
+              onSelect: selectHandler,
+              data: categories?.data?.map((c) => ({ id: c.id, name: c.name })) as never,
+            },
             { name: "sortOrder", label: "Sort Order", placeholder: "0", value: formData.sortOrder, onChange: changeHandler, inputType: "number", type: "text" },
+            { name: "criteria", label: "Criteria", placeholder: "Eligibility criteria shown to nominators", value: formData.criteria, onChange: changeHandler, type: "textarea", colSpan: "full" },
             { name: "description", label: "Description", placeholder: "Description", value: formData.description, onChange: changeHandler, type: "textarea", colSpan: "full" },
             { name: "id", value: formData.id, type: "hidden" },
           ],

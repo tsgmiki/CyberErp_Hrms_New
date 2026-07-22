@@ -60,6 +60,7 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.DTOs
         public string Link { get; set; } = string.Empty;
         public string Filter { get; set; } = string.Empty;
         public string Icon { get; set; } = string.Empty;
+        public int SortOrder { get; set; }
         public string? CreatedBy { get; set; }
     }
 

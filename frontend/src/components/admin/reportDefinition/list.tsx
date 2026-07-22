@@ -1,7 +1,10 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Sprout } from "lucide-react";
 import GridAction from "../../common/gridAction/gridAction";
-import { getAllReports, deleteReport } from "@/services/admin/report";
+import ButtonField from "@/components/ui/buttonField";
+import { getAllReports, deleteReport, seedDefaultReports } from "@/services/admin/report";
 import type { ReportDefinitionModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
@@ -11,11 +14,25 @@ interface Props {
 }
 
 function ReportDefinitionList({ editHandler }: Props) {
+  const queryClient = useQueryClient();
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState("");
   const list = useEntityList({
     queryKey: "reportDefinitions",
     fetchPage: getAllReports,
     deleteById: deleteReport,
   });
+
+  const seed = async () => {
+    setSeeding(true);
+    const res = await seedDefaultReports();
+    setSeeding(false);
+    setSeedMsg(res.message);
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: ["reportDefinitions"] });
+      queryClient.invalidateQueries({ queryKey: ["reportCatalog"] });
+    }
+  };
 
   const columns = useMemo(
     () =>
@@ -62,7 +79,26 @@ function ReportDefinitionList({ editHandler }: Props) {
     [editHandler, list.deleteRecord],
   );
 
-  return <EntityListShell listKey="reportDefinitions" listLabel="Report Definitions" columns={columns} {...list} />;
+  return (
+    <EntityListShell
+      listKey="reportDefinitions"
+      listLabel="Report Definitions"
+      columns={columns}
+      header={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {seedMsg && <span className="text-xs text-muted">{seedMsg}</span>}
+          <ButtonField
+            value={seeding ? "Seeding…" : "Seed Standard Reports"}
+            variant="outline"
+            icon={<Sprout size={14} />}
+            disabled={seeding}
+            onClick={seed}
+          />
+        </div>
+      }
+      {...list}
+    />
+  );
 }
 
 export default ReportDefinitionList;

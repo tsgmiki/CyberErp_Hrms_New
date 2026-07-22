@@ -179,6 +179,10 @@ export interface AppraisalModel extends AbstractModel {
   currentUserRole?: string;
   canActCurrentStage?: boolean;
   currentStageActorName?: string;
+  /** The caller is the resolved manager for this appraisal (counter-sign + peer administration). */
+  canManagerSign?: boolean;
+  /** The caller is an HR administrator (head office / configured HR approver). */
+  canAdminister?: boolean;
   goals?: AppraisalLineModel[];
   competencies?: AppraisalLineModel[];
   peerReviews?: AppraisalPeerReviewModel[];
@@ -205,6 +209,19 @@ export interface AppraisalPeerReviewModel {
   peerEmployeeId?: string;
   peerEmployeeName?: string;
   /** Invited | Submitted | Declined */
+  status?: string;
+  score?: number | null;
+  comments?: string;
+  submittedAt?: string;
+}
+
+/** A peer-review assignment as seen by the PEER (their own worklist) — appraisee + cycle only, no ratings. */
+export interface MyPeerReviewModel {
+  id: string;
+  appraisalId: string;
+  employeeName?: string;
+  reviewCycleName?: string;
+  /** Invited | Submitted */
   status?: string;
   score?: number | null;
   comments?: string;
@@ -346,7 +363,7 @@ export interface AchievementModel extends AbstractModel {
   appraisalId?: string;
 }
 
-/** A configurable recognition badge / award (HC141). */
+/** A configurable recognition badge / award (HC141, HC177). */
 export interface RecognitionBadgeModel extends AbstractModel {
   name?: string;
   description?: string;
@@ -354,6 +371,14 @@ export interface RecognitionBadgeModel extends AbstractModel {
   icon?: string;
   isActive?: boolean;
   sortOrder?: number;
+  /** Badge | Certificate | GiftCard | MonetaryBonus (HC177). */
+  rewardKind?: string;
+  monetaryValue?: number;
+  pointsValue?: number;
+  criteria?: string;
+  /** Normalised appraisal % at/above which the badge auto-grants (HC181). */
+  autoGrantMinScore?: number;
+  awardCategoryId?: string;
 }
 
 /** A recognition granted to an employee (HC141). */
@@ -367,6 +392,95 @@ export interface EmployeeRecognitionModel extends AbstractModel {
   citation?: string;
   recognizedOn?: string;
   isPublic?: boolean;
+}
+
+/** Groups awards under shared eligibility criteria (HC178). */
+export interface AwardCategoryModel extends AbstractModel {
+  name?: string;
+  description?: string;
+  criteria?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+/** A recurring recognition program, e.g. Employee of the Month (HC182). */
+export interface RecognitionProgramModel extends AbstractModel {
+  name?: string;
+  description?: string;
+  /** Monthly | Quarterly | Annual | AdHoc. */
+  period?: string;
+  recognitionBadgeId?: string;
+  badgeName?: string;
+  isActive?: boolean;
+}
+
+/** A manager/HR award nomination routed through the workflow engine (HC179/HC186). */
+export interface RewardNominationModel extends AbstractModel {
+  nomineeEmployeeId?: string;
+  nomineeName?: string;
+  nomineeNumber?: string;
+  recognitionBadgeId?: string;
+  badgeName?: string;
+  badgeColor?: string;
+  badgeIcon?: string;
+  rewardKind?: string;
+  monetaryValue?: number;
+  pointsValue?: number;
+  recognitionProgramId?: string;
+  programName?: string;
+  reason?: string;
+  /** Pending | Approved | Rejected. */
+  status?: string;
+  nominatedByEmployeeId?: string;
+  nominatedByName?: string;
+  nominatedOn?: string;
+  decidedOn?: string;
+  grantedRecognitionId?: string;
+}
+
+/** One entry on the reward-points ledger (HC180). */
+export interface RewardPointsTransactionModel {
+  id?: string;
+  points?: number;
+  /** Recognition | Redemption | Adjustment. */
+  source?: string;
+  referenceId?: string;
+  note?: string;
+  transactionDate?: string;
+}
+
+export interface RewardPointsSummaryModel {
+  employeeId?: string;
+  balance: number;
+  total: number;
+  data: RewardPointsTransactionModel[];
+}
+
+/** Monetary reward hand-off row for payroll/finance (HC185). */
+export interface RewardDisbursementModel extends AbstractModel {
+  employeeId?: string;
+  employeeName?: string;
+  employeeNumber?: string;
+  badgeName?: string;
+  amount?: number;
+  /** Pending | Paid | Cancelled. */
+  status?: string;
+  grantedOn?: string;
+  paidAt?: string;
+  reference?: string;
+}
+
+/** One public recognition on the company wall (HC184). */
+export interface RecognitionWallItemModel {
+  id?: string;
+  employeeId?: string;
+  employeeName?: string;
+  badgeName?: string;
+  badgeColor?: string;
+  badgeIcon?: string;
+  rewardKind?: string;
+  citation?: string;
+  recognizedOn?: string;
 }
 
 /** A Performance Improvement Plan (HC135). */

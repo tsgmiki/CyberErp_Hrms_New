@@ -15,6 +15,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetDocumentMergeFields mergeFieldsHandler,
         IGenerateEmployeeDocument generateHandler,
         IGenerateAnnualLeaveDocument generateAnnualLeaveHandler,
+        IGenerateMovementDocument generateMovementHandler,
+        IGenerateTrainingCertificate generateTrainingCertificateHandler,
+        IGenerateTerminationDocument generateTerminationHandler,
+        IGenerateSettlementDocument generateSettlementHandler,
         IUploadCompanyLogo uploadLogoHandler,
         IGetCompanyLogo getLogoHandler,
         IGetCompanyLogoInfo getLogoInfoHandler,
@@ -83,6 +87,26 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet("{id:guid}/generate-annual-leave/{annualLeaveId:guid}")]
         public Task<GeneratedDocumentDto> GenerateAnnualLeave(Guid id, Guid annualLeaveId)
             => generateAnnualLeaveHandler.GenerateAsync(id, annualLeaveId);
+
+        /// <summary>Renders the template against ONE personnel movement — the formal transfer notice (HC174).</summary>
+        [HttpGet("{id:guid}/generate-movement/{movementId:guid}")]
+        public Task<GeneratedDocumentDto> GenerateMovement(Guid id, Guid movementId)
+            => generateMovementHandler.GenerateAsync(id, movementId);
+
+        /// <summary>Renders the template against ONE training certificate — the digital certificate (HC200).</summary>
+        [HttpGet("{id:guid}/generate-certificate/{certificateId:guid}")]
+        public Task<GeneratedDocumentDto> GenerateTrainingCertificate(Guid id, Guid certificateId)
+            => generateTrainingCertificateHandler.GenerateAsync(id, certificateId);
+
+        /// <summary>Renders the template against ONE exit case — resignation acceptance / termination notice (HC211).</summary>
+        [HttpGet("{id:guid}/generate-termination/{terminationId:guid}")]
+        public Task<GeneratedDocumentDto> GenerateTermination(Guid id, Guid terminationId)
+            => generateTerminationHandler.GenerateAsync(id, terminationId);
+
+        /// <summary>Renders the template against ONE final settlement — the settlement letter (HC218).</summary>
+        [HttpGet("{id:guid}/generate-settlement/{settlementId:guid}")]
+        public Task<GeneratedDocumentDto> GenerateSettlement(Guid id, Guid settlementId)
+            => generateSettlementHandler.GenerateAsync(id, settlementId);
 
         [HttpPost]
         public Task<Guid> Create([FromBody] CreateDocumentTemplateDto dto)

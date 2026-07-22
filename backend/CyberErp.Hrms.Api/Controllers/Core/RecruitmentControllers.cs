@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Recruitment;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Hiring Need Assessment (HC077–HC083): justified, budgeted, workflow-approved hiring needs.</summary>
+    [RequirePermission("hiringRequest", "jobRequisition")]
     public class HiringRequestController(
         ISaveHiringRequest saveHandler,
         IGetHiringRequestById getByIdHandler,
@@ -62,6 +64,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Job requisitions (HC084–HC088, HC091): approvable vacancies raised from approved hiring needs.</summary>
+    [RequirePermission("jobRequisition", "hiringRequest", "jobApplication", "candidate")]
     public class JobRequisitionController(
         ISaveJobRequisition saveHandler,
         IGetJobRequisitionById getByIdHandler,
@@ -144,6 +147,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Centralized candidate database (HC092–HC097) + internal matching (HC089–HC090).</summary>
+    [RequirePermission("candidate", "jobApplication", "talentPool", "jobRequisition")]
     public class CandidateController(
         ISaveCandidate saveHandler,
         IGetCandidateById getByIdHandler,
@@ -354,6 +358,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Interview scheduling, panels and scored feedback (HC101–HC109).</summary>
+    [RequirePermission("jobApplication", "jobRequisition")]
     public class InterviewController(
         ISaveInterview saveHandler,
         IGetInterviews getHandler,
@@ -402,6 +407,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Formal offers: approval workflow, letter, response tracking (HC111–HC114).</summary>
+    [RequirePermission("jobApplication", "jobRequisition")]
     public class JobOfferController(
         ISaveJobOffer saveHandler,
         IGetJobOffers getHandler,
@@ -488,6 +494,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Application pipeline (HC098–HC099): candidate × requisition with stage machine + log.</summary>
+    [RequirePermission("jobApplication", "jobRequisition", "candidate")]
     public class JobApplicationController(
         ICreateJobApplication createHandler,
         IGetJobApplicationById getByIdHandler,

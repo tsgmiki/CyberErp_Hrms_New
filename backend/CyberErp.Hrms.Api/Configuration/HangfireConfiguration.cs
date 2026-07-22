@@ -65,6 +65,19 @@ namespace CyberErp.Hrms.Api.Configuration
                 DisplayStorageConnectionString = false,
                 DashboardTitle = "CyberErp HRMS — Background Jobs"
             });
+
+            // HC176: apply workflow-approved, future-dated personnel movements ON their effective date.
+            // One indexed sweep per day (Status='Approved' AND EffectiveDate <= today) across all tenants
+            // (the job runs without a tenant context by design); AddOrUpdate keeps it a single recurring
+            // job across restarts.
+            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Employees.IExecuteDueMovements>(
+                "employee-movements-due", job => job.ExecuteAsync(), Cron.Daily(1));   // 01:00 UTC daily
+
+            // HC263: remind employees whose trip advance is past its settlement deadline. One daily
+            // best-effort sweep across all tenants (mirrors the due-movements job).
+            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Trips.ITripSettlementReminder>(
+                "trip-settlement-reminders", job => job.RunAsync(), Cron.Daily(2));   // 02:00 UTC daily
+
             return app;
         }
     }

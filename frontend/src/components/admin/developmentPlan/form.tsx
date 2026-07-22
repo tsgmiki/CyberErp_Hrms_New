@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save, GraduationCap, ListChecks } from "lucide-react";
 import type { DevelopmentPlanModel, DevelopmentActionModel } from "@/models";
 import { getDevelopmentPlan, saveDevelopmentPlan } from "@/services/admin/developmentPlan";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import getAllCompetency from "@/services/admin/competency/getAll";
 import { developmentPlanStatusOptions, developmentActionStatusOptions, learningInterventionOptions } from "@/constants/performance";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -44,8 +44,6 @@ function DevelopmentPlanForm({ id, setId }: { id: string; setId: (id: string) =>
     enabled: id !== "",
   });
 
-  const [empParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees } = useQuery({ queryKey: ["employees", empParam], queryFn: () => getAllEmployee(empParam) });
   const [compParam] = useState({ ...parameterInitialData, take: 500 });
   const { data: competencies } = useQuery({ queryKey: ["competencies", compParam], queryFn: () => getAllCompetency(compParam) });
 
@@ -102,12 +100,12 @@ function DevelopmentPlanForm({ id, setId }: { id: string; setId: (id: string) =>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className={LABEL}>{t("Employee")} *</label>
-                  <select className={INPUT} value={meta.employeeId ?? ""} onChange={(e) => setMetaField("employeeId", e.target.value)}>
-                    <option value="">{t("Select employee")}</option>
-                    {(employees?.data ?? []).map((e) => (
-                      <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
-                    ))}
-                  </select>
+                  {/* Server-search picker — no bulk employee load (10k+ scale). */}
+                  <EmployeePicker
+                    value={meta.employeeId}
+                    displayValue={meta.employeeName}
+                    onSelect={(eid, name) => setMeta((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>{t("Status")}</label>

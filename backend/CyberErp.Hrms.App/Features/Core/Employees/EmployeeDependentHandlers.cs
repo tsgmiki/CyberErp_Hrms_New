@@ -129,10 +129,15 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class GetEmployeeDependents(
         IRepository<EmployeeDependent> repository,
         IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ICustomFieldService customFields) : IGetEmployeeDependents
     {
         public async Task<List<EmployeeDependentDto>> GetAsync(Guid employeeId)
         {
+            // Family PII: the employee themselves, their manager, or HR only.
+            if (!await visibility.CanAccessEmployeeAsync(employeeId))
+                throw new ValidationException("access", "You do not have access to this employee's family records.");
+
             var personId = await EmployeeGuard.ResolvePersonIdAsync(employeeRepository, employeeId);
 
             // Left-join the related employee's person for internal relationships (HC020).

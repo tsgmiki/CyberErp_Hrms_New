@@ -21,7 +21,7 @@ public class CreateOperationHandler(
         if (!validationResult.IsValid)
             throw new AppValidationException(validationResult.Errors);
 
-        var operation = Operation.Create(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon);
+        var operation = Operation.Create(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon, request.SortOrder);
 
         await repository.AddAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);

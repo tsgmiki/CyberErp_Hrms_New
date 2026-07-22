@@ -67,6 +67,10 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         public string? CurrentUserRole { get; set; }
         public bool CanActCurrentStage { get; set; }
         public string? CurrentStageActorName { get; set; }
+        /// <summary>The caller is the resolved manager for this appraisal (drives counter-sign + peer administration).</summary>
+        public bool CanManagerSign { get; set; }
+        /// <summary>The caller is an HR administrator (head office / configured HR approver).</summary>
+        public bool CanAdminister { get; set; }
     }
 
     // ---- Write DTOs ---------------------------------------------------------
@@ -153,6 +157,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Competency> competencyRepository,
         IPerformanceHistoryWriter history,
         Workflows.IWorkflowService workflowService,
+        IRepository<WorkflowDefinition> workflowDefinitions,
+        IPerformanceVisibilityService visibility,
         IValidator<GenerateAppraisalDto> validator,
         ILogger<GenerateAppraisal> logger) : IGenerateAppraisal
     {
@@ -160,6 +166,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         {
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            // Self-service scope: HR (all), a manager (their subtree), or the employee themselves (own only).
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException(nameof(dto.EmployeeId),
+                    "Only an HR administrator, the employee's manager, or the employee themselves can initiate this appraisal.");
 
             var employee = await employeeRepository.GetAll().FirstOrDefaultAsync(e => e.Id == dto.EmployeeId)
                 ?? throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
@@ -237,6 +248,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             await history.WriteAsync("Appraisal", appraisal.Id, "Generated",
                 $"Appraisal generated ({appraisal.Goals.Count} goals, {appraisal.Competencies.Count} competencies).");
             await repository.SaveChangesAsync();
+
+            // Guarantee the appraisal is workflow-governed: auto-create the routing definition if the tenant has
+            // none, so every appraisal gets an instance (no "open" gating gap). Admins can edit it afterwards.
+            if (!await workflowDefinitions.GetAll().AnyAsync(d => d.EntityType == WorkflowEntityTypes.Appraisal && d.IsActive))
+            {
+                var def = AppraisalWorkflowService.BuildDefaultDefinition();
+                await workflowDefinitions.AddAsync(def);
+                Workflows.SaveWorkflowDefinition.StampStepTenant(def);
+                await workflowDefinitions.SaveChangesAsync();
+                logger.LogInformation("Auto-created the Appraisal workflow definition for the tenant.");
+            }
 
             // Start the routing instance in the shared workflow engine (EntityType "Appraisal", subject = the
             // appraisee), beginning at the appraisal's actual first stage. Approvers resolve lazily per stage —
@@ -332,10 +354,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 throw new ValidationException(nameof(id), "Only an appraisal in manager review can be completed.");
             await workflowService.EnsureCanActAsync(appraisal);
 
+            // Distinguish "nothing to score" (a config gap) from "scored nothing yet" so the message is actionable.
+            if (appraisal.Goals.Count == 0 && appraisal.Competencies.Count == 0)
+                throw new ValidationException(nameof(id),
+                    "This appraisal has no goals or competencies to score. It is generated from the employee's goals " +
+                    "for this review cycle plus their position competencies — add those (or set the goals BEFORE generating), " +
+                    "then regenerate the appraisal.");
+
             var goalScore = WeightedAverage(appraisal.Goals.Select(g => (g.ManagerScore, g.Weight)));
             var compScore = WeightedAverage(appraisal.Competencies.Select(c => (c.ManagerScore, c.Weight)));
             if (goalScore is null && compScore is null)
-                throw new ValidationException(nameof(id), "Score at least one goal or competency before completing the appraisal.");
+                throw new ValidationException(nameof(id), "Enter and save a manager score for at least one goal or competency before completing the appraisal.");
 
             decimal overall;
             if (goalScore is not null && compScore is not null)
@@ -480,12 +509,15 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     // ---- Delete -------------------------------------------------------------
     public class DeleteAppraisal(
         IRepository<Appraisal> repository,
+        IAppraisalWorkflowService workflowService,
         ILogger<DeleteAppraisal> logger) : IDeleteAppraisal
     {
         public async Task DeleteAsync(Guid id)
         {
             var entity = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(Appraisal), id.ToString());
+            if (!await workflowService.CanAdministerAsync())
+                throw new ValidationException(nameof(id), "Only an HR administrator can delete an appraisal.");
             repository.Delete(entity);   // lines cascade
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted Appraisal {Id}", id);
@@ -506,6 +538,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var entity = await repository.GetAll().Include(a => a.Goals).Include(a => a.Competencies).AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == id)
                 ?? throw new NotFoundException(nameof(Appraisal), id.ToString());
+            // Visibility: only the appraisee, their manager chain, or an HR administrator may open an appraisal.
+            await workflowService.EnsureCanViewAsync(entity);
             var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
                 .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
             var cycleName = await reviewCycleRepository.GetAll().Where(c => c.Id == entity.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
@@ -540,6 +574,12 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             dto.CurrentUserRole = actor.CurrentUserRole;
             dto.CanActCurrentStage = actor.CanActCurrentStage;
             dto.CurrentStageActorName = actor.CurrentStageActorName;
+            dto.CanManagerSign = await workflowService.CanActOnStageAsync(entity, nameof(AppraisalStage.ManagerReview));
+            dto.CanAdminister = await workflowService.CanAdministerAsync();
+
+            // The appraisee sees only the peer AVERAGE — never who scored what (independent 360 feedback).
+            if (actor.ViewerIsAppraisee && !dto.CanAdminister && !dto.CanManagerSign)
+                dto.PeerReviews = [];
             return dto;
         }
     }
@@ -548,7 +588,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Appraisal> repository,
         IRepository<Employee> employeeRepository,
         IRepository<ReviewCycle> reviewCycleRepository,
-        IAppraisalWorkflowService workflowService) : IGetAllAppraisals
+        IAppraisalWorkflowService workflowService,
+        IPerformanceVisibilityService visibility) : IGetAllAppraisals
     {
         public async Task<PaginatedResponse<AppraisalDto>> GetAsync(GetAllRequest request)
         {
@@ -578,6 +619,24 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             }
             else
             {
+                // Role-based visibility as a single SQL predicate (no in-memory scans): admin → all;
+                // manager → own + employees whose unit is in their subtree; employee → own only.
+                var scope = await visibility.GetScopeAsync();
+                if (!scope.IsAdmin)
+                {
+                    var myEmp = scope.EmployeeId ?? Guid.Empty;
+                    if (scope.IsManager)
+                    {
+                        var unitIds = scope.UnitIds;
+                        var emps = employeeRepository.GetAll();
+                        query = query.Where(a => a.EmployeeId == myEmp ||
+                            emps.Any(e => e.Id == a.EmployeeId && e.Position != null && unitIds.Contains(e.Position.OrganizationUnitId)));
+                    }
+                    else
+                    {
+                        query = query.Where(a => a.EmployeeId == myEmp);
+                    }
+                }
                 total = await query.CountAsync();
                 rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
             }

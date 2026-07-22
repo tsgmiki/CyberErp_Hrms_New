@@ -194,6 +194,97 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             "<div>_____________________________<br/>Authorized Signature</div>" +
             "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
 
+        private const string TransferNoticeName = "Transfer Notice";
+
+        private const string TransferNoticeBody =
+            "<h2 style=\"text-align:center;margin:8px 0 16px;letter-spacing:1px;\">TRANSFER NOTICE</h2>" +
+            "<p>Dear <strong>{{FullName}}</strong> (Employee No. <strong>{{EmployeeNumber}}</strong>),</p>" +
+            "<p>We are pleased to confirm your <strong>{{TransferKind}}</strong> transfer, effective " +
+            "<strong>{{EffectiveDate}}</strong>:</p>" +
+            "<table style=\"width:100%;border-collapse:collapse;font-size:13px;margin:12px 0;\">" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;width:30%;\">New Role</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\"><strong>{{NewPosition}}</strong></td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Department / Unit</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\">{{NewUnit}}</td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Location</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\">{{NewBranch}}</td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Reporting Line</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\">{{ReportingLine}}</td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Start Date</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\">{{EffectiveDate}}</td></tr>" +
+            "</table>" +
+            "<p>Your previous assignment was <strong>{{FromPosition}}</strong> ({{FromUnit}}). " +
+            "Your terms of compensation remain unchanged by this transfer.</p>" +
+            "<p>We wish you continued success in your new role.</p>";
+
+        private const string TransferNoticeFooter =
+            "<div style=\"display:flex;justify-content:space-between;margin-top:48px;\">" +
+            "<div>_____________________________<br/>Human Resources</div>" +
+            "<div>_____________________________<br/>Authorized Signature</div>" +
+            "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
+
+        private const string TrainingCertificateName = "Training Certificate";
+
+        private const string TrainingCertificateBody =
+            "<div style=\"text-align:center;border:3px double #b8860b;padding:32px 24px;\">" +
+            "<h1 style=\"margin:0 0 4px;letter-spacing:3px;color:#b8860b;\">CERTIFICATE</h1>" +
+            "<p style=\"margin:0 0 20px;font-size:13px;letter-spacing:2px;color:#555;\">OF COMPLETION</p>" +
+            "<p style=\"margin:0;\">This certifies that</p>" +
+            "<h2 style=\"margin:8px 0;\">{{FullName}}</h2>" +
+            "<p style=\"margin:0 0 12px;font-size:12px;color:#555;\">Employee No. {{EmployeeNumber}}</p>" +
+            "<p style=\"margin:0;\">has successfully completed</p>" +
+            "<h3 style=\"margin:8px 0 16px;\">{{CourseName}}</h3>" +
+            "<p style=\"margin:0 0 4px;font-size:13px;\">Assessment score: <strong>{{Score}}</strong> &nbsp;&middot;&nbsp; CPD hours: <strong>{{CpdHours}}</strong></p>" +
+            "<p style=\"margin:0 0 4px;font-size:13px;\">Certificate No. <strong>{{CertificateNo}}</strong></p>" +
+            "<p style=\"margin:0;font-size:13px;\">Issued {{IssuedOn}} &nbsp;&middot;&nbsp; Valid until {{ExpiresOn}}</p>" +
+            "</div>";
+
+        private const string TrainingCertificateFooter =
+            "<div style=\"display:flex;justify-content:space-between;margin-top:40px;\">" +
+            "<div>_____________________________<br/>Trainer: {{Trainer}}</div>" +
+            "<div>_____________________________<br/>Human Resources</div>" +
+            "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
+
+        private const string ResignationAcceptanceName = "Resignation Acceptance";
+
+        private const string ResignationAcceptanceBody =
+            "<h2 style=\"text-align:center;margin:8px 0 16px;letter-spacing:1px;\">ACCEPTANCE OF RESIGNATION</h2>" +
+            "<p>Dear <strong>{{FullName}}</strong> (Employee No. <strong>{{EmployeeNumber}}</strong>),</p>" +
+            "<p>We acknowledge receipt of your notice dated <strong>{{NoticeDate}}</strong> and confirm the acceptance " +
+            "of your resignation from the position of <strong>{{Position}}</strong> ({{Unit}}).</p>" +
+            "<p>Your last working day will be <strong>{{LastWorkingDate}}</strong>. Departmental clearance and the " +
+            "final settlement will proceed per company policy.</p>" +
+            "<p>We thank you for your service and wish you success in your future endeavours.</p>";
+
+        private const string TerminationNoticeName = "Termination Notice";
+
+        private const string TerminationNoticeBody =
+            "<h2 style=\"text-align:center;margin:8px 0 16px;letter-spacing:1px;\">NOTICE OF TERMINATION</h2>" +
+            "<p>Dear <strong>{{FullName}}</strong> (Employee No. <strong>{{EmployeeNumber}}</strong>),</p>" +
+            "<p>This letter serves as formal notice that your employment in the position of <strong>{{Position}}</strong> " +
+            "({{Unit}}) will end effective <strong>{{LastWorkingDate}}</strong>.</p>" +
+            "<p>Reason: {{Reason}}</p>" +
+            "<p>Departmental clearance, the return of company property and the final settlement will be handled " +
+            "per company policy. Please contact Human Resources with any questions.</p>";
+
+        private const string ExitLetterFooter =
+            "<div style=\"display:flex;justify-content:space-between;margin-top:48px;\">" +
+            "<div>_____________________________<br/>Human Resources</div>" +
+            "<div>_____________________________<br/>Authorized Signature</div>" +
+            "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
+
+        private const string SettlementLetterName = "Final Settlement Letter";
+
+        private const string SettlementLetterBody =
+            "<h2 style=\"text-align:center;margin:8px 0 16px;letter-spacing:1px;\">FINAL SETTLEMENT STATEMENT</h2>" +
+            "<p>Employee: <strong>{{FullName}}</strong> (No. <strong>{{EmployeeNumber}}</strong>) &nbsp;&middot;&nbsp; " +
+            "Exit type: <strong>{{TerminationType}}</strong> &nbsp;&middot;&nbsp; Last working day: <strong>{{LastWorkingDate}}</strong></p>" +
+            "<div style=\"margin:12px 0;\">{{LinesTable}}</div>" +
+            "<p>Total earnings: <strong>{{TotalEarnings}}</strong> &nbsp;&middot;&nbsp; Total deductions: <strong>{{TotalDeductions}}</strong> " +
+            "&nbsp;&middot;&nbsp; Net settlement: <strong>{{NetAmount}}</strong></p>" +
+            "<p>Status: {{SettlementStatus}} {{PaidReference}}</p>" +
+            "<p>This statement represents the full and final settlement of all employment dues.</p>";
+
         public async Task<int> SeedAsync()
         {
             var created = 0;
@@ -207,6 +298,74 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
                     ClearanceHeader,
                     ClearanceFooter,
                     "Final clearance certificate for a terminated employee (offboarding checklist).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            // HC174 — formal transfer notice: new role, location, start date and reporting line.
+            if (!await repository.GetAll().AnyAsync(t => t.Name == TransferNoticeName))
+            {
+                var template = DocumentTemplate.Create(
+                    TransferNoticeName,
+                    DocumentTemplateType.TransferNotice,
+                    TransferNoticeBody,
+                    ClearanceHeader,   // same logo/branch letterhead
+                    TransferNoticeFooter,
+                    "Formal transfer notice for an employee movement (HC174).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            // HC211 — exit letters: resignation acceptance + termination notice.
+            if (!await repository.GetAll().AnyAsync(t => t.Name == ResignationAcceptanceName))
+            {
+                var template = DocumentTemplate.Create(
+                    ResignationAcceptanceName,
+                    DocumentTemplateType.TerminationNotice,
+                    ResignationAcceptanceBody,
+                    ClearanceHeader,   // same logo/branch letterhead
+                    ExitLetterFooter,
+                    "Formal acceptance of a voluntary exit (HC211).");
+                await repository.AddAsync(template);
+                created++;
+            }
+            if (!await repository.GetAll().AnyAsync(t => t.Name == TerminationNoticeName))
+            {
+                var template = DocumentTemplate.Create(
+                    TerminationNoticeName,
+                    DocumentTemplateType.TerminationNotice,
+                    TerminationNoticeBody,
+                    ClearanceHeader,
+                    ExitLetterFooter,
+                    "Formal notice for an involuntary exit (HC211).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            // HC218 — final settlement letter with the worksheet table.
+            if (!await repository.GetAll().AnyAsync(t => t.Name == SettlementLetterName))
+            {
+                var template = DocumentTemplate.Create(
+                    SettlementLetterName,
+                    DocumentTemplateType.SettlementLetter,
+                    SettlementLetterBody,
+                    ClearanceHeader,
+                    ExitLetterFooter,
+                    "Final settlement statement for an exit case (HC218).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            // HC200 — digital certificate for a completed training.
+            if (!await repository.GetAll().AnyAsync(t => t.Name == TrainingCertificateName))
+            {
+                var template = DocumentTemplate.Create(
+                    TrainingCertificateName,
+                    DocumentTemplateType.TrainingCertificate,
+                    TrainingCertificateBody,
+                    ClearanceHeader,   // same logo/branch letterhead
+                    TrainingCertificateFooter,
+                    "Digital certificate for a completed training program (HC200).");
                 await repository.AddAsync(template);
                 created++;
             }

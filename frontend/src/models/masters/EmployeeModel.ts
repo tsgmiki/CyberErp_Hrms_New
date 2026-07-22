@@ -95,8 +95,16 @@ export interface EmployeeDocumentModel {
 export interface EmployeeMovementModel extends AbstractModel {
   employeeId?: string;
   movementType?: string; // Transfer | Promotion | Demotion
-  status?: string; // Pending | Completed | Cancelled
+  status?: string; // Pending | Approved (parked until effective date) | Completed | Cancelled
   effectiveDate?: string;
+  /** Transfer-request details (HC170/171/173). */
+  transferKind?: string; // Role | Department | Location
+  requestedByEmployeeId?: string;
+  requestedByName?: string;
+  relocationExpense?: number;
+  /** Set on the standalone paged list / by-id read. */
+  employeeName?: string;
+  employeeNumber?: string;
   fromPositionId?: string;
   fromPositionName?: string;
   fromSalaryScaleId?: string;
@@ -201,6 +209,8 @@ export interface EmployeeTerminationModel extends AbstractModel {
 /** Disciplinary case record. */
 export interface DisciplinaryMeasureModel extends AbstractModel {
   employeeId?: string;
+  employeeName?: string;
+  employeeNumber?: string;
   violationDate?: string;
   violationType?: string;
   description?: string;
@@ -208,8 +218,36 @@ export interface DisciplinaryMeasureModel extends AbstractModel {
   status?: string; // Open | UnderReview | Resolved | Cancelled
   effectiveDate?: string;
   resolution?: string;
+  /** HC223 — end of the measure's lifetime re: bonus/promotion (null = until Cancelled). */
+  validUntil?: string;
+  /** HC223/HC225 — while active, blocks promotion. */
+  affectsPromotion?: boolean;
+  /** HC223/HC225 — while active, blocks reward/bonus. */
+  affectsReward?: boolean;
+  /** HC222 — who raised the case (null = HR/system). */
+  raisedByEmployeeId?: string;
+  raisedByName?: string;
   /** Dynamic custom-field values (HC021), keyed by field name. */
   customFields?: Record<string, string | null>;
+}
+
+/** One active disciplinary measure behind a promotion/reward block (HC224/HC225). */
+export interface DisciplinaryBlockModel {
+  id?: string;
+  violationType?: string;
+  measureType?: string;
+  status?: string;
+  validUntil?: string;
+  affectsPromotion?: boolean;
+  affectsReward?: boolean;
+}
+
+/** Disciplinary eligibility snapshot for one employee (HC225). */
+export interface DisciplinaryEligibilityModel {
+  employeeId?: string;
+  isBlockedForPromotion?: boolean;
+  isBlockedForReward?: boolean;
+  activeMeasures?: DisciplinaryBlockModel[];
 }
 
 export interface EmployeeDependentModel extends AbstractModel {

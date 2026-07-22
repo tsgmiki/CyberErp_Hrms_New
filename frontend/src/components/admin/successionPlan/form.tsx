@@ -12,7 +12,7 @@ import saveSuccessionPlan from "@/services/admin/successionPlan/save";
 import getSuccessionPlan from "@/services/admin/successionPlan/get";
 import getAllCriticalPosition from "@/services/admin/criticalPosition/getAll";
 import { parameterInitialData } from "@/constants/initialization";
-import { successionHorizonOptions, successionPlanStatusOptions } from "@/constants/careerDevelopment";
+import { successionHorizonOptions, successionPlanStatusOptions, successionPlanStatusLabel } from "@/constants/careerDevelopment";
 
 const FormProvider = memo(FormProviders);
 const SuccessionChart = memo(lazy(() => import("./chart")));
@@ -91,12 +91,22 @@ function SuccessionPlanForm({ id, setId }: { id: string; setId: (id: string) => 
                       { name: "horizon", label: "Horizon", required: true, type: "dropDown", onSelect: selectHandler,
                         value: formData.horizon ?? "MediumTerm", displayValue: successionHorizonOptions.find((o) => o.id === (formData.horizon ?? "MediumTerm"))?.name, data: successionHorizonOptions as never },
                       { name: "status", label: "Status", required: true, type: "dropDown", onSelect: selectHandler,
-                        value: formData.status ?? "Active", displayValue: successionPlanStatusOptions.find((o) => o.id === (formData.status ?? "Active"))?.name, data: successionPlanStatusOptions as never },
+                        value: formData.status ?? "Active", displayValue: successionPlanStatusLabel(formData.status ?? "Active"), data: successionPlanStatusOptions as never },
                       { name: "notes", label: "Notes", value: formData.notes, onChange: changeHandler, type: "textarea", colSpan: "full" },
                       { name: "id", value: formData.id, type: "hidden" },
                     ],
                   }}
                 />
+                {formData.status === "PendingApproval" && (
+                  <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
+                    This plan is awaiting workflow approval — it activates once the chain approves it (see My Approvals).
+                  </p>
+                )}
+                {formData.status === "Rejected" && (
+                  <p className="rounded-md bg-error/10 px-3 py-2 text-xs text-error">
+                    This plan was rejected by the approval workflow. Saving it resubmits it for approval.
+                  </p>
+                )}
                 <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
               </div>
             ),

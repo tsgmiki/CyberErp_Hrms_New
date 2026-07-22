@@ -18,6 +18,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(m => m.ToSalary).HasPrecision(18, 2);
             builder.Property(m => m.Reason).HasMaxLength(1000);
             builder.Property(m => m.Remark).HasMaxLength(1000);
+            // Transfer-request details (HC170/171/173). RequestedByEmployeeId is an audit snapshot (no FK).
+            builder.Property(m => m.TransferKind).HasConversion<string>().HasMaxLength(30);
+            builder.Property(m => m.RelocationExpense).HasPrecision(18, 2);
 
             // Movement history cascades with its employee; the From* snapshot (position/scale) is
             // historical (no FK) so past actions survive master-data cleanup.

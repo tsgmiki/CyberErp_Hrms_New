@@ -2,7 +2,7 @@ using FluentValidation;
 
 namespace CyberErp.Hrms.App.Features.Core.Operations.Create;
 
-public record CreateOperationRequest(Guid ModuleId, string Name, string Link, string Filter, string Icon);
+public record CreateOperationRequest(Guid ModuleId, string Name, string Link, string Filter, string Icon, int SortOrder = 0);
 
 public class CreateOperationRequestValidator : AbstractValidator<CreateOperationRequest>
 {

@@ -95,6 +95,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IWorkingCalendar calendar,
         ILeaveBalanceService balanceService,
         IWorkflowService workflowService,
+        Performance.IPerformanceVisibilityService visibility,
         IValidator<SaveAnnualLeaveDto> validator,
         ILogger<SubmitAnnualLeave> logger) : ISubmitAnnualLeave
     {
@@ -102,6 +103,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         {
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            // Employees submit for THEMSELVES (the screen locks the field to the signed-in employee);
+            // HR admins and unit managers may still record for employees in their scope (profile tab).
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException("employeeId", "You can only submit annual leave for yourself.");
 
             // A submitted request is NEVER auto-approved: it must route through the configured
             // approval workflow and stay Pending until every stage approves. Fail loudly up front
@@ -268,14 +274,25 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     }
 
     // ---- Reads --------------------------------------------------------------
-    public class GetAnnualLeaveById(IRepository<AnnualLeaveHeader> repository) : IGetAnnualLeaveById
+    public class GetAnnualLeaveById(
+        IRepository<AnnualLeaveHeader> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetAnnualLeaveById
     {
-        public async Task<AnnualLeaveHeaderDto> GetAsync(Guid id) =>
-            await repository.GetAll().Where(r => r.Id == id).Select(AnnualLeaveMapper.Projection).FirstOrDefaultAsync()
-            ?? throw new NotFoundException(nameof(AnnualLeaveHeader), id.ToString());
+        public async Task<AnnualLeaveHeaderDto> GetAsync(Guid id)
+        {
+            var dto = await repository.GetAll().Where(r => r.Id == id).Select(AnnualLeaveMapper.Projection).FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(AnnualLeaveHeader), id.ToString());
+            // HR admin, the employee themselves, or their manager (subtree) only.
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException("access", "You do not have access to this annual leave request.");
+            return dto;
+        }
     }
 
-    public class GetAllAnnualLeaves(IRepository<AnnualLeaveHeader> repository) : IGetAllAnnualLeaves
+    public class GetAllAnnualLeaves(
+        IRepository<AnnualLeaveHeader> repository,
+        IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility) : IGetAllAnnualLeaves
     {
         public async Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAsync(GetAllRequest request)
         {
@@ -283,6 +300,25 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // Role-based visibility: HR admin sees all, a manager their unit subtree, else own only.
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin)
+            {
+                var myEmp = scope.EmployeeId ?? Guid.Empty;
+                if (scope.IsManager)
+                {
+                    var unitIds = scope.UnitIds;
+                    var emps = employeeRepository.GetAll();
+                    query = query.Where(x => x.EmployeeId == myEmp ||
+                        emps.Any(e => e.Id == x.EmployeeId && e.Position != null && unitIds.Contains(e.Position.OrganizationUnitId)));
+                }
+                else
+                {
+                    query = query.Where(x => x.EmployeeId == myEmp);
+                }
+            }
+
             if (request.EmployeeId.HasValue && request.EmployeeId.Value != Guid.Empty)
                 query = query.Where(x => x.EmployeeId == request.EmployeeId.Value);
             if (!string.IsNullOrWhiteSpace(request.Status) &&

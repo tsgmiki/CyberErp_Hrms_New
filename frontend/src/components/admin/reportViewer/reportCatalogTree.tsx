@@ -70,6 +70,13 @@ function ReportCatalogTree({
     return { nodes, reportByKey, filterById };
   }, [groups, onRemoveFilter, t]);
 
+  // First-open behaviour: only the FIRST group starts expanded — every other group starts
+  // collapsed (one-shot; the user can toggle freely afterwards).
+  const defaultCollapsedIds = useMemo(
+    () => (groups.length === 0 ? [] : groups.slice(1).map((g) => `${GRP}${g.grouping}`)),
+    [groups],
+  );
+
   const handleSelect = (node: TreeViewNode | null) => {
     if (!node) return;
     if (node.id.startsWith(RPT)) {
@@ -91,6 +98,7 @@ function ReportCatalogTree({
       isLoading={loading}
       loader={<Loading />}
       emptyMessage={t("No reports in the catalog.") ?? undefined}
+      defaultCollapsedIds={defaultCollapsedIds}
       className={className}
     />
   );

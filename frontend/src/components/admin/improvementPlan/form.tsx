@@ -5,12 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save, CheckCircle2, Flag, ClipboardList, ListChecks } from "lucide-react";
 import type { ImprovementPlanModel, PipObjectiveModel } from "@/models";
 import { getImprovementPlan, saveImprovementPlan, recordImprovementPlanOutcome } from "@/services/admin/improvementPlan";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import { pipStatusOptions, pipObjectiveStatusOptions, pipOutcomeOptions } from "@/constants/performance";
 import { StatusMessage } from "../../common/statusMessage/status";
 import Loading from "../../common/loader/loader";
 import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
-import { parameterInitialData } from "@/constants/initialization";
 
 const INPUT = "w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-60";
 const LABEL = "block text-xs font-medium text-muted mb-1";
@@ -44,9 +43,6 @@ function ImprovementPlanForm({ id, setId }: { id: string; setId: (id: string) =>
     queryFn: () => getImprovementPlan(id),
     enabled: id !== "",
   });
-
-  const [empParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees } = useQuery({ queryKey: ["employees", empParam], queryFn: () => getAllEmployee(empParam) });
 
   useEffect(() => {
     if (record) {
@@ -124,12 +120,13 @@ function ImprovementPlanForm({ id, setId }: { id: string; setId: (id: string) =>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className={LABEL}>{t("Employee")} *</label>
-                    <select className={INPUT} value={meta.employeeId ?? ""} disabled={completed} onChange={(e) => setMetaField("employeeId", e.target.value)}>
-                      <option value="">{t("Select employee")}</option>
-                      {(employees?.data ?? []).map((e) => (
-                        <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
-                      ))}
-                    </select>
+                    {/* Server-search picker — no bulk employee load (10k+ scale). */}
+                    <EmployeePicker
+                      value={meta.employeeId}
+                      displayValue={meta.employeeName}
+                      disabled={completed}
+                      onSelect={(eid, name) => setMeta((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                    />
                   </div>
                   <div>
                     <label className={LABEL}>{t("Status")}</label>

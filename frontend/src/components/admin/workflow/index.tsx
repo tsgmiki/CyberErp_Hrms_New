@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { GitPullRequestArrow, Check, X, History } from "lucide-react";
+import { GitPullRequestArrow, Check, X, History, ExternalLink } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
 import { EntityListShell, useEntityList } from "@/template";
@@ -208,21 +208,32 @@ function WorkflowTracking() {
           label: "Action",
           render: (_v: unknown, r: WorkflowInstanceModel) => {
             const running = r.status === "Running";
+            // Appraisals advance via their own screen (score / sign / complete), not the generic approve/reject.
+            const isAppraisal = r.entityType === "Appraisal";
             // Backend-computed step authorization: only listed users / role holders may act.
             const mayAct = running && r.canDecide !== false;
             const gateTitle = running && !mayAct ? t("You are not an approver for this step") : undefined;
             return (
               <span className="inline-flex items-center gap-0.5">
-                <button
-                  type="button" title={gateTitle ?? t("Approve")} disabled={!mayAct}
-                  onClick={() => setDecision({ instance: r, verb: "approve" })}
-                  className="rounded p-1 text-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40"
-                ><Check size={16} /></button>
-                <button
-                  type="button" title={gateTitle ?? t("Reject")} disabled={!mayAct}
-                  onClick={() => setDecision({ instance: r, verb: "reject" })}
-                  className="rounded p-1 text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40"
-                ><X size={16} /></button>
+                {isAppraisal ? (
+                  <a
+                    href="/appraisal" title={t("Open in Appraisals")}
+                    className="rounded p-1 text-primary hover:bg-primary/10"
+                  ><ExternalLink size={15} /></a>
+                ) : (
+                  <>
+                    <button
+                      type="button" title={gateTitle ?? t("Approve")} disabled={!mayAct}
+                      onClick={() => setDecision({ instance: r, verb: "approve" })}
+                      className="rounded p-1 text-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    ><Check size={16} /></button>
+                    <button
+                      type="button" title={gateTitle ?? t("Reject")} disabled={!mayAct}
+                      onClick={() => setDecision({ instance: r, verb: "reject" })}
+                      className="rounded p-1 text-error hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    ><X size={16} /></button>
+                  </>
+                )}
                 <button
                   type="button" title={t("History")}
                   onClick={() => setHistory(r)}
@@ -282,8 +293,9 @@ function WorkflowTracking() {
             setError(err);
             queryClient.invalidateQueries({ queryKey: ["workflows"] });
             queryClient.invalidateQueries({ queryKey: ["workflowStats"] });
-            queryClient.invalidateQueries({ queryKey: ["employees"] });
-            queryClient.invalidateQueries({ queryKey: ["positions"] });
+            // Mark stale only — refetch happens when those screens are next opened.
+            queryClient.invalidateQueries({ queryKey: ["employees"], refetchType: "none" });
+            queryClient.invalidateQueries({ queryKey: ["positions"], refetchType: "none" });
           }}
         />
       )}

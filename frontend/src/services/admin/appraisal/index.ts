@@ -3,7 +3,7 @@ import { createPagedQuery } from "@/template/createPagedQuery";
 import { createDeleteService } from "@/template/createDeleteService";
 import errorMessageParser from "@/components/util/errorMessageParser";
 import isValidJson from "@/components/util/validateJson";
-import type { AppraisalModel, AppraisalPeerReviewModel, PerformanceHistoryModel } from "@/models";
+import type { AppraisalModel, AppraisalPeerReviewModel, MyPeerReviewModel, PerformanceHistoryModel } from "@/models";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -70,6 +70,9 @@ export const deleteAppraisal = createDeleteService("Appraisal");
 
 export const getAppraisalPeers = (appraisalId: string) =>
   api.get<AppraisalPeerReviewModel[]>(`AppraisalPeer?appraisalId=${appraisalId}`);
+
+/** The current user's own peer-review assignments (the peer reviewer's worklist). */
+export const getMyPeerReviews = () => api.get<MyPeerReviewModel[]>("AppraisalPeer/mine");
 
 export const inviteAppraisalPeers = (dto: { appraisalId: string; peerEmployeeIds: string[] }) =>
   jsonCall("POST", "AppraisalPeer/invite", dto as unknown as Record<string, unknown>);

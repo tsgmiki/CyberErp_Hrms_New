@@ -37,9 +37,14 @@ public class GetModuleWithOperationsRepository(
             .Where(rp => userRoleIds.Contains(rp.RoleId))
             .ToListAsync(ct);
 
-        // Get modules with operations
+        // Strictly role-based (deny-by-default): an operation appears ONLY when one of the user's
+        // roles grants CanView on it. No branch/head-office bypass — "admin" = a role granted the
+        // permissions, NOT a user who happens to have no branch (IsHeadOffice is a branch-data flag).
+        // Get modules with operations, in menu order
         var modules = await _moduleRepository.GetAll()
             .Include(m => m.Operations)
+            .Include(m => m.Subsystem)
+            .OrderBy(m => m.SortOrder).ThenBy(m => m.Name)
             .ToListAsync(ct);
 
         var result = modules
@@ -47,8 +52,12 @@ public class GetModuleWithOperationsRepository(
             {
                 Id = m.Id,
                 Name = m.Name ?? string.Empty,
-                SubSystem = m.SubSystem ?? string.Empty,
+                SubsystemId = m.SubsystemId,
+                SubSystem = m.Subsystem?.Name ?? string.Empty,
+                Icon = m.Icon,
+                SortOrder = m.SortOrder,
                 Operations = (m.Operations ?? new List<Operation>())
+                    .OrderBy(op => op.SortOrder).ThenBy(op => op.Name)
                     .Select(op =>
                     {
                         var permission = rolePermissions.FirstOrDefault(rp => rp.OperationId == op.Id);
@@ -58,17 +67,18 @@ public class GetModuleWithOperationsRepository(
                             Name = op.Name ?? string.Empty,
                             Link = op.Link ?? string.Empty,
                             Icon = op.Icon ?? string.Empty,
+                            SortOrder = op.SortOrder,
                             CanAdd = permission?.CanAdd ?? false,
                             CanEdit = permission?.CanEdit ?? false,
                             CanDelete = permission?.CanDelete ?? false,
                             CanApprove = permission?.CanApprove ?? false,
-                            CanView = permission?.CanView ?? true
-
+                            CanView = permission?.CanView ?? false
                         };
                     })
+                    .Where(op => op.CanView)   // hide operations the role can't view
                     .ToList()
             })
-            .Where(m => m.Operations.Any())
+            .Where(m => m.Operations.Any())    // drop modules left with no visible operations
             .ToList();
 
         return result;

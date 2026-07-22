@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.CareerDevelopment;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Career Development §3.7.B — Career Path (HC161–HC169).
 
     /// <summary>Career path definitions (HC161) + visualisation &amp; utilisation analytics (HC166).</summary>
+    [RequirePermission("careerPath", "employeeCareerPath", "careerPathChangeRequest")]
     public class CareerPathController(
         ISaveCareerPath saveHandler,
         IDeleteCareerPath deleteHandler,
@@ -30,6 +32,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee 360 development profile (HC158) — the Performance ↔ Career Development bridge.</summary>
+    [RequirePermission("talentReview", "successionPlan", "careerPath", "employeeCareerPath")]
     public class EmployeeDevelopmentController(IGetEmployeeDevelopmentProfile profileHandler) : BaseController
     {
         /// <summary>Holistic view: performance snapshot + career-path progress + succession candidacy + next-step gap + mentorships.</summary>
@@ -37,6 +40,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Steps of a career path + their required competencies (HC162). Filter by ?parentId=careerPathId.</summary>
+    [RequirePermission("careerPath", "employeeCareerPath")]
     public class CareerPathStepController(
         ISaveCareerPathStep saveHandler,
         IDeleteCareerPathStep deleteHandler,
@@ -51,6 +55,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee career-path assignments + per-step progress (HC163, HC165). Filter by ?parentId=careerPathId or ?employeeId=.</summary>
+    [RequirePermission("employeeCareerPath", "careerPathChangeRequest")]
     public class EmployeeCareerPathController(
         ISaveEmployeeCareerPath saveHandler,
         IDeleteEmployeeCareerPath deleteHandler,
@@ -74,6 +79,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Mentor↔mentee pairings (HC168). Filter by ?parentId=menteeEmployeeId or ?employeeId=.</summary>
+    [RequirePermission("mentorship")]
     public class MentorshipController(
         ISaveMentorship saveHandler,
         IDeleteMentorship deleteHandler,
@@ -88,6 +94,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Career-path change requests with a light approval flow (HC169). Filter by ?employeeId= / ?status=.</summary>
+    [RequirePermission("careerPathChangeRequest", "employeeCareerPath")]
     public class CareerPathChangeRequestController(
         ISaveCareerPathChangeRequest saveHandler,
         IDeleteCareerPathChangeRequest deleteHandler,

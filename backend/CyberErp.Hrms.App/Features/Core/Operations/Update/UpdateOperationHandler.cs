@@ -28,7 +28,7 @@ public class UpdateOperationHandler(
         if (operation == null)
             throw new NotFoundException(nameof(Operation), request.Id.ToString());
 
-        operation.Update(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon);
+        operation.Update(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon, request.SortOrder);
 
         repository.UpdateAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);

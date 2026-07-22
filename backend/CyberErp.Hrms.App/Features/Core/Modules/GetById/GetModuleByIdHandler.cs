@@ -21,9 +21,11 @@ public class GetModuleByIdHandler(
             .Select(x => new GetModuleDto
             {
                 Id = x.Id,
-                SubSystem = x.SubSystem,
+                SubsystemId = x.SubsystemId,
+                SubSystem = x.Subsystem.Name,
                 Name = x.Name,
-                Icon = x.Icon
+                Icon = x.Icon,
+                SortOrder = x.SortOrder
             })
             .FirstOrDefaultAsync(ct);
 

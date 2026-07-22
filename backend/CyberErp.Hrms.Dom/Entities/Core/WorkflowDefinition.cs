@@ -20,7 +20,17 @@ public static class WorkflowEntityTypes
     public const string JobRequisition = "JobRequisition";
     public const string JobOffer = "JobOffer";
     public const string CareerPathChangeRequest = "CareerPathChangeRequest";
+    public const string SuccessionPlan = "SuccessionPlan";
     public const string Appraisal = "Appraisal";
+    public const string RewardNomination = "RewardNomination";
+    public const string SalaryRevision = "SalaryRevision";
+    public const string MedicalClaim = "MedicalClaim";
+    public const string InsuranceClaim = "InsuranceClaim";
+    public const string EmployeeLoan = "EmployeeLoan";
+    public const string TripLocal = "TripRequest.Local";
+    public const string TripInternational = "TripRequest.International";
+    public const string TrainingNeedLocal = "TrainingNeed.Local";
+    public const string TrainingNeedAbroad = "TrainingNeed.Abroad";
 }
 
 /// <summary>

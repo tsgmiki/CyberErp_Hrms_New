@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save, Target, ListChecks } from "lucide-react";
 import type { EmployeeGoalModel, GoalActionItemModel } from "@/models";
 import { getEmployeeGoal, saveEmployeeGoal } from "@/services/admin/employeeGoal";
-import getAllEmployee from "@/services/admin/employee/getAll";
+import EmployeePicker from "@/components/common/employeePicker";
 import getAllReviewCycle from "@/services/admin/reviewCycle/getAll";
 import getAllOrganizationalObjective from "@/services/admin/organizationalObjective/getAll";
 import { goalStatusOptions } from "@/constants/performance";
@@ -47,8 +47,6 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
     enabled: id !== "",
   });
 
-  const [empParam] = useState({ ...parameterInitialData, take: 500 });
-  const { data: employees } = useQuery({ queryKey: ["employees", empParam], queryFn: () => getAllEmployee(empParam) });
   const [cycleParam] = useState({ ...parameterInitialData, take: 200 });
   const { data: cycles } = useQuery({ queryKey: ["reviewCycles", cycleParam], queryFn: () => getAllReviewCycle(cycleParam) });
   const [objParam] = useState({ ...parameterInitialData, take: 500 });
@@ -113,12 +111,12 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className={LABEL}>{t("Employee")} *</label>
-                  <select className={INPUT} value={meta.employeeId ?? ""} onChange={(e) => setMetaField("employeeId", e.target.value)}>
-                    <option value="">{t("Select employee")}</option>
-                    {(employees?.data ?? []).map((e) => (
-                      <option key={e.id} value={e.id}>{e.employeeNumber} — {e.fullName ?? ""}</option>
-                    ))}
-                  </select>
+                  {/* Role-scoped searchable picker: HR = all, manager = unit subtree, employee = locked to self. */}
+                  <EmployeePicker
+                    value={meta.employeeId}
+                    displayValue={meta.employeeName}
+                    onSelect={(eid, name) => setMeta((p) => ({ ...p, employeeId: eid, employeeName: name }))}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>{t("Review Cycle")} *</label>

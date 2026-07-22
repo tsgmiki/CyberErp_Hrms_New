@@ -23,6 +23,16 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
         public bool HasAppraisal { get; set; }
     }
 
+    /// <summary>The employee's latest talent-review outcome — the HC158 bridge from Talent Review to succession.</summary>
+    public class TalentReviewOutcomeDto
+    {
+        public string? ReviewName { get; set; }
+        public int PerformanceBand { get; set; }
+        public int PotentialBand { get; set; }
+        public bool IsHiPo { get; set; }
+        public string Readiness { get; set; } = string.Empty;
+    }
+
     /// <summary>Holistic candidate view (HC158) — career-development readiness + the performance summary + gap.</summary>
     public class SuccessionCandidateProfileDto
     {
@@ -33,6 +43,8 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
         public decimal? ReadinessScore { get; set; }
         public EmployeePerformanceSummaryDto? Performance { get; set; }
         public CompetencyGapDto? Gap { get; set; }
+        /// <summary>Latest talent-review outcome for this employee (null when never assessed).</summary>
+        public TalentReviewOutcomeDto? TalentReview { get; set; }
     }
 
     public class IdentifyHiPosResultDto
@@ -41,10 +53,23 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
         public int TotalHiPo { get; set; }
     }
 
+    /// <summary>A talent-review HiPo proposed as a successor (HC148 → HC152/HC154 hand-off).</summary>
+    public class SuggestedSuccessorDto
+    {
+        public Guid EmployeeId { get; set; }
+        public string? EmployeeName { get; set; }
+        public string? ReviewName { get; set; }
+        public int PerformanceBand { get; set; }
+        public int PotentialBand { get; set; }
+        public string Readiness { get; set; } = string.Empty;
+    }
+
     // ---- Interfaces ---------------------------------------------------------
     public interface IComputeSuccessionCandidateReadiness { Task<ReadinessComputationDto> ComputeAsync(Guid candidateId); }
     public interface IGetSuccessionCandidateProfile { Task<SuccessionCandidateProfileDto> GetAsync(Guid candidateId); }
     public interface IIdentifyHiPos { Task<IdentifyHiPosResultDto> IdentifyAsync(Guid talentReviewId); }
+    /// <summary>HiPos from talent reviews not yet on the plan — surfaces the Talent Review → Succession hand-off.</summary>
+    public interface ISuggestSuccessionCandidates { Task<List<SuggestedSuccessorDto>> GetAsync(Guid successionPlanId); }
 
     // ---- Handlers -----------------------------------------------------------
     /// <summary>
@@ -126,6 +151,8 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
     /// (already-optimised) performance summary and the competency gap.</summary>
     public class GetSuccessionCandidateProfile(
         IRepository<SuccessionCandidate> repository,
+        IRepository<TalentAssessment> assessments,
+        IRepository<TalentReview> reviews,
         IGetEmployeePerformanceSummary summaryHandler,
         IGetSuccessionCandidateGap gapHandler) : IGetSuccessionCandidateProfile
     {
@@ -140,6 +167,28 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
                 }).FirstOrDefaultAsync()
                 ?? throw new NotFoundException(nameof(SuccessionCandidate), candidateId.ToString());
 
+            // HC158: the latest talent-review outcome closes the loop between the review calibration
+            // (9-box / HiPo) and this candidate's succession evaluation.
+            var latestAssessment = await assessments.GetAll().AsNoTracking()
+                .Where(a => a.EmployeeId == c.EmployeeId)
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new { a.TalentReviewId, a.PerformanceBand, a.PotentialBand, a.IsHiPo, a.Readiness })
+                .FirstOrDefaultAsync();
+            TalentReviewOutcomeDto? talentReview = null;
+            if (latestAssessment is not null)
+            {
+                talentReview = new TalentReviewOutcomeDto
+                {
+                    ReviewName = await reviews.GetAll().AsNoTracking()
+                        .Where(r => r.Id == latestAssessment.TalentReviewId)
+                        .Select(r => r.Name).FirstOrDefaultAsync(),
+                    PerformanceBand = latestAssessment.PerformanceBand,
+                    PotentialBand = latestAssessment.PotentialBand,
+                    IsHiPo = latestAssessment.IsHiPo,
+                    Readiness = latestAssessment.Readiness.ToString(),
+                };
+            }
+
             return new SuccessionCandidateProfileDto
             {
                 SuccessionCandidateId = candidateId,
@@ -149,7 +198,57 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
                 ReadinessScore = c.ReadinessScore,
                 Performance = await summaryHandler.GetAsync(c.EmployeeId),
                 Gap = await gapHandler.GetAsync(candidateId),
+                TalentReview = talentReview,
             };
+        }
+    }
+
+    /// <summary>
+    /// Suggested successors for a plan (the Talent Review → Succession hand-off): employees flagged
+    /// HiPo in a talent review who are not yet candidates on this plan, newest assessment first.
+    /// </summary>
+    public class SuggestSuccessionCandidates(
+        IRepository<SuccessionCandidate> candidates,
+        IRepository<TalentAssessment> assessments,
+        IRepository<TalentReview> reviews) : ISuggestSuccessionCandidates
+    {
+        public async Task<List<SuggestedSuccessorDto>> GetAsync(Guid successionPlanId)
+        {
+            var existing = await candidates.GetAll().AsNoTracking()
+                .Where(x => x.SuccessionPlanId == successionPlanId)
+                .Select(x => x.EmployeeId)
+                .ToListAsync();
+
+            var hipos = await assessments.GetAll().AsNoTracking()
+                .Where(a => a.IsHiPo && !existing.Contains(a.EmployeeId))
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new
+                {
+                    a.EmployeeId, a.TalentReviewId, a.PerformanceBand, a.PotentialBand, a.Readiness,
+                    EmployeeName = a.Employee != null && a.Employee.Person != null
+                        ? a.Employee.Person.FirstName + " " + a.Employee.Person.GrandFatherName : null,
+                })
+                .Take(50)
+                .ToListAsync();
+
+            // Latest assessment per employee, capped for the suggestion strip.
+            var latestPerEmployee = hipos.GroupBy(h => h.EmployeeId).Select(g => g.First()).Take(10).ToList();
+
+            var reviewIds = latestPerEmployee.Select(h => h.TalentReviewId).Distinct().ToList();
+            var reviewNames = await reviews.GetAll().AsNoTracking()
+                .Where(r => reviewIds.Contains(r.Id))
+                .Select(r => new { r.Id, r.Name })
+                .ToDictionaryAsync(r => r.Id, r => r.Name);
+
+            return latestPerEmployee.Select(h => new SuggestedSuccessorDto
+            {
+                EmployeeId = h.EmployeeId,
+                EmployeeName = h.EmployeeName,
+                ReviewName = reviewNames.GetValueOrDefault(h.TalentReviewId),
+                PerformanceBand = h.PerformanceBand,
+                PotentialBand = h.PotentialBand,
+                Readiness = h.Readiness.ToString(),
+            }).ToList();
         }
     }
 
