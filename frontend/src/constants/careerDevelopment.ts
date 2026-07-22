@@ -26,6 +26,16 @@ export const talentReviewStatusLabels = opt([
 export const talentReviewStatusLabel = (id?: string) =>
   talentReviewStatusLabels.find((o) => o.id === id)?.name ?? id ?? "";
 
+/** Critical-position approval states (workflow-owned — never picked by hand). */
+export const criticalPositionStatusLabels = opt([
+  ["Active", "Active"],
+  ["PendingApproval", "Pending Approval"],
+  ["Rejected", "Rejected"],
+]);
+
+export const criticalPositionStatusLabel = (id?: string) =>
+  criticalPositionStatusLabels.find((o) => o.id === id)?.name ?? id ?? "";
+
 /** 9-box band (1 = Low … 3 = High) for both performance and potential axes. */
 export const bandOptions = [
   { id: "1", name: "Low" },

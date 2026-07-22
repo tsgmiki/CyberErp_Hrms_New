@@ -33,6 +33,7 @@ Registered `services.AddScoped<IWorkflowEntityHandler, XxxHandler>()`; engine in
 Handlers: `EmployeeMovementWorkflowHandler`, `DisciplinaryMeasureWorkflowHandler`,
 `EmployeeTerminationWorkflowHandler`, `LeaveRequestWorkflowHandler`, `AnnualLeaveWorkflowHandler`,
 `CareerPathChangeRequestWorkflowHandler`, `SuccessionPlanWorkflowHandler`, `TalentReviewWorkflowHandler`,
+`CriticalPositionWorkflowHandler`,
 `SalaryRevisionWorkflowHandler`, `MedicalClaimWorkflowHandler`, `InsuranceClaimWorkflowHandler`,
 `LoanWorkflowHandler`, `TripRequestWorkflowHandler`, `TrainingNeedWorkflowHandler`,
 `RewardNominationWorkflowHandler` (+ the appraisal flow, which drives the engine via
@@ -53,6 +54,14 @@ succession-plan flow (force-pending on create, gates, resubmit-on-reject) with t
 direct (no-definition) mode; (2) **`SaveTalentAssessment` rejects (400) while the review is
 `PendingApproval` or `Rejected`** — 9-box calibration is the review's substance and must not
 proceed under an unapproved session.
+
+**Critical Position approval (HC151, 2026-07-22).** `EntityType = "CriticalPosition"`. Same flow,
+with a dedicated `Status` column added by migration `AddCriticalPositionApprovalStatus` (default
+`Active` — legacy rows stay operational). The approval state drives the operational flag:
+**pending/rejected force `IsActive = false`** so active-only feeds exclude unapproved flags;
+approve → `Active` + `IsActive = true`. The Save DTO carries no status — it is fully
+workflow-owned. Downstream gate: `SaveSuccessionPlan` refuses (400) to anchor a plan to a
+Pending/Rejected critical position — succession planning starts only on an approved flag.
 
 **Service API** — `IWorkflowService`:
 ```

@@ -95,6 +95,17 @@ function CriticalPositionForm({ id, setId }: { id: string; setId: (id: string) =
           ],
         }}
       />
+      {formData.status === "PendingApproval" && (
+        <p className="mt-3 rounded-md bg-info/10 px-3 py-2 text-xs text-info">
+          This critical-position flag is awaiting workflow approval — it activates once the chain approves it
+          (see My Approvals). Succession plans can anchor to it after approval.
+        </p>
+      )}
+      {formData.status === "Rejected" && (
+        <p className="mt-3 rounded-md bg-error/10 px-3 py-2 text-xs text-error">
+          This flag was rejected by the approval workflow. Saving it resubmits it for approval.
+        </p>
+      )}
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
     </div>
   );

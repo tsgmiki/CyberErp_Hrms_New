@@ -101,8 +101,15 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            if (!await criticalPositionRepository.GetAll().AnyAsync(c => c.Id == dto.CriticalPositionId))
-                throw new NotFoundException(nameof(CriticalPosition), dto.CriticalPositionId.ToString());
+            var criticalStatus = await criticalPositionRepository.GetAll()
+                .Where(c => c.Id == dto.CriticalPositionId)
+                .Select(c => (CriticalPositionStatus?)c.Status)
+                .FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(CriticalPosition), dto.CriticalPositionId.ToString());
+            // HC151 — succession planning may only anchor to an APPROVED critical-position flag.
+            if (criticalStatus is CriticalPositionStatus.PendingApproval or CriticalPositionStatus.Rejected)
+                throw new ValidationException(nameof(dto.CriticalPositionId),
+                    "This critical position is awaiting workflow approval — succession plans can anchor to it once it is approved.");
 
             var horizon = Enum.Parse<SuccessionHorizon>(dto.Horizon);
             var status = Enum.Parse<SuccessionPlanStatus>(dto.Status);

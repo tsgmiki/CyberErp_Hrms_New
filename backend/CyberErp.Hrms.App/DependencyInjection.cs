@@ -618,6 +618,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.SuccessionPlanWorkflowHandler>();
             // HC149 — talent-review sessions likewise (approve → calibration begins, reject → resubmittable).
             services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.TalentReviewWorkflowHandler>();
+            // HC151 — critical-position flags likewise (approve → active, succession may then anchor).
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.CareerDevelopment.CriticalPositionWorkflowHandler>();
 
             // Employee 360 development profile (Performance ↔ Career Development bridge, HC158).
             services.AddScoped<Features.Core.CareerDevelopment.IGetEmployeeDevelopmentProfile, Features.Core.CareerDevelopment.GetEmployeeDevelopmentProfile>();

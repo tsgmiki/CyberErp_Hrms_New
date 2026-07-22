@@ -12,6 +12,8 @@ export interface CriticalPositionModel extends AbstractModel {
   reason?: string;
   criteria?: string;
   isActive?: boolean;
+  /** Approval state (workflow-owned): Active / PendingApproval / Rejected. */
+  status?: string;
 }
 
 export interface TalentReviewModel extends AbstractModel {

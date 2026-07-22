@@ -13,6 +13,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("hrmsCriticalPosition", "dbo");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.RiskLevel).HasConversion<string>().HasMaxLength(20).IsRequired();
+            // Default keeps pre-workflow rows (and direct-mode saves) operational without a backfill.
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired()
+                .HasDefaultValue(CriticalPositionStatus.Active);
             builder.Property(x => x.Reason).HasMaxLength(1000);
             builder.Property(x => x.Criteria).HasMaxLength(2000);
 

@@ -6,12 +6,24 @@ import deleteCriticalPosition from "@/services/admin/criticalPosition/delete";
 import type { CriticalPositionModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
+import { criticalPositionStatusLabel } from "@/constants/careerDevelopment";
 
 const RISK_TONE: Record<string, string> = {
   High: "bg-error/15 text-error",
   Medium: "bg-warning/15 text-warning",
   Low: "bg-muted/30 text-muted",
 };
+
+const STATUS_TONE: Record<string, string> = {
+  Active: "bg-success/15 text-success",
+  Inactive: "bg-muted/30 text-muted",
+  PendingApproval: "bg-warning/15 text-warning",
+  Rejected: "bg-error/15 text-error",
+};
+
+/** Workflow state wins; an approved flag falls back to its operational Active/Inactive toggle. */
+const statusOf = (r: CriticalPositionModel) =>
+  r.status && r.status !== "Active" ? r.status : r.isActive ? "Active" : "Inactive";
 
 function CriticalPositionList({ editHandler }: { editHandler: (id: string) => void }) {
   const list = useEntityList({
@@ -39,7 +51,14 @@ function CriticalPositionList({ editHandler }: { editHandler: (id: string) => vo
           ),
         },
         { name: "reason", label: "Reason" },
-        { name: "isActive", label: "Active", render: (v: boolean) => (v ? "Yes" : "No") },
+        { name: "isActive", label: "Status", render: (_v: boolean, r: CriticalPositionModel) => {
+          const s = statusOf(r);
+          return (
+            <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[s] ?? "bg-muted/30 text-muted"}`}>
+              {s === "Inactive" ? "Inactive" : criticalPositionStatusLabel(s)}
+            </span>
+          );
+        } },
         {
           name: "Action", label: "Action",
           render: (_t: unknown, r: CriticalPositionModel) => (

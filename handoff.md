@@ -39,6 +39,25 @@
 
 ## 1. Most recent changes (latest first)
 
+00C. **Critical Position approval workflow (2026-07-22, BE+FE, migration
+    `AddCriticalPositionApprovalStatus` APPLIED to CERP — completes the §3.7.A trio with 00S/00T).**
+    UNLIKE the other two, `CriticalPosition` had only `IsActive` (no status enum) → new
+    `Status` column (nvarchar(20), `HasDefaultValue(Active)` so legacy rows need no backfill).
+    `CriticalPositionStatus {Active, PendingApproval, Rejected}`; transitions also drive the flag:
+    **pending/rejected force `IsActive=false`** (active-only feeds exclude unapproved flags),
+    approve → Active + IsActive=true. `WorkflowEntityTypes.CriticalPosition` + seed
+    ("Critical Position Approval": Manager Review → HR Approval). `SaveCriticalPosition`: Save DTO
+    carries NO status (fully workflow-owned); force-pending on create, `EnsureNoRunningAsync`
+    gates on update/delete, resubmit-on-save of Rejected; summary uses the position Code.
+    DOWNSTREAM GATE: `SaveSuccessionPlan` 400s when anchoring to a Pending/Rejected critical
+    position (succession may only anchor to an APPROVED flag). `CriticalPositionWorkflowHandler`
+    in DI. FE: `CriticalPositionModel.status`, list's Active column replaced by a combined badge
+    (workflow state wins, else Active/Inactive from the toggle), form banners,
+    `criticalPositionStatusLabels`/`Label`, "Critical Position" in `workflowEntityTypeOptions`.
+    E2E `criticalposition_wf_e2e.mjs` **30/30** (IsActive forcing, anchor gate before/after
+    approval, reject→resubmit→approve, role-approver inbox). NOTE: EF-tools-9-vs-runtime-10
+    snapshot gotcha did NOT strike for a property add — snapshot updated normally.
+
 00T. **Talent Review approval workflow (2026-07-22, BE+FE, NO migration — mirrors item 00S).**
     `WorkflowEntityTypes.TalentReview` + seed default ("Talent Review Approval": Manager Review →
     HR Approval). `TalentReviewStatus` gained `PendingApproval(3)`/`Rejected(4)`; transitions

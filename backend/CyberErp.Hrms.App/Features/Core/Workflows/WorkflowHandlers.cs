@@ -553,6 +553,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             // HC149 — a talent-review / calibration session is endorsed before assessment begins.
             (WorkflowEntityTypes.TalentReview, "Talent Review Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
+            // HC151 — flagging a role business-critical is endorsed before succession planning anchors to it.
+            (WorkflowEntityTypes.CriticalPosition, "Critical Position Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.RewardNomination, "Reward Nomination Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
             // HC228 — a salary revision affects payroll cost; HR proposes, Finance + Executive sign off.

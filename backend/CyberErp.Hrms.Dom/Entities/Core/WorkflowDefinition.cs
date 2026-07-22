@@ -22,6 +22,7 @@ public static class WorkflowEntityTypes
     public const string CareerPathChangeRequest = "CareerPathChangeRequest";
     public const string SuccessionPlan = "SuccessionPlan";
     public const string TalentReview = "TalentReview";
+    public const string CriticalPosition = "CriticalPosition";
     public const string Appraisal = "Appraisal";
     public const string RewardNomination = "RewardNomination";
     public const string SalaryRevision = "SalaryRevision";
