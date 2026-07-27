@@ -65,7 +65,11 @@ const HtmlEditorField = ({
     },
   });
   useEffect(() => {
-    if (value != null && editor) {
+    // A Suspense hide/reveal cycle re-runs this effect against the PREVIOUS editor instance,
+    // which TipTap has already destroyed (its schema is torn down, so getHTML() throws and
+    // the section error boundary trips). Skip destroyed instances — the fresh editor created
+    // on the next render re-runs this effect with the real content.
+    if (value != null && editor && !editor.isDestroyed) {
       if (editor.getHTML() !== value) {
         editor.commands.setContent(value);
       }

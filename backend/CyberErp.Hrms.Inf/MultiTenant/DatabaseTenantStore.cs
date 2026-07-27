@@ -21,6 +21,14 @@ public class DatabaseTenantStore(DbContext dbContext) : IMultiTenantStore<AppTen
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Identifier == identifier);
 
+        // Cookie/claim flows carry the tenant GUID rather than the identifier (HybridTenantStrategy),
+        // so mirror GetAsync's fallback — otherwise cookie-authenticated requests never populate the
+        // Finbuckle tenant context (name, subscription) even though data scoping works via claims.
+        if (tenant == null && Guid.TryParse(identifier, out var tenantId))
+            tenant = await _dbContext.Set<Tenant>()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == tenantId);
+
         return tenant == null ? null : MapTenant(tenant);
     }
 

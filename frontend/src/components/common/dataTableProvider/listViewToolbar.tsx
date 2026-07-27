@@ -19,12 +19,26 @@ export { useListColumnSelection } from "./useListColumnSelection";
 
 export type ListDisplayMode = "list" | "grid";
 
+/** ISO report header block rendered on PDF/Excel exports (logo + header name + generation date). */
+export interface ListExportHeader {
+  /** Header line — the configured report header name or the company (tenant) name. */
+  company?: string | null;
+  /** Report title (second line). */
+  title?: string;
+  /** Formatted generation timestamp. */
+  generatedAt?: string;
+  /** Letterhead logo as a data: URL (embeddable in both PDF and Excel). */
+  logoDataUrl?: string | null;
+}
+
 export interface ListExportConfig {
   title: string;
   data: Record<string, unknown>[] | undefined;
   columns: DataTableColumnModel[];
   items: ListExportMenuItem[];
   disabled?: boolean;
+  /** When present, exports render the ISO header block above the table. */
+  header?: ListExportHeader;
   getExportData?: (
     formatId: ListExportFormatId,
   ) => Promise<Record<string, unknown>[] | undefined>;
@@ -82,6 +96,7 @@ function ListViewToolbar({
           data: rows,
           columns: exportConfig.columns,
           labelFor,
+          header: exportConfig.header,
         };
 
         // PERFORMANCE: the export engines (xlsx + @react-pdf/renderer, ~2 MB raw) load ON DEMAND —

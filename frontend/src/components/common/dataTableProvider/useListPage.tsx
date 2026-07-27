@@ -4,6 +4,7 @@ import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import ListViewToolbar, {
   type ListDisplayMode,
   type ListExportConfig,
+  type ListExportHeader,
 } from "./listViewToolbar";
 import {
   listExportMenuItems,
@@ -29,6 +30,8 @@ export interface UseListPageOptions {
   totalCount?: number;
   /** Fetches all rows matching current filters (skip/take overridden). */
   fetchAllData?: () => Promise<Record<string, unknown>[] | undefined>;
+  /** ISO header block (logo + header name + generation date) rendered on PDF/Excel exports. */
+  exportHeader?: ListExportHeader;
 }
 
 export function useListPage({
@@ -41,6 +44,7 @@ export function useListPage({
   onDisplayModeChange,
   totalCount,
   fetchAllData,
+  exportHeader,
 }: UseListPageOptions) {
   const { t } = useTranslation();
   const { canExport, canConfigureColumns } = useListPermissions();
@@ -86,6 +90,7 @@ export function useListPage({
       data,
       columns: selectedCols,
       disabled: isLoading,
+      header: exportHeader,
       getExportData,
     };
   }, [
@@ -97,6 +102,7 @@ export function useListPage({
     data,
     selectedCols,
     isLoading,
+    exportHeader,
     getExportData,
   ]);
 

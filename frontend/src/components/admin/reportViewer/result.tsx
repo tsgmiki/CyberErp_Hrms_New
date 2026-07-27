@@ -11,6 +11,7 @@ import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type ParameterModel from "@/models/ParameterModel";
 import type { ReportColumnModel, ReportResultModel } from "@/models";
 import { generateReport } from "@/services/admin/report";
+import { companyLogoUrl, getCompanyLogoInfo } from "@/services/admin/documentTemplate/logo";
 import Loading from "@/components/common/loader/loader";
 
 const fmtCell = (value: unknown, type: string): string => {
@@ -37,6 +38,8 @@ function ReportResult() {
   const { t } = useTranslation();
   const [result, setResult] = useState<ReportResultModel | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasLogo, setHasLogo] = useState(false);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null);
   const [displayMode, setDisplayMode] = useState<ListDisplayMode>("list");
   const [param, setParam] = useState<ParameterModel>(
     () => ({ ...parameterInitialData, take: 25, sortCol: "", dir: "asc" }) as ParameterModel,
@@ -54,6 +57,21 @@ function ReportResult() {
       if (!res.ok) { setError(res.message || "Failed to generate report"); return; }
       setResult(res.result!);
     })();
+    // ISO header: the company logo (shared per tenant with the {{Logo}} document token) —
+    // best effort; the info probe degrades to hasLogo:false when unavailable. The data: URL
+    // copy feeds the PDF/Excel exports (both need an embeddable image, not a cookie-bound URL).
+    getCompanyLogoInfo().then(async (info) => {
+      setHasLogo(!!info.hasLogo);
+      if (!info.hasLogo) return;
+      try {
+        const res = await fetch(companyLogoUrl(), { credentials: "include" });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onload = () => setLogoDataUrl(String(reader.result));
+        reader.readAsDataURL(blob);
+      } catch { /* header logo stays screen-only */ }
+    });
   }, []);
 
   const cols = useMemo(() => result?.columns ?? [], [result]);
@@ -64,19 +82,33 @@ function ReportResult() {
   }, [cols]);
 
   // Report columns → standard grid columns (typed formatting + drill-down links preserved).
+  // A sequential "No." column is prepended (ISO layout) — positional, so it never sorts.
+  // IMPORTANT: stays EMPTY until the report arrives — useListColumnSelection reconciles by
+  // intersecting with the previously-visible set, so pre-seeding only "No." would trap it
+  // as the sole visible column once the real report columns land.
   const columns = useMemo(
-    () => cols.map((c) => ({
-      name: c.field,
-      label: c.label,
-      sort: true,
-      render: (_t: unknown, row: Record<string, unknown>) => (
-        <span className={isNumeric(c.type) ? "block text-right tabular-nums" : undefined}>
-          {c.linkPage && c.linkPageValue
-            ? <a href={`/${c.linkPage}${row[c.linkPageValue] ?? ""}`} target="_blank" rel="noreferrer" className="text-primary underline">{fmtCell(row[c.field], c.type)}</a>
-            : fmtCell(row[c.field], c.type)}
-        </span>
-      ),
-    })) as DataTableColumnModel[],
+    () => cols.length === 0 ? [] : [
+      {
+        name: "__rowNo",
+        label: "No.",
+        sort: false,
+        render: (_t: unknown, row: Record<string, unknown>) => (
+          <span className="block text-right tabular-nums text-muted">{String(row.__rowNo ?? "")}</span>
+        ),
+      },
+      ...cols.map((c) => ({
+        name: c.field,
+        label: c.label,
+        sort: true,
+        render: (_t: unknown, row: Record<string, unknown>) => (
+          <span className={isNumeric(c.type) ? "block text-right tabular-nums" : undefined}>
+            {c.linkPage && c.linkPageValue
+              ? <a href={`/${c.linkPage}${row[c.linkPageValue] ?? ""}`} target="_blank" rel="noreferrer" className="text-primary underline">{fmtCell(row[c.field], c.type)}</a>
+              : fmtCell(row[c.field], c.type)}
+          </span>
+        ),
+      })),
+    ] as DataTableColumnModel[],
     [cols],
   );
 
@@ -97,18 +129,25 @@ function ReportResult() {
     return rows;
   }, [result, param.searchText, param.sortCol, param.dir, cols, colByField]);
 
-  const pageRows = useMemo(() => filtered.slice(param.skip, param.skip + param.take), [filtered, param.skip, param.take]);
+  // ISO row numbering: stamped AFTER search + sort so "No." always reflects the visible order,
+  // and rides the rows into paging, grouping and the standard Excel/CSV/PDF exports.
+  const numbered = useMemo<Record<string, unknown>[]>(
+    () => filtered.map((r, i) => ({ ...r, __rowNo: i + 1 })),
+    [filtered],
+  );
+
+  const pageRows = useMemo(() => numbered.slice(param.skip, param.skip + param.take), [numbered, param.skip, param.take]);
 
   // Pivot mode: bucket rows by a COMPOSITE key of the group-by columns (the standard grid groups by one
   // field, so multi-level grouping collapses to one hierarchical key) and render every row (no paging,
   // so groups stay whole). The group header shows the field labels + values + row count.
   const groupedRows = useMemo(() => {
     if (groupFields.length === 0) return null;
-    return filtered.map((r) => ({
+    return numbered.map((r) => ({
       ...r,
       __grp: groupFields.map((f) => fmtCell(r[f], colByField[f]?.type ?? "string")).join("  ▸  "),
     }));
-  }, [filtered, groupFields, colByField]);
+  }, [numbered, groupFields, colByField]);
   const grouped = groupedRows !== null;
 
   // PIVOT SUBTOTALS: the grouping SP's 3rd result set — one row per leaf group with server-computed
@@ -139,15 +178,27 @@ function ReportResult() {
   };
 
   // The standard toolbar: column selector + Excel/CSV/PDF export + list/grid toggle.
+  // ISO export header: configured header name (Report Definition) or the company name.
+  const exportHeader = useMemo(
+    () => result ? {
+      company: result.headerTitle ?? result.companyName,
+      title: result.reportName,
+      generatedAt: result.generatedAtUtc ? new Date(result.generatedAtUtc).toLocaleString() : undefined,
+      logoDataUrl,
+    } : undefined,
+    [result, logoDataUrl],
+  );
+
   const { displayColumns, toolbarEnd } = useListPage({
     listKey: `report-result:${result?.reportKey ?? "x"}`,
     listLabel: result?.reportName ?? "Report",
     columns,
-    data: filtered,
+    data: numbered,
     displayMode,
     onDisplayModeChange: setDisplayMode,
-    totalCount: filtered.length,
-    fetchAllData: async () => filtered,
+    totalCount: numbered.length,
+    fetchAllData: async () => numbered,
+    exportHeader,
   });
 
   const dataTable = grouped
@@ -183,12 +234,24 @@ function ReportResult() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col gap-3 bg-background p-4 text-foreground">
-      {/* Enterprise header strip: icon badge + report identity + meta chips. */}
+      {/* ISO report header: company logo + issuing company + report identity + generation date + meta chips. */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <FileBarChart className="h-5 w-5" />
-        </span>
+        {hasLogo ? (
+          <span className="flex h-11 w-16 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+            <img src={companyLogoUrl()} alt={result.companyName ?? "Company logo"}
+              className="max-h-full max-w-full object-contain" onError={() => setHasLogo(false)} />
+          </span>
+        ) : (
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <FileBarChart className="h-5 w-5" />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
+          {(result.headerTitle ?? result.companyName) && (
+            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {result.headerTitle ?? result.companyName}
+            </p>
+          )}
           <h2 className="truncate text-base font-semibold text-foreground">{result.reportName}</h2>
           {grouped && (
             <p className="truncate text-xs text-muted">
@@ -197,6 +260,11 @@ function ReportResult() {
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {result.generatedAtUtc && (
+            <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
+              {t("Generated")}: <b className="tabular-nums">{new Date(result.generatedAtUtc).toLocaleString()}</b>
+            </span>
+          )}
           <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
             <b className="tabular-nums">{result.total}</b> {t("rows")}
           </span>

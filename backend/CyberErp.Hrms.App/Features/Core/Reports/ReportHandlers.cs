@@ -153,6 +153,12 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         public int Total { get; set; }
         /// <summary>PIVOT: per-group subtotals from a grouping SP's 3rd result set (null = a flat report).</summary>
         public List<Dictionary<string, object?>>? Summaries { get; set; }
+        /// <summary>Server-side generation timestamp (ISO header requirement — shown on the report header).</summary>
+        public DateTime GeneratedAtUtc { get; set; }
+        /// <summary>Issuing company (tenant) name for the report header — enriched at the API layer.</summary>
+        public string? CompanyName { get; set; }
+        /// <summary>Per-report printed header line (Report Definition). Null = fall back to CompanyName.</summary>
+        public string? HeaderTitle { get; set; }
     }
 
     // Admin registry DTOs
@@ -184,6 +190,8 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         public bool IsActive { get; set; } = true;
         /// <summary>Pivot / grouping layout JSON (reference GridConfig). Null/empty = a flat report.</summary>
         public string? GridConfig { get; set; }
+        /// <summary>Printed header line for the ISO report layout. Null/empty = tenant (company) name.</summary>
+        public string? HeaderTitle { get; set; }
         public List<SaveReportFieldDto> Fields { get; set; } = [];
         /// <summary>Selectable output columns offered in the viewer's column chooser.</summary>
         public List<SaveReportOutputDto> FieldOutputs { get; set; } = [];
@@ -215,6 +223,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
                 .Must(v => ProcRegex().IsMatch(v ?? string.Empty))
                 .WithMessage("StoredProc must be a plain (optionally schema-qualified) procedure name.");
             RuleFor(x => x.Description).MaximumLength(1000);
+            RuleFor(x => x.HeaderTitle).MaximumLength(200);
             RuleForEach(x => x.Fields).ChildRules(f =>
             {
                 f.RuleFor(y => y.Field).NotEmpty().MaximumLength(100);
@@ -488,7 +497,9 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
                     }).ToList(),
                     Rows = result.Rows.ToList(),
                     Total = result.Rows.Count,
-                    Summaries = result.Summaries?.ToList()
+                    Summaries = result.Summaries?.ToList(),
+                    GeneratedAtUtc = DateTime.UtcNow,
+                    HeaderTitle = report.HeaderTitle
                 };
             }
             catch (TimeoutException)
@@ -540,7 +551,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
                         .FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(Report), dto.Id.Value.ToString());
                 entity.Update(dto.ReportKey, dto.ReportName, dto.ReportGrouping, dto.StoredProc,
-                    dto.SortOrder, dto.Description, dto.IsActive, dto.GridConfig);
+                    dto.SortOrder, dto.Description, dto.IsActive, dto.GridConfig, dto.HeaderTitle);
                 entity.SetFields(specs);
                 entity.SetFieldOutputs(outputSpecs);
                 entity.SetRestrictions(restrictionSpecs);
@@ -560,7 +571,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             }
 
             var created = Report.Create(dto.ReportKey, dto.ReportName, dto.ReportGrouping,
-                dto.StoredProc, dto.SortOrder, dto.Description, dto.IsActive, dto.GridConfig);
+                dto.StoredProc, dto.SortOrder, dto.Description, dto.IsActive, dto.GridConfig, dto.HeaderTitle);
             created.SetFields(specs);
             created.SetFieldOutputs(outputSpecs);
             created.SetRestrictions(restrictionSpecs);
@@ -786,6 +797,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             Description = r.Description,
             IsActive = r.IsActive,
             GridConfig = r.GridConfig,
+            HeaderTitle = r.HeaderTitle,
             Fields = r.Fields.OrderBy(f => f.FieldOrder).Select(f => new SaveReportFieldDto
             {
                 Field = f.Field,

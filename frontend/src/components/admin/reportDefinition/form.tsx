@@ -2,9 +2,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Save, Layers } from "lucide-react";
+import { Plus, Trash2, Save, Layers, Image as ImageIcon, Upload } from "lucide-react";
 import type { ReportDefinitionModel, ReportFieldModel, FormComponentModel } from "@/models";
 import { getReport, saveReport } from "@/services/admin/report";
+import {
+  companyLogoUrl,
+  getCompanyLogoInfo,
+  uploadCompanyLogo,
+  deleteCompanyLogo,
+} from "@/services/admin/documentTemplate/logo";
 import { reportFieldDataTypeOptions } from "@/constants/reports";
 import { FormUtility } from "@/components/common/formProvider/formUtility";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -46,6 +52,69 @@ const parseGrouping = (gridConfig?: string): GroupingState => {
 const Field = (component: FormComponentModel) => (
   <FormUtility component={{ layout: "auth", floatingLabel: true, ...component }} />
 );
+
+/** Manages the tenant letterhead logo used on report headers + exports (the SAME logo as the
+ * document-template {{Logo}} token — one logo per tenant, editable from either screen). */
+function ReportHeaderLogo() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [cacheBust, setCacheBust] = useState(() => Date.now());
+  const [busy, setBusy] = useState(false);
+
+  const { data: logoInfo } = useQuery({ queryKey: ["companyLogoInfo"], queryFn: getCompanyLogoInfo });
+
+  const onPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    await uploadCompanyLogo(file);
+    setBusy(false);
+    setCacheBust(Date.now());
+    queryClient.invalidateQueries({ queryKey: ["companyLogoInfo"] });
+  };
+  const onRemove = async () => {
+    setBusy(true);
+    await deleteCompanyLogo();
+    setBusy(false);
+    setCacheBust(Date.now());
+    queryClient.invalidateQueries({ queryKey: ["companyLogoInfo"] });
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-secondary/20 p-2.5">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-background">
+          {logoInfo?.hasLogo ? (
+            <img src={companyLogoUrl(cacheBust)} alt="Report logo" className="max-h-full max-w-full object-contain" />
+          ) : (
+            <ImageIcon size={18} className="text-muted" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">{t("Report Logo")}</p>
+          <p className="truncate text-[11px] text-muted">
+            {t("Shared company letterhead — also used by document templates.")}
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={onPicked} />
+        <button type="button" disabled={busy} onClick={() => inputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50">
+          <Upload size={13} /> {logoInfo?.hasLogo ? t("Replace") : t("Upload")}
+        </button>
+        {logoInfo?.hasLogo && (
+          <button type="button" disabled={busy} onClick={onRemove}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-foreground hover:border-error hover:text-error disabled:opacity-50">
+            <Trash2 size={13} /> {t("Remove")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ReportDefinitionForm({ id, setId }: { id: string; setId: (id: string) => void }) {
   const { t } = useTranslation();
@@ -179,6 +248,22 @@ function ReportDefinitionForm({ id, setId }: { id: string; setId: (id: string) =
             type: "text", name: "description", label: "Description", colSpan: "full",
             value: meta.description ?? "", onChange: (e) => setMetaField("description", e.target.value),
           })}
+        </div>
+      </section>
+
+      {/* ISO report header: per-report printed header line + the shared letterhead logo. */}
+      <section className="rounded-lg border border-border bg-card p-4">
+        <h3 className="mb-1 text-sm font-semibold">{t("Report Header")}</h3>
+        <p className="mb-3 text-xs text-muted">
+          {t("Shown on the generated report and in PDF/Excel exports — logo, header name and generation date.")}
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {Field({
+            type: "text", name: "headerTitle", label: "Header Name",
+            value: meta.headerTitle ?? "", placeholder: t("Company name is used when empty") ?? "",
+            onChange: (e) => setMetaField("headerTitle", e.target.value), error: formState?.zodErrors?.headerTitle,
+          })}
+          <ReportHeaderLogo />
         </div>
       </section>
 

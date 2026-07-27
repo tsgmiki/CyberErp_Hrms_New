@@ -20,6 +20,8 @@ export default interface ReportDefinitionModel extends AbstractModel {
   isActive?: boolean;
   /** Pivot / grouping layout JSON (reference GridConfig). Empty = a flat report. */
   gridConfig?: string;
+  /** Printed header line for the ISO report layout. Empty = tenant (company) name. */
+  headerTitle?: string;
   fields?: ReportFieldModel[];
   /** Selectable output columns offered in the viewer's column chooser. */
   fieldOutputs?: { field: string; label: string; fieldOrder?: number }[];
@@ -103,4 +105,10 @@ export interface ReportResultModel {
   /** PIVOT: per-group subtotals from a grouping SP's 3rd result set (group column values + GroupCount +
    * numeric totals). Null/absent for a flat report. */
   summaries?: Record<string, unknown>[] | null;
+  /** Server-side generation timestamp (ISO header requirement). */
+  generatedAtUtc?: string;
+  /** Issuing company (tenant) name for the report header. */
+  companyName?: string | null;
+  /** Per-report printed header line (Report Definition). Null = fall back to companyName. */
+  headerTitle?: string | null;
 }

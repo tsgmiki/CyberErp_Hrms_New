@@ -44,6 +44,12 @@ public class Report : BaseEntity, IAggregateRoot, IAuditable
     /// </summary>
     public string? GridConfig { get; private set; }
 
+    /// <summary>
+    /// Printed/report header line (ISO layout) shown on the generated page and in PDF/Excel exports.
+    /// Null = fall back to the tenant (company) name.
+    /// </summary>
+    public string? HeaderTitle { get; private set; }
+
     private readonly List<ReportField> _fields = [];
     public IReadOnlyCollection<ReportField> Fields => _fields;
 
@@ -66,7 +72,8 @@ public class Report : BaseEntity, IAggregateRoot, IAuditable
     private Report() : base() { }
 
     public static Report Create(string reportKey, string reportName, string reportGrouping,
-        string storedProc, int sortOrder = 0, string? description = null, bool isActive = true, string? gridConfig = null)
+        string storedProc, int sortOrder = 0, string? description = null, bool isActive = true, string? gridConfig = null,
+        string? headerTitle = null)
     {
         Guard(reportKey, reportName, storedProc);
         return new Report
@@ -78,12 +85,14 @@ public class Report : BaseEntity, IAggregateRoot, IAuditable
             SortOrder = sortOrder,
             Description = description,
             IsActive = isActive,
-            GridConfig = string.IsNullOrWhiteSpace(gridConfig) ? null : gridConfig.Trim()
+            GridConfig = string.IsNullOrWhiteSpace(gridConfig) ? null : gridConfig.Trim(),
+            HeaderTitle = string.IsNullOrWhiteSpace(headerTitle) ? null : headerTitle.Trim()
         };
     }
 
     public void Update(string reportKey, string reportName, string reportGrouping,
-        string storedProc, int sortOrder, string? description, bool isActive, string? gridConfig = null)
+        string storedProc, int sortOrder, string? description, bool isActive, string? gridConfig = null,
+        string? headerTitle = null)
     {
         Guard(reportKey, reportName, storedProc);
         ReportKey = reportKey.Trim();
@@ -94,6 +103,7 @@ public class Report : BaseEntity, IAggregateRoot, IAuditable
         Description = description;
         IsActive = isActive;
         GridConfig = string.IsNullOrWhiteSpace(gridConfig) ? null : gridConfig.Trim();
+        HeaderTitle = string.IsNullOrWhiteSpace(headerTitle) ? null : headerTitle.Trim();
         base.Update();
     }
 

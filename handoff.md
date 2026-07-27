@@ -39,6 +39,33 @@
 
 ## 1. Most recent changes (latest first)
 
+00R. **ISO report header + Report Definition header/logo config + header-aware PDF/Excel exports
+    (2026-07-24, migration `AddReportHeaderTitle` APPLIED to CERP) + editor crash fix.**
+    - **Report result page** (`reportViewer/result.tsx`): header strip = tenant LOGO + header
+      name + report title + **generation date** chip; sequential **"No." column** stamped after
+      search+sort (rides paging/grouping/exports). `ReportResultDto` gained
+      `GeneratedAtUtc`/`CompanyName` (enriched in ReportController via Inf `ITenantService` —
+      App can't reference Inf) + `HeaderTitle`.
+    - **Report Definition** got a "Report Header" section: per-report `Report.HeaderTitle`
+      (nvarchar 200; empty ⇒ company name) + a `ReportHeaderLogo` panel managing the SHARED
+      tenant letterhead (same `/DocumentTemplate/logo` endpoints as the {{Logo}} token).
+    - **Exports**: `ListExportHeader {company,title,generatedAt,logoDataUrl}` threaded
+      useListPage(exportHeader) → ListExportConfig.header → listExport. PDF renders a letterhead
+      block (`<Image src={dataUrl}>`); Excel goes through a NEW lazy **ExcelJS** branch
+      (`exportExcelWithHeader`) because SheetJS CE cannot embed images — logo at A1, bold header
+      C1–C3, head row 5, data row 6+. Plain lists keep the xlsx path (bundle unaffected).
+    - **App-wide fix**: `DatabaseTenantStore.GetByIdentifierAsync` now falls back to a GUID Id
+      lookup — cookie/claim flows carry the tenant GUID, so Finbuckle TenantInfo
+      (name/subscription) was NULL on every cookie-authenticated request.
+    - **Fix**: Document Templates → Add crashed the section error boundary — a Suspense
+      hide/reveal re-ran `htmlEditorField.tsx`'s value-sync effect against the DESTROYED tiptap
+      instance (`getHTML()` → "reading 'cached'"); guarded with `editor && !editor.isDestroyed`.
+    - GOTCHAS: `useListColumnSelection` intersects prev∩new visible columns — keep the result
+      page's `columns` EMPTY until report columns arrive or a static column becomes the only
+      visible one; react-pdf REJECTS malformed PNGs that ExcelJS embeds blindly.
+    - E2E (browser + file parsing): definition form section, viewer header, XLSX (1 embedded
+      image, bold C1 header, No.=1) and PDF (embedded image XObject) all verified.
+
 00C. **Critical Position approval workflow (2026-07-22, BE+FE, migration
     `AddCriticalPositionApprovalStatus` APPLIED to CERP — completes the §3.7.A trio with 00S/00T).**
     UNLIKE the other two, `CriticalPosition` had only `IsActive` (no status enum) → new
