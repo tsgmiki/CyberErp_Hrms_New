@@ -20,10 +20,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public bool RequiresApproval { get; set; }
         public bool AllowHalfDay { get; set; }
         public string GenderEligibility { get; set; } = nameof(LeaveGenderEligibility.Any);
-        public decimal DefaultAnnualEntitlement { get; set; }
         public string AccrualMethod { get; set; } = nameof(LeaveAccrualMethod.Annual);
-        public decimal? CarryForwardMaxDays { get; set; }
-        public int? MaxConsecutiveDays { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; }
     }
@@ -38,10 +35,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public bool RequiresApproval { get; set; } = true;
         public bool AllowHalfDay { get; set; }
         public LeaveGenderEligibility GenderEligibility { get; set; } = LeaveGenderEligibility.Any;
-        public decimal DefaultAnnualEntitlement { get; set; }
         public LeaveAccrualMethod AccrualMethod { get; set; } = LeaveAccrualMethod.Annual;
-        public decimal? CarryForwardMaxDays { get; set; }
-        public int? MaxConsecutiveDays { get; set; }
         public string? Description { get; set; }
         public bool IsActive { get; set; } = true;
     }
@@ -53,9 +47,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
             RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
             RuleFor(x => x.NameA).MaximumLength(200);
-            RuleFor(x => x.DefaultAnnualEntitlement).GreaterThanOrEqualTo(0);
-            RuleFor(x => x.CarryForwardMaxDays).GreaterThanOrEqualTo(0).When(x => x.CarryForwardMaxDays.HasValue);
-            RuleFor(x => x.MaxConsecutiveDays).GreaterThan(0).When(x => x.MaxConsecutiveDays.HasValue);
         }
     }
 
@@ -84,16 +75,14 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(LeaveType), dto.Id.Value.ToString());
                 entity.Update(dto.Code, dto.Name, dto.NameA, dto.IsPaid, dto.RequiresApproval, dto.AllowHalfDay,
-                    dto.GenderEligibility, dto.DefaultAnnualEntitlement, dto.AccrualMethod, dto.CarryForwardMaxDays,
-                    dto.MaxConsecutiveDays, dto.Description, dto.IsActive);
+                    dto.GenderEligibility, dto.AccrualMethod, dto.Description, dto.IsActive);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
             }
 
             var created = LeaveType.Create(dto.Code, dto.Name, dto.NameA, dto.IsPaid, dto.RequiresApproval,
-                dto.AllowHalfDay, dto.GenderEligibility, dto.DefaultAnnualEntitlement, dto.AccrualMethod,
-                dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.Description, dto.IsActive);
+                dto.AllowHalfDay, dto.GenderEligibility, dto.AccrualMethod, dto.Description, dto.IsActive);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created LeaveType {Id} ({Code})", created.Id, created.Code);
@@ -167,10 +156,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             RequiresApproval = e.RequiresApproval,
             AllowHalfDay = e.AllowHalfDay,
             GenderEligibility = e.GenderEligibility.ToString(),
-            DefaultAnnualEntitlement = e.DefaultAnnualEntitlement,
             AccrualMethod = e.AccrualMethod.ToString(),
-            CarryForwardMaxDays = e.CarryForwardMaxDays,
-            MaxConsecutiveDays = e.MaxConsecutiveDays,
             Description = e.Description,
             IsActive = e.IsActive
         };

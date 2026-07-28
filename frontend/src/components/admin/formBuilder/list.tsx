@@ -4,6 +4,7 @@ import GridAction from "../../common/gridAction/gridAction";
 import { getAllForms, deleteForm } from "@/services/admin/dynamicForm";
 import type { DynamicFormModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
+import { dynamicFormModuleLabel } from "@/constants/orgStructure";
 import { EntityListShell, useEntityList } from "@/template";
 
 interface Props {
@@ -11,11 +12,11 @@ interface Props {
 }
 
 function FormBuilderList({ editHandler }: Props) {
+  // No module filter — the builder manages custom tabs for EVERY supported module.
   const list = useEntityList({
     queryKey: "dynamicFormsList",
     fetchPage: getAllForms,
     deleteById: deleteForm,
-    initialParam: { module: "Employee" },
   });
 
   const columns = useMemo(
@@ -31,6 +32,8 @@ function FormBuilderList({ editHandler }: Props) {
             </button>
           ),
         },
+        { name: "module", label: "Module", render: (v: string) => (
+          <span className="rounded bg-secondary/40 px-2 py-0.5 text-xs font-medium text-foreground">{dynamicFormModuleLabel(v)}</span>) },
         { name: "name", label: "Key" },
         { name: "fields", label: "Fields", render: (v: unknown) => (Array.isArray(v) ? v.length : 0) },
         { name: "sortOrder", label: "Order" },

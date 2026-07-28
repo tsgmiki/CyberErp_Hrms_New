@@ -157,6 +157,11 @@ public class SeedDefaultMenu(
             new("Employee Loans", "/loan", "HandCoins"),
             new("Loan Types", "/loanType", "Landmark"),
         ]),
+        new("Guarantee Commitments", "Handshake",
+        [
+            new("My Guarantees", "/myGuarantees", "Handshake"),
+            new("Guarantee Register", "/employeeGuarantee", "ScrollText"),
+        ]),
         new("Trip Management", "Plane",
         [
             new("My Trips", "/myTrips", "Plane"),
@@ -167,6 +172,8 @@ public class SeedDefaultMenu(
         new("Attendance & Leave", "CalendarRange",
         [
             new("Annual Leave", "/annualLeave", "CalendarCheck"),
+            new("Other Leave", "/otherLeave", "CalendarHeart"),
+            new("Other Leave Settings", "/otherLeaveSetting", "CalendarCog"),
             new("Annual Leave Ledger", "/annualLeaveLedger", "BookOpenCheck"),
             new("Leave Types", "/leaveType", "CalendarDays"),
             new("Leave Settings", "/annualLeaveSetting", "SlidersHorizontal"),

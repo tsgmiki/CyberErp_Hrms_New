@@ -181,6 +181,10 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<TripBudget> TripBudget { get; set; }
     public DbSet<TripRequest> TripRequest { get; set; }
     public DbSet<TripExpense> TripExpense { get; set; }
+    public DbSet<EmployeeGuarantee> EmployeeGuarantee { get; set; }
+    public DbSet<OtherLeaveSetting> OtherLeaveSetting { get; set; }
+    public DbSet<OtherLeaveHeader> OtherLeaveHeader { get; set; }
+    public DbSet<OtherLeaveDetail> OtherLeaveDetail { get; set; }
     public DbSet<RewardNomination> RewardNomination { get; set; }
     public DbSet<RewardPointsTransaction> RewardPointsTransaction { get; set; }
     public DbSet<RewardDisbursement> RewardDisbursement { get; set; }
@@ -436,6 +440,10 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TripBudgetConfiguration());
         modelBuilder.ApplyConfiguration(new TripRequestConfiguration());
         modelBuilder.ApplyConfiguration(new TripExpenseConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeGuaranteeConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveHeaderConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveDetailConfiguration());
         modelBuilder.ApplyConfiguration(new RecognitionProgramConfiguration());
         modelBuilder.ApplyConfiguration(new RewardNominationConfiguration());
         modelBuilder.ApplyConfiguration(new RewardPointsTransactionConfiguration());

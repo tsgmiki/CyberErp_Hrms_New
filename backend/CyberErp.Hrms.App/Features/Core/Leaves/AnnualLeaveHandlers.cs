@@ -154,6 +154,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
             var header = AnnualLeaveHeader.Create(ledger.EmployeeId, ledger.Id, DateTime.UtcNow, dto.Remark);
 
+            // The fiscal year's leave policy — probation gate AND the consecutive-day cap
+            // (MaxConsecutiveDays moved here from LeaveType) both come from it.
+            var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
+                s.FiscalYearId == ledger.FiscalYearId && s.IsActive);
+
             // Validate + cost each detail row against the ledger's fiscal year.
             foreach (var d in dto.Details)
             {
@@ -173,8 +178,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 if (leaveDays <= 0)
                     throw new ValidationException("details", $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} contains no working days (only rest days/holidays).");
 
-                if (leaveType.MaxConsecutiveDays.HasValue && leaveDays > leaveType.MaxConsecutiveDays.Value)
-                    throw new ValidationException("details", $"Leave type {leaveType.Code} allows at most {leaveType.MaxConsecutiveDays.Value} consecutive days.");
+                if (setting?.MaxConsecutiveDays is int maxRun && leaveDays > maxRun)
+                    throw new ValidationException("details", $"The leave policy allows at most {maxRun} consecutive days per request line.");
 
                 header.AddDetail(d.LeaveUsage, start, end, leaveDays, d.HalfDayPart);
             }
@@ -196,9 +201,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 if (existing.Any(e => e.StartDate <= nr.EndDate && e.EndDate >= nr.StartDate))
                     throw new ValidationException("details", "A line overlaps a date range this employee already has pending or approved.");
 
-            // Probation guard (min-experience rule for this annual-leave setting).
-            var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
-                s.FiscalYearId == ledger.FiscalYearId && s.LeaveTypeId == leaveType.Id && s.IsActive);
+            // Probation guard (min-experience rule for the fiscal year's annual-leave policy).
             if (setting is not null && setting.MinExperienceMonths > 0 && emp.HireDate.HasValue)
             {
                 var refDate = header.Details.Min(x => x.StartDate);

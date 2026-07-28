@@ -64,6 +64,19 @@ export const dynamicFormFieldTypeOptions = [
   { id: "Attachment", name: "Attachment (files)" },
 ];
 
+/** Modules the dynamic Form Builder can attach custom tabs to. `id` = the DynamicForm.Module key /
+ * OwnerType; each listed module's profile/form mounts the custom tabs. Attachment fields ride the
+ * employee-document subsystem, so they are offered for the Employee module only. */
+export const dynamicFormModuleOptions = [
+  { id: "Employee", name: "Employee" },
+  { id: "Candidate", name: "Candidate" },
+  { id: "Position", name: "Position" },
+  { id: "OrganizationUnit", name: "Organization Unit" },
+];
+
+export const dynamicFormModuleLabel = (id?: string) =>
+  dynamicFormModuleOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
 /** Forms a custom field (HC021) can apply to. `id` matches the backend EmployeeFieldOwnerType enum;
  * `name` is the friendly label (the "Dependent" owner shows as "Family"). */
 export const fieldOwnerTypeOptions = [
@@ -95,6 +108,7 @@ export const workflowEntityTypeOptions = [
   { id: "DisciplinaryMeasure", name: "Disciplinary Measure" },
   { id: "EmployeeTermination", name: "Termination" },
   { id: "AnnualLeave", name: "Annual Leave" },
+  { id: "OtherLeave", name: "Other Leave" },
   { id: "WorkforcePlan", name: "Workforce Plan" },
   { id: "HiringRequest", name: "Hiring Need" },
   { id: "JobRequisition", name: "Job Requisition" },
@@ -113,7 +127,29 @@ export const workflowEntityTypeOptions = [
   { id: "TripRequest.International", name: "International Trip" },
   { id: "TrainingNeed.Local", name: "Local Training" },
   { id: "TrainingNeed.Abroad", name: "Abroad Training" },
+  { id: "EmployeeGuarantee", name: "Guarantee Commitment" },
 ];
+
+/** §3.12 — what an employee guarantee commitment covers (NBE procedures). */
+export const guaranteeTypeOptions = [
+  { id: "LoanGuarantee", name: "Loan Guarantee" },
+  { id: "EmploymentGuarantee", name: "Employment Guarantee" },
+  { id: "Other", name: "Other" },
+];
+
+export const guaranteeTypeLabel = (id?: string) =>
+  guaranteeTypeOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
+/** Guarantee commitment statuses (workflow-owned — never picked by hand). */
+export const guaranteeStatusLabels = [
+  { id: "Active", name: "Active" },
+  { id: "Released", name: "Released" },
+  { id: "PendingApproval", name: "Pending Approval" },
+  { id: "Rejected", name: "Rejected" },
+];
+
+export const guaranteeStatusLabel = (id?: string) =>
+  guaranteeStatusLabels.find((o) => o.id === id)?.name ?? id ?? "";
 
 /** Recruitment levels a screening criterion can be scoped to (empty id = all steps). */
 export const criterionStageOptions = [

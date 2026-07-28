@@ -114,6 +114,18 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.IGetAnnualLeaveById, Features.Core.Leaves.GetAnnualLeaveById>();
             services.AddScoped<Features.Core.Leaves.IGetAllAnnualLeaves, Features.Core.Leaves.GetAllAnnualLeaves>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.AnnualLeaveWorkflowHandler>();
+            // Other (non-annual) leave: static position-based, gender-aware entitlements per fiscal year
+            services.AddScoped<Features.Core.Leaves.ISaveOtherLeaveSetting, Features.Core.Leaves.SaveOtherLeaveSetting>();
+            services.AddScoped<Features.Core.Leaves.IDeleteOtherLeaveSetting, Features.Core.Leaves.DeleteOtherLeaveSetting>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveSettingById, Features.Core.Leaves.GetOtherLeaveSettingById>();
+            services.AddScoped<Features.Core.Leaves.IGetAllOtherLeaveSettings, Features.Core.Leaves.GetAllOtherLeaveSettings>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveBalances, Features.Core.Leaves.GetOtherLeaveBalances>();
+            services.AddScoped<Features.Core.Leaves.IGetLumpSumEndDate, Features.Core.Leaves.GetLumpSumEndDate>();
+            services.AddScoped<Features.Core.Leaves.ISubmitOtherLeave, Features.Core.Leaves.SubmitOtherLeave>();
+            services.AddScoped<Features.Core.Leaves.ICancelOtherLeave, Features.Core.Leaves.CancelOtherLeave>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveById, Features.Core.Leaves.GetOtherLeaveById>();
+            services.AddScoped<Features.Core.Leaves.IGetAllOtherLeaves, Features.Core.Leaves.GetAllOtherLeaves>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.OtherLeaveWorkflowHandler>();
             // Fiscal-year integration: FY CRUD/resolver, accrual policy, entitlement generation + rollover
             services.AddScoped<Features.Core.Leaves.ISaveFiscalYear, Features.Core.Leaves.SaveFiscalYear>();
             services.AddScoped<Features.Core.Leaves.IGetFiscalYearById, Features.Core.Leaves.GetFiscalYearById>();
@@ -733,6 +745,15 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Loans.IRecordLoanRepayment, Features.Core.Loans.RecordLoanRepayment>();
             services.AddScoped<Features.Core.Loans.IIncrementLoanInstallment, Features.Core.Loans.IncrementLoanInstallment>();
             services.AddScoped<Features.Core.Loans.IGiveLoanConsent, Features.Core.Loans.GiveLoanConsent>();
+
+            // §3.12 Employee Guarantee Commitment Management (HC305–HC307)
+            services.AddScoped<Features.Core.Guarantees.ISaveEmployeeGuarantee, Features.Core.Guarantees.SaveEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IDeleteEmployeeGuarantee, Features.Core.Guarantees.DeleteEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IGetEmployeeGuaranteeById, Features.Core.Guarantees.GetEmployeeGuaranteeById>();
+            services.AddScoped<Features.Core.Guarantees.IGetAllEmployeeGuarantees, Features.Core.Guarantees.GetAllEmployeeGuarantees>();
+            services.AddScoped<Features.Core.Guarantees.IReleaseEmployeeGuarantee, Features.Core.Guarantees.ReleaseEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IGetGuaranteeDashboard, Features.Core.Guarantees.GetGuaranteeDashboard>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Guarantees.EmployeeGuaranteeWorkflowHandler>();
 
             // §3.10.5 Trip Management — T1 (per-diem rates + travel budgets)
             services.AddScoped<Features.Core.Trips.ISavePerDiemRate, Features.Core.Trips.SavePerDiemRate>();

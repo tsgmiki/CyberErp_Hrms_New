@@ -1,14 +1,26 @@
 "use client";
-import type { ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import GridAction from "../../common/gridAction/gridAction";
-import Loading from "../../common/loader/loader";
+import ButtonField from "@/components/ui/buttonField";
+import { EntityListShell } from "@/template";
+import type DataTableColumnModel from "@/models/DataTableColumnModel";
+import type ParameterModel from "@/models/ParameterModel";
+import type { ListDisplayMode } from "@/components/common/dataTableProvider/listViewToolbar";
+import { parameterInitialData } from "@/constants/initialization";
 
 export interface ChildColumn<T> {
   name: keyof T & string;
   label: string;
   render?: (value: unknown, record: T) => ReactNode;
+}
+
+/** Server-side paging pass-through (e.g. dynamic-form records) — otherwise paging is client-side. */
+export interface ChildPaging {
+  param: ParameterModel;
+  setParam: (updater: ParameterModel | ((prev: ParameterModel) => ParameterModel)) => void;
+  total: number;
 }
 
 interface Props<T extends { id?: string }> {
@@ -25,9 +37,29 @@ interface Props<T extends { id?: string }> {
   readOnly?: boolean;
   /** Optional note shown under the header (e.g. why the table is read-only). */
   hint?: string;
+  /** Custom Action-cell renderer (e.g. movement execute/cancel buttons). Default = edit + delete. */
+  renderActions?: (record: T) => ReactNode;
+  /** Server-paged consumers pass their param/total through; otherwise rows are paged client-side. */
+  paging?: ChildPaging;
+  /**
+   * INLINE form mode (the Guarantees-tab layout — no popup): when true, the grid is replaced by
+   * `formView` under a Back-to-list bar. Sections keep their add/edit state; the form itself is
+   * the section's FormProvider rendered inline (no showModal).
+   */
+  formOpen?: boolean;
+  /** Title of the inline form bar (e.g. "Add Education" / "Edit Education"). */
+  formTitle?: string;
+  formView?: ReactNode;
+  onBack?: () => void;
 }
 
-/** Small in-profile table for employee child collections (education, experience, family). */
+const cellText = (value: unknown): string => (value == null ? "" : String(value));
+
+/**
+ * Employee child collection manager — SAME look as the profile Guarantees tab: the standard
+ * `EntityListShell` grid (search, column selector, export, list/grid toggle, pagination) with an
+ * Add button above it, and an inline (non-popup) form view behind a Back-to-list bar.
+ */
 function ChildManager<T extends { id?: string }>({
   title,
   addLabel,
@@ -40,79 +72,127 @@ function ChildManager<T extends { id?: string }>({
   onDelete,
   readOnly = false,
   hint,
+  renderActions,
+  paging,
+  formOpen = false,
+  formTitle,
+  formView,
+  onBack,
 }: Props<T>) {
   const { t } = useTranslation();
+  const [localParam, setLocalParam] = useState<ParameterModel>(
+    () => ({ ...parameterInitialData, sortCol: "", dir: "asc" }) as ParameterModel,
+  );
+  const [displayMode, setDisplayMode] = useState<ListDisplayMode>("list");
 
-  return (
-    <div className="m-1 rounded-lg border border-border bg-card">
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">{t(title)}</h3>
-          {hint && <p className="text-xs text-muted">{t(hint)}</p>}
-        </div>
-        {!readOnly && (
+  const param = paging?.param ?? localParam;
+  const setParam = paging?.setParam ?? setLocalParam;
+
+  // Client-side search + sort + page (small per-employee collections; server-paged consumers
+  // pass `paging` and their rows are used as-is).
+  const processed = useMemo(() => {
+    if (paging) return rows ?? [];
+    let list = rows ?? [];
+    const q = (param.searchText ?? "").trim().toLowerCase();
+    if (q)
+      list = list.filter((r) =>
+        columns.some((c) => cellText(r[c.name]).toLowerCase().includes(q)));
+    if (param.sortCol && param.sortCol !== "createdAt") {
+      const dir = String(param.dir).toUpperCase() === "DESC" ? -1 : 1;
+      list = [...list].sort((a, b) =>
+        dir * cellText(a[param.sortCol as keyof T]).localeCompare(cellText(b[param.sortCol as keyof T]), undefined, { numeric: true }));
+    }
+    return list;
+  }, [rows, paging, param.searchText, param.sortCol, param.dir, columns]);
+
+  const total = paging?.total ?? processed.length;
+  const pageRows = useMemo(
+    () => (paging ? processed : processed.slice(param.skip, param.skip + param.take)),
+    [processed, paging, param.skip, param.take],
+  );
+
+  const tableColumns = useMemo(
+    () =>
+      [
+        ...columns.map((c) => ({
+          name: c.name,
+          label: c.label,
+          sort: !paging,
+          render: c.render
+            ? (v: string, r: T) => c.render!(v, r)
+            : undefined,
+        })),
+        ...(!readOnly
+          ? [{
+              name: "Action",
+              label: "Action",
+              render: (_v: string, r: T) =>
+                renderActions ? (
+                  renderActions(r)
+                ) : (
+                  <GridAction id={r.id || ""} record={r} showAdd={false} showEdit showDelete
+                    editHandler={() => onEdit(r)} deleteHandler={() => r.id && onDelete(r.id)} />
+                ),
+            }]
+          : []),
+      ] as DataTableColumnModel[],
+    [columns, readOnly, renderActions, onEdit, onDelete, paging],
+  );
+
+  // Inline list ↔ form swap (same UX as the profile Guarantees tab).
+  if (formOpen && formView) {
+    return (
+      <div className="m-1 space-y-3">
+        <div className="flex items-center justify-between">
           <button
             type="button"
-            onClick={onAdd}
-            className="flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90"
+            onClick={onBack}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground hover:bg-secondary/40"
           >
-            <Plus className="h-3.5 w-3.5" /> {t(addLabel)}
+            <ArrowLeft className="h-4 w-4" /> {t("Back to list")}
           </button>
-        )}
+          {formTitle && <h3 className="text-sm font-semibold text-foreground">{t(formTitle)}</h3>}
+        </div>
+        {formView}
       </div>
+    );
+  }
 
+  return (
+    <div className="m-1 space-y-3">
+      {(hint || !readOnly) && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted">{hint ? t(hint) : ""}</p>
+          {!readOnly && (
+            <ButtonField
+              value={t(addLabel)}
+              icon={<Plus className="h-4 w-4" />}
+              htmlType="button"
+              variant="primary"
+              onClick={onAdd}
+            />
+          )}
+        </div>
+      )}
       {error && (
-        <div className="mx-4 mt-2 rounded border border-error/30 bg-error/15 px-3 py-2 text-xs text-error">
+        <div className="rounded border border-error/30 bg-error/15 px-3 py-2 text-xs text-error">
           {error}
         </div>
       )}
-
-      {isLoading ? (
-        <Loading />
-      ) : (rows?.length ?? 0) === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-muted">
-          {t("No records yet. Use the add button above.")}
-        </p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-table-header">
-                {columns.map((c) => (
-                  <th key={c.name} className="px-4 py-2 font-semibold">
-                    {t(c.label)}
-                  </th>
-                ))}
-                {!readOnly && <th className="px-4 py-2 text-right font-semibold">{t("Action")}</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows!.map((row) => (
-                <tr key={row.id} className="border-b border-border/60 hover:bg-secondary/40">
-                  {columns.map((c) => (
-                    <td key={c.name} className="px-4 py-2.5 text-foreground">
-                      {c.render ? c.render(row[c.name], row) : String(row[c.name] ?? "")}
-                    </td>
-                  ))}
-                  {!readOnly && (
-                    <td className="px-4 py-1.5 text-right">
-                      <GridAction
-                        id={row.id || ""}
-                        record={row}
-                        showAdd={false}
-                        showEdit
-                        showDelete
-                        editHandler={() => onEdit(row)}
-                        deleteHandler={() => row.id && onDelete(row.id)}
-                      />
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <EntityListShell
+        listKey={`child:${title}`}
+        listLabel={title}
+        columns={tableColumns}
+        isLoading={isLoading}
+        rows={pageRows as unknown[]}
+        total={total}
+        param={param}
+        setParam={setParam}
+        displayMode={displayMode}
+        setDisplayMode={setDisplayMode}
+        fetchAllData={async () => processed as unknown as Record<string, unknown>[]}
+        className="flex h-full min-h-0 flex-col gap-3"
+      />
     </div>
   );
 }

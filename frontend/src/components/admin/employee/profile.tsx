@@ -10,8 +10,10 @@ import {
   Gavel,
   UserX,
   CalendarCheck,
+  CalendarHeart,
   LayoutGrid,
   Rocket,
+  Handshake,
 } from "lucide-react";
 import { useDynamicForms } from "@/components/common/dynamicForm/useDynamicForms";
 import DynamicFormSection from "@/components/common/dynamicForm/DynamicFormSection";
@@ -24,7 +26,9 @@ const MovementSection = memo(lazy(() => import("./movementSection")));
 const DisciplineSection = memo(lazy(() => import("./disciplineSection")));
 const TerminationSection = memo(lazy(() => import("./terminationSection")));
 const LeaveRequestSection = memo(lazy(() => import("./leaveRequestSection")));
+const OtherLeaveSection = memo(lazy(() => import("./otherLeaveSection")));
 const DevelopmentSection = memo(lazy(() => import("./developmentSection")));
+const GuaranteeSection = memo(lazy(() => import("./guaranteeSection")));
 
 type TabKey =
   | "personal"
@@ -33,9 +37,11 @@ type TabKey =
   | "family"
   | "movements"
   | "leave"
+  | "otherLeave"
   | "discipline"
   | "termination"
-  | "development";
+  | "development"
+  | "guarantees";
 
 const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boolean }[] = [
   { key: "personal", label: "Personal & Identification", Icon: UserRound, needsId: false },
@@ -44,7 +50,9 @@ const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boole
   { key: "family", label: "Family", Icon: HeartHandshake, needsId: true },
   { key: "movements", label: "Movements", Icon: ArrowLeftRight, needsId: true },
   { key: "leave", label: "Annual Leave", Icon: CalendarCheck, needsId: true },
+  { key: "otherLeave", label: "Other Leave", Icon: CalendarHeart, needsId: true },
   { key: "development", label: "Development", Icon: Rocket, needsId: true },
+  { key: "guarantees", label: "Guarantees", Icon: Handshake, needsId: true },
   { key: "discipline", label: "Discipline", Icon: Gavel, needsId: true },
   { key: "termination", label: "Termination", Icon: UserX, needsId: true },
 ];
@@ -131,7 +139,9 @@ function EmployeeProfile({ id, setId, onBack, orgUnitId, orgUnitName }: Props) {
         {tab === "family" && hasId && <FamilySection employeeId={id} />}
         {tab === "movements" && hasId && <MovementSection employeeId={id} />}
         {tab === "leave" && hasId && <LeaveRequestSection employeeId={id} />}
+        {tab === "otherLeave" && hasId && <OtherLeaveSection employeeId={id} />}
         {tab === "development" && hasId && <DevelopmentSection employeeId={id} />}
+        {tab === "guarantees" && hasId && <GuaranteeSection employeeId={id} />}
         {tab === "discipline" && hasId && <DisciplineSection employeeId={id} />}
         {tab === "termination" && hasId && <TerminationSection employeeId={id} />}
         {/* Active custom tab content */}

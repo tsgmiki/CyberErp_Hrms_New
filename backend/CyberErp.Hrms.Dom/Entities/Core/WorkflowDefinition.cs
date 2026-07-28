@@ -15,6 +15,7 @@ public static class WorkflowEntityTypes
     public const string Termination = "EmployeeTermination";
     public const string LeaveRequest = "LeaveRequest";
     public const string AnnualLeave = "AnnualLeave";
+    public const string OtherLeave = "OtherLeave";
     public const string WorkforcePlan = "WorkforcePlan";
     public const string HiringRequest = "HiringRequest";
     public const string JobRequisition = "JobRequisition";
@@ -33,6 +34,7 @@ public static class WorkflowEntityTypes
     public const string TripInternational = "TripRequest.International";
     public const string TrainingNeedLocal = "TrainingNeed.Local";
     public const string TrainingNeedAbroad = "TrainingNeed.Abroad";
+    public const string EmployeeGuarantee = "EmployeeGuarantee";
 }
 
 /// <summary>

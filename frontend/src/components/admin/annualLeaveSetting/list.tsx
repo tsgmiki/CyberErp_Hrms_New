@@ -39,7 +39,6 @@ function AnnualLeaveSettingList({ editHandler }: Props) {
             </button>
           ),
         },
-        { name: "leaveTypeName", label: "Leave Type" },
         { name: "baseLeaveDays", label: "Base" },
         { name: "managerialLeaveDays", label: "Managerial" },
         {

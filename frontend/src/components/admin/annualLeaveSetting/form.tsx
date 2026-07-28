@@ -8,7 +8,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveSetting from "@/services/admin/annualLeaveSetting/save";
 import getSetting from "@/services/admin/annualLeaveSetting/get";
 import getAllFiscalYear from "@/services/admin/fiscalYear/getAll";
-import getAllLeaveType from "@/services/admin/leaveType/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { yesNoOptions, boolId, yesNoLabel, leaveAccrualRuleTypeOptions, leaveAccrualRuleTypeLabel } from "@/constants/leave";
@@ -28,6 +27,7 @@ const NEW_DEFAULTS: AnnualLeaveSettingModel = {
   expiryYears: 2,
   ruleType: "ServiceYears",
   considerExternalExperience: false,
+  defaultAnnualEntitlement: 16,
   preMilestoneBaseLeaveDays: 14,
   preMilestoneIncrementDays: 1,
   preMilestoneIntervalYears: 1,
@@ -54,12 +54,6 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
     queryKey: ["fiscalYears", fyParam],
     queryFn: () => getAllFiscalYear(fyParam),
   });
-  const [typeParam, setTypeParam] = useState({ ...lookupParam });
-  const { data: types, isLoading: typesLoading } = useQuery({
-    queryKey: ["leaveTypes", typeParam],
-    queryFn: () => getAllLeaveType(typeParam),
-  });
-
   const submitHandler = async (e: any) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -116,13 +110,6 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
               data: (fiscalYears?.data ?? []).filter((f: any) => !f.isClosed).map((f: any) => ({ id: f.id, name: f.name })) as never,
             },
             {
-              name: "leaveTypeId", label: "Leave Type", required: true, type: "dropDown", onSelect: selectHandler,
-              value: formData.leaveTypeId, displayValue: formData.leaveTypeName,
-              error: formState?.zodErrors?.leaveTypeId,
-              param: typeParam, setParam: setTypeParam as any, isLoading: typesLoading,
-              data: (types?.data ?? []).map((t: any) => ({ id: t.id, name: `${t.code} — ${t.name}` })) as never,
-            },
-            {
               name: "ruleType", label: "Accrual Rule", required: true, type: "dropDown", onSelect: selectHandler,
               value: formData.ruleType, displayValue: leaveAccrualRuleTypeLabel(formData.ruleType),
               error: formState?.zodErrors?.ruleType, data: leaveAccrualRuleTypeOptions as never,
@@ -140,6 +127,10 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
             num("minExperienceMonths", "Min Service Before Leave (months)"),
             num("newEmployeeLeaveDays", "New-Employee Basis (days)"),
             num("expiryYears", "Carry-forward Expiry (years)"),
+            // Policy figures moved here from Leave Type.
+            num("defaultAnnualEntitlement", "Annual Entitlement (days)"),
+            num("carryForwardMaxDays", "Carry-forward Max (days, empty = unlimited)"),
+            num("maxConsecutiveDays", "Max Consecutive Days (empty = no cap)"),
             // Milestone-split (Rule A / B) parameters — only for the service-milestone rule.
             ...(formData.ruleType === "ServiceMilestone"
               ? [

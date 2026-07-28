@@ -11,6 +11,7 @@ import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
 import getAllWorkLocation from "@/services/admin/workLocation/getAll";
 import getAllBranch from "@/services/admin/branch/getAll";
 import { parameterInitialData } from "@/constants/initialization";
+import DynamicTabs from "@/components/common/dynamicForm/DynamicTabs";
 import { organizationUnitTypes, activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
 
 const FormProvider = memo(FormProviders);
@@ -146,6 +147,12 @@ function OrganizationUnitForm({ id, presetParentId, presetParentName, onClose, o
       }}
     >
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+      {/* Form Builder custom tabs (OrganizationUnit module) — shown once the unit exists. */}
+      {formData.id && (
+        <div className="mt-4">
+          <DynamicTabs module="OrganizationUnit" ownerType="OrganizationUnit" ownerId={formData.id} />
+        </div>
+      )}
     </FormProvider>
   );
 }

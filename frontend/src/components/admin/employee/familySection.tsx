@@ -88,32 +88,27 @@ function FamilySection({ employeeId }: { employeeId: string }) {
   };
 
   return (
-    <>
-      <ChildManager
-        title="Family & Internal Relationships"
-        addLabel="Add Family Member"
-        columns={COLUMNS}
-        rows={rows}
-        isLoading={isLoading}
-        error={error}
-        onAdd={() => open(null)}
-        onEdit={open}
-        onDelete={(id) => remove(id)}
-      />
-      {showForm && (
+    <ChildManager
+      title="Family & Internal Relationships"
+      addLabel="Add Family Member"
+      columns={COLUMNS}
+      rows={rows}
+      isLoading={isLoading}
+      error={error}
+      onAdd={() => open(null)}
+      onEdit={open}
+      onDelete={(id) => remove(id)}
+      formOpen={showForm}
+      formTitle={editing ? "Edit Family Member" : "Add Family Member"}
+      onBack={() => setShowForm(false)}
+      formView={
         <FormProvider
           form={{
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Family Member" : "Add Family Member",
-            description: "Dependents and next of kin.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
               { name: "fullName", label: "Full Name", required: true, value: formData.fullName, onChange: changeHandler, error: formState?.zodErrors?.fullName, type: "text" },
@@ -148,8 +143,8 @@ function FamilySection({ employeeId }: { employeeId: string }) {
         >
           <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
         </FormProvider>
-      )}
-    </>
+      }
+    />
   );
 }
 

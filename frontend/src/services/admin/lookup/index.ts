@@ -29,6 +29,28 @@ export function useLookup(categoryCode: string) {
   });
 }
 
+/** A lookup category (the registry row grouping a set of values). */
+export interface LookupCategoryModel {
+  id: string;
+  name: string;
+  code: string;
+}
+
+/** All lookup categories (for binding pickers, e.g. the Form Builder's Select source). */
+export const getLookupCategories = async (): Promise<LookupCategoryModel[]> => {
+  const res = await api.get<{ data?: LookupCategoryModel[] }>("Lookup?Skip=0&Take=500");
+  return res?.data ?? [];
+};
+
+/** Cached category list for binding pickers. */
+export function useLookupCategories() {
+  return useQuery({
+    queryKey: ["lookupCategories"],
+    queryFn: getLookupCategories,
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
 /** Lookup values mapped to the `{ id, name }` option shape the standard combobox (DropDownField) wants.
  * `useName` stores the value's NAME (default — human-readable + backward-compatible with free text);
  * pass false to store the value's CODE instead. */

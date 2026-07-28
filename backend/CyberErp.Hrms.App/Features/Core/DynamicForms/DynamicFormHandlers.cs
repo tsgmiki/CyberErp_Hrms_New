@@ -19,6 +19,8 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
         public string Label { get; set; } = string.Empty;
         public string DataType { get; set; } = nameof(EmployeeFieldDataType.Text);
         public string? Options { get; set; }
+        /// <summary>Lookup-category CODE feeding a Select field dynamically (alternative to Options).</summary>
+        public string? LookupCategory { get; set; }
         public bool IsRequired { get; set; }
         public bool IsActive { get; set; } = true;
         public int SortOrder { get; set; }
@@ -45,6 +47,8 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
         public string Label { get; set; } = string.Empty;
         public string DataType { get; set; } = nameof(EmployeeFieldDataType.Text);
         public string? Options { get; set; }
+        /// <summary>Lookup-category CODE feeding a Select field dynamically (alternative to Options).</summary>
+        public string? LookupCategory { get; set; }
         public bool IsRequired { get; set; }
         public bool IsActive { get; set; } = true;
         public int SortOrder { get; set; }
@@ -96,8 +100,9 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
                 .Must(v => Enum.TryParse<EmployeeFieldDataType>(v, out _))
                 .WithMessage("DataType must be one of: Text, Number, Date, Boolean, Select.");
             RuleFor(x => x.Options).NotEmpty()
-                .When(x => x.DataType == nameof(EmployeeFieldDataType.Select))
-                .WithMessage("Select fields require comma-separated options.");
+                .When(x => x.DataType == nameof(EmployeeFieldDataType.Select) && string.IsNullOrWhiteSpace(x.LookupCategory))
+                .WithMessage("Select fields require comma-separated options or a lookup category.");
+            RuleFor(x => x.LookupCategory).MaximumLength(50);
         }
     }
 
@@ -214,7 +219,7 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
 
             var specs = dto.Fields.Select(f => new DynamicFormFieldSpec(
                 f.Name, f.Label, Enum.Parse<EmployeeFieldDataType>(f.DataType), f.Options,
-                f.IsRequired, f.IsActive, f.SortOrder, f.ShowInList)).ToList();
+                f.IsRequired, f.IsActive, f.SortOrder, f.ShowInList, f.LookupCategory)).ToList();
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
@@ -272,6 +277,14 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
 
             var query = recordRepository.GetAll()
                 .Where(r => r.DynamicFormId == formId && r.OwnerType == ownerType && r.OwnerId == ownerId);
+
+            // Grid search box: a LIKE over the JSON document (values are strings; per-owner
+            // collections are small, so the scan stays within the seeked slice).
+            if (!string.IsNullOrWhiteSpace(request.SearchText))
+            {
+                var term = request.SearchText.Trim();
+                query = query.Where(r => r.Data != null && r.Data.Contains(term));
+            }
 
             var total = await query.CountAsync();
 
@@ -397,6 +410,7 @@ namespace CyberErp.Hrms.App.Features.Core.DynamicForms
                     Label = x.Label,
                     DataType = x.DataType.ToString(),
                     Options = x.Options,
+                    LookupCategory = x.LookupCategory,
                     IsRequired = x.IsRequired,
                     IsActive = x.IsActive,
                     SortOrder = x.SortOrder,

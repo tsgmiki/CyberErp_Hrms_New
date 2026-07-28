@@ -20,9 +20,6 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.GenderEligibility).HasConversion<string>().HasMaxLength(20);
             builder.Property(x => x.AccrualMethod).HasConversion<string>().HasMaxLength(20);
 
-            builder.Property(x => x.DefaultAnnualEntitlement).HasPrecision(6, 2);
-            builder.Property(x => x.CarryForwardMaxDays).HasPrecision(6, 2);
-
             builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         }
     }

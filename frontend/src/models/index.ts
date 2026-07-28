@@ -293,6 +293,19 @@ export type {
 } from "./masters/TrainingModel";
 
 export type {
+  EmployeeGuaranteeModel,
+  GuaranteeDashboardModel,
+} from "./masters/GuaranteeModel";
+
+export type {
+  OtherLeaveSettingModel,
+  OtherLeaveDetailModel,
+  OtherLeaveModel,
+  OtherLeaveBalanceModel,
+  LumpSumEndModel,
+} from "./masters/OtherLeaveModel";
+
+export type {
   SuggestionModel,
   GrievanceModel,
   GrievanceNoteModel,

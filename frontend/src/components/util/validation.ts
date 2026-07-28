@@ -1255,7 +1255,6 @@ export const LeaveBalanceSetSchema = z.object({
 
 export const AnnualLeaveSettingSchema = z.object({
   fiscalYearId: z.string().min(1, "Fiscal Year is Required"),
-  leaveTypeId: z.string().min(1, "Leave Type is Required"),
 });
 
 export const SalaryScaleSchema = z.object({

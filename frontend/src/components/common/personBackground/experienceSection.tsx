@@ -120,35 +120,30 @@ function ExperienceSection({ ds }: { ds: BackgroundDataSource<EmployeeExperience
     : [];
 
   return (
-    <>
-      <ChildManager
-        title="Employment History"
-        addLabel="Add Experience"
-        columns={COLUMNS}
-        rows={rows}
-        isLoading={isLoading}
-        error={error ?? (isError ? ((queryError as Error)?.message || "Failed to load records") : null)}
-        readOnly={ds.readOnly}
-        hint={ds.hint}
-        onAdd={() => open(null)}
-        onEdit={open}
-        onDelete={(id) => remove(id)}
-      />
-      {showForm && (
+    <ChildManager
+      title="Employment History"
+      addLabel="Add Experience"
+      columns={COLUMNS}
+      rows={rows}
+      isLoading={isLoading}
+      error={error ?? (isError ? ((queryError as Error)?.message || "Failed to load records") : null)}
+      readOnly={ds.readOnly}
+      hint={ds.hint}
+      onAdd={() => open(null)}
+      onEdit={open}
+      onDelete={(id) => remove(id)}
+      formOpen={showForm}
+      formTitle={editing ? "Edit Experience" : "Add Experience"}
+      onBack={() => setShowForm(false)}
+      formView={
         <FormProvider
           form={{
             formId: "backgroundExperienceForm",
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Experience" : "Add Experience",
-            description: "Prior employment history.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
               { name: "organization", label: "Organization", required: true, value: formData.organization, onChange: changeHandler, error: formState?.zodErrors?.organization, type: "text" },
@@ -201,8 +196,8 @@ function ExperienceSection({ ds }: { ds: BackgroundDataSource<EmployeeExperience
             <p className="mt-3 text-xs text-muted">{t("Save the record first to attach documents.")}</p>
           )}
         </FormProvider>
-      )}
-    </>
+      }
+    />
   );
 }
 

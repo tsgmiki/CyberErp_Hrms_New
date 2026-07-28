@@ -29,13 +29,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(x => x.RuleType).HasConversion<string>().HasMaxLength(20).IsRequired();
 
-            builder.HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
-            builder.HasOne(x => x.LeaveType).WithMany().HasForeignKey(x => x.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
-            builder.Navigation(x => x.FiscalYear).UsePropertyAccessMode(PropertyAccessMode.Field);
-            builder.Navigation(x => x.LeaveType).UsePropertyAccessMode(PropertyAccessMode.Field);
+            // Policy figures moved here from hrmsLeaveType.
+            builder.Property(x => x.DefaultAnnualEntitlement).HasPrecision(6, 2);
+            builder.Property(x => x.CarryForwardMaxDays).HasPrecision(6, 2);
 
-            // One policy per fiscal year + leave type.
-            builder.HasIndex(x => new { x.TenantId, x.FiscalYearId, x.LeaveTypeId }).IsUnique();
+            builder.HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
+            builder.Navigation(x => x.FiscalYear).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // One annual policy per fiscal year (the LeaveType relationship moved to hrmsOtherLeaveSetting).
+            builder.HasIndex(x => new { x.TenantId, x.FiscalYearId }).IsUnique();
         }
     }
 }

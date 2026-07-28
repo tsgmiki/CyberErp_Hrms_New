@@ -33,11 +33,74 @@
   (which added Employee.UserId) is now effectively undone by the reverse migration — both are in
   history; a fresh DB replays add-then-drop, which is fine. Untracked: `~$ Management.docx` (Office lock file — do not commit; consider
   gitignoring `~$*`).
+- **2026-07-28 commit** bundles §1 items 00FB / 00PT / 00G / 00OL / 00LR / 00LP (Form Builder multi-module +
+  lookup selects; profile-tab inline-form conversion; §3.12 Employee Guarantee HC305–307; Other Leave module;
+  leave-settings restructure; leave-policy fields moved LeaveType → AnnualLeaveSetting). Migrations applied to
+  CERP: `AddDynamicFormFieldLookupCategory`, `AddEmployeeGuarantee`, `WidenGuaranteeTypeForLookup`,
+  `AddOtherLeave`, `RestructureLeaveSettings`, `MoveLeavePolicyFieldsToSetting`. Backend build 0 errors +
+  frontend `tsc -b` clean at commit time.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00LP. **Leave-policy fields moved LeaveType → AnnualLeaveSetting (2026-07-28, migration
+    `MoveLeavePolicyFieldsToSetting` APPLIED to CERP). E2E 15/15.**
+    - Dropped `DefaultAnnualEntitlement`, `CarryForwardMaxDays` (null=unlimited), `MaxConsecutiveDays`
+      (null=no cap) from `hrmsLeaveType` (entity/DTO/validator/FE form+list trimmed — LeaveType is now
+      just the category + intrinsic flags); ADDED all three to `hrmsAnnualLeaveSetting` (the per-FY policy).
+    - Business logic rewired: `LeaveBalanceService` implicit/materialized entitlement now = the request
+      FY's active setting's `DefaultAnnualEntitlement` (swapped `IRepository<LeaveType>` → `<AnnualLeaveSetting>`);
+      `LeaveAccrualService.RolloverAsync` carry cap = the CLOSING FY's setting's `CarryForwardMaxDays`
+      (one policy cap, no longer per-type); consecutive-day guard in both `SubmitAnnualLeave` and generic
+      `SubmitLeaveRequest` reads `setting?.MaxConsecutiveDays`. FE: three `num()` fields on the
+      annualLeaveSetting form + save.ts number/integer field lists updated.
+
+00LR. **Leave-settings restructure (2026-07-28, migration `RestructureLeaveSettings` APPLIED). E2E 24/24
+    + browser-verified.**
+    - `AnnualLeaveSetting` lost its `LeaveTypeId` → ONE annual policy per fiscal year (unique
+      `(TenantId,FiscalYearId)`); ledger/accrual resolves "the annual type" via
+      `ILeaveAccrualService.ResolveAnnualLeaveTypeIdAsync()` = the single active LeaveType with
+      `AccrualMethod==Annual` (0/>1 → loud ValidationException).
+    - `OtherLeaveSetting.Name` (free text) → `LeaveTypeId` FK (unique `(TenantId,FiscalYearId,LeaveTypeId)`;
+      DTO keeps `Name` projected from `LeaveType.Name`; UI = Leave Type dropdown).
+    - New `LeaveDayCounting {WorkingDays, CalendarDays}` on OtherLeaveSetting ("Holiday & Weekend Handling"):
+      CalendarDays charges `(end−start).Days+1` straight through; honored in Submit, lump-sum-end, and the
+      client-side preview.
+    - New **Employee Profile "Other Leave" tab** (`employee/otherLeaveSection.tsx`; `OtherLeaveList` gained
+      `employeeId` scoping + hides the Employee column).
+
+00OL. **Other Leave module (2026-07-28, migration `AddOtherLeave` APPLIED). E2E 41/41.**
+    - Non-annual statutory leaves (maternity/paternity/mourning…) with STATIC position-based days — never
+      accrues, never touches the annual ledger. Tables `hrmsOtherLeaveSetting` (per-FY: gender All/Female/Male,
+      Standard/Managerial days, IsLumpSum, IsActive), `hrmsOtherLeave` header + `hrmsOtherLeaveDetail`.
+    - Balance is DERIVED (allocation − Σ Pending+Approved), active-FY-only; lump-sum = one block covering the
+      exact full allocation once/FY (`GET /OtherLeave/lump-sum-end`). Workflow key `WorkflowEntityTypes.OtherLeave`
+      + seeded "Other Leave Approval" (Supervisor→HR); submit REQUIRES an active definition; Cancel is
+      workflow-gated. Self-locked `/otherLeave` via `/Employee/me` + `/otherLeaveSetting` under the
+      Attendance & Leave menu.
+
+00G. **§3.12 Employee Guarantee Commitment Management, HC305–307 (2026-07-27, migrations
+    `AddEmployeeGuarantee` + `WidenGuaranteeTypeForLookup` APPLIED). E2E 35/35.**
+    - `EmployeeGuarantee` entity (NBE external-org guarantee commitments) + workflow trio
+      (`WorkflowEntityTypes.EmployeeGuarantee`, seeded chain, `EmployeeGuaranteeWorkflowHandler`) + release
+      lifecycle + dashboard chips. Screens: HR register (`employeeGuarantee/`), self-service `My Guarantees`
+      (`myGuarantees/`), and a **Guarantees profile tab** with a lookup-driven Guarantee Type. Menu seeded
+      into existing tenants via `SeedDefaultMenu` + `/Module/seed-defaults`.
+
+00PT. **All Employee-Profile child tabs converted to inline (non-popup) forms (2026-07-27, FE only, no
+    migration).** Education/Experience/Family/Movements/Award/Certification/Discipline/Termination tabs now
+    use the same grid+inline-form layout as Guarantees: `childManager.tsx` renders `EntityListShell` with a
+    `formOpen/formTitle/formView/onBack` inline mode (client search/sort/page or `paging` pass-through +
+    `renderActions`), replacing the modal popups. `personBackground/{education,experience}Section` +
+    `employee/{family,movement,discipline,termination}Section` rewired.
+
+00FB. **Form Builder: multi-module support + lookup-bound Select fields + tabbed Add-Field UI (2026-07-27,
+    migration `AddDynamicFormFieldLookupCategory` APPLIED).** Builder no longer restricted to the Employee
+    module — a `module` selector scopes custom tabs to any owner type; a `Select`-type field can bind to a
+    dynamic `LookupCategoryId` (options resolved via the centralized Lookup API). "Add Field" moved into a
+    tab like the rest of the UI; static-comma + combo-selector visibility fixed.
 
 00R. **ISO report header + Report Definition header/logo config + header-aware PDF/Excel exports
     (2026-07-24, migration `AddReportHeaderTitle` APPLIED to CERP) + editor crash fix.**

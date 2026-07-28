@@ -10,6 +10,7 @@ import {
   Hourglass,
   BadgeCheck,
   FileText,
+  ArrowLeft,
 } from "lucide-react";
 import type { EmployeeTerminationModel, TerminationClearanceModel } from "@/models";
 import {
@@ -157,7 +158,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
       )}
 
       {/* No active case → initiation entry point */}
-      {!active && (
+      {!active && !showForm && (
         <div className="rounded-lg border border-border bg-card px-4 py-8 text-center">
           <UserX className="mx-auto h-8 w-8 text-muted" />
           <p className="mt-2 text-sm text-muted">{t("No active termination case.")}</p>
@@ -340,21 +341,26 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
         </div>
       )}
 
-      {/* Initiation form */}
+      {/* Initiation form — inline (the Guarantees-tab layout, no popup) */}
       {showForm && (
+        <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setShowForm(false)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground hover:bg-secondary/40"
+          >
+            <ArrowLeft className="h-4 w-4" /> {t("Back")}
+          </button>
+          <h3 className="text-sm font-semibold text-foreground">{t("Initiate Termination")}</h3>
+        </div>
         <FormProvider
           form={{
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: "Initiate Termination",
-            description: "End the employment and start the clearance process.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Submit",
             components: [
               {
@@ -378,6 +384,7 @@ function TerminationSection({ employeeId }: { employeeId: string }) {
         >
           <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
         </FormProvider>
+        </div>
       )}
 
       {/* Finalize confirmation */}

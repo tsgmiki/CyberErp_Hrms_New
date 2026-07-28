@@ -537,6 +537,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("Manager Review", "Manager"), ("HRBP Review", "HRBP"), ("Department Head Approval", "Department Head")]),
             (WorkflowEntityTypes.LeaveRequest, "Leave Approval",
                 [("Supervisor Review", null), ("HR Approval", null)]),
+            // Other (non-annual) leave rides the SAME approval mechanism as Annual Leave.
+            (WorkflowEntityTypes.OtherLeave, "Other Leave Approval",
+                [("Supervisor Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.WorkforcePlan, "Workforce Plan Approval",
                 [("Directorate Review", "Directorate Head"), ("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
             (WorkflowEntityTypes.HiringRequest, "Hiring Need Approval",
@@ -577,6 +580,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("HR Review", "HR"), ("Executive Approval", "Executive")]),
             // HC188/HC201 — per-type training chains; the costlier Abroad type carries an extra step.
             (WorkflowEntityTypes.TrainingNeedLocal, "Local Training Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
+            // HC307 — an employee guarantee commitment toward an external organization (NBE procedures).
+            (WorkflowEntityTypes.EmployeeGuarantee, "Guarantee Commitment Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.TrainingNeedAbroad, "Abroad Training Approval",
                 [("Manager Review", null), ("HR Approval", null), ("Executive Approval", "Executive")]),
