@@ -39,11 +39,39 @@
   CERP: `AddDynamicFormFieldLookupCategory`, `AddEmployeeGuarantee`, `WidenGuaranteeTypeForLookup`,
   `AddOtherLeave`, `RestructureLeaveSettings`, `MoveLeavePolicyFieldsToSetting`. Backend build 0 errors +
   frontend `tsc -b` clean at commit time.
+- **2026-07-29 commits** (no migrations): §1 item 00RH (report 3-column header + company name) and 00RM
+  (recruitment internal-candidate hire routes to a promotion/transfer instead of a duplicate employee).
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00RM. **Recruitment: internal candidate hire → promotion/transfer, not a duplicate employee (2026-07-29,
+    no migration).** Module-review fix. `HireCandidate.HireAsync` (`CandidateLifecycleHandlers.cs`) used to
+    always `Employee.Create(candidate.PersonId, …)` — for an INTERNAL candidate (whose PersonId is an
+    existing employee's) that minted a SECOND employee on the person, stranding their leave/appraisal/
+    movement/loan/document history. Now it branches: internal → `PlaceInternalAsync` records an
+    `EmployeeMovement` against the existing employee (reuses `ISaveEmployeeMovement` + auto-applies via
+    `IApproveEmployeeMovement` when no chain, mirroring the offer/requisition idiom; type auto-derived
+    Promotion/Transfer/Demotion from the offer pay vs current, HR-overridable via `HireCandidateDto.MovementType`);
+    external → the original path + a guard refusing a 2nd employee on an already-active person, and the
+    compliance-doc gate skipped for internal. Shared `MigrateCandidateDocumentsAsync` + `CloseRecruitmentPipelineAsync`
+    dedup the closure. `GetHireQueue` flags `IsInternal` + skips compliance for internal; `hireEmployee` modal is
+    internal-aware (Place-Internal-Employee, Personnel-Action selector, no employee-number). E2E: internal move
+    verified via SQL (1 employee/person, Completed Promotion, seat swap, salary/tenure updated, app Hired);
+    external still creates a new employee. **Review advice: an internal employee changing position must go through
+    EmployeeMovement, never a re-registration. Other findings (hire-queue N+1, EmployeePicker gaps, dup helpers,
+    workforce-plan link, succession→movement wiring) logged but NOT done — user chose this fix only.**
+
+00RH. **Report header — company name + three-column ISO layout (2026-07-28, no migration, frontend-only).**
+    The header previously conflated identity into one slot (`headerTitle ?? companyName`), so a configured
+    report header title HID the company name. Now the issuing COMPANY name always heads the block, and the
+    header is a three-column layout: logo LEFT, company name (bold) + report title directly underneath CENTERED,
+    date/time RIGHT. `ListExportHeader` gained a distinct `headerTitle`; `result.tsx` uses a `grid-cols-[1fr_auto_1fr]`
+    header; `listExport.tsx` PDF splits into left/center/right Views and Excel merges+centres the company/title
+    rows with a right-aligned date row. Verified on screen + by parsing the exported .xlsx/.pdf.
+
 
 00LP. **Leave-policy fields moved LeaveType → AnnualLeaveSetting (2026-07-28, migration
     `MoveLeavePolicyFieldsToSetting` APPLIED to CERP). E2E 15/15.**

@@ -19,11 +19,13 @@ export { useListColumnSelection } from "./useListColumnSelection";
 
 export type ListDisplayMode = "list" | "grid";
 
-/** ISO report header block rendered on PDF/Excel exports (logo + header name + generation date). */
+/** ISO report header block rendered on PDF/Excel exports (logo + company + header name + generation date). */
 export interface ListExportHeader {
-  /** Header line — the configured report header name or the company (tenant) name. */
+  /** Issuing company (tenant) name — the ISO identity line, always shown next to the logo. */
   company?: string | null;
-  /** Report title (second line). */
+  /** Optional configured report-header line (Report Definition), shown under the company name. */
+  headerTitle?: string | null;
+  /** Report title. */
   title?: string;
   /** Formatted generation timestamp. */
   generatedAt?: string;

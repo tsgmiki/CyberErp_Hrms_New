@@ -8,6 +8,7 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 import * as XLSX from "xlsx";
+import type { Font } from "exceljs";
 import { buildExportRows, buildExportSheetData, type ExportLabelFn } from "./listExportUtils";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type { ListExportHeader } from "./listViewToolbar";
@@ -53,33 +54,52 @@ const pdfStyles = StyleSheet.create({
     padding: 4,
     fontSize: 7,
   },
-  // ISO header block: logo + header name + report title + generation date.
+  // ISO header block — three columns: logo (left) · company + report title (center) · date/time (right).
   headerBlock: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
     marginBottom: 10,
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#cbd5e1",
   },
+  headerLeft: {
+    width: 110,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  headerRight: {
+    width: 130,
+    alignItems: "flex-end",
+  },
   headerLogo: {
     height: 34,
-    maxWidth: 90,
+    maxWidth: 100,
     objectFit: "contain",
   },
   headerCompany: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "bold",
+    textAlign: "center",
   },
   headerTitle: {
     fontSize: 10,
     marginTop: 2,
+    textAlign: "center",
+  },
+  headerDept: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#334155",
+    marginTop: 1,
+    textAlign: "center",
   },
   headerMeta: {
     fontSize: 8,
     color: "#64748b",
-    marginTop: 2,
+    textAlign: "right",
   },
 });
 
@@ -114,10 +134,19 @@ function ListExportPdfDocument({
       <Page size="A4" orientation="landscape" style={pdfStyles.page}>
         {header ? (
           <View style={pdfStyles.headerBlock}>
-            {header.logoDataUrl ? <Image style={pdfStyles.headerLogo} src={header.logoDataUrl} /> : null}
-            <View>
+            {/* Left — logo. */}
+            <View style={pdfStyles.headerLeft}>
+              {header.logoDataUrl ? <Image style={pdfStyles.headerLogo} src={header.logoDataUrl} /> : null}
+            </View>
+            {/* Center — company name (bold) with the report title directly underneath. */}
+            <View style={pdfStyles.headerCenter}>
               {header.company ? <Text style={pdfStyles.headerCompany}>{header.company}</Text> : null}
               <Text style={pdfStyles.headerTitle}>{header.title ?? title}</Text>
+              {header.headerTitle && header.headerTitle !== header.company
+                ? <Text style={pdfStyles.headerDept}>{header.headerTitle}</Text> : null}
+            </View>
+            {/* Right — generation date/time. */}
+            <View style={pdfStyles.headerRight}>
               <Text style={pdfStyles.headerMeta}>{header.generatedAt ?? generatedAt}</Text>
             </View>
           </View>
@@ -177,29 +206,44 @@ async function exportExcelWithHeader(options: {
   const sheet = workbook.addWorksheet("data");
   const { header } = options;
 
-  // Header block — logo in A1:B3, text from column C (or A when no logo).
+  // ISO header — three zones across the table width: logo overlaid top-LEFT, company name + report
+  // title CENTERED, generation date/time RIGHT-aligned.
+  const colCount = Math.max(headers.length, 1);
+  const merge = (row: number) => { if (colCount > 1) sheet.mergeCells(row, 1, row, colCount); };
+
   const logo = header.logoDataUrl ? parseLogoDataUrl(header.logoDataUrl) : null;
-  const textCol = logo ? 3 : 1;
   if (logo) {
     const imageId = workbook.addImage({ base64: logo.base64, extension: logo.extension });
     sheet.addImage(imageId, { tl: { col: 0, row: 0 }, ext: { width: 120, height: 52 } });
   }
-  if (header.company) {
-    const c = sheet.getCell(1, textCol);
-    c.value = header.company;
-    c.font = { bold: true, size: 14 };
+
+  // Centered lines: company name (bold) with the report title directly underneath, then any header line.
+  const centerLines: { value: string; font: Partial<Font> }[] = [];
+  if (header.company) centerLines.push({ value: header.company, font: { bold: true, size: 14 } });
+  centerLines.push({ value: header.title ?? options.title, font: { bold: true, size: 11 } });
+  if (header.headerTitle && header.headerTitle !== header.company)
+    centerLines.push({ value: header.headerTitle, font: { bold: true, size: 9, color: { argb: "FF334155" } } });
+
+  let rowIdx = 1;
+  for (const ln of centerLines) {
+    const cell = sheet.getCell(rowIdx, 1);
+    cell.value = ln.value;
+    cell.font = ln.font;
+    cell.alignment = { horizontal: "center", vertical: "middle" };
+    merge(rowIdx);
+    rowIdx++;
   }
-  const titleCell = sheet.getCell(2, textCol);
-  titleCell.value = header.title ?? options.title;
-  titleCell.font = { bold: true };
   if (header.generatedAt) {
-    const g = sheet.getCell(3, textCol);
-    g.value = header.generatedAt;
-    g.font = { size: 9, color: { argb: "FF64748B" } };
+    const cell = sheet.getCell(rowIdx, 1);
+    cell.value = header.generatedAt;
+    cell.font = { size: 9, color: { argb: "FF64748B" } };
+    cell.alignment = { horizontal: "right", vertical: "middle" };
+    merge(rowIdx);
+    rowIdx++;
   }
 
-  // Column header row (bold on a light fill), then the data rows.
-  const headRowIdx = 5;
+  // Column header row sits below the header block (which clears the ~4-row logo) after a blank gap row.
+  const headRowIdx = Math.max(rowIdx, 4) + 1;
   const headRow = sheet.getRow(headRowIdx);
   headers.forEach((h, i) => {
     const cell = headRow.getCell(i + 1);

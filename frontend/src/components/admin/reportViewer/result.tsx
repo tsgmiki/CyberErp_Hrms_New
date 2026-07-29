@@ -177,16 +177,26 @@ function ReportResult() {
     return `${label}     —     ${totals.join("  •  ")}`;
   };
 
+  // ISO identity: the issuing COMPANY name always heads the block; the configured header line
+  // (Report Definition) sits beneath it. When no company name resolved, the header line stands in
+  // as the identity so the block is never anonymous.
+  const companyName = result?.companyName ?? undefined;
+  const configuredHeader = result?.headerTitle ?? undefined;
+  const issuingName = companyName ?? configuredHeader;
+  // Second line only when it differs from the identity line (avoids "ACME / ACME").
+  const secondaryHeader = companyName && configuredHeader !== companyName ? configuredHeader : undefined;
+
   // The standard toolbar: column selector + Excel/CSV/PDF export + list/grid toggle.
-  // ISO export header: configured header name (Report Definition) or the company name.
+  // ISO export header: company identity + optional configured header line + report title.
   const exportHeader = useMemo(
     () => result ? {
-      company: result.headerTitle ?? result.companyName,
+      company: issuingName,
+      headerTitle: secondaryHeader,
       title: result.reportName,
       generatedAt: result.generatedAtUtc ? new Date(result.generatedAtUtc).toLocaleString() : undefined,
       logoDataUrl,
     } : undefined,
-    [result, logoDataUrl],
+    [result, issuingName, secondaryHeader, logoDataUrl],
   );
 
   const { displayColumns, toolbarEnd } = useListPage({
@@ -234,50 +244,60 @@ function ReportResult() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col gap-3 bg-background p-4 text-foreground">
-      {/* ISO report header: company logo + issuing company + report identity + generation date + meta chips. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-        {hasLogo ? (
-          <span className="flex h-11 w-16 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
-            <img src={companyLogoUrl()} alt={result.companyName ?? "Company logo"}
-              className="max-h-full max-w-full object-contain" onError={() => setHasLogo(false)} />
-          </span>
-        ) : (
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <FileBarChart className="h-5 w-5" />
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          {(result.headerTitle ?? result.companyName) && (
-            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {result.headerTitle ?? result.companyName}
+      {/* ISO report header — three columns: logo (left) · company name + report title (center) · date/time (right). */}
+      <div className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        {/* LEFT — company logo. */}
+        <div className="flex justify-start">
+          {hasLogo ? (
+            <span className="flex h-12 w-20 items-center justify-center overflow-hidden rounded-lg border border-border bg-background">
+              <img src={companyLogoUrl()} alt={issuingName ?? "Company logo"}
+                className="max-h-full max-w-full object-contain" onError={() => setHasLogo(false)} />
+            </span>
+          ) : (
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <FileBarChart className="h-5 w-5" />
+            </span>
+          )}
+        </div>
+        {/* CENTER — company name (bold) with the report title directly underneath. */}
+        <div className="min-w-0 text-center">
+          {issuingName && (
+            <p className="truncate text-lg font-bold tracking-wide text-foreground">{issuingName}</p>
+          )}
+          <h2 className="truncate text-sm font-semibold text-foreground">{result.reportName}</h2>
+          {secondaryHeader && (
+            <p className="truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {secondaryHeader}
             </p>
           )}
-          <h2 className="truncate text-base font-semibold text-foreground">{result.reportName}</h2>
           {grouped && (
             <p className="truncate text-xs text-muted">
               {t("Grouped by")}: {groupFields.map((f) => colByField[f]?.label ?? f).join(" ▸ ")}
             </p>
           )}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {/* RIGHT — generation date/time, then the row / group / salary meta chips. */}
+        <div className="flex flex-col items-end gap-1.5">
           {result.generatedAtUtc && (
             <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
               {t("Generated")}: <b className="tabular-nums">{new Date(result.generatedAtUtc).toLocaleString()}</b>
             </span>
           )}
-          <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
-            <b className="tabular-nums">{result.total}</b> {t("rows")}
-          </span>
-          {grouped && (result.summaries?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap justify-end gap-2">
             <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
-              <b className="tabular-nums">{result.summaries!.length}</b> {t("groups")}
+              <b className="tabular-nums">{result.total}</b> {t("rows")}
             </span>
-          )}
-          {grouped && grandSalary > 0 && (
-            <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-foreground">
-              {t("Salary")}: <b className="tabular-nums">{fmtCell(grandSalary, "currency")}</b>
-            </span>
-          )}
+            {grouped && (result.summaries?.length ?? 0) > 0 && (
+              <span className="rounded-full border border-border bg-secondary/30 px-2.5 py-1 text-xs text-foreground">
+                <b className="tabular-nums">{result.summaries!.length}</b> {t("groups")}
+              </span>
+            )}
+            {grouped && grandSalary > 0 && (
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-foreground">
+                {t("Salary")}: <b className="tabular-nums">{fmtCell(grandSalary, "currency")}</b>
+              </span>
+            )}
+          </div>
         </div>
       </div>
       {displayMode === "grid"
