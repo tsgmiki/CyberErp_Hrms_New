@@ -275,6 +275,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public int? ContractPeriod { get; set; }
         public bool IsProbation { get; set; }
         public DateTime? ProbationEndDate { get; set; }
+        /// <summary>
+        /// Internal placements only — overrides the auto-derived personnel action (Transfer / Promotion /
+        /// Demotion). Left null, the handler derives it from the pay change agreed in the offer.
+        /// </summary>
+        public string? MovementType { get; set; }
     }
 
     public class HireCandidateDtoValidator : AbstractValidator<HireCandidateDto>
@@ -282,7 +287,12 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public HireCandidateDtoValidator()
         {
             RuleFor(x => x.Id).NotEmpty();
-            RuleFor(x => x.EmployeeNumber).NotEmpty().MaximumLength(50);
+            // Required for a NEW hire; ignored for an internal move (the handler enforces per-path).
+            RuleFor(x => x.EmployeeNumber).MaximumLength(50);
+            RuleFor(x => x.MovementType)
+                .Must(v => Enum.TryParse<MovementType>(v, true, out _))
+                .When(x => !string.IsNullOrWhiteSpace(x.MovementType))
+                .WithMessage("MovementType must be one of: Transfer, Promotion, Demotion.");
             RuleFor(x => x.EmploymentNature)
                 .Must(v => Enum.TryParse<EmploymentNature>(v, true, out _))
                 .WithMessage("EmploymentNature must be Permanent or Contract.");

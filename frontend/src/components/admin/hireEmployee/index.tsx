@@ -14,7 +14,11 @@ import { employmentNatureOptions } from "@/constants/orgStructure";
 const inputCls = "h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground";
 const ordinal = (n: number) => `${n}${n === 1 ? "st" : n === 2 ? "nd" : n === 3 ? "rd" : "th"}`;
 
-/** The hire conversion modal — creates the employee on the candidate's person record. */
+/**
+ * The hire conversion modal. For an EXTERNAL candidate it creates the employee on the candidate's
+ * person record; for an INTERNAL applicant (an existing employee) it records a promotion/transfer
+ * against their existing record instead — no second employee.
+ */
 function HireModal({
   row,
   onClose,
@@ -25,6 +29,7 @@ function HireModal({
   onDone: () => void;
 }) {
   const { t } = useTranslation();
+  const isInternal = !!row.isInternal;
   const [hire, setHire] = useState({
     employeeNumber: "",
     hireDate: "",
@@ -34,6 +39,7 @@ function HireModal({
     isProbation: false,
     probationEndDate: "",
     salary: "",
+    movementType: "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,17 +66,18 @@ function HireModal({
 
   const confirm = async () => {
     setError(null);
-    if (!hire.employeeNumber.trim()) return setError(t("An employee number is required."));
+    if (!isInternal && !hire.employeeNumber.trim()) return setError(t("An employee number is required."));
     setBusy(true);
     const res = await hireCandidate(row.candidateId, {
-      employeeNumber: hire.employeeNumber.trim(),
+      employeeNumber: isInternal ? undefined : hire.employeeNumber.trim(),
       hireDate: hire.hireDate || undefined,
       positionId: hire.positionId || undefined,
       salary: hire.salary === "" ? undefined : Number(String(hire.salary).replace(/[,\s]/g, "")),
       employmentNature: hire.employmentNature,
-      contractPeriod: hire.contractPeriod === "" ? undefined : Number(hire.contractPeriod),
-      isProbation: hire.isProbation,
-      probationEndDate: hire.probationEndDate || undefined,
+      contractPeriod: isInternal || hire.contractPeriod === "" ? undefined : Number(hire.contractPeriod),
+      isProbation: isInternal ? false : hire.isProbation,
+      probationEndDate: isInternal ? undefined : hire.probationEndDate || undefined,
+      movementType: isInternal && hire.movementType ? hire.movementType : undefined,
     });
     setBusy(false);
     if (!res.ok) return setError(res.message);
@@ -81,7 +88,7 @@ function HireModal({
     <Modal
       visible
       size="md"
-      title={t("Hire as Employee")}
+      title={isInternal ? t("Place Internal Employee") : t("Hire as Employee")}
       description={`${row.candidateName} — ${row.requisitionTitle}`}
       onClose={onClose}
       footer={
@@ -99,32 +106,56 @@ function HireModal({
             onClick={confirm}
             className="inline-flex items-center gap-1.5 rounded-md bg-success px-3 py-1.5 text-sm font-medium text-on-accent disabled:opacity-50"
           >
-            <UserCheck size={15} /> {t("Confirm Hire")}
+            <UserCheck size={15} /> {isInternal ? t("Confirm Move") : t("Confirm Hire")}
           </button>
         </>
       }
     >
       <div className="space-y-2 text-sm">
-        <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-foreground">
-          {t("The employee is created on the candidate's existing person record — no re-entry. All attached documents (and the resume) migrate to the employee history automatically.")}
-        </p>
+        {isInternal ? (
+          <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground">
+            {t("This applicant is already an employee. Placing them records an internal move (promotion or transfer) against their EXISTING record — no new employee is created, and their leave, appraisal and movement history stay intact. It routes through your Employee Movement approval and effective-date scheduling.")}
+          </p>
+        ) : (
+          <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-foreground">
+            {t("The employee is created on the candidate's existing person record — no re-entry. All attached documents (and the resume) migrate to the employee history automatically.")}
+          </p>
+        )}
         <p className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted">
           {t("Position and salary auto-populate from the offer and job requisition — leave them as-is unless you need to override.")}
         </p>
         <div className="grid grid-cols-2 gap-2">
+          {isInternal ? (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Personnel Action")}</label>
+              <select
+                value={hire.movementType}
+                onChange={(e) => setHire((p) => ({ ...p, movementType: e.target.value }))}
+                className={inputCls}
+              >
+                <option value="">{t("Auto — from the pay change")}</option>
+                <option value="Promotion">{t("Promotion")}</option>
+                <option value="Transfer">{t("Transfer (lateral)")}</option>
+                <option value="Demotion">{t("Demotion")}</option>
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                {t("Employee Number")} <span className="text-error">*</span>
+              </label>
+              <input
+                type="text"
+                value={hire.employeeNumber}
+                onChange={(e) => setHire((p) => ({ ...p, employeeNumber: e.target.value }))}
+                className={inputCls}
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-              {t("Employee Number")} <span className="text-error">*</span>
+              {isInternal ? t("Effective Date") : t("Hire Date")}
             </label>
-            <input
-              type="text"
-              value={hire.employeeNumber}
-              onChange={(e) => setHire((p) => ({ ...p, employeeNumber: e.target.value }))}
-              className={inputCls}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Hire Date")}</label>
             <input
               type="date"
               value={hire.hireDate}
@@ -133,7 +164,9 @@ function HireModal({
             />
           </div>
         </div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Position (vacant)")}</label>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+          {isInternal ? t("Target Position (vacant)") : t("Position (vacant)")}
+        </label>
         <select
           value={hire.positionId}
           onChange={(e) => setHire((p) => ({ ...p, positionId: e.target.value }))}
@@ -146,63 +179,80 @@ function HireModal({
             </option>
           ))}
         </select>
-        <div className="grid grid-cols-2 gap-2">
+        {isInternal ? (
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Nature")}</label>
-            <select
-              value={hire.employmentNature}
-              onChange={(e) => setHire((p) => ({ ...p, employmentNature: e.target.value }))}
-              className={inputCls}
-            >
-              {employmentNatureOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </select>
-          </div>
-          {hire.employmentNature === "Contract" ? (
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-                {t("Contract (Months)")} <span className="text-error">*</span>
-              </label>
-              <input
-                type="text"
-                value={hire.contractPeriod}
-                onChange={(e) => setHire((p) => ({ ...p, contractPeriod: e.target.value }))}
-                className={inputCls}
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Salary")}</label>
-              <input
-                type="text"
-                value={hire.salary}
-                onChange={(e) => setHire((p) => ({ ...p, salary: e.target.value }))}
-                className={inputCls}
-              />
-            </div>
-          )}
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={hire.isProbation}
-            onChange={(e) => setHire((p) => ({ ...p, isProbation: e.target.checked }))}
-          />
-          {t("Start probation tracking")}
-        </label>
-        {hire.isProbation && (
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
-              {t("Probation End Date")} <span className="text-error">*</span>
-            </label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("New Salary")}</label>
             <input
-              type="date"
-              value={hire.probationEndDate}
-              onChange={(e) => setHire((p) => ({ ...p, probationEndDate: e.target.value }))}
+              type="text"
+              value={hire.salary}
+              onChange={(e) => setHire((p) => ({ ...p, salary: e.target.value }))}
               className={inputCls}
             />
+            <p className="mt-1 text-[11px] text-muted">
+              {t("Leave the action on Auto to derive Promotion / Transfer / Demotion from this figure versus the current salary.")}
+            </p>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Nature")}</label>
+                <select
+                  value={hire.employmentNature}
+                  onChange={(e) => setHire((p) => ({ ...p, employmentNature: e.target.value }))}
+                  className={inputCls}
+                >
+                  {employmentNatureOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+              </div>
+              {hire.employmentNature === "Contract" ? (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                    {t("Contract (Months)")} <span className="text-error">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={hire.contractPeriod}
+                    onChange={(e) => setHire((p) => ({ ...p, contractPeriod: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("Salary")}</label>
+                  <input
+                    type="text"
+                    value={hire.salary}
+                    onChange={(e) => setHire((p) => ({ ...p, salary: e.target.value }))}
+                    className={inputCls}
+                  />
+                </div>
+              )}
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={hire.isProbation}
+                onChange={(e) => setHire((p) => ({ ...p, isProbation: e.target.checked }))}
+              />
+              {t("Start probation tracking")}
+            </label>
+            {hire.isProbation && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                  {t("Probation End Date")} <span className="text-error">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={hire.probationEndDate}
+                  onChange={(e) => setHire((p) => ({ ...p, probationEndDate: e.target.value }))}
+                  className={inputCls}
+                />
+              </div>
+            )}
+          </>
         )}
         {error && <p className="text-xs text-error">{error}</p>}
       </div>
@@ -316,7 +366,14 @@ function HireEmployee() {
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        <span className="block font-medium text-foreground">{r.candidateName}</span>
+                        <span className="block font-medium text-foreground">
+                          {r.candidateName}
+                          {r.isInternal && (
+                            <span className="ml-1.5 rounded bg-info/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-info">
+                              {t("Internal")}
+                            </span>
+                          )}
+                        </span>
                         <span className="block text-xs text-muted">
                           {r.candidateNumber} · {t(r.stage)}
                           {r.latestOfferStatus && ` · ${t("offer")} ${t(r.latestOfferStatus)}`}
@@ -338,21 +395,21 @@ function HireEmployee() {
                       </td>
                       <td className="px-3 py-2">
                         <span
-                          className={`text-xs font-medium ${r.complianceComplete ? "text-success" : "text-warning"}`}
+                          className={`text-xs font-medium ${r.isInternal ? "text-muted" : r.complianceComplete ? "text-success" : "text-warning"}`}
                           title={r.missingComplianceDocuments.join(", ") || undefined}
                         >
-                          {r.complianceComplete ? t("Complete") : t("Incomplete")}
+                          {r.isInternal ? t("N/A — internal") : r.complianceComplete ? t("Complete") : t("Incomplete")}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
                           type="button"
                           disabled={!r.canHire}
-                          title={r.blockedReason ? t(r.blockedReason) : t("Hire as Employee")}
+                          title={r.blockedReason ? t(r.blockedReason) : r.isInternal ? t("Place Internal Employee") : t("Hire as Employee")}
                           onClick={() => setHireFor(r)}
                           className="inline-flex items-center gap-1.5 rounded-md bg-success px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <UserCheck size={13} /> {t("Hire")}
+                          <UserCheck size={13} /> {r.isInternal ? t("Place") : t("Hire")}
                         </button>
                       </td>
                     </tr>
@@ -370,9 +427,13 @@ function HireEmployee() {
           onClose={() => setHireFor(null)}
           onDone={() => {
             setMessage(
-              t("Hired {{name}} — employee record created with the candidate's person and documents.", {
-                name: hireFor.candidateName,
-              }),
+              hireFor.isInternal
+                ? t("Placed {{name}} — an internal move was recorded against their existing employee record.", {
+                    name: hireFor.candidateName,
+                  })
+                : t("Hired {{name}} — employee record created with the candidate's person and documents.", {
+                    name: hireFor.candidateName,
+                  }),
             );
             setHireFor(null);
             refresh();

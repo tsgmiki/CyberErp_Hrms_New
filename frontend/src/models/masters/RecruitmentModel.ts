@@ -112,6 +112,8 @@ export interface HireQueueRowModel {
   latestOfferStatus?: string;
   complianceComplete: boolean;
   missingComplianceDocuments: string[];
+  /** True when the applicant is an existing employee — the hire records an internal move, not a new employee. */
+  isInternal?: boolean;
   canHire: boolean;
   blockedReason?: string;
 }

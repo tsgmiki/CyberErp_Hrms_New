@@ -246,7 +246,7 @@ export async function deleteCandidateDocument(documentId: string): Promise<{ ok:
 export async function hireCandidate(
   id: string,
   dto: {
-    employeeNumber: string;
+    employeeNumber?: string;
     hireDate?: string;
     positionId?: string;
     salaryScaleId?: string;
@@ -255,6 +255,8 @@ export async function hireCandidate(
     contractPeriod?: number;
     isProbation: boolean;
     probationEndDate?: string;
+    /** Internal placements only — overrides the auto-derived Transfer / Promotion / Demotion. */
+    movementType?: string;
   },
 ): Promise<{ ok: boolean; message: string; employeeId?: string }> {
   const res = await fetch(`${API_BASE_URL}/Candidate/${id}/hire`, {
