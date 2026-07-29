@@ -16,6 +16,8 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
         public int SortOrder { get; set; }
+        /// <summary>Where the subsystem's app lives — the Home portal launcher deep-links here.</summary>
+        public string? Url { get; set; }
     }
 
     public class SubsystemDtoValidator : AbstractValidator<SubsystemDto>
@@ -24,6 +26,7 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
         {
             RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
             RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
+            RuleFor(x => x.Url).MaximumLength(400);
         }
     }
 
@@ -52,13 +55,13 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(s => s.Id == dto.Id)
                     ?? throw new ValidationException(nameof(dto.Id), "Subsystem not found.");
-                entity.Update(dto.Name, dto.Code, dto.SortOrder);
+                entity.Update(dto.Name, dto.Code, dto.SortOrder, dto.Url);
                 repository.UpdateAsync(entity);
                 await unitOfWork.SaveChangesAsync();
                 return entity.Id;
             }
 
-            var subsystem = Subsystem.Create(dto.Name, dto.Code, dto.SortOrder);
+            var subsystem = Subsystem.Create(dto.Name, dto.Code, dto.SortOrder, dto.Url);
             await repository.AddAsync(subsystem);
             await unitOfWork.SaveChangesAsync();
             logger.LogInformation("Subsystem {Name} created", subsystem.Name);
@@ -92,7 +95,8 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
                     Id = x.Id,
                     Name = x.Name,
                     Code = x.Code,
-                    SortOrder = x.SortOrder
+                    SortOrder = x.SortOrder,
+                    Url = x.Url
                 })
                 .ToListAsync();
 

@@ -1,8 +1,8 @@
-import type { ModuleModel } from "@/models";
-import { useNavigate } from "react-router-dom";
+import type { ModuleModel, SubsystemModel } from "@/models";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Building2, ChevronRight, LogOut } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import store from "@/store";
 import { useAuth } from "@/context/AuthContext";
 import BrandTitle from "@/components/common/brand/brandTitle";
@@ -13,6 +13,8 @@ import {
 
 interface LandingPageProps {
   modules: ModuleModel[];
+  /** The dbo.coreSubsystem master rows — supply each card's application URL for deep-linking. */
+  subsystems?: SubsystemModel[];
 }
 
 function LandingHeader() {
@@ -109,13 +111,24 @@ function SubsystemCard({
   );
 }
 
-export default function LandingPage({ modules }: LandingPageProps) {
+export default function LandingPage({ modules, subsystems: subsystemRows }: LandingPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useTranslation();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const autoForwarded = useRef(false);
 
-  const subsystems = useMemo(() => buildLandingSubsystems(modules), [modules]);
+  // The Home portal is the ENTRY point of the platform — navigation only flows Home → HRMS,
+  // never back. Its card is excluded here so HRMS offers no path into the portal.
+  const subsystems = useMemo(() => {
+    const portalNames = new Set(
+      (subsystemRows ?? [])
+        .filter((row) => (row.code ?? "").trim().toUpperCase() === "HOME")
+        .map((row) => row.name ?? ""),
+    );
+    return buildLandingSubsystems(modules).filter((card) => !portalNames.has(card.id));
+  }, [modules, subsystemRows]);
 
   const filteredSubsystems = useMemo(() => {
     if (!searchTerm.trim()) return subsystems;
@@ -131,9 +144,34 @@ export default function LandingPage({ modules }: LandingPageProps) {
   const firstName = user?.fullName?.split(" ")[0] ?? t("User", { defaultValue: "User" });
 
   const handleSelectSubsystem = (subsystem: string) => {
+    // Centralized architecture: each subsystem row (dbo.coreSubsystem) carries its application's
+    // URL. Selecting a subsystem hosted by ANOTHER application (e.g. Home) deep-links there;
+    // this application renders only its own subsystem's screens.
+    const row = subsystemRows?.find((s) => s.name === subsystem);
+    if (row?.url) {
+      try {
+        if (new URL(row.url).origin !== window.location.origin) {
+          window.location.assign(row.url);
+          return;
+        }
+      } catch {
+        /* malformed URL — fall through to local scoping */
+      }
+    }
     store.ModuleData.value = { name: subsystem };
     navigate("/");
   };
+
+  // Fresh-from-login convenience: a user who can see exactly ONE subsystem skips the picker.
+  // Only on login (location.state.fromLogin) — the sidebar's "All Modules" button must always
+  // show the picker, so it navigates here without that flag.
+  useEffect(() => {
+    if (!autoForwarded.current && location.state?.fromLogin && subsystems.length === 1) {
+      autoForwarded.current = true;
+      handleSelectSubsystem(subsystems[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, subsystems]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

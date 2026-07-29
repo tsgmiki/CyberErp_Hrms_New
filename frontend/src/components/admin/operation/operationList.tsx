@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import GridAction from "../../common/gridAction/gridAction";
 import getAllOperation from "@/services/admin/operation/getAll";
@@ -9,6 +9,9 @@ import type { OperationModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { LinkBadge } from "@/components/common/badge";
 import { EntityListShell, useEntityList } from "@/template";
+import SubsystemModuleFilter, {
+  type MenuScope,
+} from "@/components/common/menuFilters/subsystemModuleFilter";
 
 interface OperationListProps {
   editHandler: (id: string) => void;
@@ -16,20 +19,40 @@ interface OperationListProps {
 
 function OperationList({ editHandler }: OperationListProps) {
   const { t } = useTranslation();
+  const [scope, setScope] = useState<MenuScope>({});
   const list = useEntityList({
     queryKey: "operations",
     fetchPage: getAllOperation,
     deleteById: deleteOperation,
-    initialParam: { sortCol: "module" },
+    initialParam: { sortCol: "" },
   });
+
+  // Cascading Subsystem → Module scope, applied SERVER-side via the paged query.
+  const scopeHandler = useCallback(
+    (next: MenuScope) => {
+      setScope(next);
+      list.setParam((prev) => ({
+        ...prev,
+        subsystemId: next.subsystemId ?? "",
+        moduleId: next.moduleId ?? "",
+        skip: 0,
+      }));
+    },
+    [list.setParam],
+  );
 
   const tableData = useMemo(
     () =>
       (list.rows ?? []).map((op) => {
         const row = op as unknown as OperationModel;
+        const module = row.module?.trim() || row.moduleId || "";
+        const subSystem = row.subSystem?.trim() || "";
         return {
           ...row,
-          module: row.module?.trim() || row.moduleId || "",
+          module,
+          subSystem,
+          // Group key includes the subsystem so same-named modules never merge across apps.
+          moduleGroup: subSystem ? `${subSystem} / ${module}` : module,
         };
       }),
     [list.rows],
@@ -58,6 +81,14 @@ function OperationList({ editHandler }: OperationListProps) {
           sort: true,
           responsive: "md" as const,
           render: (text: string) => <LinkBadge value={text} />,
+        },
+        {
+          name: "subSystem",
+          label: "Sub System",
+          responsive: "md" as const,
+          render: (text: string) => (
+            <span className="text-xs font-medium text-muted">{text}</span>
+          ),
         },
         {
           name: "Action",
@@ -101,8 +132,9 @@ function OperationList({ editHandler }: OperationListProps) {
       columns={columns}
       {...list}
       rows={tableData as Record<string, unknown>[]}
-      groupBy="module"
+      groupBy="moduleGroup"
       getGroupLabel={getGroupLabel}
+      searchBarFilters={<SubsystemModuleFilter value={scope} onChange={scopeHandler} />}
       className="flex h-full min-h-0 flex-col"
     />
   );

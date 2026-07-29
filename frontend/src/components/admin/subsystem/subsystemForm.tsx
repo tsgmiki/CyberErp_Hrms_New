@@ -101,6 +101,16 @@ function SubsystemForm(props: { id: string; setSubsystemId: (id: string) => void
               type: "text",
             },
             {
+              name: "url",
+              label: "Application URL",
+              // NOTE: ':' and '.' are i18next separators — keep placeholders free of them.
+              placeholder: "Where the subsystem app is hosted",
+              value: formData.url,
+              onChange: changeHandler,
+              error: formState?.zodErrors?.url,
+              type: "text",
+            },
+            {
               name: "id",
               value: formData.id,
               type: "hidden",

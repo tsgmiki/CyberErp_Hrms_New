@@ -95,8 +95,19 @@ function NavGroup({
  * group, each of its role-visible coreOperation rows becomes a link. Icons are lucide-react
  * names stored on the rows. Order follows the SortOrder applied server-side.
  */
-function buildDynamicGroups(modules: ModuleModel[] | undefined): NavGroupDef[] {
+/** This application's own subsystem (dbo.coreSubsystem row) — the sidebar's default scope. */
+const OWN_SUBSYSTEM = "HRMS";
+
+function buildDynamicGroups(
+  modules: ModuleModel[] | undefined,
+  subsystem: string,
+): NavGroupDef[] {
   return (modules ?? [])
+    // The shared navigation tables hold EVERY subsystem's menus (Home, Finance, …). This
+    // application's sidebar renders only the scoped subsystem — other subsystems' menus are
+    // configured here (System → Subsystems / Menu Modules / Menu Operations) but rendered by
+    // their own applications.
+    .filter((m) => (m.subSystem ?? OWN_SUBSYSTEM) === subsystem)
     .map((m) => ({
       key: m.id ?? m.name ?? "",
       label: m.name ?? "",
@@ -115,9 +126,12 @@ function buildDynamicGroups(modules: ModuleModel[] | undefined): NavGroupDef[] {
 function SidebarNav({ collapsed }: SidebarNavProps) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { modules, isLoading } = useMenuModules();
+  const { modules, isLoading, selectedSubsystem } = useMenuModules();
 
-  const navGroups = useMemo(() => buildDynamicGroups(modules), [modules]);
+  const navGroups = useMemo(
+    () => buildDynamicGroups(modules, selectedSubsystem?.trim() || OWN_SUBSYSTEM),
+    [modules, selectedSubsystem],
+  );
 
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>(() => {
     try {

@@ -61,6 +61,13 @@ namespace CyberErp.Hrms.App.Common.DTOs
         /// <summary>Filters records (e.g. leave requests/balances) to a single employee.</summary>
         public Guid? EmployeeId { get; set; }
 
+        // Central menu administration (dbo.coreSubsystem → coreModule → coreOperation): the
+        // System screens filter modules/operations by subsystem, then by module — cascading.
+        /// <summary>Filters menu modules/operations to one subsystem (dbo.coreSubsystem).</summary>
+        public Guid? SubsystemId { get; set; }
+        /// <summary>Filters menu operations to one module (dbo.coreModule).</summary>
+        public Guid? ModuleId { get; set; }
+
         /// <summary>Filters custom-field definitions to a single owner form (Employee/Education/…).</summary>
         public string? OwnerType { get; set; }
 

@@ -44,7 +44,8 @@ function LoginForm() {
 
   useEffect(() => {
     if (formState.status === "success") {
-      navigate("/");
+      // Land on the subsystem picker; it forwards single-subsystem users straight in.
+      navigate("/landing", { state: { fromLogin: true } });
     }
   }, [formState.status, navigate]);
 

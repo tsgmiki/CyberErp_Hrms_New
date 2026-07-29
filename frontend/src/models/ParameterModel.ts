@@ -34,6 +34,9 @@ export default interface ParameterModel {
   advanceRequestId?: string;
   operationIds?: string;
   operationId?: string;
+  /** Central menu administration: cascading Subsystem → Module filters (System screens). */
+  subsystemId?: string;
+  moduleId?: string;
   reportCategory?: string;
   userId?: string;
   parentId?: string;

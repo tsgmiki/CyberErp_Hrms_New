@@ -2,6 +2,7 @@ import { cn } from "../utils/classNames";
 import SidebarHeader from "./sidebarHeader";
 import SidebarFooter from "./sidebarFooter";
 import SidebarNav from "./sidebarNav";
+import BackToModules from "./backToModules";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -17,6 +18,8 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
       )}
     >
       <SidebarHeader collapsed={collapsed} onToggle={onToggle} />
+      {/* Subsystem switcher — back to the /landing picker (deep-links to Home, Finance, …). */}
+      <BackToModules collapsed={collapsed} show />
       <SidebarNav collapsed={collapsed} />
       <SidebarFooter collapsed={collapsed} />
     </aside>

@@ -41,11 +41,36 @@
   frontend `tsc -b` clean at commit time.
 - **2026-07-29 commits** (no migrations): §1 item 00RH (report 3-column header + company name) and 00RM
   (recruitment internal-candidate hire routes to a promotion/transfer instead of a duplicate employee).
+- **2026-07-29 later commits**: §1 item 00CA (central subsystem administration + Home-first entry flow,
+  migration `AddSubsystemUrl` applied; plus the lazy-chunk auto-recovery hardening). The companion
+  **Home portal** lives in its own repo at `D:\Workspace\CyberErp\Home`.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00CA. **Central subsystem administration + Home-first entry flow (2026-07-29, migration `AddSubsystemUrl`
+    applied to CERP).** Companion to the new standalone Home portal repo (`D:\Workspace\CyberErp\Home`).
+    (a) `Subsystem.Url` (nvarchar 400, nullable) + DTO/validator/form/list — each `dbo.coreSubsystem` row
+    carries its application URL; the landing page deep-links when the URL origin differs. Hardcoded
+    `constants/subSystem.ts` DELETED — subsystems are read live. (b) **Cascading Subsystem→Module filters**
+    (`GetAllRequest.SubsystemId/ModuleId`; Operation GetAll/GetById project `SubsystemId`+`SubSystem`;
+    natural menu ordering) wired via shared `components/common/menuFilters/subsystemModuleFilter.tsx`
+    (compact DropDownFields — non-compact labels clip in `searchBarFilters`) into Role Permissions
+    (visible-rows-only scoping + check-all; permission map stays FULL so filtered saves keep hidden ticks),
+    Menu Operations (server-side, `moduleGroup` = "SubSystem / Module" group key), Menu Modules, and the
+    Operation form (subsystem scopes the module dropdown; GetById now returns SortOrder too).
+    (c) **Entry flow:** sidebar scoped to own subsystem; dead `backToModules.tsx` finally mounted in
+    `sidebar/index.tsx` ("All Modules" switcher); login → `/landing` with `state:{fromLogin:true}` and the
+    landing auto-forwards when exactly ONE subsystem card is visible (ref-guarded; switcher never forwards);
+    the Home portal (code `HOME`) is EXCLUDED from the picker — one-way Home→HRMS flow per user decision.
+    (d) CORS += `http://localhost:5175`. (e) **Lazy-chunk resilience:** `errorBoundary.componentDidCatch`
+    auto-reloads once (30 s sessionStorage throttle) on "Failed to fetch dynamically imported module" —
+    React caches the rejected lazy import so "Try again" can never recover it; `main.tsx` also handles
+    `vite:preloadError` for production builds. Gotcha: vite 504 "Outdated Optimize Dep" = stale
+    `node_modules/.vite` cache — reloads don't fix it; delete the cache and restart vite. E2E: 21/21
+    (filters), 7/7+3/3 (switcher/auto-forward), 12/12 (portal entry), recovery verified.
 
 00RM. **Recruitment: internal candidate hire → promotion/transfer, not a duplicate employee (2026-07-29,
     no migration).** Module-review fix. `HireCandidate.HireAsync` (`CandidateLifecycleHandlers.cs`) used to

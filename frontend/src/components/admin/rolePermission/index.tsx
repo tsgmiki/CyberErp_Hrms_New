@@ -10,19 +10,22 @@ import { toast } from "@/components/common/toast";
 import { parameterInitialData } from "@/constants/initialization";
 import getAllRole from "@/services/admin/role/getAll";
 import saveRolePermissions from "@/services/admin/rolePermission/save";
+import SubsystemModuleFilter, { type MenuScope } from "@/components/common/menuFilters/subsystemModuleFilter";
 import type { PermissionState } from "./rolePermissionUtils";
 
 const RolePermissionDetail = memo(lazy(() => import("./detail")));
 
 /**
- * Role Permissions — deliberately a SIMPLE, self-contained screen (no form framework):
- * pick a role, tick the matrix, Save. The role selection and the ticked state survive saving,
- * so the admin can keep adjusting without anything resetting or disappearing.
+ * Role Permissions — the CENTRAL grant console for every subsystem (HRMS, Home, Finance, …):
+ * pick a role, optionally scope the matrix with the cascading Subsystem → Module filters,
+ * tick, Save. The role selection and the ticked state survive saving and filtering, so the
+ * admin can keep adjusting without anything resetting or disappearing.
  */
 function RolePermission() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [role, setRole] = useState<{ id: string; name: string } | null>(null);
+  const [scope, setScope] = useState<MenuScope>({});
   const [details, setDetails] = useState<PermissionState[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -80,6 +83,8 @@ function RolePermission() {
               }
             />
           </div>
+          {/* Cascading scope: Subsystem → Module — grants for ANY subsystem happen right here. */}
+          <SubsystemModuleFilter value={scope} onChange={setScope} />
           <ButtonField
             value={saving ? "Saving…" : "Save Permissions"}
             variant="primary"
@@ -91,7 +96,7 @@ function RolePermission() {
 
         {role ? (
           <div className="min-h-0 flex-1 overflow-auto">
-            <RolePermissionDetail roleId={role.id} editHandler={detailHandler} />
+            <RolePermissionDetail roleId={role.id} scope={scope} editHandler={detailHandler} />
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted">

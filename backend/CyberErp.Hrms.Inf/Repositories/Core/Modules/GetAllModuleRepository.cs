@@ -29,6 +29,10 @@ public class GetAllModuleRepository(
                                      m.Name.ToLower().Contains(searchLower));
         }
 
+        // Central administration filter: scope the module list to one subsystem.
+        if (request.SubsystemId.HasValue)
+            query = query.Where(m => m.SubsystemId == request.SubsystemId.Value);
+
         var totalCount = await query.CountAsync(ct);
 
         if (!string.IsNullOrWhiteSpace(request.SortCol))

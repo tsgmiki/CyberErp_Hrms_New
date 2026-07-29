@@ -23,9 +23,11 @@ import {
   type PermissionMap,
   type PermissionState,
 } from "./rolePermissionUtils";
+import type { MenuScope } from "@/components/common/menuFilters/subsystemModuleFilter";
 
 interface RolePermissionDetailProps {
   roleId: string;
+  scope?: MenuScope;
   editHandler: (permissions: PermissionState[]) => void;
 }
 
@@ -34,6 +36,8 @@ interface OperationItem {
   name: string;
   moduleId: string;
   module: string;
+  subsystemId: string;
+  subSystem: string;
 }
 
 const PERMISSION_COLUMNS: { field: PermissionField; label: string }[] = [
@@ -51,8 +55,11 @@ const PERMISSION_COLUMNS: { field: PermissionField; label: string }[] = [
  * - Server rows are filtered by roleId CLIENT-SIDE too, so a backend that ignores the role filter
  *   can never bleed another role's grants into this matrix.
  * - Initialized once per role (ref-guarded) — background refetches never wipe in-progress edits.
+ * - The Subsystem → Module scope only narrows the VISIBLE rows (and what check-all touches);
+ *   the permission map always covers ALL operations, so saving while filtered never drops
+ *   grants that were ticked outside the current filter.
  */
-function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps) {
+function RolePermissionDetail({ roleId, scope, editHandler }: RolePermissionDetailProps) {
   const [permissions, setPermissions] = useState<PermissionMap>({});
   const loadedRoleRef = useRef<string | null>(null);
 
@@ -81,14 +88,35 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
           name: row.name || "",
           moduleId: row.moduleId || "",
           module: row.module?.trim() || "Other",
+          subsystemId: row.subsystemId || "",
+          subSystem: row.subSystem?.trim() || "Other",
         };
       })
-      .sort((a, b) => a.module.localeCompare(b.module) || a.name.localeCompare(b.name));
+      .sort(
+        (a, b) =>
+          a.subSystem.localeCompare(b.subSystem) ||
+          a.module.localeCompare(b.module) ||
+          a.name.localeCompare(b.name),
+      );
   }, [operations]);
 
+  // ALL operation ids — the permission map is always built over the full set.
   const operationIds = useMemo(
     () => operationsData.map((op) => op.id).filter(Boolean),
     [operationsData],
+  );
+
+  // Cascading Subsystem → Module scope narrows only what is DISPLAYED.
+  const visibleOperations = useMemo(() => {
+    let rows = operationsData;
+    if (scope?.subsystemId) rows = rows.filter((op) => op.subsystemId === scope.subsystemId);
+    if (scope?.moduleId) rows = rows.filter((op) => op.moduleId === scope.moduleId);
+    return rows;
+  }, [operationsData, scope?.subsystemId, scope?.moduleId]);
+
+  const visibleOperationIds = useMemo(
+    () => visibleOperations.map((op) => op.id).filter(Boolean),
+    [visibleOperations],
   );
 
   // Reset when the selected role changes.
@@ -119,12 +147,13 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
     [],
   );
 
+  // Check-all only touches the rows the admin can currently SEE.
   const handleCheckAll = useCallback(
     (field: PermissionField, checked: boolean) => {
-      if (operationIds.length === 0) return;
-      setPermissions((prev) => setColumnAll(prev, operationIds, field, checked));
+      if (visibleOperationIds.length === 0) return;
+      setPermissions((prev) => setColumnAll(prev, visibleOperationIds, field, checked));
     },
-    [operationIds],
+    [visibleOperationIds],
   );
 
   // Keep the parent's save payload in sync.
@@ -136,6 +165,14 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
 
   const columns: DataTableColumnModel[] = useMemo(
     () => [
+      {
+        name: "subSystem",
+        label: "Subsystem",
+        width: "min-w-[110px]",
+        render: (text: string) => (
+          <span className="text-xs font-medium text-muted">{text}</span>
+        ),
+      },
       {
         name: "module",
         label: "Module",
@@ -159,7 +196,7 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
             label={label}
             field={field}
             permissions={permissions}
-            operationIds={operationIds}
+            operationIds={visibleOperationIds}
             onCheckAll={handleCheckAll}
           />
         ),
@@ -175,7 +212,7 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
         ),
       })),
     ],
-    [permissions, operationIds, handleCheckAll, handlePermissionChange],
+    [permissions, visibleOperationIds, handleCheckAll, handlePermissionChange],
   );
 
   return (
@@ -183,7 +220,7 @@ function RolePermissionDetail({ roleId, editHandler }: RolePermissionDetailProps
       dataTable={{
         isLoading,
         columns,
-        data: operationsData as never,
+        data: visibleOperations as never,
         key: "id",
       }}
     />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sprout } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +12,9 @@ import type { ModuleModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityBadge } from "@/components/common/badge";
 import { EntityListShell, useEntityList } from "@/template";
+import SubsystemModuleFilter, {
+  type MenuScope,
+} from "@/components/common/menuFilters/subsystemModuleFilter";
 
 interface ModuleListProps {
   editHandler: (id: string) => void;
@@ -22,11 +25,21 @@ function ModuleList({ editHandler }: ModuleListProps) {
   const queryClient = useQueryClient();
   const [seeding, setSeeding] = useState(false);
   const [seedMsg, setSeedMsg] = useState("");
+  const [scope, setScope] = useState<MenuScope>({});
   const list = useEntityList({
     queryKey: "modules",
     fetchPage: getAllModule,
     deleteById: deleteModule,
   });
+
+  // Server-side subsystem scoping (modules belong directly to a subsystem — no module half).
+  const scopeHandler = useCallback(
+    (next: MenuScope) => {
+      setScope(next);
+      list.setParam((prev) => ({ ...prev, subsystemId: next.subsystemId ?? "", skip: 0 }));
+    },
+    [list.setParam],
+  );
 
   const seed = async () => {
     setSeeding(true);
@@ -99,6 +112,9 @@ function ModuleList({ editHandler }: ModuleListProps) {
         listLabel="Modules"
         columns={columns}
         {...list}
+        searchBarFilters={
+          <SubsystemModuleFilter value={scope} onChange={scopeHandler} showModule={false} />
+        }
       />
     </div>
   );
