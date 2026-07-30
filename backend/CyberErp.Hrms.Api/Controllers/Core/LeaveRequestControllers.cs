@@ -38,9 +38,9 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllAnnualLeaves getAllHandler,
         IGetMyAnnualLeaveBalance myBalanceHandler) : BaseController
     {
-        /// <summary>The signed-in employee's annual-leave balance for the active fiscal year (dashboard widget).</summary>
+        /// <summary>The signed-in employee's annual-leave balances across ALL active fiscal years (dashboard widget).</summary>
         [HttpGet("my-balance")]
-        public Task<MyAnnualLeaveBalanceDto> MyBalance() => myBalanceHandler.GetAsync();
+        public Task<MyAnnualLeaveBalancesDto> MyBalance() => myBalanceHandler.GetAsync();
 
         [HttpGet]
         public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAll([FromQuery] GetAllRequest request)

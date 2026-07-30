@@ -65,6 +65,16 @@
     Entitled+CarriedForward+Adjusted−Taken, or the setting's DefaultAnnualEntitlement when no LeaveBalance
     row) for the Home dashboard widget. Proven: an admin (appraisal-HrSignOff approver) saw 7 via
     `/AnnualLeave` but only their own 3 via `/mine`.
+    **REVISED (later 2026-07-30): `/my-balance` rewritten to per-type, per-active-fiscal-year.**
+    `GetMyAnnualLeaveBalance` is now driven by the employee's OWN LeaveBalance rows in ALL active
+    Core.FiscalYear rows (one query, joined to hrmsLeaveType), returning `MyAnnualLeaveBalancesDto
+    { hasData, items[] }` where each item = FY + leave type + figures + `IsAnnual`
+    (AccrualMethod==Annual); policy-default synth rows only for annual types with no row. It NEVER
+    calls the throwing `ResolveAnnualLeaveTypeIdAsync` (throws on 0/>1 annual-method types — that
+    was a hidden my-balance 400) and no longer hides balances when a year's policy row is missing
+    or the "annual" type is misconfigured. ⚠ aadb4e82 config quirk: the type NAMED "Annual Leave"
+    accrues Monthly while "Casual Leave" accrues Annual — accrual flags look swapped (user to fix
+    in Leave Types admin; the widget/KPI follow the flag).
 
 00WN. **Approval-request notifications → Home portal (2026-07-30, no HRMS migration; needs Home migration
     `AddNotificationSourceRef` on CERP).** The portal bell had no PRODUCER — the workflow engine never wrote

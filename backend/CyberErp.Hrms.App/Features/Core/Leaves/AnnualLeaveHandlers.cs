@@ -359,14 +359,17 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         }
     }
 
-    // ---- My annual-leave balance (self-service dashboard widget) ----------------
+    // ---- My leave balances (self-service dashboard widget) ----------------------
 
-    public class MyAnnualLeaveBalanceDto
+    /// <summary>One leave type's balance in one active fiscal year for the signed-in employee.</summary>
+    public class MyAnnualLeaveBalanceItemDto
     {
-        /// <summary>False when the account has no linked employee or no active fiscal year is configured.</summary>
-        public bool HasData { get; set; }
+        public Guid FiscalYearId { get; set; }
         public string? FiscalYearName { get; set; }
+        public Guid LeaveTypeId { get; set; }
         public string? LeaveTypeName { get; set; }
+        /// <summary>True when the leave type accrues annually — the "annual leave" figure for KPIs.</summary>
+        public bool IsAnnual { get; set; }
         public decimal Entitled { get; set; }
         public decimal CarriedForward { get; set; }
         public decimal Adjusted { get; set; }
@@ -374,64 +377,127 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public decimal Available { get; set; }
     }
 
-    public interface IGetMyAnnualLeaveBalance { Task<MyAnnualLeaveBalanceDto> GetAsync(); }
+    public class MyAnnualLeaveBalancesDto
+    {
+        /// <summary>False when the account has no linked employee.</summary>
+        public bool HasData { get; set; }
+        /// <summary>Per leave type, per ACTIVE fiscal year (newest year first, annual types first).</summary>
+        public List<MyAnnualLeaveBalanceItemDto> Items { get; set; } = [];
+    }
+
+    public interface IGetMyAnnualLeaveBalance { Task<MyAnnualLeaveBalancesDto> GetAsync(); }
 
     /// <summary>
-    /// The signed-in employee's annual-leave balance for the ACTIVE fiscal year — a lean, single-row
-    /// read for the portal dashboard. Strictly self-scoped (uses the caller's own employee id from the
-    /// visibility scope); never returns another employee's figures.
+    /// The signed-in employee's leave balances across ALL active fiscal years — a lean read for the
+    /// portal dashboard. Strictly self-scoped (the caller's own employee id from the visibility
+    /// scope); never returns another employee's figures.
+    ///
+    /// Robustness (the "dashboard shows zero" class of bugs):
+    /// - Driven by the employee's OWN LeaveBalance rows in every ACTIVE fiscal year — a real balance
+    ///   is shown even when the year's leave policy row is missing or inactive.
+    /// - Multi-type safe: one row per leave type (annual-accrual types flagged, listed first) — it
+    ///   never binds to a single resolved "annual" type, so misconfigured/overlapping accrual
+    ///   methods can neither throw nor silently pick the wrong type.
+    /// - A year with an active policy but no materialized rows falls back to the policy's default
+    ///   entitlement so new employees still see their implicit opening balance.
     /// </summary>
     public class GetMyAnnualLeaveBalance(
         IRepository<LeaveBalance> balances,
         IRepository<AnnualLeaveSetting> settings,
+        IRepository<FiscalYear> fiscalYears,
         IRepository<LeaveType> leaveTypes,
-        Performance.IPerformanceVisibilityService visibility,
-        ILeaveAccrualService accrualService) : IGetMyAnnualLeaveBalance
+        Performance.IPerformanceVisibilityService visibility) : IGetMyAnnualLeaveBalance
     {
-        public async Task<MyAnnualLeaveBalanceDto> GetAsync()
+        public async Task<MyAnnualLeaveBalancesDto> GetAsync()
         {
             var scope = await visibility.GetScopeAsync();
             if (scope.EmployeeId is not Guid employeeId)
-                return new MyAnnualLeaveBalanceDto { HasData = false };
+                return new MyAnnualLeaveBalancesDto { HasData = false };
 
-            // The active fiscal year's leave policy — prefer the active setting on the active FY,
-            // otherwise the newest active setting.
-            var setting = await settings.GetAll()
-                .Include(s => s.FiscalYear)
-                .Where(s => s.IsActive)
-                .OrderByDescending(s => s.FiscalYear != null && s.FiscalYear.IsActive)
-                .ThenByDescending(s => s.FiscalYear!.StartDate)
-                .FirstOrDefaultAsync();
-            if (setting is null)
-                return new MyAnnualLeaveBalanceDto { HasData = false };
+            // Every ACTIVE fiscal year, newest first (an employee can hold balances across
+            // overlapping active years during a year transition).
+            var activeYears = await fiscalYears.GetAll()
+                .Where(f => f.IsActive)
+                .OrderByDescending(f => f.StartDate)
+                .Select(f => new { f.Id, f.Name })
+                .ToListAsync();
+            if (activeYears.Count == 0)
+                return new MyAnnualLeaveBalancesDto { HasData = true };
 
-            var leaveTypeId = await accrualService.ResolveAnnualLeaveTypeIdAsync();
-            var leaveTypeName = await leaveTypes.GetAll()
-                .Where(t => t.Id == leaveTypeId).Select(t => t.Name).FirstOrDefaultAsync();
+            var yearIds = activeYears.Select(f => f.Id).ToList();
+            var yearNames = activeYears.ToDictionary(f => f.Id, f => f.Name);
+            var yearRank = activeYears.Select((f, i) => (f.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
-            var dto = new MyAnnualLeaveBalanceDto
+            // The employee's balances for all active years in ONE query, joined to the type.
+            var rows = await balances.GetAll()
+                .Where(b => b.EmployeeId == employeeId && yearIds.Contains(b.FiscalYearId))
+                .Join(leaveTypes.GetAll(),
+                    b => b.LeaveTypeId, t => t.Id,
+                    (b, t) => new
+                    {
+                        b.FiscalYearId,
+                        b.LeaveTypeId,
+                        LeaveTypeName = t.Name,
+                        IsAnnual = t.AccrualMethod == LeaveAccrualMethod.Annual,
+                        b.Entitled,
+                        b.CarriedForward,
+                        b.Adjusted,
+                        b.Taken,
+                    })
+                .ToListAsync();
+
+            var dto = new MyAnnualLeaveBalancesDto { HasData = true };
+            foreach (var r in rows)
             {
-                HasData = true,
-                FiscalYearName = setting.FiscalYear?.Name,
-                LeaveTypeName = leaveTypeName,
-            };
-
-            var balance = await balances.GetAll().FirstOrDefaultAsync(b =>
-                b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == setting.FiscalYearId);
-            if (balance is not null)
-            {
-                dto.Entitled = balance.Entitled;
-                dto.CarriedForward = balance.CarriedForward;
-                dto.Adjusted = balance.Adjusted;
-                dto.Taken = balance.Taken;
-                dto.Available = balance.Available;
+                dto.Items.Add(new MyAnnualLeaveBalanceItemDto
+                {
+                    FiscalYearId = r.FiscalYearId,
+                    FiscalYearName = yearNames.GetValueOrDefault(r.FiscalYearId),
+                    LeaveTypeId = r.LeaveTypeId,
+                    LeaveTypeName = r.LeaveTypeName,
+                    IsAnnual = r.IsAnnual,
+                    Entitled = r.Entitled,
+                    CarriedForward = r.CarriedForward,
+                    Adjusted = r.Adjusted,
+                    Taken = r.Taken,
+                    Available = r.Entitled + r.CarriedForward + r.Adjusted - r.Taken,
+                });
             }
-            else
+
+            // Policy-default fallback: an active policy year where the employee has NO annual-type
+            // row yet still shows the implicit opening entitlement.
+            var annualTypes = await leaveTypes.GetAll()
+                .Where(t => t.IsActive && t.AccrualMethod == LeaveAccrualMethod.Annual)
+                .Select(t => new { t.Id, t.Name })
+                .ToListAsync();
+            if (annualTypes.Count > 0)
             {
-                // Not yet materialized → the implicit opening is the fiscal year's policy default.
-                dto.Entitled = setting.DefaultAnnualEntitlement;
-                dto.Available = setting.DefaultAnnualEntitlement;
+                var defaultSettings = await settings.GetAll()
+                    .Where(s => s.IsActive && yearIds.Contains(s.FiscalYearId) && s.DefaultAnnualEntitlement > 0)
+                    .Select(s => new { s.FiscalYearId, s.DefaultAnnualEntitlement })
+                    .ToListAsync();
+                foreach (var s in defaultSettings.GroupBy(x => x.FiscalYearId).Select(g => g.First()))
+                {
+                    if (dto.Items.Any(i => i.FiscalYearId == s.FiscalYearId && i.IsAnnual)) continue;
+                    var annual = annualTypes[0];
+                    dto.Items.Add(new MyAnnualLeaveBalanceItemDto
+                    {
+                        FiscalYearId = s.FiscalYearId,
+                        FiscalYearName = yearNames.GetValueOrDefault(s.FiscalYearId),
+                        LeaveTypeId = annual.Id,
+                        LeaveTypeName = annual.Name,
+                        IsAnnual = true,
+                        Entitled = s.DefaultAnnualEntitlement,
+                        Available = s.DefaultAnnualEntitlement,
+                    });
+                }
             }
+
+            dto.Items = dto.Items
+                .OrderBy(i => yearRank.GetValueOrDefault(i.FiscalYearId, int.MaxValue))
+                .ThenByDescending(i => i.IsAnnual)
+                .ThenBy(i => i.LeaveTypeName)
+                .ToList();
             return dto;
         }
     }
