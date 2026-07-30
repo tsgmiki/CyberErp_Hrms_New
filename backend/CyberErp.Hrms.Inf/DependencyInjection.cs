@@ -20,6 +20,7 @@ namespace CyberErp.Hrms.Inf
             services.AddHttpContextAccessor();
             services.AddScoped<ITenantService, TenantService>();
             services.AddScoped<ICurrentUserService, CurrentUserService>();
+            services.AddScoped<App.Common.Services.IPortalNotifier, PortalNotifier>();
             // Generic report engine: Dapper SP execution with ambient tenant/branch/user injection.
             services.AddScoped<App.Features.Core.Reports.IReportExecutor, ReportExecutor>();
             services.AddScoped<App.Features.Core.Reports.IReportJobScheduler, ReportJobScheduler>();

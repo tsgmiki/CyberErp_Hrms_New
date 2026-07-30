@@ -103,9 +103,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IEnumerable<IWorkflowEntityHandler> handlers,
         IWorkflowApproverAuth approverAuth,
         IOrgManagerResolver managerResolver,
+        IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         ILogger<WorkflowService> logger) : IWorkflowService
     {
+        /// <summary>Source-entity key correlating portal alerts to the workflow instance that raised them.</summary>
+        private const string PortalSource = "WorkflowInstance";
+
         public async Task StartIfDefinedAsync(string entityType, Guid entityId, Guid? employeeId, string summary, string? startAtStepName = null, bool preValidateApprovers = true)
         {
             // Steps are read through the definition aggregate (children carry no tenant stamp).
@@ -144,6 +148,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             await instances.SaveChangesAsync();
             logger.LogInformation("Started workflow {InstanceId} ({EntityType}) for entity {EntityId}",
                 instance.Id, entityType, entityId);
+
+            // Alert the first pending step's approvers in the Home portal.
+            await NotifyCurrentStepApproversAsync(instance);
         }
 
         public async Task EnsureStartableAsync(string entityType, Guid? employeeId)
@@ -231,6 +238,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 await instances.SaveChangesAsync();
                 logger.LogInformation("Workflow {InstanceId} advanced to step {Step} ({Name})",
                     instance.Id, next.StepOrder, next.Name);
+                // Clear this step's alerts, then alert the next step's approvers.
+                await ResolvePortalAlertsAsync(instance);
+                await NotifyCurrentStepApproversAsync(instance);
                 return;
             }
 
@@ -251,6 +261,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 await TryReopenAsync(instance);
                 throw;
             }
+
+            // Fully decided — clear any outstanding portal approval alerts for this instance.
+            await ResolvePortalAlertsAsync(instance);
         }
 
         /// <summary>
@@ -300,6 +313,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 await TryReopenAsync(instance);
                 throw;
             }
+
+            // Rejected — clear any outstanding portal approval alerts for this instance.
+            await ResolvePortalAlertsAsync(instance);
         }
 
         public async Task AdvanceToStepAsync(Guid instanceId, string? targetStepName, string? comment)
@@ -324,6 +340,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     if (handler is not null) await handler.OnApprovedAsync(instance.EntityType, instance.EntityId);
                 }
                 catch { await TryReopenAsync(instance); throw; }
+                await ResolvePortalAlertsAsync(instance);
                 return;
             }
 
@@ -339,6 +356,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             instances.UpdateAsync(instance);
             await instances.SaveChangesAsync();
             logger.LogInformation("Workflow {InstanceId} advanced to step {Step} ({Name})", instance.Id, target.StepOrder, target.Name);
+            // Clear this step's alerts, then alert the next step's approvers.
+            await ResolvePortalAlertsAsync(instance);
+            await NotifyCurrentStepApproversAsync(instance);
         }
 
         /// <summary>Some entity types (e.g. Appraisal) advance through their own rich per-stage actions, not the
@@ -348,6 +368,46 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             if (instance.EntityType == WorkflowEntityTypes.Appraisal)
                 throw new ValidationException("workflow",
                     "Act on this appraisal from the appraisal screen (score / sign / complete); the generic approve/reject does not apply here.");
+        }
+
+        /// <summary>
+        /// Best-effort: alert the CURRENT step's approvers in the Home portal that this request awaits
+        /// their decision. Resolves the same approver set the decision-time auth uses, then writes one
+        /// coreNotification per approver (correlated to this instance). A failure is logged, never thrown —
+        /// a portal-notification hiccup must not break the governing operation.
+        /// </summary>
+        private async Task NotifyCurrentStepApproversAsync(WorkflowInstance instance)
+        {
+            try
+            {
+                var userIds = await approverAuth.ResolveApproverUserIdsAsync(
+                    instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId);
+                await portalNotifier.NotifyUsersAsync(
+                    userIds,
+                    $"Approval required: {instance.Summary}",
+                    $"Awaiting your approval at step '{instance.CurrentStepName}'.",
+                    "/workflow",
+                    "Action",
+                    PortalSource,
+                    instance.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Workflow {InstanceId}: failed to raise portal approval alerts", instance.Id);
+            }
+        }
+
+        /// <summary>Best-effort: clear this instance's outstanding portal alerts once a step is decided.</summary>
+        private async Task ResolvePortalAlertsAsync(WorkflowInstance instance)
+        {
+            try
+            {
+                await portalNotifier.ResolveAsync(PortalSource, instance.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Workflow {InstanceId}: failed to clear portal approval alerts", instance.Id);
+            }
         }
 
         public Task<WorkflowInstance?> GetRunningInstanceAsync(string entityType, Guid entityId) =>

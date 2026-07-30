@@ -44,11 +44,39 @@
 - **2026-07-29 later commits**: §1 item 00CA (central subsystem administration + Home-first entry flow,
   migration `AddSubsystemUrl` applied; plus the lazy-chunk auto-recovery hardening). The companion
   **Home portal** lives in its own repo at `D:\Workspace\CyberErp\Home`.
+- **2026-07-30 commits** (no HRMS migration): §1 items 00WN (approval-request notifications → Home portal;
+  needs the Home repo's `AddNotificationSourceRef` migration, already applied to CERP) and 00AL (annual-leave
+  own-only `/mine` grid + `/my-balance` dashboard endpoints). Companion Home-repo work: strict notification
+  isolation, the annual-leave grid/dashboard/subsystem-link fixes.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00AL. **Annual-leave self-service endpoints — own-only grid + dashboard balance (2026-07-30, no migration).**
+    The Home portal's "Annual Leave" grid showed EVERY employee's requests because `GetAllAnnualLeaves`
+    grants head-office accounts admin visibility (`IsAdminAsync` → true for branch-null users) and the
+    Home self-service user is head-office. FIX: `IGetAllAnnualLeaves.GetMineAsync` (refactored `GetAsync`
+    → private `QueryAsync(request, mineOnly)`) ALWAYS scopes `x.EmployeeId == scope.EmployeeId` — no
+    admin/manager widening, null employee → empty — exposed at **`GET /AnnualLeave/mine`**; the Home list
+    now calls it and defaults status to Pending. Also new `IGetMyAnnualLeaveBalance` → **`GET /AnnualLeave/
+    my-balance`** (self-scoped balance for the active `AnnualLeaveSetting`'s fiscal year; Available =
+    Entitled+CarriedForward+Adjusted−Taken, or the setting's DefaultAnnualEntitlement when no LeaveBalance
+    row) for the Home dashboard widget. Proven: an admin (appraisal-HrSignOff approver) saw 7 via
+    `/AnnualLeave` but only their own 3 via `/mine`.
+
+00WN. **Approval-request notifications → Home portal (2026-07-30, no HRMS migration; needs Home migration
+    `AddNotificationSourceRef` on CERP).** The portal bell had no PRODUCER — the workflow engine never wrote
+    to `dbo.coreNotification`. Added: `CoreNotification` plain POCO (Dom) + `CoreNotificationConfiguration`
+    (`ToTable("coreNotification","dbo", ExcludeFromMigrations)`) + DbSet — HRMS WRITES the Home-owned table;
+    `IPortalNotifier` (App/Common/Services) + `PortalNotifier` (Inf, stamps TenantId from ITenantService,
+    SourceSubsystem="HRMS", best-effort); `IWorkflowApproverAuth.ResolveApproverUserIdsAsync` (step approvers
+    → distinct Core.User ids: User/Role/Subject/Immediate/SecondLevel/UnitManager); `WorkflowService` emits
+    on START + each ADVANCE (`NotifyCurrentStepApproversAsync`, Severity="Action", LinkUrl="/workflow") and
+    marks read on every decision (`ResolvePortalAlertsAsync` → correlated by SourceEntityType="WorkflowInstance"
+    + SourceEntityId=instance.Id). Open steps (no approvers) → no row. Appraisals only notify on START
+    (module-driven advance bypasses the generic engine). E2E: single + 2-step round-trip verified in SQL.
 
 00CA. **Central subsystem administration + Home-first entry flow (2026-07-29, migration `AddSubsystemUrl`
     applied to CERP).** Companion to the new standalone Home portal repo (`D:\Workspace\CyberErp\Home`).

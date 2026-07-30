@@ -24,6 +24,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task EnsureCanDecideAsync(WorkflowInstance instance);
         /// <summary>Role ids held by the current user (for batch evaluation in list queries).</summary>
         Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync();
+        /// <summary>
+        /// The DISTINCT Core.User ids who may act on a step — the same resolution
+        /// <see cref="EvaluateAsync"/> performs, but projected to recipients (for notifying approvers).
+        /// Empty for an open step (no configured approvers). <paramref name="requesterEmployeeId"/> anchors
+        /// dynamic (manager) resolution — pass the instance's EmployeeId.
+        /// </summary>
+        Task<HashSet<Guid>> ResolveApproverUserIdsAsync(Guid definitionId, int stepOrder, Guid? requesterEmployeeId);
     }
 
     public class WorkflowApproverAuth(
@@ -121,6 +128,66 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             }
 
             return (canDecide, names);
+        }
+
+        public async Task<HashSet<Guid>> ResolveApproverUserIdsAsync(
+            Guid definitionId, int stepOrder, Guid? requesterEmployeeId)
+        {
+            var approvers = await definitions.GetAllWithoutTenantFilter()
+                .Where(d => d.Id == definitionId)
+                .SelectMany(d => d.Steps)
+                .Where(s => s.StepOrder == stepOrder)
+                .SelectMany(s => s.Approvers)
+                .Select(a => new { a.ApproverType, a.ApproverId })
+                .ToListAsync();
+
+            var userIds = new HashSet<Guid>();
+
+            foreach (var a in approvers)
+            {
+                switch (a.ApproverType)
+                {
+                    case WorkflowApproverType.User:
+                        userIds.Add(a.ApproverId);
+                        break;
+
+                    case WorkflowApproverType.Role:
+                        var roleUserIds = await userRoles.GetAll()
+                            .Where(u => u.RoleId == a.ApproverId)
+                            .Select(u => u.UserId)
+                            .ToListAsync();
+                        foreach (var id in roleUserIds) userIds.Add(id);
+                        break;
+
+                    case WorkflowApproverType.Subject:
+                        if (requesterEmployeeId.HasValue)
+                        {
+                            var subjectUserIds = await users.GetAll()
+                                .Where(u => u.EmployeeId == requesterEmployeeId.Value)
+                                .Select(u => u.Id)
+                                .ToListAsync();
+                            foreach (var id in subjectUserIds) userIds.Add(id);
+                        }
+                        break;
+
+                    case WorkflowApproverType.ImmediateManager:
+                    case WorkflowApproverType.SecondLevelManager:
+                    case WorkflowApproverType.UnitManager:
+                        var resolved = a.ApproverType switch
+                        {
+                            WorkflowApproverType.ImmediateManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveImmediateManagerAsync(requesterEmployeeId.Value) : null,
+                            WorkflowApproverType.SecondLevelManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveSecondLevelManagerAsync(requesterEmployeeId.Value) : null,
+                            _ => await managerResolver.ResolveUnitManagerAsync(a.ApproverId, requesterEmployeeId),
+                        };
+                        if (resolved is not null)
+                            foreach (var id in resolved.UserIds) userIds.Add(id);
+                        break;
+                }
+            }
+
+            return userIds;
         }
 
         public async Task EnsureCanDecideAsync(WorkflowInstance instance)
