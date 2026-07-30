@@ -82,7 +82,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface ISubmitAnnualLeave { Task<Guid> SubmitAsync(SaveAnnualLeaveDto dto); }
     public interface ICancelAnnualLeave { Task CancelAsync(CancelAnnualLeaveDto dto); }
     public interface IGetAnnualLeaveById { Task<AnnualLeaveHeaderDto> GetAsync(Guid id); }
-    public interface IGetAllAnnualLeaves { Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAsync(GetAllRequest request); }
+    public interface IGetAllAnnualLeaves
+    {
+        Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAsync(GetAllRequest request);
+        /// <summary>
+        /// STRICT self-service list — ALWAYS the caller's own requests only, regardless of admin/
+        /// manager privileges. Backs the Home portal's "my Annual Leave" grid so an admin-flagged
+        /// self-service user (e.g. a head-office account) can never see other employees' requests.
+        /// </summary>
+        Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetMineAsync(GetAllRequest request);
+    }
 
     // ---- Submit -------------------------------------------------------------
     public class SubmitAnnualLeave(
@@ -297,17 +306,31 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<Employee> employeeRepository,
         Performance.IPerformanceVisibilityService visibility) : IGetAllAnnualLeaves
     {
-        public async Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAsync(GetAllRequest request)
+        public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAsync(GetAllRequest request)
+            => QueryAsync(request, mineOnly: false);
+
+        public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetMineAsync(GetAllRequest request)
+            => QueryAsync(request, mineOnly: true);
+
+        private async Task<PaginatedResponse<AnnualLeaveHeaderDto>> QueryAsync(GetAllRequest request, bool mineOnly)
         {
             var skip = int.TryParse(request.Skip, out var s) ? s : 0;
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
-
-            // Role-based visibility: HR admin sees all, a manager their unit subtree, else own only.
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin)
+
+            if (mineOnly)
             {
+                // Self-service: ONLY the caller's own requests, no admin/manager widening. An account
+                // with no linked employee sees nothing (never a broader set).
+                if (scope.EmployeeId is not Guid myOwn)
+                    return new PaginatedResponse<AnnualLeaveHeaderDto> { Total = 0, Data = [] };
+                query = query.Where(x => x.EmployeeId == myOwn);
+            }
+            else if (!scope.IsAdmin)
+            {
+                // Role-based visibility: a manager sees their unit subtree, everyone else own only.
                 var myEmp = scope.EmployeeId ?? Guid.Empty;
                 if (scope.IsManager)
                 {
@@ -333,6 +356,83 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .Skip(skip).Take(take).Select(AnnualLeaveMapper.Projection).ToListAsync();
 
             return new PaginatedResponse<AnnualLeaveHeaderDto> { Total = total, Data = data };
+        }
+    }
+
+    // ---- My annual-leave balance (self-service dashboard widget) ----------------
+
+    public class MyAnnualLeaveBalanceDto
+    {
+        /// <summary>False when the account has no linked employee or no active fiscal year is configured.</summary>
+        public bool HasData { get; set; }
+        public string? FiscalYearName { get; set; }
+        public string? LeaveTypeName { get; set; }
+        public decimal Entitled { get; set; }
+        public decimal CarriedForward { get; set; }
+        public decimal Adjusted { get; set; }
+        public decimal Taken { get; set; }
+        public decimal Available { get; set; }
+    }
+
+    public interface IGetMyAnnualLeaveBalance { Task<MyAnnualLeaveBalanceDto> GetAsync(); }
+
+    /// <summary>
+    /// The signed-in employee's annual-leave balance for the ACTIVE fiscal year — a lean, single-row
+    /// read for the portal dashboard. Strictly self-scoped (uses the caller's own employee id from the
+    /// visibility scope); never returns another employee's figures.
+    /// </summary>
+    public class GetMyAnnualLeaveBalance(
+        IRepository<LeaveBalance> balances,
+        IRepository<AnnualLeaveSetting> settings,
+        IRepository<LeaveType> leaveTypes,
+        Performance.IPerformanceVisibilityService visibility,
+        ILeaveAccrualService accrualService) : IGetMyAnnualLeaveBalance
+    {
+        public async Task<MyAnnualLeaveBalanceDto> GetAsync()
+        {
+            var scope = await visibility.GetScopeAsync();
+            if (scope.EmployeeId is not Guid employeeId)
+                return new MyAnnualLeaveBalanceDto { HasData = false };
+
+            // The active fiscal year's leave policy — prefer the active setting on the active FY,
+            // otherwise the newest active setting.
+            var setting = await settings.GetAll()
+                .Include(s => s.FiscalYear)
+                .Where(s => s.IsActive)
+                .OrderByDescending(s => s.FiscalYear != null && s.FiscalYear.IsActive)
+                .ThenByDescending(s => s.FiscalYear!.StartDate)
+                .FirstOrDefaultAsync();
+            if (setting is null)
+                return new MyAnnualLeaveBalanceDto { HasData = false };
+
+            var leaveTypeId = await accrualService.ResolveAnnualLeaveTypeIdAsync();
+            var leaveTypeName = await leaveTypes.GetAll()
+                .Where(t => t.Id == leaveTypeId).Select(t => t.Name).FirstOrDefaultAsync();
+
+            var dto = new MyAnnualLeaveBalanceDto
+            {
+                HasData = true,
+                FiscalYearName = setting.FiscalYear?.Name,
+                LeaveTypeName = leaveTypeName,
+            };
+
+            var balance = await balances.GetAll().FirstOrDefaultAsync(b =>
+                b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == setting.FiscalYearId);
+            if (balance is not null)
+            {
+                dto.Entitled = balance.Entitled;
+                dto.CarriedForward = balance.CarriedForward;
+                dto.Adjusted = balance.Adjusted;
+                dto.Taken = balance.Taken;
+                dto.Available = balance.Available;
+            }
+            else
+            {
+                // Not yet materialized → the implicit opening is the fiscal year's policy default.
+                dto.Entitled = setting.DefaultAnnualEntitlement;
+                dto.Available = setting.DefaultAnnualEntitlement;
+            }
+            return dto;
         }
     }
 

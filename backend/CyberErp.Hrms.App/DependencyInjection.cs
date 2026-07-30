@@ -113,6 +113,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.ICancelAnnualLeave, Features.Core.Leaves.CancelAnnualLeave>();
             services.AddScoped<Features.Core.Leaves.IGetAnnualLeaveById, Features.Core.Leaves.GetAnnualLeaveById>();
             services.AddScoped<Features.Core.Leaves.IGetAllAnnualLeaves, Features.Core.Leaves.GetAllAnnualLeaves>();
+            services.AddScoped<Features.Core.Leaves.IGetMyAnnualLeaveBalance, Features.Core.Leaves.GetMyAnnualLeaveBalance>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.AnnualLeaveWorkflowHandler>();
             // Other (non-annual) leave: static position-based, gender-aware entitlements per fiscal year
             services.AddScoped<Features.Core.Leaves.ISaveOtherLeaveSetting, Features.Core.Leaves.SaveOtherLeaveSetting>();
