@@ -67,6 +67,11 @@ function UserForm(props: { id: string; setUserId: (id: string) => void }) {
       setFormData(user);
     }
   }, [user]);
+  // The form component stays mounted across list↔form switches: when the id is cleared
+  // (back / Add-new), drop the previously loaded user so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({} as UserModel);
+  }, [id]);
   useEffect(() => {
     if (formState.status == "success") {
       setFormData({} as UserModel);

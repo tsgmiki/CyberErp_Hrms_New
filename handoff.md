@@ -54,6 +54,13 @@
 
 ## 1. Most recent changes (latest first)
 
+00UE. **User admin: Edit button + stale-Add fix (2026-07-31, no migration).** `userList.tsx` GridAction
+    had `showEdit={false}` (only Delete rendered). The reported "edit form fails to populate" was NOT a
+    binding bug (GET /User/{id} + controlled inputs verified fine) — the real defect: the form component
+    stays MOUNTED across list↔form switches, so pressing Add after viewing a user showed the previous
+    user's values; fixed with a reset-on-id-cleared effect in `userForm.tsx`. E2E 6/6. ⚠ Other CRUD
+    screens sharing the always-mounted EntityModuleShell form pattern may have the same stale-Add bug.
+
 00AL. **Annual-leave self-service endpoints — own-only grid + dashboard balance (2026-07-30, no migration).**
     The Home portal's "Annual Leave" grid showed EVERY employee's requests because `GetAllAnnualLeaves`
     grants head-office accounts admin visibility (`IsAdminAsync` → true for branch-null users) and the
