@@ -36,6 +36,16 @@ function PositionForm({
       ? { organizationUnitId: presetOrganizationUnitId, organizationUnitName: presetOrganizationUnitName }
       : {},
   );
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData(() =>
+    presetOrganizationUnitId
+      ? { organizationUnitId: presetOrganizationUnitId, organizationUnitName: presetOrganizationUnitName }
+      : {},);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 

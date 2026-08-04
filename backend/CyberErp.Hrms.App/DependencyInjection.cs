@@ -15,6 +15,8 @@ using CyberErp.Hrms.App.Features.Core.Employees;
 using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.DocumentTemplates;
 using CyberErp.Hrms.App.Features.Core.Workflows;
+using CyberErp.Hrms.App.Features.Core.Search;
+using CyberErp.Hrms.App.Features.Core.Search.Providers;
 using CyberErp.Hrms.App.Features.Core.ClearanceDepartments;
 using CyberErp.Hrms.App.Features.Core.Roles;
 
@@ -52,6 +54,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IDeleteOrganizationUnit, DeleteOrganizationUnit>();
             services.AddScoped<IGetOrganizationUnitById, GetOrganizationUnitById>();
             services.AddScoped<IGetAllOrganizationUnits, GetAllOrganizationUnits>();
+            services.AddScoped<IGetMyOrganizationUnits, GetMyOrganizationUnits>();
             services.AddScoped<IGetOrganizationTree, GetOrganizationTree>();
 
             // Positions
@@ -171,6 +174,13 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
             services.AddScoped<IGetMyEmployee, GetMyEmployee>();
+            services.AddScoped<IGetMyProfile, GetMyProfile>();
+            services.AddScoped<IUpdateMyProfile, UpdateMyProfile>();
+            services.AddScoped<IGetProfileChangeFields, GetProfileChangeFields>();
+            services.AddScoped<ISubmitProfileChangeRequest, SubmitProfileChangeRequest>();
+            services.AddScoped<IGetMyProfileChangeRequests, GetMyProfileChangeRequests>();
+            services.AddScoped<IGetPendingProfileChangeRequests, GetPendingProfileChangeRequests>();
+            services.AddScoped<IResolveProfileChangeRequest, ResolveProfileChangeRequest>();
             services.AddScoped<IUploadEmployeePhoto, UploadEmployeePhoto>();
             services.AddScoped<IGetEmployeePhoto, GetEmployeePhoto>();
             services.AddScoped<IGetEmployeesOnProbation, GetEmployeesOnProbation>();
@@ -249,6 +259,13 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowGate, WorkflowGate>();
             services.AddScoped<IWorkflowApproverAuth, WorkflowApproverAuth>();
             services.AddScoped<IOrgManagerResolver, OrgManagerResolver>();
+
+            // Global (header) search — orchestrator + one pluggable provider per searchable module.
+            // Add a module to global search by registering another ISearchProvider here; nothing else changes.
+            services.AddScoped<IGlobalSearch, GlobalSearch>();
+            services.AddScoped<ISearchProvider, EmployeeSearchProvider>();
+            services.AddScoped<ISearchProvider, OrganizationUnitSearchProvider>();
+            services.AddScoped<ISearchProvider, LeaveRequestSearchProvider>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeMovementWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, DisciplinaryMeasureWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, SalaryRevisionWorkflowHandler>();
@@ -342,6 +359,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IGetEvaluatorContext, Features.Core.Recruitment.GetEvaluatorContext>();
             services.AddScoped<Features.Core.Recruitment.IBulkMoveApplicationStage, Features.Core.Recruitment.BulkMoveApplicationStage>();
             services.AddScoped<Features.Core.Recruitment.IInterviewNotifier, Features.Core.Recruitment.InterviewNotifier>();
+            // Internal job market — employee self-service (browse open vacancies + apply)
+            services.AddScoped<Features.Core.Recruitment.IGetOpenVacancies, Features.Core.Recruitment.GetOpenVacancies>();
+            services.AddScoped<Features.Core.Recruitment.IApplyToVacancy, Features.Core.Recruitment.ApplyToVacancy>();
+            services.AddScoped<Features.Core.Recruitment.IGetMyApplications, Features.Core.Recruitment.GetMyApplications>();
 
             // Workforce Planning (HC053–HC076)
             services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();

@@ -54,6 +54,22 @@
 
 ## 1. Most recent changes (latest first)
 
+00SG. **Stale-form guard sweep (2026-07-31, no migration; uncommitted).** The user-form stale-Add fix
+    (00UE) replicated across EVERY id-driven CRUD form via codemod: 33 `formData/setFormData` forms +
+    13 `meta`-pattern master-detail forms (resets mirror the record-populate effect's setters, each to
+    its own useState initializer) in HRMS, + 4 hosted copies in the Home repo (disciplinaryCase,
+    employeeGoal, transferRequest, hiringRequest). Marker comment: "stale-form guard". Analysis:
+    `EntityModuleShell` renders `showForm ? form : list` (forms UNMOUNT when hidden) and org-unit/
+    position use `{showForm && …}`, so most screens were safe by construction — the guard makes the
+    invariant LOCAL so future parent/mounting refactors can't reintroduce the bug. Deliberately
+    skipped: `appraisal/scoring.tsx` + `calibration/workspace.tsx` (form-slot work surfaces with no
+    Add/empty-id mode). Spot-checked live: Operation modal edit→close→Add opens blank. ALSO fixed all
+    3 react-compiler lint ERRORS repo-wide: offerLetterTemplate `useState(Date.now())` → lazy
+    initializer; rolePermission/detail memo deps → extracted `scope?.subsystemId/moduleId` locals so
+    reads match deps exactly; dynamicForm/DynamicFormSection spread-in-deps useMemo → removed the
+    manual memo (the React Compiler auto-memoizes with precise deps). `eslint --quiet` = 0 errors in
+    BOTH repos (41 auto-fixable warnings remain in HRMS — untouched, style-level).
+
 00UE. **User admin: Edit button + stale-Add fix (2026-07-31, no migration).** `userList.tsx` GridAction
     had `showEdit={false}` (only Delete rendered). The reported "edit form fails to populate" was NOT a
     binding bug (GET /User/{id} + controlled inputs verified fine) — the real defect: the form component

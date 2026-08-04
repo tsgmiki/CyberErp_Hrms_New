@@ -23,6 +23,13 @@ function ChangeRequestForm({ id, setId }: { id: string; setId: (id: string) => v
   const [formState, setFormState] = useState<any>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({} as CareerPathChangeRequestModel);
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({} as CareerPathChangeRequestModel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const [decisionNotes, setDecisionNotes] = useState("");
   const [acting, setActing] = useState(false);
   const formRef = React.createRef<HTMLFormElement>();

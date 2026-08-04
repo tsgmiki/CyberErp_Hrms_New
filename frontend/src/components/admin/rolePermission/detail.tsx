@@ -106,13 +106,16 @@ function RolePermissionDetail({ roleId, scope, editHandler }: RolePermissionDeta
     [operationsData],
   );
 
-  // Cascading Subsystem → Module scope narrows only what is DISPLAYED.
+  // Cascading Subsystem → Module scope narrows only what is DISPLAYED. The scope ids are
+  // extracted first so the memo reads exactly what it depends on (react-compiler friendly).
+  const scopeSubsystemId = scope?.subsystemId;
+  const scopeModuleId = scope?.moduleId;
   const visibleOperations = useMemo(() => {
     let rows = operationsData;
-    if (scope?.subsystemId) rows = rows.filter((op) => op.subsystemId === scope.subsystemId);
-    if (scope?.moduleId) rows = rows.filter((op) => op.moduleId === scope.moduleId);
+    if (scopeSubsystemId) rows = rows.filter((op) => op.subsystemId === scopeSubsystemId);
+    if (scopeModuleId) rows = rows.filter((op) => op.moduleId === scopeModuleId);
     return rows;
-  }, [operationsData, scope?.subsystemId, scope?.moduleId]);
+  }, [operationsData, scopeSubsystemId, scopeModuleId]);
 
   const visibleOperationIds = useMemo(
     () => visibleOperations.map((op) => op.id).filter(Boolean),

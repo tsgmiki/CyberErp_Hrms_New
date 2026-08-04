@@ -162,6 +162,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<EmployeeBenefitEnrollment> EmployeeBenefitEnrollment { get; set; }
     public DbSet<TaxBracket> TaxBracket { get; set; }
     public DbSet<CompensationRequest> CompensationRequest { get; set; }
+    public DbSet<ProfileChangeRequest> ProfileChangeRequest { get; set; }
     public DbSet<MedicalProvider> MedicalProvider { get; set; }
     public DbSet<MedicalPlan> MedicalPlan { get; set; }
     public DbSet<MedicalServiceContract> MedicalServiceContract { get; set; }
@@ -423,6 +424,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new EmployeeBenefitEnrollmentConfiguration());
         modelBuilder.ApplyConfiguration(new TaxBracketConfiguration());
         modelBuilder.ApplyConfiguration(new CompensationRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new ProfileChangeRequestConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalProviderConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalPlanConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalServiceContractConfiguration());

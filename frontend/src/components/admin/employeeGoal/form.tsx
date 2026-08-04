@@ -58,6 +58,16 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
       setItems((record.actionItems ?? []).map((a) => ({ ...a, dueDate: d10(a.dueDate), _key: nextKey() })));
     }
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({ ...NEW_DEFAULTS });
+      setItems([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   const setMetaField = (name: keyof EmployeeGoalModel, value: unknown) =>
     setMeta((p) => ({ ...p, [name]: value }));

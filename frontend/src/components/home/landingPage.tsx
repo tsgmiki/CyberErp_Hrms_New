@@ -163,8 +163,7 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
   };
 
   // Fresh-from-login convenience: a user who can see exactly ONE subsystem skips the picker.
-  // Only on login (location.state.fromLogin) — the sidebar's "All Modules" button must always
-  // show the picker, so it navigates here without that flag.
+  // Only on login (location.state.fromLogin); a direct visit to /landing always shows the picker.
   useEffect(() => {
     if (!autoForwarded.current && location.state?.fromLogin && subsystems.length === 1) {
       autoForwarded.current = true;

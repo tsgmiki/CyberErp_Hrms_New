@@ -7,6 +7,7 @@ import type { OtherLeaveModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
 import { leaveStatusOptions, leaveStatusTone } from "@/constants/leave";
+import { confirm } from "@/components/common/dialog";
 
 const fmt = (v?: string) => (v ? String(v).slice(0, 10) : "");
 
@@ -48,7 +49,15 @@ function OtherLeaveList({ editHandler, employeeId }: Props) {
   };
 
   const doCancel = async (id: string) => {
-    if (!window.confirm("Cancel this leave request?")) return;
+    if (
+      !(await confirm({
+        message: "Cancel this leave request?",
+        confirmLabel: "Cancel request",
+        cancelLabel: "Keep",
+        variant: "destructive",
+      }))
+    )
+      return;
     await cancelOtherLeave(id);
     queryClient.invalidateQueries({ queryKey: ["otherLeaves"] });
     queryClient.invalidateQueries({ queryKey: ["otherLeaveBalances"] });

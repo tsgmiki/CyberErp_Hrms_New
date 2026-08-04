@@ -15,7 +15,9 @@ public enum WorkflowActionType
     Submitted = 0,
     Approved = 1,
     Rejected = 2,
-    Cancelled = 3
+    Cancelled = 3,
+    /// <summary>A step the engine auto-bypassed (e.g. a manager step for a top-of-chain subject like the CEO).</summary>
+    Skipped = 4
 }
 
 /// <summary>

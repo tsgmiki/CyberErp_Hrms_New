@@ -11,11 +11,17 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IDeleteOrganizationUnit deleteHandler,
         IGetOrganizationUnitById getByIdHandler,
         IGetAllOrganizationUnits getAllHandler,
+        IGetMyOrganizationUnits myUnitsHandler,
         IGetOrganizationTree getTreeHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<OrganizationUnitDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>The units the caller may act for — admin=all, manager=own subtree, else none (self-service).</summary>
+        [HttpGet("my-units")]
+        public Task<PaginatedResponse<OrganizationUnitDto>> MyUnits([FromQuery] GetAllRequest request)
+            => myUnitsHandler.GetAsync(request);
 
         [HttpGet("tree")]
         public Task<List<OrgUnitTreeNodeDto>> GetTree()

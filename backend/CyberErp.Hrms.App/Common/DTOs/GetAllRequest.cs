@@ -12,16 +12,16 @@ namespace CyberErp.Hrms.App.Common.DTOs
 
             RuleFor(x => x.Take)
                 .NotEmpty().WithMessage("Take is required.")
-                .MaximumLength(200).WithMessage("Take must not exceed 50 characters.");
+                .MaximumLength(200).WithMessage("Take must not exceed 200 characters.");
 
             RuleFor(x => x.SortCol)
                 .MaximumLength(100).WithMessage("SortCol must not exceed 100 characters.");
             RuleFor(x => x.Dir)
-                 .MaximumLength(100).WithMessage("SortCol must not exceed 100 characters.");
+                 .MaximumLength(100).WithMessage("Dir must not exceed 100 characters.");
             RuleFor(x => x.SearchText)
                        .MaximumLength(100).WithMessage("SearchText must not exceed 100 characters.");
-            
-            // Validation for sales report filters
+
+            // Optional date-range filters.
             RuleFor(x => x.FromDate)
                 .MaximumLength(50).WithMessage("FromDate must not exceed 50 characters.");
                  RuleFor(x => x.ToDate)
@@ -40,12 +40,8 @@ namespace CyberErp.Hrms.App.Common.DTOs
         public string? ToDate { get; set; }
         public string? ReportName { get; set; }
         public string? ReportCategory { get; set; }
-        public string? BatchNumber { get; set; }
-        public Guid? StoreId { get; set; }
         public Guid? UserId { get; set; }
         public Guid? ItemId { get; set; }
-        public string? VoucherType { get; set; }
-        public bool? IsDirect { get; set; }
 
         // Organizational Structure hierarchy filters (HRMS §3.1)
         public Guid? ParentId { get; set; }

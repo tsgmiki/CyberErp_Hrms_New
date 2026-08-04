@@ -549,17 +549,19 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var dto = AppraisalMapper.Map(entity, employeeName, cycleName, finalLabel);
 
             var peers = await peerRepository.GetAll().AsNoTracking().Where(p => p.AppraisalId == id).ToListAsync();
-            var employees = employeeRepository.GetAll();
+            // Batch peer-reviewer names into one query (was one query per peer).
+            var peerIds = peers.Select(p => p.PeerEmployeeId).Distinct().ToList();
+            var peerNames = await employeeRepository.GetAll().Where(e => peerIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
             foreach (var p in peers)
             {
-                var name = await employees.Where(e => e.Id == p.PeerEmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
                 dto.PeerReviews.Add(new AppraisalPeerReviewDto
                 {
                     Id = p.Id,
                     AppraisalId = p.AppraisalId,
                     PeerEmployeeId = p.PeerEmployeeId,
-                    PeerEmployeeName = name,
+                    PeerEmployeeName = peerNames.GetValueOrDefault(p.PeerEmployeeId),
                     Status = p.Status.ToString(),
                     Score = p.Score,
                     Comments = p.Comments,
@@ -641,16 +643,23 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 rows = await query.OrderByDescending(x => x.CreatedAt).Skip(skip).Take(take).ToListAsync();
             }
 
-            var employees = employeeRepository.GetAll();
-            var cycles = reviewCycleRepository.GetAll();
+            // Batch the employee + cycle name lookups into two queries (was 2 awaited queries PER row →
+            // N+1 on this hot grid). Same dictionary pattern used by the sibling Calibration/Peer lists.
+            var empIds = rows.Select(a => a.EmployeeId).Distinct().ToList();
+            var cycleIds = rows.Select(a => a.ReviewCycleId).Distinct().ToList();
+            var employeeNames = await employeeRepository.GetAll().Where(e => empIds.Contains(e.Id))
+                .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+            var cycleNames = await reviewCycleRepository.GetAll().Where(c => cycleIds.Contains(c.Id))
+                .Select(c => new { c.Id, c.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
             var data = new List<AppraisalDto>(rows.Count);
             foreach (var a in rows)
             {
-                var employeeName = await employees.Where(e => e.Id == a.EmployeeId)
-                    .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
-                var cycleName = await cycles.Where(c => c.Id == a.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
                 // List rows omit the line detail — kept light for the grid.
-                data.Add(AppraisalMapper.MapHeader(a, employeeName, cycleName));
+                data.Add(AppraisalMapper.MapHeader(a,
+                    employeeNames.GetValueOrDefault(a.EmployeeId),
+                    cycleNames.GetValueOrDefault(a.ReviewCycleId)));
             }
 
             return new PaginatedResponse<AppraisalDto> { Total = total, Data = data };

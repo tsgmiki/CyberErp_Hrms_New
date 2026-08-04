@@ -199,6 +199,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .Where(s => s.FiscalYearId == from.Id && s.IsActive)
                 .Select(s => s.CarryForwardMaxDays).FirstOrDefaultAsync();
 
+            // Preload the destination year's balances ONCE (tracked, so mutations below persist) —
+            // the loop previously issued one lookup query per carriable balance, i.e. thousands of
+            // round-trips on an all-employee rollover. Keyed by (employee, leave type).
+            var destByKey = (await balances.GetAll().Where(b => b.FiscalYearId == to.Id).ToListAsync())
+                .ToDictionary(b => (b.EmployeeId, b.LeaveTypeId));
+
             int rolled = 0;
             decimal totalCarried = 0, totalExpired = 0;
 
@@ -229,12 +235,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
                 if (carriable > 0)
                 {
-                    var dest = await balances.GetAll().FirstOrDefaultAsync(b =>
-                        b.EmployeeId == src.EmployeeId && b.LeaveTypeId == src.LeaveTypeId && b.FiscalYearId == to.Id);
-                    if (dest is null)
+                    if (!destByKey.TryGetValue((src.EmployeeId, src.LeaveTypeId), out var dest))
                     {
                         dest = LeaveBalance.Create(src.EmployeeId, src.LeaveTypeId, to.Id);
                         await balances.AddAsync(dest);
+                        destByKey[(src.EmployeeId, src.LeaveTypeId)] = dest;
                     }
                     dest.AddCarryForward(carriable);
                     await transactions.AddAsync(LeaveBalanceTransaction.Create(

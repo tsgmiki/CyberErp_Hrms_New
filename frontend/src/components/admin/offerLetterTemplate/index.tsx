@@ -38,7 +38,8 @@ function OfferLetterTemplate() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [logoCacheBust, setLogoCacheBust] = useState(Date.now());
+  // Lazy initializer — Date.now() is impure, so it must run once at mount, not on every render.
+  const [logoCacheBust, setLogoCacheBust] = useState(() => Date.now());
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);

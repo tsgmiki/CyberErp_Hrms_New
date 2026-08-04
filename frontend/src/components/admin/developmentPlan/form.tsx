@@ -53,6 +53,16 @@ function DevelopmentPlanForm({ id, setId }: { id: string; setId: (id: string) =>
       setActions((record.actions ?? []).map((a) => ({ ...a, targetDate: d10(a.targetDate), _key: nextKey() })));
     }
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({ ...NEW_DEFAULTS });
+      setActions([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   const setMetaField = (name: keyof DevelopmentPlanModel, value: unknown) => setMeta((p) => ({ ...p, [name]: value }));
   const addAction = () => setActions((p) => [...p, { _key: nextKey(), description: "", status: "Planned", progressPercent: 0, sortOrder: p.length }]);

@@ -67,6 +67,15 @@ function EmployeeCareerPathForm({ id, setId }: { id: string; setId: (id: string)
       setStatusMap(map);
     }
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setForm({ status: "Active" });
+      setStatusMap({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   const set = useCallback((name: string, value: unknown) => setForm((p) => ({ ...p, [name]: value })), []);
   const setStep = (stepId: string, patch: StepStatus) => setStatusMap((m) => ({ ...m, [stepId]: { ...m[stepId], ...patch } }));

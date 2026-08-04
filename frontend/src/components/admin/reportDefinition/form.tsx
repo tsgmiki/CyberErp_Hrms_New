@@ -149,6 +149,18 @@ function ReportDefinitionForm({ id, setId }: { id: string; setId: (id: string) =
       setGrouping(parseGrouping(record.gridConfig));
     }
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({ reportGrouping: "General", isActive: true, sortOrder: 0 });
+      setFields([]);
+      setOutputs([]);
+      setGrouping(emptyGrouping);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   // Output columns are the fields the report may be grouped by (the pivot dimensions).
   const groupableCols = useMemo(

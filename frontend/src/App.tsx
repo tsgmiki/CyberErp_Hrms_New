@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import LoadingBar from "react-top-loading-bar";
 import AppRoutes from "./routes";
 import { Toaster } from "@/components/common/toast";
+import { ConfirmHost } from "@/components/common/dialog";
 import { RouteErrorBoundary } from "@/components/common/errorBoundary";
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
     <BrowserRouter>
       <LoadingBar />
       <Toaster />
+      <ConfirmHost />
       {/* App-wide safety net: a render error shows a fallback instead of blanking the whole SPA. */}
       <RouteErrorBoundary>
         <AppRoutes />

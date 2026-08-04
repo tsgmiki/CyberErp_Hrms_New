@@ -119,3 +119,7 @@ function DialogModal({
 }
 
 export default DialogModal;
+
+// Imperative confirm (drop-in replacement for window.confirm) built on this same modal.
+export { confirm, type ConfirmOptions } from "./confirmStore";
+export { ConfirmHost } from "./confirmHost";

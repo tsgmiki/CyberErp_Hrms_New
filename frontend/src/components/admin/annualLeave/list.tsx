@@ -9,6 +9,7 @@ import type { AnnualLeaveModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
 import { leaveStatusOptions, leaveStatusTone } from "@/constants/leave";
+import { confirm } from "@/components/common/dialog";
 import GenerateAnnualLeaveModal from "./generateAnnualLeaveModal";
 
 interface Props {
@@ -52,7 +53,15 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
   };
 
   const doCancel = async (id: string) => {
-    if (!window.confirm("Cancel this annual leave request?")) return;
+    if (
+      !(await confirm({
+        message: "Cancel this annual leave request?",
+        confirmLabel: "Cancel request",
+        cancelLabel: "Keep",
+        variant: "destructive",
+      }))
+    )
+      return;
     await cancelAnnualLeave(id);
     queryClient.invalidateQueries({ queryKey: ["annualLeaves"] });
   };

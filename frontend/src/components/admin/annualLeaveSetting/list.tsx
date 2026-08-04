@@ -8,6 +8,8 @@ import generateEntitlements from "@/services/admin/annualLeaveSetting/generate";
 import type { AnnualLeaveSettingModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
+import { confirm } from "@/components/common/dialog";
+import { toast } from "@/components/common/toast";
 
 interface Props {
   editHandler: (id: string) => void;
@@ -22,9 +24,17 @@ function AnnualLeaveSettingList({ editHandler }: Props) {
 
   const doGenerate = async (r: AnnualLeaveSettingModel) => {
     if (!r.id) return;
-    if (!window.confirm(`Generate entitlements for all active employees under "${r.fiscalYearName}"? Already-generated employees are skipped.`)) return;
+    if (
+      !(await confirm({
+        title: "Generate entitlements",
+        message: `Generate entitlements for all active employees under "${r.fiscalYearName}"? Already-generated employees are skipped.`,
+        confirmLabel: "Generate",
+        variant: "default",
+      }))
+    )
+      return;
     const result = await generateEntitlements(r.id);
-    window.alert(result?.message ?? "Done");
+    toast.success(result?.message ?? "Done");
   };
 
   const columns = useMemo(

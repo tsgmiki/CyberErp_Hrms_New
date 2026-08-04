@@ -15,7 +15,9 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetEmployeePhoto getPhotoHandler,
         IGetEmployeesOnProbation onProbationHandler,
         IGetUpcomingRetirements upcomingRetirementsHandler,
-        IGetMyEmployee myEmployeeHandler) : BaseController
+        IGetMyEmployee myEmployeeHandler,
+        IGetMyProfile myProfileHandler,
+        IUpdateMyProfile updateMyProfileHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<EmployeeDto>> GetAll([FromQuery] GetAllRequest request)
@@ -24,6 +26,18 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         /// <summary>The signed-in user's own employee identity (self-service screens). Null body when the account has no employee link.</summary>
         [HttpGet("me")]
         public Task<MyEmployeeDto?> Me() => myEmployeeHandler.GetAsync();
+
+        /// <summary>The signed-in employee's own full profile (ESS) — editable personal fields + read-only context.</summary>
+        [HttpGet("my-profile")]
+        public Task<MyProfileDto> MyProfile() => myProfileHandler.GetAsync();
+
+        /// <summary>Self-service profile update — writes ONLY safe personal/contact fields of the caller's own record.</summary>
+        [HttpPut("my-profile")]
+        public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateMyProfileDto dto)
+        {
+            await updateMyProfileHandler.UpdateAsync(dto);
+            return Ok(new { message = "Your profile has been updated." });
+        }
 
         /// <summary>Dashboard analytics: active employees currently on probation.</summary>
         [HttpGet("on-probation")]

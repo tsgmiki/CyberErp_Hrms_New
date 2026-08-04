@@ -537,6 +537,10 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("Manager Review", "Manager"), ("HRBP Review", "HRBP"), ("Department Head Approval", "Department Head")]),
             (WorkflowEntityTypes.LeaveRequest, "Leave Approval",
                 [("Supervisor Review", null), ("HR Approval", null)]),
+            // Annual leave routes through its OWN definition (submit fail-louds without an active one,
+            // and is never auto-approved — a deliberate rule); seed it so annual leave works out of the box.
+            (WorkflowEntityTypes.AnnualLeave, "Annual Leave Approval",
+                [("Supervisor Review", null), ("HR Approval", null)]),
             // Other (non-annual) leave rides the SAME approval mechanism as Annual Leave.
             (WorkflowEntityTypes.OtherLeave, "Other Leave Approval",
                 [("Supervisor Review", null), ("HR Approval", null)]),

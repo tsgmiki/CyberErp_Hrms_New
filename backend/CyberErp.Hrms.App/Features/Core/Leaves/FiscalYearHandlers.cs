@@ -86,9 +86,24 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var start = FiscalYearMapper.ToInstant(dto.StartDate);
             var end = FiscalYearMapper.ToInstant(dto.EndDate);
 
-            // Fiscal years must not overlap.
-            if (await repository.GetAll().AnyAsync(x => x.Id != dto.Id && x.StartDate <= end && x.EndDate >= start))
-                throw new ValidationException("startDate", "The date range overlaps an existing fiscal year.");
+            // Fiscal years must not share ANY day: the resolver (ResolveForDateAsync) matches a date
+            // inclusively (StartDate <= d <= EndDate), so overlapping ranges — including a single shared
+            // boundary day — would make one date resolve to two years. Report WHICH year clashes and its
+            // range so the cause is obvious (the common one: setting the new start = the previous year's
+            // end date instead of the day after it — each year covers its start AND end dates).
+            var conflict = await repository.GetAll()
+                .Where(x => x.Id != dto.Id && x.StartDate <= end && x.EndDate >= start)
+                .OrderBy(x => x.StartDate)
+                .Select(x => new { x.Name, x.StartDate, x.EndDate })
+                .FirstOrDefaultAsync();
+            if (conflict is not null)
+            {
+                static string D(Instant i) => i.ToDateTimeUtc().ToString("yyyy-MM-dd");
+                throw new ValidationException("startDate",
+                    $"These dates ({D(start)} – {D(end)}) overlap the existing fiscal year \"{conflict.Name}\" " +
+                    $"({D(conflict.StartDate)} – {D(conflict.EndDate)}). Fiscal years can't share any day — each " +
+                    "covers its start and end dates inclusively, so the next year must begin the day after the previous one ends.");
+            }
 
             Guid id;
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)

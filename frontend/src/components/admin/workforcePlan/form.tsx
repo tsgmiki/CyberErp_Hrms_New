@@ -106,6 +106,19 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
     totalBudget: 0,
     budgetThresholdPercent: 0,
   });
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({
+    horizon: "Annual",
+    scenario: "Baseline",
+    periodCount: 1,
+    totalBudget: 0,
+    budgetThresholdPercent: 0,
+  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const [lines, setLines] = useState<WorkforcePlanLineModel[]>([]);
   const [busy, setBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);

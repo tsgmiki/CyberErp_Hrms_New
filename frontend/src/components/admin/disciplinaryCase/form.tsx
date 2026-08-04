@@ -37,6 +37,15 @@ function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) =
         validUntil: record.validUntil?.slice(0, 10),
       });
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({ ...NEW_DEFAULTS });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   const set = (name: keyof DisciplinaryMeasureModel, value: unknown) => setMeta((p) => ({ ...p, [name]: value }));
   // A case under an active approval workflow can't be edited (server gate); Cancelled/edits allowed otherwise.

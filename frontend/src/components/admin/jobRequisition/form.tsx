@@ -133,6 +133,17 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
     employmentType: "Permanent",
     postingChannel: "Internal",
   });
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({
+    numberOfPositions: 1,
+    employmentType: "Permanent",
+    postingChannel: "Internal",
+  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const [criteria, setCriteria] = useState<ScreeningCriterionModel[]>([]);
   const [showCriteria, setShowCriteria] = useState(false);
   // Apply (in the popup) stages the criteria locally — they persist with Save Requisition.

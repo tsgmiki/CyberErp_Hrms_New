@@ -95,11 +95,16 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 .Where(p => p.AppraisalId == dto.AppraisalId)
                 .Select(p => p.PeerEmployeeId).ToListAsync();
 
+            // Validate all invited employees exist in ONE query (was an AnyAsync per peer).
+            var candidateIds = dto.PeerEmployeeIds.Where(pid => pid != Guid.Empty).Distinct().ToList();
+            var validIds = (await employeeRepository.GetAll()
+                .Where(e => candidateIds.Contains(e.Id)).Select(e => e.Id).ToListAsync()).ToHashSet();
+
             var invited = 0;
-            foreach (var peerId in dto.PeerEmployeeIds.Distinct())
+            foreach (var peerId in candidateIds)
             {
-                if (peerId == Guid.Empty || existing.Contains(peerId)) continue;
-                if (!await employeeRepository.GetAll().AnyAsync(e => e.Id == peerId))
+                if (existing.Contains(peerId)) continue;
+                if (!validIds.Contains(peerId))
                     throw new NotFoundException(nameof(Employee), peerId.ToString());
                 await repository.AddAsync(AppraisalPeerReview.Create(dto.AppraisalId, peerId));
                 invited++;

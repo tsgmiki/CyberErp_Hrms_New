@@ -84,17 +84,15 @@ function DynamicFormSection({
       staleTime: 30 * 60 * 1000,
     })),
   });
-  const valueFields = useMemo(
-    () => rawValueFields.map((f) => {
-      if (f.dataType !== "Select" || !f.lookupCategory) return f;
-      const idx = lookupCodes.indexOf(f.lookupCategory);
-      const items = idx >= 0 ? (lookupQueries[idx].data ?? []) : [];
-      // Values are stored as the item NAME (same convention as static options → readable grids).
-      return { ...f, optionsList: items.map((i) => ({ id: i.name, name: i.name })) };
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rawValueFields, lookupCodes, ...lookupQueries.map((q) => q.data)],
-  );
+  // No manual useMemo here: a spread dependency array isn't compiler-legal, and the React
+  // Compiler memoizes this derivation automatically with precise per-query dependencies.
+  const valueFields = rawValueFields.map((f) => {
+    if (f.dataType !== "Select" || !f.lookupCategory) return f;
+    const idx = lookupCodes.indexOf(f.lookupCategory);
+    const items = idx >= 0 ? (lookupQueries[idx].data ?? []) : [];
+    // Values are stored as the item NAME (same convention as static options → readable grids).
+    return { ...f, optionsList: items.map((i) => ({ id: i.name, name: i.name })) };
+  });
   // Base key (no paging) — invalidating it refreshes every loaded page after a write.
   const baseKey = ["dynamicRecords", form.id, ownerType, ownerId];
   const { data: page, isLoading } = useQuery({

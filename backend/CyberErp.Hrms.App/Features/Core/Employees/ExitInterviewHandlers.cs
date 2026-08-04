@@ -142,6 +142,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 ?? throw new NotFoundException(nameof(EmployeeTermination), terminationId.ToString());
             if (status == TerminationStatus.Cancelled)
                 throw new ValidationException(nameof(terminationId), "A cancelled case has no exit interview.");
+            if (status == TerminationStatus.Initiated)
+                throw new ValidationException(nameof(terminationId), "The interview can be launched once the exit request is approved.");
 
             // One interview per case — re-launching returns the existing one.
             var existing = await repository.GetAll()
@@ -172,13 +174,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (interview.Status == ExitInterviewStatus.Completed)
                 throw new ValidationException(nameof(id), "The interview is already completed.");
 
-            // HC219 — the LEAVER answers (self-service), or HR records the conversation.
+            // HC219 — ONLY the LEAVER answers (self-service). HR launches and reads the results
+            // but can never fill or edit the questionnaire on the employee's behalf.
             var scope = await visibility.GetScopeAsync();
             var leaverId = await terminationRepository.GetAll().AsNoTracking()
                 .Where(t => t.Id == interview.TerminationId).Select(t => t.EmployeeId).FirstOrDefaultAsync();
             var isLeaver = scope.EmployeeId.HasValue && scope.EmployeeId.Value == leaverId;
-            if (!scope.IsAdmin && !isLeaver)
-                throw new ValidationException(nameof(id), "Only the leaver or HR can complete the exit interview.");
+            if (!isLeaver)
+                throw new ValidationException(nameof(id), "Only the exiting employee can complete their exit interview.");
 
             var questions = SurveyShared.ParseQuestions(interview.QuestionsJson);
             var answersJson = ExitInterviewShared.ValidateAnswers(questions, dto.Answers);
@@ -186,7 +189,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             interview.Complete(answersJson, scope.EmployeeId, DateTime.UtcNow.Date);
             repository.UpdateAsync(interview);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Exit interview {Id} completed ({By})", id, isLeaver ? "leaver" : "HR");
+            logger.LogInformation("Exit interview {Id} completed by the leaver", id);
         }
     }
 

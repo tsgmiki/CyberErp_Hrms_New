@@ -564,4 +564,31 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<BulkMoveResultDto> BulkMoveStage([FromBody] BulkMoveApplicationStageDto dto)
             => bulkMoveHandler.MoveAsync(dto);
     }
+
+    /// <summary>
+    /// Internal job market (employee self-service). Deliberately NOT permission-gated like the HR
+    /// recruitment console — any linked employee may browse the vacancies posted to the internal
+    /// channel and apply as themselves; the handlers scope strictly to the caller's own employee id.
+    /// </summary>
+    public class InternalVacancyController(
+        IGetOpenVacancies openVacanciesHandler,
+        IApplyToVacancy applyHandler,
+        IGetMyApplications myApplicationsHandler) : BaseController
+    {
+        /// <summary>Currently-open vacancies posted to the internal job market, with the caller's applied state.</summary>
+        [HttpGet]
+        public Task<List<OpenVacancyDto>> GetOpen() => openVacanciesHandler.GetAsync();
+
+        /// <summary>The caller's own applications, for tracking.</summary>
+        [HttpGet("my-applications")]
+        public Task<List<MyApplicationDto>> MyApplications() => myApplicationsHandler.GetAsync();
+
+        /// <summary>Applies the signed-in employee to an open internal vacancy (auto-provisions their internal candidate).</summary>
+        [HttpPost("{requisitionId:guid}/apply")]
+        public async Task<IActionResult> Apply(Guid requisitionId, [FromBody] ApplyToVacancyDto dto)
+        {
+            var id = await applyHandler.ApplyAsync(requisitionId, dto);
+            return Ok(new { id, message = "Your application has been submitted." });
+        }
+    }
 }

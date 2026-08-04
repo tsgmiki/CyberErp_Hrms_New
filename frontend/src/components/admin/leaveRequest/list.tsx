@@ -8,6 +8,7 @@ import type { LeaveRequestModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
 import { leaveStatusOptions, leaveStatusTone } from "@/constants/leave";
+import { confirm } from "@/components/common/dialog";
 
 interface Props {
   editHandler: (id: string) => void;
@@ -57,7 +58,15 @@ function LeaveRequestList({ editHandler, employeeId }: Props) {
   };
 
   const doCancel = async (id: string) => {
-    if (!window.confirm("Cancel this leave request?")) return;
+    if (
+      !(await confirm({
+        message: "Cancel this leave request?",
+        confirmLabel: "Cancel request",
+        cancelLabel: "Keep",
+        variant: "destructive",
+      }))
+    )
+      return;
     await cancelLeaveRequest(id);
     queryClient.invalidateQueries({ queryKey: ["leaveRequests"] });
   };

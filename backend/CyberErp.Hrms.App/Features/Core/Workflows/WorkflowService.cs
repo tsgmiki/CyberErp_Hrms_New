@@ -133,18 +133,37 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 await EnsureDynamicApproversResolvableAsync(stepList, employeeId);
 
             var user = currentUser.GetCurrentUserName();
+
+            // Entry step: honour an explicit startAtStepName (the module's state machine may skip leading
+            // steps), else the first step; then skip past any leading manager steps that are bypassable
+            // for this subject — e.g. the CEO has no manager above them, so an Immediate / Second-Level
+            // Manager step cannot route anywhere and falls through to the next step (typically HR).
+            var entryIndex = 0;
+            if (!string.IsNullOrWhiteSpace(startAtStepName))
+            {
+                var idx = stepList.FindIndex(s => s.Name == startAtStepName);
+                if (idx >= 0) entryIndex = idx;
+            }
+            var bypassed = new List<WorkflowStep>();
+            while (entryIndex < stepList.Count - 1 &&
+                   await IsBypassableManagerStepAsync(stepList[entryIndex].Approvers.Select(a => a.ApproverType).ToList(), employeeId))
+                bypassed.Add(stepList[entryIndex++]);
+            var entryStep = stepList[entryIndex];
+
             var instance = WorkflowInstance.Start(
                 definition.Id, entityType, entityId, employeeId, summary,
                 stepList[0].Name, stepList.Count, user);
-            // Optionally begin partway in (the module's state machine may skip leading steps).
-            if (!string.IsNullOrWhiteSpace(startAtStepName) && startAtStepName != stepList[0].Name)
-            {
-                var start = stepList.FirstOrDefault(s => s.Name == startAtStepName);
-                if (start is not null) instance.AdvanceTo(start.StepOrder, start.Name);
-            }
+            if (entryStep.StepOrder != stepList[0].StepOrder)
+                instance.AdvanceTo(entryStep.StepOrder, entryStep.Name);
+
             await instances.AddAsync(instance);
             await actionLogs.AddAsync(WorkflowActionLog.Create(
                 instance.Id, 0, "Submission", WorkflowActionType.Submitted, null, user));
+            // Record each auto-bypassed manager step so the tracking screen shows why the flow started later.
+            foreach (var sk in bypassed)
+                await actionLogs.AddAsync(WorkflowActionLog.Create(
+                    instance.Id, sk.StepOrder, sk.Name, WorkflowActionType.Skipped,
+                    "Auto-skipped: the requester is at the top of the org chain (no manager to route to).", user));
             await instances.SaveChangesAsync();
             logger.LogInformation("Started workflow {InstanceId} ({EntityType}) for entity {EntityId}",
                 instance.Id, entityType, entityId);
@@ -173,6 +192,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         {
             foreach (var step in steps)
             {
+                // A manager step the subject sits atop (top of the org chain — e.g. the CEO, who has
+                // no superior to route to) is bypassed at runtime, so it is not a configuration gap.
+                if (await IsBypassableManagerStepAsync(step.Approvers.Select(a => a.ApproverType).ToList(), employeeId))
+                    continue;
+
                 foreach (var approver in step.Approvers)
                 {
                     if (approver.ApproverType == WorkflowApproverType.Subject)
@@ -212,6 +236,33 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             }
         }
 
+        /// <summary>
+        /// A manager-approval step is "bypassable" for this subject when EVERY approver on it is a
+        /// managerial climb (Immediate / Second-Level Manager), NONE of them resolves to a real
+        /// approver, and the subject is themselves a managerial employee — i.e. they sit at the top of
+        /// their chain (the CEO) with no superior to route to. Such steps are skipped so the flow falls
+        /// through to the next step (typically HR), which is exactly the intended CEO behaviour. A
+        /// NON-managerial subject that fails to resolve is a genuine org-data gap, not a top-of-chain
+        /// bypass, so it is NOT bypassable and the actionable configuration error is still surfaced.
+        /// A step that also carries a static / unit approver stays actionable and is never bypassed.
+        /// </summary>
+        private async Task<bool> IsBypassableManagerStepAsync(IReadOnlyCollection<WorkflowApproverType> approverTypes, Guid? employeeId)
+        {
+            if (employeeId is null || approverTypes.Count == 0) return false;
+            if (!approverTypes.All(t => t is WorkflowApproverType.ImmediateManager or WorkflowApproverType.SecondLevelManager))
+                return false;
+            if (!await managerResolver.IsManagerialAsync(employeeId.Value)) return false;
+
+            foreach (var type in approverTypes)
+            {
+                var resolved = type == WorkflowApproverType.SecondLevelManager
+                    ? await managerResolver.ResolveSecondLevelManagerAsync(employeeId.Value)
+                    : await managerResolver.ResolveImmediateManagerAsync(employeeId.Value);
+                if (resolved is not null) return false; // an approver resolves — the step is actionable
+            }
+            return true;
+        }
+
         public async Task ApproveAsync(Guid instanceId, string? comment)
         {
             var instance = await GetRunningAsync(instanceId);
@@ -223,21 +274,37 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 instance.Id, instance.CurrentStepOrder, instance.CurrentStepName,
                 WorkflowActionType.Approved, comment, user));
 
-            var next = await definitions.GetAllWithoutTenantFilter()
+            // Load the chain (steps + approvers) to pick the next step, skipping any manager step that is
+            // bypassable for this subject (no superior to route to — e.g. the CEO), which falls through.
+            var chain = await definitions.GetAllWithoutTenantFilter()
                 .Where(d => d.Id == instance.DefinitionId)
-                .SelectMany(d => d.Steps)
-                .Where(s => s.StepOrder > instance.CurrentStepOrder)
-                .OrderBy(s => s.StepOrder)
-                .Select(s => new { s.StepOrder, s.Name })
+                .Include(d => d.Steps).ThenInclude(s => s.Approvers)
                 .FirstOrDefaultAsync();
+            var subsequent = chain is null
+                ? new List<WorkflowStep>()
+                : chain.Steps.Where(s => s.StepOrder > instance.CurrentStepOrder).OrderBy(s => s.StepOrder).ToList();
+
+            (int StepOrder, string Name)? next = null;
+            foreach (var cand in subsequent)
+            {
+                if (await IsBypassableManagerStepAsync(cand.Approvers.Select(a => a.ApproverType).ToList(), instance.EmployeeId))
+                {
+                    await actionLogs.AddAsync(WorkflowActionLog.Create(
+                        instance.Id, cand.StepOrder, cand.Name, WorkflowActionType.Skipped,
+                        "Auto-skipped: the requester is at the top of the org chain (no manager to route to).", user));
+                    continue;
+                }
+                next = (cand.StepOrder, cand.Name);
+                break;
+            }
 
             if (next is not null)
             {
-                instance.AdvanceTo(next.StepOrder, next.Name);
+                instance.AdvanceTo(next.Value.StepOrder, next.Value.Name);
                 instances.UpdateAsync(instance);
                 await instances.SaveChangesAsync();
                 logger.LogInformation("Workflow {InstanceId} advanced to step {Step} ({Name})",
-                    instance.Id, next.StepOrder, next.Name);
+                    instance.Id, next.Value.StepOrder, next.Value.Name);
                 // Clear this step's alerts, then alert the next step's approvers.
                 await ResolvePortalAlertsAsync(instance);
                 await NotifyCurrentStepApproversAsync(instance);

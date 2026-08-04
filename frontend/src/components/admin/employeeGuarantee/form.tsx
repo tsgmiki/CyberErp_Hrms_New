@@ -44,6 +44,13 @@ function GuaranteeForm({
   const [releaseNote, setReleaseNote] = useState("");
   const [formData, setFormData] = useState<EmployeeGuaranteeModel>({ employeeId: fixedEmployeeId });
 
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({ employeeId: fixedEmployeeId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
   // Guarantee types come from the GLOBAL "GuaranteeType" lookup category (id = value NAME, the
   // stored form) — falling back to the built-in defaults until the category is configured.
   const { options: lookupTypes } = useLookupOptions("GuaranteeType");

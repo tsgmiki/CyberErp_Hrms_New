@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ShieldAlert,
+  UserPen,
 } from "lucide-react";
 import getAllBranch from "@/services/admin/branch/getAll";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
@@ -25,6 +26,11 @@ import getAllAuditLog from "@/services/admin/auditLog/getAll";
 import getEmployeesOnProbation from "@/services/admin/employee/onProbation";
 import getUpcomingRetirements from "@/services/admin/employee/upcomingRetirements";
 import { getMyClearances, updateClearance } from "@/services/admin/employee/termination";
+import {
+  getPendingProfileChangeRequests,
+  resolveProfileChangeRequest,
+  type ProfileChangeRequestModel,
+} from "@/services/admin/employee/profileChangeRequest";
 import {
   getAllWorkflows,
   getWorkflowStats,
@@ -98,7 +104,7 @@ function KpiTile({
   return (
     <Link
       to={to}
-      className="group rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md"
+      className="group rounded-xl border border-border bg-card p-4 shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
     >
       <div className="flex items-start justify-between">
         <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClass}`}>{icon}</span>
@@ -124,7 +130,7 @@ function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col rounded-xl border border-border bg-card shadow-sm">
+    <section className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <span className="text-primary">{icon}</span>
@@ -249,6 +255,52 @@ function ApprovalQueueRow({
   );
 }
 
+function ChangeRequestQueueRow({
+  item,
+  busy,
+  onPick,
+}: {
+  item: ProfileChangeRequestModel;
+  busy: boolean;
+  onPick: (item: ProfileChangeRequestModel, verb: ApprovalVerb) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">
+          {item.employeeName || item.employeeNumber} · {t(item.fieldLabel)}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-muted">
+          <span className="text-muted line-through">{item.currentValue || t("(empty)")}</span>
+          {" → "}
+          <span className="font-medium text-foreground">{item.requestedValue}</span>
+          {item.kind === "Structural" ? ` · ${t("HR to apply")}` : ` · ${t("auto-applies")}`}
+          {item.reason ? ` · ${item.reason}` : ""}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "approve")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <CheckCircle2 size={17} /> {t("Approve")}
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onPick(item, "reject")}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <ShieldAlert size={17} /> {t("Reject")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DaysBadge({ days, warnAt }: { days?: number | null; warnAt: number }) {
   if (typeof days !== "number") return null;
   const cls =
@@ -270,7 +322,9 @@ function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [watchTab, setWatchTab] = useState<"probation" | "retirements" | "approvals" | "clearance">("probation");
+  const [watchTab, setWatchTab] = useState<
+    "probation" | "retirements" | "approvals" | "clearance" | "changeRequests"
+  >("probation");
   const [clearanceBusy, setClearanceBusy] = useState(false);
   const [clearanceError, setClearanceError] = useState<string | null>(null);
   // The workflow decision (Approve / Reject) being confirmed in the comment modal.
@@ -287,6 +341,14 @@ function Dashboard() {
     status: ClearanceDecision;
   } | null>(null);
   const [pendingNote, setPendingNote] = useState("");
+  // The profile-change decision (Approve / Reject) being confirmed.
+  const [changeDecision, setChangeDecision] = useState<{
+    item: ProfileChangeRequestModel;
+    verb: ApprovalVerb;
+  } | null>(null);
+  const [changeComment, setChangeComment] = useState("");
+  const [changeBusy, setChangeBusy] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
 
   const hour = new Date().getHours();
   const greetingKey = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
@@ -298,49 +360,68 @@ function Dashboard() {
     day: "numeric",
   });
 
+  // PERF: every dashboard read carries a staleTime so re-mounts and window-focus don't refire
+  // 12 queries at once — org counts move slowly (60s), work queues stay fresh (30s). All fire in
+  // PARALLEL on first mount; each panel hydrates behind its own skeleton.
   const { data: branches, isLoading: lb } = useQuery({
     queryKey: ["branches", countParam],
     queryFn: () => getAllBranch(countParam),
+    staleTime: 60_000,
   });
   const { data: units, isLoading: lu } = useQuery({
     queryKey: ["organizationUnits", countParam],
     queryFn: () => getAllOrganizationUnit(countParam),
+    staleTime: 60_000,
   });
   const { data: positions, isLoading: lp } = useQuery({
     queryKey: ["positions", countParam],
     queryFn: () => getAllPosition(countParam),
+    staleTime: 60_000,
   });
   const { data: employees, isLoading: le } = useQuery({
     queryKey: ["employees", countParam],
     queryFn: () => getAllEmployee(countParam),
+    staleTime: 60_000,
   });
   const { data: activity, isLoading: la } = useQuery({
     queryKey: ["auditLogs", feedParam],
     queryFn: () => getAllAuditLog(feedParam),
+    staleTime: 30_000,
   });
   const { data: wfStats, isLoading: lws } = useQuery({
     queryKey: ["workflowStats"],
     queryFn: getWorkflowStats,
+    staleTime: 30_000,
   });
   const { data: wfRecent, isLoading: lwr } = useQuery({
     queryKey: ["workflows", feedParam],
     queryFn: () => getAllWorkflows(feedParam),
+    staleTime: 30_000,
   });
   const { data: probation, isLoading: lpr } = useQuery({
     queryKey: ["employeesOnProbation"],
     queryFn: getEmployeesOnProbation,
+    staleTime: 60_000,
   });
   const { data: retirements, isLoading: lrt } = useQuery({
     queryKey: ["upcomingRetirements"],
     queryFn: getUpcomingRetirements,
+    staleTime: 60_000,
   });
   const { data: myClearances, isLoading: lmc } = useQuery({
     queryKey: ["myClearances"],
     queryFn: getMyClearances,
+    staleTime: 30_000,
   });
   const { data: myApprovals, isLoading: lma } = useQuery({
     queryKey: ["myApprovals"],
     queryFn: getMyApprovals,
+    staleTime: 30_000,
+  });
+  const { data: profileChanges, isLoading: lpc } = useQuery({
+    queryKey: ["profileChangeRequests"],
+    queryFn: getPendingProfileChangeRequests,
+    staleTime: 30_000,
   });
 
   // The Clearance tab is only for assigned approvers (conditionally rendered).
@@ -349,6 +430,9 @@ function Dashboard() {
   // The Approvals tab is only for users assigned as workflow approvers (user or role).
   const isWorkflowApprover = myApprovals?.isApprover === true;
   const approvalItems = myApprovals?.items ?? [];
+  // The Profile Change Requests tab is HR-only (the endpoint returns isApprover=false otherwise).
+  const isChangeApprover = profileChanges?.isApprover === true;
+  const changeItems = profileChanges?.items ?? [];
 
   // Opens the note modal for a Clear / Block decision (remark captured there, not inline).
   const pickDecision = useCallback((item: MyClearanceItemModel, status: ClearanceDecision) => {
@@ -409,6 +493,32 @@ function Dashboard() {
     setApprovalComment("");
   }, [approvalDecision, approvalComment, queryClient]);
 
+  const pickChange = useCallback((item: ProfileChangeRequestModel, verb: ApprovalVerb) => {
+    setChangeError(null);
+    setChangeComment("");
+    setChangeDecision({ item, verb });
+  }, []);
+
+  const confirmChange = useCallback(async () => {
+    if (!changeDecision) return;
+    setChangeBusy(true);
+    const res = await resolveProfileChangeRequest(
+      changeDecision.item.id,
+      changeDecision.verb === "approve" ? "Approve" : "Reject",
+      changeComment,
+    );
+    setChangeBusy(false);
+    if (!res.ok) {
+      setChangeError(res.message); // keep the modal open so HR can retry
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["profileChangeRequests"] });
+    // An approved identity change writes to the employee master — mark those caches stale.
+    queryClient.invalidateQueries({ queryKey: ["employees"], refetchType: "none" });
+    setChangeDecision(null);
+    setChangeComment("");
+  }, [changeDecision, changeComment, queryClient]);
+
   const watchTabs = [
     { key: "probation" as const, label: t("On Probation"), count: probation?.length ?? 0 },
     { key: "retirements" as const, label: t("Upcoming Retirements"), count: retirements?.length ?? 0 },
@@ -418,10 +528,16 @@ function Dashboard() {
     ...(isApprover
       ? [{ key: "clearance" as const, label: t("Clearance"), count: clearanceItems.length }]
       : []),
+    ...(isChangeApprover
+      ? [{ key: "changeRequests" as const, label: t("Profile Change Requests"), count: changeItems.length }]
+      : []),
   ];
 
   return (
-    <div className="mx-auto max-w-350 space-y-4 p-4 md:p-6">
+    // Fiori-style workspace canvas: a soft gray shell so the white tiles/cards carry the
+    // surface hierarchy (matches the portal's polished screens). The outer <main> scrolls.
+    <div className="min-h-full rounded-xl bg-secondary/25">
+    <div className="mx-auto max-w-350 space-y-5 p-4 md:p-6">
       {/* Page header — quiet, Fiori-style */}
       <header className="flex flex-wrap items-end justify-between gap-2 pb-1">
         <div>
@@ -440,13 +556,16 @@ function Dashboard() {
       </header>
 
       {/* KPI strip — one glanceable row, actionable counts included */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${isChangeApprover ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}>
         <KpiTile to="/employee" label="Employees" icon={<Users className="h-4.5 w-4.5" />} total={employees?.total} isLoading={le} />
         <KpiTile to="/branch" label="Branches" icon={<Building className="h-4.5 w-4.5" />} total={branches?.total} isLoading={lb} />
         <KpiTile to="/organizationUnit" label="Organization Units" icon={<Network className="h-4.5 w-4.5" />} total={units?.total} isLoading={lu} />
         <KpiTile to="/position" label="Positions" icon={<Briefcase className="h-4.5 w-4.5" />} total={positions?.total} isLoading={lp} />
         <KpiTile to="/employee" label="On Probation" tone="warning" icon={<Hourglass className="h-4.5 w-4.5" />} total={probation?.length} isLoading={lpr} />
         <KpiTile to="/employee" label="Retiring Soon" tone="info" icon={<CalendarClock className="h-4.5 w-4.5" />} total={retirements?.length} isLoading={lrt} />
+        {isChangeApprover && (
+          <KpiTile to="/employee" label="Change Requests" tone="warning" icon={<UserPen className="h-4.5 w-4.5" />} total={changeItems.length} isLoading={lpc} />
+        )}
       </div>
 
       {/* Work area — left: approvals + watchlist; right: activity + shortcuts */}
@@ -510,7 +629,7 @@ function Dashboard() {
           </Card>
 
           {/* Workforce watchlist — one card, tabbed (probation / retirements) */}
-          <section className="rounded-xl border border-border bg-card shadow-sm">
+          <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
             <div className="flex items-center gap-1 border-b border-border px-2 pt-1.5">
               {watchTabs.map((tab) => (
                 <button
@@ -625,6 +744,23 @@ function Dashboard() {
                     item={item}
                     busy={clearanceBusy}
                     onPick={pickDecision}
+                  />
+                ))}
+              </div>
+            )}
+
+            {watchTab === "changeRequests" && (
+              <div className="divide-y divide-border/60">
+                {lpc && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
+                {!lpc && changeItems.length === 0 && (
+                  <EmptyRow text={t("No profile change requests awaiting review.", "No profile change requests awaiting review.")} />
+                )}
+                {changeItems.map((item) => (
+                  <ChangeRequestQueueRow
+                    key={item.id}
+                    item={item}
+                    busy={changeBusy}
+                    onPick={pickChange}
                   />
                 ))}
               </div>
@@ -767,6 +903,84 @@ function Dashboard() {
         </Modal>
       )}
 
+      {/* Profile change decision modal — approve (auto-applies identity fields) / reject. */}
+      {changeDecision && (
+        <Modal
+          visible
+          size="md"
+          title={changeDecision.verb === "approve" ? t("Approve Change Request") : t("Reject Change Request")}
+          description={`${changeDecision.item.employeeName || changeDecision.item.employeeNumber} · ${t(changeDecision.item.fieldLabel)}`}
+          onClose={() => setChangeDecision(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setChangeDecision(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-secondary"
+              >
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={changeBusy || (changeDecision.verb === "reject" && !changeComment.trim())}
+                onClick={confirmChange}
+                title={
+                  changeDecision.verb === "reject" && !changeComment.trim()
+                    ? t("A reason is required to reject")
+                    : undefined
+                }
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-on-accent disabled:cursor-not-allowed disabled:opacity-50 ${
+                  changeDecision.verb === "approve" ? "bg-success" : "bg-error"
+                }`}
+              >
+                {changeDecision.verb === "approve" ? (
+                  <><CheckCircle2 size={16} /> {t("Confirm Approval")}</>
+                ) : (
+                  <><ShieldAlert size={16} /> {t("Confirm Rejection")}</>
+                )}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+              <p className="text-muted line-through">{changeDecision.item.currentValue || t("(empty)")}</p>
+              <p className="font-medium text-foreground">→ {changeDecision.item.requestedValue}</p>
+              {changeDecision.item.reason && (
+                <p className="mt-1 text-xs text-muted">{t("Reason")}: {changeDecision.item.reason}</p>
+              )}
+            </div>
+            {changeDecision.verb === "approve" && (
+              <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
+                {changeDecision.item.kind === "Structural"
+                  ? t("Approving records your decision — apply this change through the relevant HR module.")
+                  : t("Approving writes this value to the employee record immediately.")}
+              </p>
+            )}
+            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+              {changeDecision.verb === "reject" ? (
+                <>{t("Reason")} <span className="text-error">*</span></>
+              ) : (
+                t("Note")
+              )}
+            </label>
+            <textarea
+              autoFocus
+              rows={3}
+              value={changeComment}
+              onChange={(e) => setChangeComment(e.target.value)}
+              placeholder={
+                changeDecision.verb === "approve"
+                  ? t("Optional note…")
+                  : t("Explain why this request is being rejected…")
+              }
+              className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+            />
+            {changeError && <p className="text-xs text-error">{changeError}</p>}
+          </div>
+        </Modal>
+      )}
+
       {/* Clearance decision modal — larger remark textarea, confirm to submit. */}
       {pendingDecision && (
         <Modal
@@ -845,6 +1059,7 @@ function Dashboard() {
           </div>
         </Modal>
       )}
+    </div>
     </div>
   );
 }
