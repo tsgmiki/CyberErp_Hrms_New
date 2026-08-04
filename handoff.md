@@ -54,6 +54,38 @@
 
 ## 1. Most recent changes (latest first)
 
+00DB. **HRMS home dashboard rebuilt: aggregated summary endpoint + lazy/memoized widget split
+    (2026-08-04, migration `AddDashboardSummaryIndexes`, applied to CERP).** The dashboard
+    (`pages/home/dashboard.tsx`) fired 12 separate `useQuery` calls on mount, four of which were full
+    paginated `GetAll?take=1` list requests just to read `.total` for a KPI count. Replaced with **one**
+    aggregated `GET /Dashboard/summary` (`App/Features/Core/Dashboard/IDashboardSummary` +
+    `Inf/Common/DashboardSummaryService`) — a single Dapper `QueryMultipleAsync` round trip (7
+    statements: branch/orgUnit/position/employee counts, workflow Running/Approved/Rejected via GROUP BY,
+    probation count, retirement count) reusing the ambient EF connection, same pattern as
+    `ReportExecutor`. Tenant+branch isolation is replicated in C# to match `Repository.ApplyBranchFilter`
+    **exactly** (Branch filtered by own `Id` when branch-scoped since it isn't `IBranchScoped`;
+    OrgUnit/Position/Employee filtered by `BranchId`; `WorkflowInstance` is tenant-only — it has no
+    `BranchId` at all). Verified field-by-field against the old endpoints for the same tenant before
+    cutover (all 9 numbers matched). Two new indexes added (neither table had a tenant-scoped index for
+    these queries before): `hrmsWorkflowInstance(TenantId, Status)`, `hrmsEmployee(TenantId, BranchId,
+    EmploymentStatus)` — the workflow one required an `ALTER COLUMN TenantId nvarchar(max)→nvarchar(450)`
+    (EF requires bounded index-key columns); confirmed safe first (`MAX(LEN(TenantId))`=36 on live data).
+    Frontend split into 6 independently `React.lazy` + `memo()`'d widgets under `components/dashboard/`
+    (KpiOverviewWidget, WorkflowActivityWidget, WorkforceWatchlistWidget, ActionQueueWidget,
+    RecentActivityWidget, QuickAccessWidget), each behind its own `Suspense` with a skeleton
+    dimension-matched to its real content (zero CLS). The 3 decision modals (workflow approve/reject,
+    clearance, profile-change) — previously all in one 1067-line component's top-level state, so any
+    keystroke re-rendered the whole page — now live entirely inside `ActionQueueWidget`'s local state.
+    Probation/retirement tabs (`WorkforceWatchlistWidget`) get their badge counts from the aggregate and
+    fetch the row-level list **only for the active tab** (`enabled: activeTab === key`) — previously both
+    lists fetched unconditionally regardless of which tab was visible. Shared hooks
+    (`useDashboardSummary`, `useActionQueues`) let multiple widgets call the identical queryKey — React
+    Query dedupes to one network call with zero prop-drilling. E2E via Playwright against real API+DB
+    (demo tenant): 9/9 — KPI numbers correct, zero console errors, exactly one `Dashboard/summary` call
+    per load (confirmed no leftover count-only calls), skeleton pulses render then fully clear, tab-switch
+    does not refetch the aggregate. Measured warm response: 6ms (small dataset; every query is an index
+    seek, not a scan). `tsc -b` + `eslint --quiet` clean both repos-side.
+
 00SG. **Stale-form guard sweep (2026-07-31, no migration; uncommitted).** The user-form stale-Add fix
     (00UE) replicated across EVERY id-driven CRUD form via codemod: 33 `formData/setFormData` forms +
     13 `meta`-pattern master-detail forms (resets mirror the record-populate effect's setters, each to

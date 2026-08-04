@@ -85,6 +85,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasIndex(i => new { i.EntityType, i.EntityId });
             builder.HasIndex(i => i.Status);
+            // Serves the dashboard's GROUP BY Status workflow-stats query (TenantId-leading — this
+            // table previously had no tenant-scoped index at all, only the global Status one above).
+            builder.HasIndex(i => new { i.TenantId, i.Status });
         }
     }
 

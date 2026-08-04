@@ -23,6 +23,8 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<App.Common.Services.IPortalNotifier, PortalNotifier>();
             // Generic report engine: Dapper SP execution with ambient tenant/branch/user injection.
             services.AddScoped<App.Features.Core.Reports.IReportExecutor, ReportExecutor>();
+            // Dashboard KPI row: one Dapper QueryMultipleAsync round trip instead of nine separate calls.
+            services.AddScoped<App.Features.Core.Dashboard.IDashboardSummary, DashboardSummaryService>();
             services.AddScoped<App.Features.Core.Reports.IReportJobScheduler, ReportJobScheduler>();
             services.AddScoped<App.Features.Core.Reports.IReportScheduleStore, ReportScheduleStore>();
             // Race-safe per-tenant business numbering (logic.md §7.1 adoption #5)
