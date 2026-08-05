@@ -163,8 +163,14 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
             var roleIds = await approverAuth.GetCurrentUserRoleIdsAsync();
 
+            // An OPEN step (no configured approvers) is actionable by anyone, so it belongs in the
+            // inbox of the users entitled to approve — the SAME audience the portal alert goes to.
+            // Without this an open-step request (e.g. a Hiring Request, whose seeded chain ships with
+            // no approvers) is invisible here, so it can never be decided from the Home portal.
+            var canActOnOpenSteps = await approverAuth.CanActOnOpenStepsAsync();
+
             // Is the user a specific approver anywhere on an ACTIVE definition? (tab visibility)
-            var isApprover = await definitions.GetAll()
+            var isApprover = canActOnOpenSteps || await definitions.GetAll()
                 .Where(d => d.IsActive)
                 .SelectMany(d => d.Steps)
                 .SelectMany(s => s.Approvers)
@@ -226,15 +232,24 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .Where(a => a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder)
                     .ToList();
 
-                // Static match first; dynamic (manager / subject) approvers need the per-requester resolution.
-                var mine = stepApprovers.Any(a =>
-                    (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
-                    (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
-                if (!mine && stepApprovers.Any(a =>
-                        a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
-                            or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject))
+                // Open step: no approver rows to match against — entitlement decides instead.
+                bool mine;
+                if (stepApprovers.Count == 0)
                 {
-                    (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                    mine = canActOnOpenSteps;
+                }
+                else
+                {
+                    // Static match first; dynamic (manager / subject) approvers need the per-requester resolution.
+                    mine = stepApprovers.Any(a =>
+                        (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
+                        (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
+                    if (!mine && stepApprovers.Any(a =>
+                            a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
+                                or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject))
+                    {
+                        (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                    }
                 }
                 if (!mine) continue;
 

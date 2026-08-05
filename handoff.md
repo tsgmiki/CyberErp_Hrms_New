@@ -54,6 +54,47 @@
 
 ## 1. Most recent changes (latest first)
 
+00DE. **Open workflow steps were invisible end-to-end: no portal alert AND absent from the approval
+    inbox — Hiring Requests could never be approved from Home (2026-08-05, backend only, no
+    migration, no API-contract change).** Reported as "a manager submits a Hiring Request from the
+    home page but the approver gets no notification and cannot approve it there".
+    - **Root cause — ONE condition, two symptoms.** A step with no configured approver rows is treated
+      by `WorkflowApproverAuth.EvaluateAsync` as an **open step — "anyone may act"** (it returns
+      `(true, [])`). But both downstream consumers keyed off the approver ROWS, which are empty:
+      (a) `WorkflowService.NotifyCurrentStepApproversAsync` resolved recipients from that empty list
+      and `IPortalNotifier.NotifyUsersAsync` no-ops on an empty set → **no coreNotification row ever
+      written**; (b) `GetMyApprovals` matched the caller against the step's approver rows, so `mine`
+      stayed false and `continue` **skipped the instance entirely** → nothing in the Home Approvals
+      Inbox / Workflow Tracking to decide. Net effect: the system said *anyone can approve this* and
+      then told nobody, and showed it to nobody. Silent — no error, no log.
+    - **Why leave worked and hiring did not:** verified in CERP — every AnnualLeave step has 1 approver
+      configured; the active HiringRequest definition has **0** (so does the active OtherLeave, which
+      was silently affected too).
+    - **Fix (3 files, backend only).** `WorkflowApproverAuth`: `ResolveOpenStepRecipientsAsync()` (who
+      to alert) + `CanActOnOpenStepsAsync()` (does it land in MY inbox) — both resolve from ONE rule,
+      roles carrying `CanApprove` on the `/workflow` operation, so the alerted set and the inbox set
+      are identical by construction. `WorkflowService`: falls back to that audience, and logs a
+      WARNING naming the cause when even that is empty (never silent again). `WorkflowHandlers.
+      GetMyApprovals`: an open step now resolves by entitlement instead of approver-row matching, and
+      counts toward `isApprover` tab visibility.
+    - **NO frontend change was needed** — the Home portal is already generic: `config/approvalSources.ts`
+      is a pluggable registry whose single HRMS source reads `Workflow/my-approvals`, feeding both the
+      dashboard `ApprovalsInbox` widget and the `/workflow` Tracking screen (which has inline
+      Approve/Reject + history). Any entity type flows through it once the endpoint returns it.
+    - **Verified end-to-end** against the running API with an open-step workflow (the exact hiring
+      condition): submit → notification raised → appears in `my-approvals` → approved via the same
+      endpoint the portal calls (200) → instance Approved, entity handler ran, notification
+      auto-resolved, inbox empty again. Test vehicle was EmployeeGuarantee because the demo tenant has
+      no org units/positions (HC082 establishment gate blocks creating a hiring request there); the
+      code path does not branch on entity type. All test rows deleted, DB verified clean afterwards.
+      Real-world confirmation: a genuine Hiring Request (HRQ-0006) submitted while the fixed build was
+      running correctly alerted `admin` + `medhanit`, the 2 users with approve rights.
+    - **⚠️ This is a SAFETY NET, not routing.** The seeded chain is Directorate Head → HR → Finance but
+      the live definition is a SINGLE step with no approvers, so every approve-capable user is alerted
+      for every hiring request. Configuring real approvers in Workflow Definitions takes precedence
+      automatically and is the proper fix. Note also `EnsureCanDecideAsync` still lets ANYONE decide an
+      open step (unchanged, deliberately) — the new rule bounds who is TOLD, not who may act.
+
 00DD. **Dashboard UI reworked as a chart-led, high-density page in the app's own table language
     (2026-08-05, frontend only, no migration, no API change).** Pure visual/JSX pass — verified by
     diff that ZERO hooks, queries, state, handlers, services or backend files changed. Took four

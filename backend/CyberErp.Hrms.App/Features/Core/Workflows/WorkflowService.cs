@@ -449,6 +449,32 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             {
                 var userIds = await approverAuth.ResolveApproverUserIdsAsync(
                     instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId);
+
+                // An OPEN step (no configured approvers) resolves to nobody, yet EvaluateAsync lets
+                // ANYONE act on it — so the request would sit waiting with not one person told. Fall
+                // back to the users entitled to approve, keeping "who may act" and "who is told"
+                // consistent. Hiring Requests hit this: their seeded chain ships with open steps.
+                if (userIds.Count == 0)
+                {
+                    userIds = await approverAuth.ResolveOpenStepRecipientsAsync();
+                    if (userIds.Count > 0)
+                        logger.LogInformation(
+                            "Workflow {InstanceId}: step '{Step}' has no configured approvers — alerting {Count} " +
+                            "user(s) with workflow approval rights instead",
+                            instance.Id, instance.CurrentStepName, userIds.Count);
+                }
+
+                if (userIds.Count == 0)
+                {
+                    // Never fail silently: without this the only symptom is a missing notification.
+                    logger.LogWarning(
+                        "Workflow {InstanceId} ({EntityType}): NOBODY could be alerted for step '{Step}'. " +
+                        "The step has no approvers and no role grants CanApprove on '/workflow' — configure " +
+                        "approvers on this step, or grant the approval permission.",
+                        instance.Id, instance.EntityType, instance.CurrentStepName);
+                    return;
+                }
+
                 await portalNotifier.NotifyUsersAsync(
                     userIds,
                     $"Approval required: {instance.Summary}",
