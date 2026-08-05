@@ -75,6 +75,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    // A failed lazy-chunk import means the tab predates a dev-server restart or a redeploy.
+    // React caches the rejected import forever, so "Try again" can never recover it — the only
+    // cure is a full reload (throttled so a truly-down server can't cause a reload loop).
+    if (/dynamically imported module|Importing a module script failed|Loading chunk/i.test(error.message)) {
+      const lastReload = Number(sessionStorage.getItem("preload-error-reloaded") ?? 0);
+      if (Date.now() - lastReload > 30_000) {
+        sessionStorage.setItem("preload-error-reloaded", String(Date.now()));
+        window.location.reload();
+        return;
+      }
+    }
     // No external logging service is wired; surface the error + component stack to the console.
     console.error("Uncaught render error:", error, info.componentStack);
   }

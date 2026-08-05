@@ -16,6 +16,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.ReportGrouping).IsRequired().HasMaxLength(150);
             builder.Property(x => x.StoredProc).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Description).HasMaxLength(1000);
+            builder.Property(x => x.HeaderTitle).HasMaxLength(200);
 
             builder.HasMany(x => x.Fields).WithOne().HasForeignKey(f => f.ReportId).OnDelete(DeleteBehavior.Cascade);
             builder.Navigation(x => x.Fields).UsePropertyAccessMode(PropertyAccessMode.Field);

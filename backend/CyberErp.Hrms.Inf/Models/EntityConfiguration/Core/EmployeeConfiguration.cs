@@ -66,6 +66,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // avoiding a full sort of the matched set across the projection's joins. (The org-unit filter
             // is served by the existing Position.OrganizationUnitId index.)
             builder.HasIndex(e => new { e.TenantId, e.PositionId, e.EmployeeNumber });
+            // Dashboard summary: tenant+branch-scoped employee count and the probation/retirement
+            // counts both filter on EmploymentStatus after this — a composite the raw counting query
+            // can seek on directly instead of the branch-less/tenant-less indexes above.
+            builder.HasIndex(e => new { e.TenantId, e.BranchId, e.EmploymentStatus });
         }
     }
 }

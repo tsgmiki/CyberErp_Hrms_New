@@ -9,6 +9,8 @@ import rolloverFiscalYear from "@/services/admin/fiscalYear/rollover";
 import type { FiscalYearModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
+import { confirm } from "@/components/common/dialog";
+import { toast } from "@/components/common/toast";
 
 interface Props {
   editHandler: (id: string) => void;
@@ -26,9 +28,17 @@ function FiscalYearList({ editHandler }: Props) {
 
   const doRollover = async (r: FiscalYearModel) => {
     if (!r.id) return;
-    if (!window.confirm(`Roll all leave balances of "${r.name}" into the next fiscal year and close it? This cannot be undone.`)) return;
+    if (
+      !(await confirm({
+        title: "Roll over fiscal year",
+        message: `Roll all leave balances of "${r.name}" into the next fiscal year and close it? This cannot be undone.`,
+        confirmLabel: "Roll over",
+        variant: "destructive",
+      }))
+    )
+      return;
     const result = await rolloverFiscalYear(r.id);
-    window.alert(result?.message ?? "Rollover complete");
+    toast.success(result?.message ?? "Rollover complete");
     queryClient.invalidateQueries({ queryKey: ["fiscalYears"] });
   };
 

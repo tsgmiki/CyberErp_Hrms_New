@@ -18,7 +18,10 @@ import {
   UserRound,
   GraduationCap,
   BriefcaseBusiness,
+  LayoutGrid,
 } from "lucide-react";
+import DynamicFormSection from "@/components/common/dynamicForm/DynamicFormSection";
+import { useDynamicForms } from "@/components/common/dynamicForm/useDynamicForms";
 import Modal from "@/components/common/modal";
 import Loading from "../../common/loader/loader";
 import {
@@ -52,7 +55,8 @@ const lookupParam = { ...parameterInitialData, take: 100 };
 // an Applicant Type switch drives everything; "Internal" is a type, the rest are external channels.
 const sourceChannelOptions = candidateSourceOptions.filter((o) => o.id !== "Internal");
 
-type TabKey = "details" | "education" | "experience";
+// Widened to string so Form Builder custom tabs (keyed by form id) can join the fixed set.
+type TabKey = string;
 
 // Same tabbed-profile structure as the Employee feature (employee/profile.tsx).
 const TABS: { key: TabKey; label: string; Icon: typeof UserRound; needsId: boolean }[] = [
@@ -66,9 +70,18 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
   const { t } = useTranslation();
 
   const [tab, setTab] = useState<TabKey>("details");
+  // Form Builder custom tabs for the Candidate module (same integration as the employee profile).
+  const { data: customForms } = useDynamicForms("Candidate");
   const [formState, setFormState] = useState<any>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<CandidateModel>({ source: "External", consentGiven: false });
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({ source: "External", consentGiven: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const [busy, setBusy] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [poolNotes, setPoolNotes] = useState("");
@@ -244,6 +257,28 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
             >
               <Icon className="h-4 w-4" />
               {t(label)}
+            </button>
+          );
+        })}
+        {(customForms ?? []).map((f) => {
+          const key = `dyn:${f.id}`;
+          const disabled = !id;
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={disabled}
+              title={disabled ? t("Save the candidate first") : undefined}
+              onClick={() => setTab(key)}
+              className={`-mb-px flex items-center gap-1.5 rounded-t-lg border-x border-t px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                active
+                  ? "border-border bg-card text-primary"
+                  : "border-transparent text-muted hover:text-foreground"
+              } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+              {t(f.label ?? f.name ?? "")}
             </button>
           );
         })}
@@ -597,6 +632,13 @@ function CandidateForm(props: { id: string; setId: (id: string) => void }) {
           </p>
           <CandidateExperienceSection candidateId={id} readOnly={isInternal} />
         </div>
+      )}
+
+      {/* Form Builder custom tabs (Candidate module) */}
+      {id && (customForms ?? []).map((f) =>
+        tab === `dyn:${f.id}` ? (
+          <DynamicFormSection key={f.id} form={f} ownerType="Candidate" ownerId={id} />
+        ) : null,
       )}
 
       {confirmAnonymize && (

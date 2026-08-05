@@ -20,7 +20,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public class LeaveBalanceService(
         IRepository<LeaveBalance> balances,
         IRepository<LeaveBalanceTransaction> transactions,
-        IRepository<LeaveType> leaveTypes) : ILeaveBalanceService
+        IRepository<AnnualLeaveSetting> leaveSettings) : ILeaveBalanceService
     {
         public async Task<decimal> GetAvailableAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId)
         {
@@ -28,10 +28,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == fiscalYearId);
             if (balance != null) return balance.Available;
 
-            // Not yet materialized → the implicit opening is the type's default annual entitlement.
-            var entitled = await leaveTypes.GetAll().Where(t => t.Id == leaveTypeId)
-                .Select(t => (decimal?)t.DefaultAnnualEntitlement).FirstOrDefaultAsync();
-            return entitled ?? 0m;
+            // Not yet materialized → the implicit opening is the fiscal year's policy default
+            // (DefaultAnnualEntitlement moved from LeaveType to the per-FY leave setting).
+            return await DefaultEntitlementAsync(fiscalYearId);
         }
 
         public async Task DeductAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason)
@@ -75,8 +74,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == fiscalYearId);
             if (balance != null) return balance;
 
-            var entitled = await leaveTypes.GetAll().Where(t => t.Id == leaveTypeId)
-                .Select(t => (decimal?)t.DefaultAnnualEntitlement).FirstOrDefaultAsync() ?? 0m;
+            var entitled = await DefaultEntitlementAsync(fiscalYearId);
 
             balance = LeaveBalance.Create(employeeId, leaveTypeId, fiscalYearId, entitled);
             await balances.AddAsync(balance);
@@ -87,6 +85,14 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     entitled, entitled, "Initial annual entitlement", null));
             }
             return balance;
+        }
+
+        /// <summary>The active per-FY leave setting's fallback entitlement (0 when no setting exists).</summary>
+        private async Task<decimal> DefaultEntitlementAsync(Guid fiscalYearId)
+        {
+            return await leaveSettings.GetAll()
+                .Where(s => s.FiscalYearId == fiscalYearId && s.IsActive)
+                .Select(s => (decimal?)s.DefaultAnnualEntitlement).FirstOrDefaultAsync() ?? 0m;
         }
     }
 }

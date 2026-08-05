@@ -40,11 +40,6 @@ function LeaveTypeList({ editHandler }: Props) {
         },
         { name: "accrualMethod", label: "Accrual" },
         {
-          name: "defaultAnnualEntitlement",
-          label: "Entitlement (days)",
-          render: (_t: unknown, r: LeaveTypeModel) => (r.defaultAnnualEntitlement ?? 0).toString(),
-        },
-        {
           name: "isActive",
           label: "Status",
           render: (_t: unknown, r: LeaveTypeModel) => (r.isActive ? "Active" : "Inactive"),

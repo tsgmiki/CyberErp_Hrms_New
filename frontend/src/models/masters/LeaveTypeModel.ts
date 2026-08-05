@@ -8,10 +8,7 @@ export default interface LeaveTypeModel extends AbstractModel {
   requiresApproval?: boolean;
   allowHalfDay?: boolean;
   genderEligibility?: string;
-  defaultAnnualEntitlement?: number;
   accrualMethod?: string;
-  carryForwardMaxDays?: number;
-  maxConsecutiveDays?: number;
   description?: string;
   isActive?: boolean;
 }

@@ -38,6 +38,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.Label).IsRequired().HasMaxLength(200);
             builder.Property(x => x.DataType).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Options).HasMaxLength(2000);
+            builder.Property(x => x.LookupCategory).HasMaxLength(50);
 
             builder.HasIndex(x => new { x.DynamicFormId, x.Name }).IsUnique();
         }

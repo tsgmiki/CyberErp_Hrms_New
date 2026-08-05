@@ -3,7 +3,7 @@ import FormProviders from "@/components/common/formProvider/formProvider";
 import { memo, useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Plus, Play, Ban, Pencil, Trash, ArrowRight } from "lucide-react";
+import { Play, Ban, Pencil, Trash, ArrowRight } from "lucide-react";
 import type { EmployeeMovementModel } from "@/models";
 import {
   getMovements,
@@ -15,8 +15,8 @@ import {
 import getAllPosition from "@/services/admin/position/getAll";
 import getAllJobGrade from "@/services/admin/jobGrade/getAll";
 import getAllSalaryScale from "@/services/admin/salaryScale/getAll";
-import Loading from "../../common/loader/loader";
 import { StatusMessage } from "../../common/statusMessage/status";
+import ChildManager, { type ChildColumn } from "./childManager";
 import { useCustomFields } from "./customFieldsHook";
 import { parameterInitialData } from "@/constants/initialization";
 import { movementTypeOptions } from "@/constants/orgStructure";
@@ -170,111 +170,67 @@ function MovementSection({ employeeId }: { employeeId: string }) {
   const actionBtn =
     "rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40";
 
+  const MOVE_COLUMNS: ChildColumn<EmployeeMovementModel>[] = [
+    { name: "movementType", label: "Type", render: (v) => <span className="font-medium">{t(String(v ?? ""))}</span> },
+    { name: "effectiveDate", label: "Effective Date", render: (v) => fmtDate(v as string | undefined) },
+    { name: "id", label: "Change", render: (_v, m) => <MovementChange m={m} /> },
+    { name: "reason", label: "Reason", render: (v) => (
+      <span className="block max-w-[220px] truncate text-muted" title={String(v ?? "")}>{String(v ?? "") || "—"}</span>) },
+    { name: "status", label: "Status", render: (v) => (
+      <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[String(v ?? "")] ?? "bg-muted/30 text-muted"}`}>
+        {t(String(v ?? ""))}
+      </span>) },
+  ];
+
   return (
-    <>
-      <div className="m-1 rounded-lg border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-          <h3 className="text-sm font-semibold text-foreground">
-            {t("Movements (Transfers, Promotions & Demotions)")}
-          </h3>
-          <button
-            type="button"
-            onClick={() => open(null)}
-            className="flex items-center gap-1 rounded bg-primary px-3 py-1.5 text-xs font-semibold text-on-accent hover:opacity-90"
-          >
-            <Plus className="h-3.5 w-3.5" /> {t("Record Movement")}
-          </button>
-        </div>
-
-        {error && (
-          <div className="mx-4 mt-2 flex items-center justify-between rounded border border-error/30 bg-error/15 px-3 py-2 text-xs text-error">
-            <span>{error}</span>
-            <button type="button" onClick={() => setError(null)} className="font-semibold">×</button>
-          </div>
-        )}
-
-        {isLoading ? (
-          <Loading />
-        ) : (rows?.length ?? 0) === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted">
-            {t("No records yet. Use the add button above.")}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-table-header">
-                  <th className="px-4 py-2 font-semibold">{t("Type")}</th>
-                  <th className="px-4 py-2 font-semibold">{t("Effective Date")}</th>
-                  <th className="px-4 py-2 font-semibold">{t("Change")}</th>
-                  <th className="px-4 py-2 font-semibold">{t("Reason")}</th>
-                  <th className="px-4 py-2 font-semibold">{t("Status")}</th>
-                  <th className="px-4 py-2 text-right font-semibold">{t("Action")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows!.map((m) => {
-                  const pending = m.status === "Pending";
-                  return (
-                    <tr key={m.id} className="border-b border-border/60 hover:bg-secondary/40">
-                      <td className="px-4 py-2.5 font-medium text-foreground">{t(m.movementType ?? "")}</td>
-                      <td className="px-4 py-2.5 text-foreground">{fmtDate(m.effectiveDate)}</td>
-                      <td className="px-4 py-2.5"><MovementChange m={m} /></td>
-                      <td className="max-w-[220px] truncate px-4 py-2.5 text-muted" title={m.reason}>
-                        {m.reason || "—"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className={`rounded px-2 py-0.5 text-xs font-semibold ${STATUS_TONE[m.status ?? ""] ?? "bg-muted/30 text-muted"}`}>
-                          {t(m.status ?? "")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-1.5 text-right">
-                        <span className="inline-flex items-center gap-0.5">
-                          <button
-                            type="button" title={t("Execute")} disabled={!pending}
-                            onClick={() => m.id && runAction(executeMovement, m.id)}
-                            className={`${actionBtn} text-success hover:bg-success/10`}
-                          ><Play size={15} /></button>
-                          <button
-                            type="button" title={t("Cancel")} disabled={!pending}
-                            onClick={() => m.id && runAction(cancelMovement, m.id)}
-                            className={`${actionBtn} text-warning hover:bg-warning/10`}
-                          ><Ban size={15} /></button>
-                          <button
-                            type="button" title={t("Edit")} disabled={!pending}
-                            onClick={() => open(m)}
-                            className={`${actionBtn} text-primary hover:bg-primary/10`}
-                          ><Pencil size={15} /></button>
-                          <button
-                            type="button" title={t("Delete")} disabled={m.status === "Completed"}
-                            onClick={() => m.id && remove(m.id)}
-                            className={`${actionBtn} text-error hover:bg-error/10`}
-                          ><Trash size={15} /></button>
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {showForm && (
+    <ChildManager
+      title="Movements (Transfers, Promotions & Demotions)"
+      addLabel="Record Movement"
+      columns={MOVE_COLUMNS}
+      rows={rows}
+      isLoading={isLoading}
+      error={error}
+      onAdd={() => open(null)}
+      onEdit={open}
+      onDelete={(id) => remove(id)}
+      renderActions={(m) => {
+        const pending = m.status === "Pending";
+        return (
+          <span className="inline-flex items-center gap-0.5">
+            <button
+              type="button" title={t("Execute")} disabled={!pending}
+              onClick={() => m.id && runAction(executeMovement, m.id)}
+              className={`${actionBtn} text-success hover:bg-success/10`}
+            ><Play size={15} /></button>
+            <button
+              type="button" title={t("Cancel")} disabled={!pending}
+              onClick={() => m.id && runAction(cancelMovement, m.id)}
+              className={`${actionBtn} text-warning hover:bg-warning/10`}
+            ><Ban size={15} /></button>
+            <button
+              type="button" title={t("Edit")} disabled={!pending}
+              onClick={() => open(m)}
+              className={`${actionBtn} text-primary hover:bg-primary/10`}
+            ><Pencil size={15} /></button>
+            <button
+              type="button" title={t("Delete")} disabled={m.status === "Completed"}
+              onClick={() => m.id && remove(m.id)}
+              className={`${actionBtn} text-error hover:bg-error/10`}
+            ><Trash size={15} /></button>
+          </span>
+        );
+      }}
+      formOpen={showForm}
+      formTitle={editing ? "Edit Movement" : "Record Movement"}
+      onBack={() => setShowForm(false)}
+      formView={
         <FormProvider
           form={{
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Movement" : "Record Movement",
-            description: "Transfer, promotion or demotion.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
               {
@@ -337,8 +293,8 @@ function MovementSection({ employeeId }: { employeeId: string }) {
         >
           <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
         </FormProvider>
-      )}
-    </>
+      }
+    />
   );
 }
 

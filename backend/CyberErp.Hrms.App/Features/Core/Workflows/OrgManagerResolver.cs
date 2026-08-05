@@ -34,6 +34,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
         /// <summary>The employee's org unit (via their Position), or null when unplaced — for diagnostics.</summary>
         Task<(Guid Id, string Name)?> GetEmployeeUnitAsync(Guid employeeId);
+
+        /// <summary>True when the employee holds a managerial position (<see cref="Employee.IsManagerial"/>).
+        /// Lets the workflow engine tell "no manager above me because I'm at the top of the chain" (a CEO —
+        /// bypass the manager step) from "no manager anywhere" (an org-data gap — surface the error).</summary>
+        Task<bool> IsManagerialAsync(Guid employeeId);
     }
 
     public class OrgManagerResolver(
@@ -41,16 +46,27 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<Employee> employees,
         IRepository<User> users) : IOrgManagerResolver
     {
+        // Per-request memoization. This resolver is Scoped (one instance per request) and the org
+        // structure is stable within a request, so caching resolution results is correct and never
+        // leaks across requests. This collapses the multiplicative resolver calls the workflow inbox /
+        // tracking handlers make (one+ per row, each an org-tree climb) to one lookup per distinct key.
+        private readonly Dictionary<Guid, bool> _managerialCache = [];
+        private readonly Dictionary<Guid, ResolvedManager?> _immediateCache = [];
+        private readonly Dictionary<(Guid Unit, Guid Requester), ResolvedManager?> _climbCache = [];
+
         public async Task<ResolvedManager?> ResolveImmediateManagerAsync(Guid requesterEmployeeId)
         {
+            if (_immediateCache.TryGetValue(requesterEmployeeId, out var cached)) return cached;
+
             // The requester's org unit is derived from their assigned Position (not stored on Employee).
             var unitId = await employees.GetAll()
                 .Where(e => e.Id == requesterEmployeeId)
                 .Select(e => e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null)
                 .FirstOrDefaultAsync();
-            if (unitId is null) return null; // unplaced employee — nothing to traverse
-
-            return await ClimbAsync(unitId.Value, requesterEmployeeId);
+            // unplaced employee (null unit) → nothing to traverse.
+            var result = unitId is null ? null : await ClimbAsync(unitId.Value, requesterEmployeeId);
+            _immediateCache[requesterEmployeeId] = result;
+            return result;
         }
 
         public async Task<ResolvedManager?> ResolveSecondLevelManagerAsync(Guid requesterEmployeeId)
@@ -86,6 +102,14 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             return unit is null ? null : (unit.OrganizationUnitId, unit.Name);
         }
 
+        public async Task<bool> IsManagerialAsync(Guid employeeId)
+        {
+            if (_managerialCache.TryGetValue(employeeId, out var cached)) return cached;
+            var result = await employees.GetAll().AnyAsync(e => e.Id == employeeId && e.IsManagerial);
+            _managerialCache[employeeId] = result;
+            return result;
+        }
+
         /// <summary>
         /// The recursive chain-of-command traversal. From <paramref name="startUnitId"/> upward:
         ///   1. Find the unit's managers via the relational join —
@@ -96,6 +120,17 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         ///   4. Stop past the root — or on a cycle (visited-set guard) — and return null.
         /// </summary>
         private async Task<ResolvedManager?> ClimbAsync(Guid startUnitId, Guid? requesterEmployeeId)
+        {
+            // The climb result depends on both the start unit AND the requester (self-exclusion), so
+            // the cache key carries both.
+            var key = (startUnitId, requesterEmployeeId ?? Guid.Empty);
+            if (_climbCache.TryGetValue(key, out var cached)) return cached;
+            var result = await ClimbCoreAsync(startUnitId, requesterEmployeeId);
+            _climbCache[key] = result;
+            return result;
+        }
+
+        private async Task<ResolvedManager?> ClimbCoreAsync(Guid startUnitId, Guid? requesterEmployeeId)
         {
             var visited = new HashSet<Guid>();
             Guid? unitId = startUnitId;

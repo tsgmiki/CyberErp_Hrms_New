@@ -163,8 +163,14 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
             var roleIds = await approverAuth.GetCurrentUserRoleIdsAsync();
 
+            // An OPEN step (no configured approvers) is actionable by anyone, so it belongs in the
+            // inbox of the users entitled to approve — the SAME audience the portal alert goes to.
+            // Without this an open-step request (e.g. a Hiring Request, whose seeded chain ships with
+            // no approvers) is invisible here, so it can never be decided from the Home portal.
+            var canActOnOpenSteps = await approverAuth.CanActOnOpenStepsAsync();
+
             // Is the user a specific approver anywhere on an ACTIVE definition? (tab visibility)
-            var isApprover = await definitions.GetAll()
+            var isApprover = canActOnOpenSteps || await definitions.GetAll()
                 .Where(d => d.IsActive)
                 .SelectMany(d => d.Steps)
                 .SelectMany(s => s.Approvers)
@@ -226,15 +232,24 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .Where(a => a.DefinitionId == x.DefinitionId && a.StepOrder == x.CurrentStepOrder)
                     .ToList();
 
-                // Static match first; dynamic (manager / subject) approvers need the per-requester resolution.
-                var mine = stepApprovers.Any(a =>
-                    (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
-                    (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
-                if (!mine && stepApprovers.Any(a =>
-                        a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
-                            or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject))
+                // Open step: no approver rows to match against — entitlement decides instead.
+                bool mine;
+                if (stepApprovers.Count == 0)
                 {
-                    (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                    mine = canActOnOpenSteps;
+                }
+                else
+                {
+                    // Static match first; dynamic (manager / subject) approvers need the per-requester resolution.
+                    mine = stepApprovers.Any(a =>
+                        (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value) ||
+                        (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)));
+                    if (!mine && stepApprovers.Any(a =>
+                            a.ApproverType is WorkflowApproverType.ImmediateManager or WorkflowApproverType.UnitManager
+                                or WorkflowApproverType.SecondLevelManager or WorkflowApproverType.Subject))
+                    {
+                        (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
+                    }
                 }
                 if (!mine) continue;
 
@@ -537,6 +552,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("Manager Review", "Manager"), ("HRBP Review", "HRBP"), ("Department Head Approval", "Department Head")]),
             (WorkflowEntityTypes.LeaveRequest, "Leave Approval",
                 [("Supervisor Review", null), ("HR Approval", null)]),
+            // Annual leave routes through its OWN definition (submit fail-louds without an active one,
+            // and is never auto-approved — a deliberate rule); seed it so annual leave works out of the box.
+            (WorkflowEntityTypes.AnnualLeave, "Annual Leave Approval",
+                [("Supervisor Review", null), ("HR Approval", null)]),
+            // Other (non-annual) leave rides the SAME approval mechanism as Annual Leave.
+            (WorkflowEntityTypes.OtherLeave, "Other Leave Approval",
+                [("Supervisor Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.WorkforcePlan, "Workforce Plan Approval",
                 [("Directorate Review", "Directorate Head"), ("HR Review", "HR"), ("Finance Review", "Finance"), ("Executive Approval", "Executive")]),
             (WorkflowEntityTypes.HiringRequest, "Hiring Need Approval",
@@ -577,6 +599,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 [("HR Review", "HR"), ("Executive Approval", "Executive")]),
             // HC188/HC201 — per-type training chains; the costlier Abroad type carries an extra step.
             (WorkflowEntityTypes.TrainingNeedLocal, "Local Training Approval",
+                [("Manager Review", null), ("HR Approval", null)]),
+            // HC307 — an employee guarantee commitment toward an external organization (NBE procedures).
+            (WorkflowEntityTypes.EmployeeGuarantee, "Guarantee Commitment Approval",
                 [("Manager Review", null), ("HR Approval", null)]),
             (WorkflowEntityTypes.TrainingNeedAbroad, "Abroad Training Approval",
                 [("Manager Review", null), ("HR Approval", null), ("Executive Approval", "Executive")]),

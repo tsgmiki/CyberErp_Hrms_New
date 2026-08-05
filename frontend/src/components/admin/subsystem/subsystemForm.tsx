@@ -18,6 +18,13 @@ function SubsystemForm(props: { id: string; setSubsystemId: (id: string) => void
   const [formState, setFormState] = useState<any>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({} as SubsystemModel);
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({} as SubsystemModel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 
@@ -98,6 +105,16 @@ function SubsystemForm(props: { id: string; setSubsystemId: (id: string) => void
               value: formData.sortOrder,
               onChange: changeHandler,
               error: formState?.zodErrors?.sortOrder,
+              type: "text",
+            },
+            {
+              name: "url",
+              label: "Application URL",
+              // NOTE: ':' and '.' are i18next separators — keep placeholders free of them.
+              placeholder: "Where the subsystem app is hosted",
+              value: formData.url,
+              onChange: changeHandler,
+              error: formState?.zodErrors?.url,
               type: "text",
             },
             {

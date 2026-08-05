@@ -27,9 +27,20 @@ public class GetAllOperationsRepository(
             query = query.Where(x => x.Name.Contains(request.SearchText) || x.Link.Contains(request.SearchText));
         }
 
+        // Cascading central-administration filters: Subsystem → Module (both optional).
+        if (request.SubsystemId.HasValue)
+            query = query.Where(x => x.Module.SubsystemId == request.SubsystemId.Value);
+        if (request.ModuleId.HasValue)
+            query = query.Where(x => x.ModuleId == request.ModuleId.Value);
+
         var totalCount = await query.CountAsync(ct);
 
-        query = query.OrderByDescending(x => x.CreatedAt);
+        // Natural menu order: subsystem → module → operation.
+        query = query
+            .OrderBy(x => x.Module.Subsystem.SortOrder)
+            .ThenBy(x => x.Module.SortOrder)
+            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.Name);
 
         var skip = int.Parse(request.Skip ?? "0");
         var take = int.Parse(request.Take ?? "10");
@@ -43,6 +54,8 @@ public class GetAllOperationsRepository(
                 ModuleId = x.ModuleId,
                 Name = x.Name,
                 Module = x.Module.Name,
+                SubsystemId = x.Module.SubsystemId,
+                SubSystem = x.Module.Subsystem.Name,
                 Link = x.Link,
                 Filter = x.Filter,
                 Icon = x.Icon,

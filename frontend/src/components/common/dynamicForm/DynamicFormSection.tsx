@@ -1,16 +1,18 @@
 "use client";
 import FormProviders from "@/components/common/formProvider/formProvider";
 import { memo, useCallback, useMemo, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { DynamicFormModel, DynamicFormFieldModel, DynamicFormRecordModel } from "@/models";
 import { getRecords, saveRecord, deleteRecord } from "@/services/admin/dynamicForm";
+import { getLookup } from "@/services/admin/lookup";
 import ChildManager, { type ChildColumn } from "@/components/admin/employee/childManager";
 import DocumentAttachments from "@/components/admin/employee/documentAttachments";
-import Pagination from "@/components/common/pagination/pagination";
 import { buildCustomFieldComponents } from "@/components/admin/employee/customFieldConfigs";
 import { StatusMessage } from "@/components/common/statusMessage/status";
+import { parameterInitialData } from "@/constants/initialization";
+import type ParameterModel from "@/models/ParameterModel";
 
 const FormProvider = memo(FormProviders);
 const DEFAULT_TAKE = 15;
@@ -59,17 +61,42 @@ function DynamicFormSection({
   const [formState, setFormState] = useState<any>({});
   const [values, setValues] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [param, setParam] = useState({ skip: 0, take: DEFAULT_TAKE });
+  const [param, setParam] = useState<ParameterModel>(
+    () => ({ ...parameterInitialData, take: DEFAULT_TAKE }) as ParameterModel,
+  );
 
   const fields = form.fields ?? [];
   // Attachment fields hold files (EmployeeDocument), not a JSON value — each renders as its OWN
   // Documents panel (edit mode) rather than a form input, exactly like the Education/Experience tabs.
-  const valueFields = fields.filter((f) => f.dataType !== "Attachment");
+  const rawValueFields = fields.filter((f) => f.dataType !== "Attachment");
   const attachmentFields = fields.filter((f) => f.dataType === "Attachment");
+
+  // Lookup-bound Select fields: fetch each bound category's values (cached 30 min, shared app-wide
+  // via the ["lookup", code] key) and pre-resolve them into the renderer's optionsList.
+  const lookupCodes = useMemo(
+    () => [...new Set(rawValueFields.filter((f) => f.dataType === "Select" && f.lookupCategory).map((f) => f.lookupCategory!))],
+    [rawValueFields],
+  );
+  const lookupQueries = useQueries({
+    queries: lookupCodes.map((code) => ({
+      queryKey: ["lookup", code],
+      queryFn: () => getLookup(code),
+      staleTime: 30 * 60 * 1000,
+    })),
+  });
+  // No manual useMemo here: a spread dependency array isn't compiler-legal, and the React
+  // Compiler memoizes this derivation automatically with precise per-query dependencies.
+  const valueFields = rawValueFields.map((f) => {
+    if (f.dataType !== "Select" || !f.lookupCategory) return f;
+    const idx = lookupCodes.indexOf(f.lookupCategory);
+    const items = idx >= 0 ? (lookupQueries[idx].data ?? []) : [];
+    // Values are stored as the item NAME (same convention as static options → readable grids).
+    return { ...f, optionsList: items.map((i) => ({ id: i.name, name: i.name })) };
+  });
   // Base key (no paging) — invalidating it refreshes every loaded page after a write.
   const baseKey = ["dynamicRecords", form.id, ownerType, ownerId];
   const { data: page, isLoading } = useQuery({
-    queryKey: [...baseKey, param.skip, param.take],
+    queryKey: [...baseKey, param.skip, param.take, param.searchText],
     queryFn: () => getRecords(form.id!, ownerType, ownerId, param),
     enabled: !!form.id && !!ownerId,
     placeholderData: keepPreviousData, // smooth page-to-page transitions
@@ -156,29 +183,22 @@ function DynamicFormSection({
         onAdd={() => open(null)}
         onEdit={open}
         onDelete={(id) => remove(id)}
-      />
-      {total > param.take && (
-        <Pagination
-          take={param.take}
-          skip={param.skip}
-          recordCount={total}
-          paginationHandler={({ skip, take }) => setParam({ skip, take })}
-        />
-      )}
-      {showForm && (
+        paging={{ param, setParam, total }}
+        formOpen={showForm}
+        formTitle={editingId ? `Edit ${form.label}` : `Add ${form.label}`}
+        onBack={() => setShowForm(false)}
+        formView={
         <FormProvider
           form={{
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editingId ? `Edit ${form.label}` : `Add ${form.label}`,
-            description: form.description ?? undefined,
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
+            // Unique per form: hosts (e.g. the OrganizationUnit/Position edit modals) are themselves
+            // FormProviders — with the default formId the inline record form's Save would submit the
+            // HOST form instead (default-id collision).
+            formId: `dynRecord-${form.id}`,
             submitBtnTitle: "Save",
             components,
           }}
@@ -201,7 +221,8 @@ function DynamicFormSection({
               <p className="mt-3 text-xs text-muted">{t("Save the record first to attach documents.")}</p>
             ))}
         </FormProvider>
-      )}
+        }
+      />
     </>
   );
 }

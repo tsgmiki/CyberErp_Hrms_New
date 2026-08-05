@@ -59,7 +59,7 @@ function UserList({ editHandler }: UserListProps) {
               id={record.id || ""}
               record={record}
               showAdd={false}
-              showEdit={false}
+              showEdit
               showDelete
               editHandler={editHandler}
               deleteHandler={() => record.id && list.deleteRecord(record.id)}

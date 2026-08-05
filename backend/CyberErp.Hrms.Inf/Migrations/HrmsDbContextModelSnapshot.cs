@@ -347,6 +347,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<int>("BaseLeaveDays")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("CarryForwardMaxDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
                     b.Property<bool>("ConsiderExternalExperience")
                         .HasColumnType("bit");
 
@@ -355,6 +359,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("DefaultAnnualEntitlement")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
 
                     b.Property<int>("ExpiryYears")
                         .HasColumnType("int");
@@ -371,10 +379,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("LeaveTypeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("ManagerialLeaveDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("MaxConsecutiveDays")
                         .HasColumnType("int");
 
                     b.Property<int>("MaxLeaveDays")
@@ -422,9 +430,7 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasIndex("FiscalYearId");
 
-                    b.HasIndex("LeaveTypeId");
-
-                    b.HasIndex("TenantId", "FiscalYearId", "LeaveTypeId")
+                    b.HasIndex("TenantId", "FiscalYearId")
                         .IsUnique();
 
                     b.ToTable("hrmsAnnualLeaveSetting", "dbo");
@@ -2187,6 +2193,67 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("hrmsCompetencyCategory", "dbo");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CoreNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LinkUrl")
+                        .HasMaxLength(600)
+                        .HasColumnType("nvarchar(600)");
+
+                    b.Property<DateTime?>("ReadAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("SourceEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceEntityType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("SourceSubsystem")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("coreNotification", "dbo", t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CriterionEvaluator", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2610,6 +2677,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("LookupCategory")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -2822,6 +2893,8 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasIndex("TenantId", "EmployeeNumber")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "BranchId", "EmploymentStatus");
 
                     b.HasIndex("TenantId", "PositionId", "EmployeeNumber");
 
@@ -3542,6 +3615,97 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasIndex("TenantId", "EmployeeId", "ReviewCycleId");
 
                     b.ToTable("hrmsEmployeeGoal", "dbo");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.EmployeeGuarantee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BeneficiaryName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BeneficiaryRelationship")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("ExternalOrganization")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReleaseNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("ReleasedDate")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("Remarks")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("TenantId", "EmployeeId");
+
+                    b.HasIndex("TenantId", "EndDate");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.ToTable("hrmsEmployeeGuarantee", "dbo");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.EmployeeMovement", b =>
@@ -5940,10 +6104,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<bool>("AllowHalfDay")
                         .HasColumnType("bit");
 
-                    b.Property<decimal?>("CarryForwardMaxDays")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -5954,10 +6114,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("DefaultAnnualEntitlement")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
@@ -5973,9 +6129,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<bool>("IsPaid")
                         .HasColumnType("bit");
-
-                    b.Property<int?>("MaxConsecutiveDays")
-                        .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -7272,6 +7425,190 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("hrmsOrganizationalObjective", "dbo");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveDetail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("LeaveDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<Guid>("OtherLeaveHeaderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OtherLeaveHeaderId");
+
+                    b.HasIndex("OtherLeaveHeaderId", "StartDate", "EndDate");
+
+                    b.ToTable("hrmsOtherLeaveDetail", "dbo");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveHeader", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OtherLeaveSettingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("RequestDate")
+                        .HasColumnType("date");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("TotalLeaveDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("OtherLeaveSettingId");
+
+                    b.HasIndex("EmployeeId", "Status");
+
+                    b.ToTable("hrmsOtherLeave", "dbo");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DayCounting")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("FiscalYearId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Gender")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsLumpSum")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("LeaveTypeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("ManagerialDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<decimal>("StandardDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FiscalYearId");
+
+                    b.HasIndex("LeaveTypeId");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.HasIndex("TenantId", "FiscalYearId", "LeaveTypeId")
+                        .IsUnique();
+
+                    b.ToTable("hrmsOtherLeaveSetting", "dbo");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PerDiemRate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7806,6 +8143,95 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("hrmsPositionCompetency", "dbo");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ProfileChangeRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AutoApplied")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CurrentValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("FieldKey")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("FieldLabel")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("RequestedValue")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("ResolvedOn")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("SubmittedOn")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("hrmsProfileChangeRequest", "dbo");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.RatingScale", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8080,6 +8506,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("GridConfig")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("HeaderTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -9496,6 +9926,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
 
                     b.HasKey("Id");
 
@@ -11654,7 +12088,7 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<int>("TotalSteps")
                         .HasColumnType("int");
@@ -11672,6 +12106,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("EntityType", "EntityId");
+
+                    b.HasIndex("TenantId", "Status");
 
                     b.ToTable("hrmsWorkflowInstance", "dbo");
                 });
@@ -12052,15 +12488,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.LeaveType", "LeaveType")
-                        .WithMany()
-                        .HasForeignKey("LeaveTypeId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.Navigation("FiscalYear");
-
-                    b.Navigation("LeaveType");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ApplicationCriterionScore", b =>
@@ -12517,6 +12945,15 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.ReviewCycle", null)
                         .WithMany()
                         .HasForeignKey("ReviewCycleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.EmployeeGuarantee", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -13099,6 +13536,53 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveDetail", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveHeader", null)
+                        .WithMany("Details")
+                        .HasForeignKey("OtherLeaveHeaderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveHeader", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveSetting", "Setting")
+                        .WithMany()
+                        .HasForeignKey("OtherLeaveSettingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("Setting");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveSetting", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.FiscalYear", "FiscalYear")
+                        .WithMany()
+                        .HasForeignKey("FiscalYearId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.LeaveType", "LeaveType")
+                        .WithMany()
+                        .HasForeignKey("LeaveTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FiscalYear");
+
+                    b.Navigation("LeaveType");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PerDiemRate", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.JobGrade", null)
@@ -13201,6 +13685,15 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Position", null)
                         .WithMany()
                         .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ProfileChangeRequest", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Employee", null)
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -13952,6 +14445,11 @@ namespace CyberErp.Hrms.Inf.Migrations
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OrganizationUnit", b =>
                 {
                     b.Navigation("Children");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.OtherLeaveHeader", b =>
+                {
+                    b.Navigation("Details");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PerformanceImprovementPlan", b =>

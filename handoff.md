@@ -33,11 +33,438 @@
   (which added Employee.UserId) is now effectively undone by the reverse migration — both are in
   history; a fresh DB replays add-then-drop, which is fine. Untracked: `~$ Management.docx` (Office lock file — do not commit; consider
   gitignoring `~$*`).
+- **2026-07-28 commit** bundles §1 items 00FB / 00PT / 00G / 00OL / 00LR / 00LP (Form Builder multi-module +
+  lookup selects; profile-tab inline-form conversion; §3.12 Employee Guarantee HC305–307; Other Leave module;
+  leave-settings restructure; leave-policy fields moved LeaveType → AnnualLeaveSetting). Migrations applied to
+  CERP: `AddDynamicFormFieldLookupCategory`, `AddEmployeeGuarantee`, `WidenGuaranteeTypeForLookup`,
+  `AddOtherLeave`, `RestructureLeaveSettings`, `MoveLeavePolicyFieldsToSetting`. Backend build 0 errors +
+  frontend `tsc -b` clean at commit time.
+- **2026-07-29 commits** (no migrations): §1 item 00RH (report 3-column header + company name) and 00RM
+  (recruitment internal-candidate hire routes to a promotion/transfer instead of a duplicate employee).
+- **2026-07-29 later commits**: §1 item 00CA (central subsystem administration + Home-first entry flow,
+  migration `AddSubsystemUrl` applied; plus the lazy-chunk auto-recovery hardening). The companion
+  **Home portal** lives in its own repo at `D:\Workspace\CyberErp\Home`.
+- **2026-07-30 commits** (no HRMS migration): §1 items 00WN (approval-request notifications → Home portal;
+  needs the Home repo's `AddNotificationSourceRef` migration, already applied to CERP) and 00AL (annual-leave
+  own-only `/mine` grid + `/my-balance` dashboard endpoints). Companion Home-repo work: strict notification
+  isolation, the annual-leave grid/dashboard/subsystem-link fixes.
+- **2026-08-05 commits.** HRMS `feature/hrms-buildout`: `71764c5` (§1 00DC head-office scoping),
+  `bb34c5d` (00DD dashboard rework), `e213a57` (00DE open-step notifications + inbox) — no migrations,
+  all pushed. Companion **Home repo** (`main`, own remote `CyberErp_Home`): `cb76844` → `56a7d8b`,
+  §1 item 00DF — the subsystem integration guide plus the notification/multi-API/service-key contract
+  fixes. No migration in either repo; the Home API needs a rebuild for its changes to take effect.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DG. **HRMS login page now uses the SAME UI as the Home portal's (2026-08-05, HRMS frontend only,
+    no migration, no auth/behaviour change).** Purely visual: both apps keep their OWN login pages,
+    their own `/login` route and their own sign-in against their own API — only the presentation was
+    unified.
+    - Ported Home's auth shell into `components/auth/authLayout/authLayout.tsx`: gradient backdrop +
+      dot grid + outlined circles, top-left product mark with the ERP tagline, one elevated centred
+      card (accent bar, in-card mark, heading, form, divided footer), slim legal footer. Login page
+      passes `title`/`subtitle`; register page gained a heading (it shares the layout and would
+      otherwise render a headless card). `authBrand.tsx` deleted — orphaned by the replacement.
+    - **The brand adapts by itself**: both apps already define `BrandPrefix`/`BrandAccent`, so the
+      identical layout renders "CyberHRMS" here and "CyberHome" there. Footer uses HRMS's own
+      `Cyber HRMS v1.0` key. Keep the two `authLayout.tsx` files in step when either changes.
+    - Ported Home's opt-in `frameless` flag (`FormModel` + `formProvider` authMode branch) so the
+      fields sit directly on the card instead of in a nested frame.
+    - ⚠️ **GOTCHA that cost a round:** HRMS's existing pattern APPENDS override classes
+      (`… border … ${inModal ? "border-0 p-0 shadow-none" : ""}`). That does not reliably win —
+      Tailwind conflicts resolve by CSS order, NOT by the order classes appear in the attribute, so
+      the frame stayed visible. Home instead OMITS the frame classes; `frameless` now does the same.
+      Scoped so `inModal` keeps its exact previous string ⇒ every non-frameless form is byte-identical
+      and no other screen is affected.
+    - **NOT wanted, do not rebuild:** an earlier attempt in this session delegated HRMS sign-in to the
+      portal (redirect to Home's `/login` + `returnUrl`, `VITE_PORTAL_URL`, an origin allow-list). The
+      user rejected it and it was reverted in full — the requirement is shared UI, NOT shared sign-in.
+    Verified: `tsc -b` + eslint clean; both `/login` and `/register` render with zero console errors;
+    Home repo untouched.
+
+00DF. **Home portal made genuinely pluggable for other subsystems: integration guide + four contract
+    fixes (2026-08-05, HOME REPO ONLY — `main`, commits `cb76844` → `56a7d8b`; no migration, no HRMS
+    change).** Asked how Finance/Payroll/PSMS/Project-Management add their requests without hardcoded
+    changes. Answer: four of the five surfaces already needed ZERO core changes — writing the guide is
+    what exposed the gaps, and all four are now closed.
+    - **The guide: `Home/docs/subsystem-integration.md`** (527 lines; every cited path verified to
+      resolve). Five integration surfaces — subsystem registration (`coreSubsystem`/`coreModule`/
+      `coreOperation` rows), notifications, the approvals inbox (`config/approvalSources.ts`), My
+      Requests (`config/requestSources.ts`), custom widgets (`config/dashboardLayout.tsx`) — plus the
+      contract rules (assigned-only / self-scoped / best-effort-null-on-failure), a worked Finance
+      expense-claim example, a phase-grouped checklist and a purpose-grouped reference table.
+    - **Fix 1 — broadcasts reached NOBODY.** `CreateNotificationDto` advertised `userId: null` as a
+      tenant broadcast, but the read path is strictly `n.UserId == uid` (the blanket `|| UserId == null`
+      clause had been removed for isolation), so the row was stored and invisible to everyone. Now
+      fanned out to one row per tenant user, returning `{id, created}`. ⚠️ `Core.User` deliberately has
+      **no tenant query filter** ("login searches across tenants"), so the fan-out scopes by tenant BY
+      HAND — without that it would notify every tenant on the platform.
+    - **Fix 2 — the HTTP API could not set the correlation key.** `Notification.Create` didn't accept
+      `SourceEntityType`/`SourceEntityId` (though entity+table had them), so API-raised alerts could
+      never be auto-cleared. Both now accepted, plus `POST /Notification/resolve` clearing every
+      recipient's copy. Domain `ArgumentException`s at this boundary became actionable 400s (a bad
+      `severity` used to surface to a calling subsystem as an opaque 500).
+    - **Fix 3 — the SPA knew ONE subsystem API.** `apiClient` read a single `VITE_API_BASE_URL` and
+      login signed into exactly two backends. Now `src/config/subsystemApis.ts` builds the registry
+      from `VITE_SUBSYSTEM_APIS={"HRMS":"…","Finance":"…"}`; `createApiClient(baseUrl)` +
+      `apiFor("Finance")` (throws for an unconfigured code rather than silently falling back to HRMS);
+      login fans out to every entry IN PARALLEL and names failures. `api` still binds to the default
+      subsystem so the ~35 existing call sites are untouched, and legacy `VITE_API_BASE_URL` is still
+      honoured as HRMS. `portalApiClient` now builds on the same factory (it already exported
+      `portalApi` to 9 consumers — a duplicate export was nearly introduced).
+    - **Fix 4 — no service-to-service auth.** Write endpoints now accept a user cookie OR a service key
+      (`X-Service-Key`), so a background job can raise alerts with no human present. **Each credential
+      is scoped to one (subsystem, tenant) and the tenant is derived FROM THE KEY**, so a caller cannot
+      choose the tenant it writes to. Config is a NAMED credential
+      (`ServiceClients__financeAcme__{Subsystem,TenantId,Key}`) supplied by environment variables —
+      `appsettings.json` deliberately has no `ServiceClients` section. Boundaries: service principal is
+      issued **no user-id claim**, so every read path (which filters on user id) resolves to zero rows —
+      it can write only, never read; cross-subsystem impersonation → 400; wrong/incomplete key, or a
+      secret reused across credentials → 401; `FixedTimeEquals` over every client; keys never logged.
+    - **GOTCHAS worth keeping.** (a) **CORS is the trap**: a subsystem API missing the portal origin in
+      `Cors:AllowedOrigins` looks EXACTLY like "the subsystem is down" — cost a failed test run; use a
+      `Cors__AllowedOrigins__N` env override to test without editing appsettings. (b) A **tenant GUID
+      contains hyphens**, which are not legal in shell env-var names — that is why the service
+      credential is `ServiceClients__<name>__TenantId=<guid>` and not `ServiceClients__Finance__<guid>`.
+      (c) `Core.User` has no tenant filter (see Fix 1).
+    - Verified live throughout: 10/10 registry-parsing units; 9/9 browser test across three backends
+      (portal + HRMS + a deliberately-dead Finance) proving the fan-out, that HRMS still returns 200 and
+      routes correctly, and that only the down subsystem is named; 8/8 service-key security tests
+      including a tenant-A key refused for tenant B and a tenant-B broadcast landing on exactly tenant
+      B's 10 users; human-session regressions each time. All test rows deleted, DB back to baseline.
+
+00DE. **Open workflow steps were invisible end-to-end: no portal alert AND absent from the approval
+    inbox — Hiring Requests could never be approved from Home (2026-08-05, backend only, no
+    migration, no API-contract change).** Reported as "a manager submits a Hiring Request from the
+    home page but the approver gets no notification and cannot approve it there".
+    - **Root cause — ONE condition, two symptoms.** A step with no configured approver rows is treated
+      by `WorkflowApproverAuth.EvaluateAsync` as an **open step — "anyone may act"** (it returns
+      `(true, [])`). But both downstream consumers keyed off the approver ROWS, which are empty:
+      (a) `WorkflowService.NotifyCurrentStepApproversAsync` resolved recipients from that empty list
+      and `IPortalNotifier.NotifyUsersAsync` no-ops on an empty set → **no coreNotification row ever
+      written**; (b) `GetMyApprovals` matched the caller against the step's approver rows, so `mine`
+      stayed false and `continue` **skipped the instance entirely** → nothing in the Home Approvals
+      Inbox / Workflow Tracking to decide. Net effect: the system said *anyone can approve this* and
+      then told nobody, and showed it to nobody. Silent — no error, no log.
+    - **Why leave worked and hiring did not:** verified in CERP — every AnnualLeave step has 1 approver
+      configured; the active HiringRequest definition has **0** (so does the active OtherLeave, which
+      was silently affected too).
+    - **Fix (3 files, backend only).** `WorkflowApproverAuth`: `ResolveOpenStepRecipientsAsync()` (who
+      to alert) + `CanActOnOpenStepsAsync()` (does it land in MY inbox) — both resolve from ONE rule,
+      roles carrying `CanApprove` on the `/workflow` operation, so the alerted set and the inbox set
+      are identical by construction. `WorkflowService`: falls back to that audience, and logs a
+      WARNING naming the cause when even that is empty (never silent again). `WorkflowHandlers.
+      GetMyApprovals`: an open step now resolves by entitlement instead of approver-row matching, and
+      counts toward `isApprover` tab visibility.
+    - **NO frontend change was needed** — the Home portal is already generic: `config/approvalSources.ts`
+      is a pluggable registry whose single HRMS source reads `Workflow/my-approvals`, feeding both the
+      dashboard `ApprovalsInbox` widget and the `/workflow` Tracking screen (which has inline
+      Approve/Reject + history). Any entity type flows through it once the endpoint returns it.
+    - **Verified end-to-end** against the running API with an open-step workflow (the exact hiring
+      condition): submit → notification raised → appears in `my-approvals` → approved via the same
+      endpoint the portal calls (200) → instance Approved, entity handler ran, notification
+      auto-resolved, inbox empty again. Test vehicle was EmployeeGuarantee because the demo tenant has
+      no org units/positions (HC082 establishment gate blocks creating a hiring request there); the
+      code path does not branch on entity type. All test rows deleted, DB verified clean afterwards.
+      Real-world confirmation: a genuine Hiring Request (HRQ-0006) submitted while the fixed build was
+      running correctly alerted `admin` + `medhanit`, the 2 users with approve rights.
+    - **⚠️ This is a SAFETY NET, not routing.** The seeded chain is Directorate Head → HR → Finance but
+      the live definition is a SINGLE step with no approvers, so every approve-capable user is alerted
+      for every hiring request. Configuring real approvers in Workflow Definitions takes precedence
+      automatically and is the proper fix. Note also `EnsureCanDecideAsync` still lets ANYONE decide an
+      open step (unchanged, deliberately) — the new rule bounds who is TOLD, not who may act.
+
+00DD. **Dashboard UI reworked as a chart-led, high-density page in the app's own table language
+    (2026-08-05, frontend only, no migration, no API change).** Pure visual/JSX pass — verified by
+    diff that ZERO hooks, queries, state, handlers, services or backend files changed. Took four
+    attempts; recording what actually mattered so nobody re-treads it:
+    - **What the earlier attempts got wrong.** (a) The dashboard's feeds were loose stacked lists in
+      an invented style, while every other screen in the system (`components/common/dataTableProvider`)
+      uses column-aligned tables with uppercase micro-caps headers over a `bg-muted/50` strip — so the
+      page read as foreign. (b) It was far too airy. (c) It had NO data visualisation at all, which is
+      the thing that most separates a Fiori/D365 dashboard from a list of cards.
+    - **Now:** feeds are real tables (header strip + rows share ONE css-grid template so columns align
+      exactly); KPI tiles are horizontal ~72px (was ~110px) with a semantic left accent rail; card
+      headers `py-2` uppercase w/ inline icon; rows `py-2`, 12px primary / 11px secondary; canvas is
+      neutral `bg-background` (was the pale-blue `bg-secondary`, which washed the page and made white
+      cards vanish into it). Roughly 30% more content per screen.
+    - **New files:** `components/dashboard/charts.tsx` (dependency-free SVG donut / legend / bars,
+      purely presentational, no data access) and `WorkforceAnalyticsWidget.tsx` (Workflow Status donut
+      + Workforce Composition bars). The widget reuses the EXISTING `useDashboardSummary()` hook —
+      same queryKey, so React Query serves it from cache: **zero extra network calls.**
+    - **Deliberately NOT built:** trend sparklines and headcount-by-department. Neither exists in the
+      data currently fetched (no historical series; summary returns totals with no dept breakdown) and
+      fabricating them on a decision-making screen is not acceptable. Dept breakdown would be one extra
+      `GROUP BY` in the existing `DashboardSummaryService` Dapper batch if wanted later.
+    - **⚠️ THE TRAP THAT COST TWO ROUNDS:** this app does NOT feed its palette into Tailwind's theme.
+      Every colour utility (`bg-primary/10`, `border-success/20`, …) is HAND-WRITTEN in
+      `frontend/src/config/theme.css`. A step that isn't in that file — `bg-secondary/40`, `bg-border`,
+      `hover:border-primary/30`, `divide-border/60` — compiles to NOTHING and renders transparent,
+      silently. Anything outside the hand-written set must be an arbitrary value bound to the CSS var
+      (`bg-[var(--secondary)]`, `border-[color-mix(in_srgb,var(--primary)_40%,transparent)]`), which
+      Tailwind always generates. Also note `.text-foreground` maps to `--text` (slate-900, high
+      contrast), NOT `--foreground` (slate-600) — the variable names are misleading.
+    Verified: `tsc -b` + eslint clean; Playwright at 1600/1150px with stubbed populated data 10/10
+    (no overlapping cells, no horizontal overflow, no stray skeletons, donut renders real proportional
+    arcs); dark mode checked. NOTE: an earlier rejected redesign is parked in `stash@{0}` — drop it.
+
+00DC. **Head-office users were scoped to their own department subtree — `IsHeadOffice` now reads the
+    branch flag (2026-08-05, no migration).** A user assigned to the branch flagged `IsHeadOffice = 1`
+    (here `Corporate`) could only see their own department + child departments in the Employee module's
+    org-tree list. Root cause in `Inf/Repositories/Core/LoginRepository.cs`: head-office status was
+    derived as `var isHeadOffice = branchId is null;` — i.e. it only recognised users with **no branch at
+    all** (tenant owner / unlinked account) and completely ignored `Branch.IsHeadOffice`. Because the
+    Head Office is itself a real branch row, its staff got `branchId != null` → `isHeadOffice = false`.
+    That one flag drives BOTH visibility gates: `Repository.ApplyBranchFilter` (head office bypasses
+    branch isolation) and `PerformanceVisibilityService.IsAdminAsync` (starts with
+    `if (currentUser.IsHeadOffice()) return true`) — returning false dropped them into the **manager**
+    branch of `GetAllEmployees`, which restricts to `scope.UnitIds` = own unit + descendants. Fix:
+    resolve the employee's branch flag in the same projection (`e.Branch != null && e.Branch.IsHeadOffice`)
+    and use `isHeadOffice = branchId is null || isBranchHeadOffice`. Measured on CERP tenant
+    `aadb4e82…`: gibril (Finance Unit) and medhanit (Human Resource Unit) went 3/10 → 10/10 visible
+    employees, admin (CEO) 5/10 → 10/10.
+    **Two coupled fixes in the same path (the primary fix is unreliable without them):** (a) that lookup
+    ran through the repository's tenant/branch filters, which at login still read the *previous*
+    session's cookies — a stale `BranchId` made it return no row, collapsing to "no branch" and silently
+    granting head-office access to the next user to log in; it now uses `GetAllWithoutTenantFilter()`
+    with an explicit `e.TenantId == user.TenantId` re-assertion (tenant isolation unchanged).
+    (b) logout never cleared `BranchId`/`IsHeadOffice` — both cookie names added to the delete lists in
+    `LogoutCookieHandler` and `LogoutUser`.
+    Verified live (login A/B reading the issued cookie): employee on the head-office branch → `true`
+    (was `false`); on a regular branch → `false` (still correctly scoped, not a blanket grant); no
+    branch → `true` (unchanged). The A/B temporarily repointed the `demo` test employee's branch;
+    baseline captured and restored, branch distribution confirmed identical afterwards (NULL 9 /
+    Corporate 7). NOTE (unchanged, by design): selecting a tree node lists employees assigned **directly**
+    to that unit, not its descendants — select the root "All Units" for everyone.
+    NOTE: the dashboard UI redesign attempted this session was rejected by the user and reverted; it is
+    parked in `stash@{0}` ("discarded dashboard UI redesign"), NOT committed. Useful finding from it:
+    this app does **not** feed its palette into Tailwind's theme — every colour utility
+    (`bg-primary/10`, `border-success/20`, …) is hand-written in `frontend/src/config/theme.css`, so an
+    invented step like `bg-secondary/40` or `bg-border` compiles to nothing and renders transparent.
+
+00DB. **HRMS home dashboard rebuilt: aggregated summary endpoint + lazy/memoized widget split
+    (2026-08-04, migration `AddDashboardSummaryIndexes`, applied to CERP).** The dashboard
+    (`pages/home/dashboard.tsx`) fired 12 separate `useQuery` calls on mount, four of which were full
+    paginated `GetAll?take=1` list requests just to read `.total` for a KPI count. Replaced with **one**
+    aggregated `GET /Dashboard/summary` (`App/Features/Core/Dashboard/IDashboardSummary` +
+    `Inf/Common/DashboardSummaryService`) — a single Dapper `QueryMultipleAsync` round trip (7
+    statements: branch/orgUnit/position/employee counts, workflow Running/Approved/Rejected via GROUP BY,
+    probation count, retirement count) reusing the ambient EF connection, same pattern as
+    `ReportExecutor`. Tenant+branch isolation is replicated in C# to match `Repository.ApplyBranchFilter`
+    **exactly** (Branch filtered by own `Id` when branch-scoped since it isn't `IBranchScoped`;
+    OrgUnit/Position/Employee filtered by `BranchId`; `WorkflowInstance` is tenant-only — it has no
+    `BranchId` at all). Verified field-by-field against the old endpoints for the same tenant before
+    cutover (all 9 numbers matched). Two new indexes added (neither table had a tenant-scoped index for
+    these queries before): `hrmsWorkflowInstance(TenantId, Status)`, `hrmsEmployee(TenantId, BranchId,
+    EmploymentStatus)` — the workflow one required an `ALTER COLUMN TenantId nvarchar(max)→nvarchar(450)`
+    (EF requires bounded index-key columns); confirmed safe first (`MAX(LEN(TenantId))`=36 on live data).
+    Frontend split into 6 independently `React.lazy` + `memo()`'d widgets under `components/dashboard/`
+    (KpiOverviewWidget, WorkflowActivityWidget, WorkforceWatchlistWidget, ActionQueueWidget,
+    RecentActivityWidget, QuickAccessWidget), each behind its own `Suspense` with a skeleton
+    dimension-matched to its real content (zero CLS). The 3 decision modals (workflow approve/reject,
+    clearance, profile-change) — previously all in one 1067-line component's top-level state, so any
+    keystroke re-rendered the whole page — now live entirely inside `ActionQueueWidget`'s local state.
+    Probation/retirement tabs (`WorkforceWatchlistWidget`) get their badge counts from the aggregate and
+    fetch the row-level list **only for the active tab** (`enabled: activeTab === key`) — previously both
+    lists fetched unconditionally regardless of which tab was visible. Shared hooks
+    (`useDashboardSummary`, `useActionQueues`) let multiple widgets call the identical queryKey — React
+    Query dedupes to one network call with zero prop-drilling. E2E via Playwright against real API+DB
+    (demo tenant): 9/9 — KPI numbers correct, zero console errors, exactly one `Dashboard/summary` call
+    per load (confirmed no leftover count-only calls), skeleton pulses render then fully clear, tab-switch
+    does not refetch the aggregate. Measured warm response: 6ms (small dataset; every query is an index
+    seek, not a scan). `tsc -b` + `eslint --quiet` clean both repos-side.
+
+00SG. **Stale-form guard sweep (2026-07-31, no migration; uncommitted).** The user-form stale-Add fix
+    (00UE) replicated across EVERY id-driven CRUD form via codemod: 33 `formData/setFormData` forms +
+    13 `meta`-pattern master-detail forms (resets mirror the record-populate effect's setters, each to
+    its own useState initializer) in HRMS, + 4 hosted copies in the Home repo (disciplinaryCase,
+    employeeGoal, transferRequest, hiringRequest). Marker comment: "stale-form guard". Analysis:
+    `EntityModuleShell` renders `showForm ? form : list` (forms UNMOUNT when hidden) and org-unit/
+    position use `{showForm && …}`, so most screens were safe by construction — the guard makes the
+    invariant LOCAL so future parent/mounting refactors can't reintroduce the bug. Deliberately
+    skipped: `appraisal/scoring.tsx` + `calibration/workspace.tsx` (form-slot work surfaces with no
+    Add/empty-id mode). Spot-checked live: Operation modal edit→close→Add opens blank. ALSO fixed all
+    3 react-compiler lint ERRORS repo-wide: offerLetterTemplate `useState(Date.now())` → lazy
+    initializer; rolePermission/detail memo deps → extracted `scope?.subsystemId/moduleId` locals so
+    reads match deps exactly; dynamicForm/DynamicFormSection spread-in-deps useMemo → removed the
+    manual memo (the React Compiler auto-memoizes with precise deps). `eslint --quiet` = 0 errors in
+    BOTH repos (41 auto-fixable warnings remain in HRMS — untouched, style-level).
+
+00UE. **User admin: Edit button + stale-Add fix (2026-07-31, no migration).** `userList.tsx` GridAction
+    had `showEdit={false}` (only Delete rendered). The reported "edit form fails to populate" was NOT a
+    binding bug (GET /User/{id} + controlled inputs verified fine) — the real defect: the form component
+    stays MOUNTED across list↔form switches, so pressing Add after viewing a user showed the previous
+    user's values; fixed with a reset-on-id-cleared effect in `userForm.tsx`. E2E 6/6. ⚠ Other CRUD
+    screens sharing the always-mounted EntityModuleShell form pattern may have the same stale-Add bug.
+
+00AL. **Annual-leave self-service endpoints — own-only grid + dashboard balance (2026-07-30, no migration).**
+    The Home portal's "Annual Leave" grid showed EVERY employee's requests because `GetAllAnnualLeaves`
+    grants head-office accounts admin visibility (`IsAdminAsync` → true for branch-null users) and the
+    Home self-service user is head-office. FIX: `IGetAllAnnualLeaves.GetMineAsync` (refactored `GetAsync`
+    → private `QueryAsync(request, mineOnly)`) ALWAYS scopes `x.EmployeeId == scope.EmployeeId` — no
+    admin/manager widening, null employee → empty — exposed at **`GET /AnnualLeave/mine`**; the Home list
+    now calls it and defaults status to Pending. Also new `IGetMyAnnualLeaveBalance` → **`GET /AnnualLeave/
+    my-balance`** (self-scoped balance for the active `AnnualLeaveSetting`'s fiscal year; Available =
+    Entitled+CarriedForward+Adjusted−Taken, or the setting's DefaultAnnualEntitlement when no LeaveBalance
+    row) for the Home dashboard widget. Proven: an admin (appraisal-HrSignOff approver) saw 7 via
+    `/AnnualLeave` but only their own 3 via `/mine`.
+    **REVISED (later 2026-07-30): `/my-balance` rewritten to per-type, per-active-fiscal-year.**
+    `GetMyAnnualLeaveBalance` is now driven by the employee's OWN LeaveBalance rows in ALL active
+    Core.FiscalYear rows (one query, joined to hrmsLeaveType), returning `MyAnnualLeaveBalancesDto
+    { hasData, items[] }` where each item = FY + leave type + figures + `IsAnnual`
+    (AccrualMethod==Annual); policy-default synth rows only for annual types with no row. It NEVER
+    calls the throwing `ResolveAnnualLeaveTypeIdAsync` (throws on 0/>1 annual-method types — that
+    was a hidden my-balance 400) and no longer hides balances when a year's policy row is missing
+    or the "annual" type is misconfigured. ⚠ aadb4e82 config quirk: the type NAMED "Annual Leave"
+    accrues Monthly while "Casual Leave" accrues Annual — accrual flags look swapped (user to fix
+    in Leave Types admin; the widget/KPI follow the flag).
+
+00WN. **Approval-request notifications → Home portal (2026-07-30, no HRMS migration; needs Home migration
+    `AddNotificationSourceRef` on CERP).** The portal bell had no PRODUCER — the workflow engine never wrote
+    to `dbo.coreNotification`. Added: `CoreNotification` plain POCO (Dom) + `CoreNotificationConfiguration`
+    (`ToTable("coreNotification","dbo", ExcludeFromMigrations)`) + DbSet — HRMS WRITES the Home-owned table;
+    `IPortalNotifier` (App/Common/Services) + `PortalNotifier` (Inf, stamps TenantId from ITenantService,
+    SourceSubsystem="HRMS", best-effort); `IWorkflowApproverAuth.ResolveApproverUserIdsAsync` (step approvers
+    → distinct Core.User ids: User/Role/Subject/Immediate/SecondLevel/UnitManager); `WorkflowService` emits
+    on START + each ADVANCE (`NotifyCurrentStepApproversAsync`, Severity="Action", LinkUrl="/workflow") and
+    marks read on every decision (`ResolvePortalAlertsAsync` → correlated by SourceEntityType="WorkflowInstance"
+    + SourceEntityId=instance.Id). Open steps (no approvers) → no row. Appraisals only notify on START
+    (module-driven advance bypasses the generic engine). E2E: single + 2-step round-trip verified in SQL.
+
+00CA. **Central subsystem administration + Home-first entry flow (2026-07-29, migration `AddSubsystemUrl`
+    applied to CERP).** Companion to the new standalone Home portal repo (`D:\Workspace\CyberErp\Home`).
+    (a) `Subsystem.Url` (nvarchar 400, nullable) + DTO/validator/form/list — each `dbo.coreSubsystem` row
+    carries its application URL; the landing page deep-links when the URL origin differs. Hardcoded
+    `constants/subSystem.ts` DELETED — subsystems are read live. (b) **Cascading Subsystem→Module filters**
+    (`GetAllRequest.SubsystemId/ModuleId`; Operation GetAll/GetById project `SubsystemId`+`SubSystem`;
+    natural menu ordering) wired via shared `components/common/menuFilters/subsystemModuleFilter.tsx`
+    (compact DropDownFields — non-compact labels clip in `searchBarFilters`) into Role Permissions
+    (visible-rows-only scoping + check-all; permission map stays FULL so filtered saves keep hidden ticks),
+    Menu Operations (server-side, `moduleGroup` = "SubSystem / Module" group key), Menu Modules, and the
+    Operation form (subsystem scopes the module dropdown; GetById now returns SortOrder too).
+    (c) **Entry flow:** sidebar scoped to own subsystem; dead `backToModules.tsx` finally mounted in
+    `sidebar/index.tsx` ("All Modules" switcher); login → `/landing` with `state:{fromLogin:true}` and the
+    landing auto-forwards when exactly ONE subsystem card is visible (ref-guarded; switcher never forwards);
+    the Home portal (code `HOME`) is EXCLUDED from the picker — one-way Home→HRMS flow per user decision.
+    (d) CORS += `http://localhost:5175`. (e) **Lazy-chunk resilience:** `errorBoundary.componentDidCatch`
+    auto-reloads once (30 s sessionStorage throttle) on "Failed to fetch dynamically imported module" —
+    React caches the rejected lazy import so "Try again" can never recover it; `main.tsx` also handles
+    `vite:preloadError` for production builds. Gotcha: vite 504 "Outdated Optimize Dep" = stale
+    `node_modules/.vite` cache — reloads don't fix it; delete the cache and restart vite. E2E: 21/21
+    (filters), 7/7+3/3 (switcher/auto-forward), 12/12 (portal entry), recovery verified.
+
+00RM. **Recruitment: internal candidate hire → promotion/transfer, not a duplicate employee (2026-07-29,
+    no migration).** Module-review fix. `HireCandidate.HireAsync` (`CandidateLifecycleHandlers.cs`) used to
+    always `Employee.Create(candidate.PersonId, …)` — for an INTERNAL candidate (whose PersonId is an
+    existing employee's) that minted a SECOND employee on the person, stranding their leave/appraisal/
+    movement/loan/document history. Now it branches: internal → `PlaceInternalAsync` records an
+    `EmployeeMovement` against the existing employee (reuses `ISaveEmployeeMovement` + auto-applies via
+    `IApproveEmployeeMovement` when no chain, mirroring the offer/requisition idiom; type auto-derived
+    Promotion/Transfer/Demotion from the offer pay vs current, HR-overridable via `HireCandidateDto.MovementType`);
+    external → the original path + a guard refusing a 2nd employee on an already-active person, and the
+    compliance-doc gate skipped for internal. Shared `MigrateCandidateDocumentsAsync` + `CloseRecruitmentPipelineAsync`
+    dedup the closure. `GetHireQueue` flags `IsInternal` + skips compliance for internal; `hireEmployee` modal is
+    internal-aware (Place-Internal-Employee, Personnel-Action selector, no employee-number). E2E: internal move
+    verified via SQL (1 employee/person, Completed Promotion, seat swap, salary/tenure updated, app Hired);
+    external still creates a new employee. **Review advice: an internal employee changing position must go through
+    EmployeeMovement, never a re-registration. Other findings (hire-queue N+1, EmployeePicker gaps, dup helpers,
+    workforce-plan link, succession→movement wiring) logged but NOT done — user chose this fix only.**
+
+00RH. **Report header — company name + three-column ISO layout (2026-07-28, no migration, frontend-only).**
+    The header previously conflated identity into one slot (`headerTitle ?? companyName`), so a configured
+    report header title HID the company name. Now the issuing COMPANY name always heads the block, and the
+    header is a three-column layout: logo LEFT, company name (bold) + report title directly underneath CENTERED,
+    date/time RIGHT. `ListExportHeader` gained a distinct `headerTitle`; `result.tsx` uses a `grid-cols-[1fr_auto_1fr]`
+    header; `listExport.tsx` PDF splits into left/center/right Views and Excel merges+centres the company/title
+    rows with a right-aligned date row. Verified on screen + by parsing the exported .xlsx/.pdf.
+
+
+00LP. **Leave-policy fields moved LeaveType → AnnualLeaveSetting (2026-07-28, migration
+    `MoveLeavePolicyFieldsToSetting` APPLIED to CERP). E2E 15/15.**
+    - Dropped `DefaultAnnualEntitlement`, `CarryForwardMaxDays` (null=unlimited), `MaxConsecutiveDays`
+      (null=no cap) from `hrmsLeaveType` (entity/DTO/validator/FE form+list trimmed — LeaveType is now
+      just the category + intrinsic flags); ADDED all three to `hrmsAnnualLeaveSetting` (the per-FY policy).
+    - Business logic rewired: `LeaveBalanceService` implicit/materialized entitlement now = the request
+      FY's active setting's `DefaultAnnualEntitlement` (swapped `IRepository<LeaveType>` → `<AnnualLeaveSetting>`);
+      `LeaveAccrualService.RolloverAsync` carry cap = the CLOSING FY's setting's `CarryForwardMaxDays`
+      (one policy cap, no longer per-type); consecutive-day guard in both `SubmitAnnualLeave` and generic
+      `SubmitLeaveRequest` reads `setting?.MaxConsecutiveDays`. FE: three `num()` fields on the
+      annualLeaveSetting form + save.ts number/integer field lists updated.
+
+00LR. **Leave-settings restructure (2026-07-28, migration `RestructureLeaveSettings` APPLIED). E2E 24/24
+    + browser-verified.**
+    - `AnnualLeaveSetting` lost its `LeaveTypeId` → ONE annual policy per fiscal year (unique
+      `(TenantId,FiscalYearId)`); ledger/accrual resolves "the annual type" via
+      `ILeaveAccrualService.ResolveAnnualLeaveTypeIdAsync()` = the single active LeaveType with
+      `AccrualMethod==Annual` (0/>1 → loud ValidationException).
+    - `OtherLeaveSetting.Name` (free text) → `LeaveTypeId` FK (unique `(TenantId,FiscalYearId,LeaveTypeId)`;
+      DTO keeps `Name` projected from `LeaveType.Name`; UI = Leave Type dropdown).
+    - New `LeaveDayCounting {WorkingDays, CalendarDays}` on OtherLeaveSetting ("Holiday & Weekend Handling"):
+      CalendarDays charges `(end−start).Days+1` straight through; honored in Submit, lump-sum-end, and the
+      client-side preview.
+    - New **Employee Profile "Other Leave" tab** (`employee/otherLeaveSection.tsx`; `OtherLeaveList` gained
+      `employeeId` scoping + hides the Employee column).
+
+00OL. **Other Leave module (2026-07-28, migration `AddOtherLeave` APPLIED). E2E 41/41.**
+    - Non-annual statutory leaves (maternity/paternity/mourning…) with STATIC position-based days — never
+      accrues, never touches the annual ledger. Tables `hrmsOtherLeaveSetting` (per-FY: gender All/Female/Male,
+      Standard/Managerial days, IsLumpSum, IsActive), `hrmsOtherLeave` header + `hrmsOtherLeaveDetail`.
+    - Balance is DERIVED (allocation − Σ Pending+Approved), active-FY-only; lump-sum = one block covering the
+      exact full allocation once/FY (`GET /OtherLeave/lump-sum-end`). Workflow key `WorkflowEntityTypes.OtherLeave`
+      + seeded "Other Leave Approval" (Supervisor→HR); submit REQUIRES an active definition; Cancel is
+      workflow-gated. Self-locked `/otherLeave` via `/Employee/me` + `/otherLeaveSetting` under the
+      Attendance & Leave menu.
+
+00G. **§3.12 Employee Guarantee Commitment Management, HC305–307 (2026-07-27, migrations
+    `AddEmployeeGuarantee` + `WidenGuaranteeTypeForLookup` APPLIED). E2E 35/35.**
+    - `EmployeeGuarantee` entity (NBE external-org guarantee commitments) + workflow trio
+      (`WorkflowEntityTypes.EmployeeGuarantee`, seeded chain, `EmployeeGuaranteeWorkflowHandler`) + release
+      lifecycle + dashboard chips. Screens: HR register (`employeeGuarantee/`), self-service `My Guarantees`
+      (`myGuarantees/`), and a **Guarantees profile tab** with a lookup-driven Guarantee Type. Menu seeded
+      into existing tenants via `SeedDefaultMenu` + `/Module/seed-defaults`.
+
+00PT. **All Employee-Profile child tabs converted to inline (non-popup) forms (2026-07-27, FE only, no
+    migration).** Education/Experience/Family/Movements/Award/Certification/Discipline/Termination tabs now
+    use the same grid+inline-form layout as Guarantees: `childManager.tsx` renders `EntityListShell` with a
+    `formOpen/formTitle/formView/onBack` inline mode (client search/sort/page or `paging` pass-through +
+    `renderActions`), replacing the modal popups. `personBackground/{education,experience}Section` +
+    `employee/{family,movement,discipline,termination}Section` rewired.
+
+00FB. **Form Builder: multi-module support + lookup-bound Select fields + tabbed Add-Field UI (2026-07-27,
+    migration `AddDynamicFormFieldLookupCategory` APPLIED).** Builder no longer restricted to the Employee
+    module — a `module` selector scopes custom tabs to any owner type; a `Select`-type field can bind to a
+    dynamic `LookupCategoryId` (options resolved via the centralized Lookup API). "Add Field" moved into a
+    tab like the rest of the UI; static-comma + combo-selector visibility fixed.
+
+00R. **ISO report header + Report Definition header/logo config + header-aware PDF/Excel exports
+    (2026-07-24, migration `AddReportHeaderTitle` APPLIED to CERP) + editor crash fix.**
+    - **Report result page** (`reportViewer/result.tsx`): header strip = tenant LOGO + header
+      name + report title + **generation date** chip; sequential **"No." column** stamped after
+      search+sort (rides paging/grouping/exports). `ReportResultDto` gained
+      `GeneratedAtUtc`/`CompanyName` (enriched in ReportController via Inf `ITenantService` —
+      App can't reference Inf) + `HeaderTitle`.
+    - **Report Definition** got a "Report Header" section: per-report `Report.HeaderTitle`
+      (nvarchar 200; empty ⇒ company name) + a `ReportHeaderLogo` panel managing the SHARED
+      tenant letterhead (same `/DocumentTemplate/logo` endpoints as the {{Logo}} token).
+    - **Exports**: `ListExportHeader {company,title,generatedAt,logoDataUrl}` threaded
+      useListPage(exportHeader) → ListExportConfig.header → listExport. PDF renders a letterhead
+      block (`<Image src={dataUrl}>`); Excel goes through a NEW lazy **ExcelJS** branch
+      (`exportExcelWithHeader`) because SheetJS CE cannot embed images — logo at A1, bold header
+      C1–C3, head row 5, data row 6+. Plain lists keep the xlsx path (bundle unaffected).
+    - **App-wide fix**: `DatabaseTenantStore.GetByIdentifierAsync` now falls back to a GUID Id
+      lookup — cookie/claim flows carry the tenant GUID, so Finbuckle TenantInfo
+      (name/subscription) was NULL on every cookie-authenticated request.
+    - **Fix**: Document Templates → Add crashed the section error boundary — a Suspense
+      hide/reveal re-ran `htmlEditorField.tsx`'s value-sync effect against the DESTROYED tiptap
+      instance (`getHTML()` → "reading 'cached'"); guarded with `editor && !editor.isDestroyed`.
+    - GOTCHAS: `useListColumnSelection` intersects prev∩new visible columns — keep the result
+      page's `columns` EMPTY until report columns arrive or a static column becomes the only
+      visible one; react-pdf REJECTS malformed PNGs that ExcelJS embeds blindly.
+    - E2E (browser + file parsing): definition form section, viewer header, XLSX (1 embedded
+      image, bold C1 header, No.=1) and PDF (embedded image XObject) all verified.
 
 00C. **Critical Position approval workflow (2026-07-22, BE+FE, migration
     `AddCriticalPositionApprovalStatus` APPLIED to CERP — completes the §3.7.A trio with 00S/00T).**

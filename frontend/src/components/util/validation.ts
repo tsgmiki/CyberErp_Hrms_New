@@ -138,6 +138,7 @@ export const ModuleSchema = z.object({
 export const SubsystemSchema = z.object({
   name: z.string().min(2, "Name is Required").max(200),
   code: z.string().min(1, "Code is Required").max(50),
+  url: z.string().max(400).optional(),
 });
 
 export const OperationSchema = z.object({
@@ -1255,7 +1256,6 @@ export const LeaveBalanceSetSchema = z.object({
 
 export const AnnualLeaveSettingSchema = z.object({
   fiscalYearId: z.string().min(1, "Fiscal Year is Required"),
-  leaveTypeId: z.string().min(1, "Leave Type is Required"),
 });
 
 export const SalaryScaleSchema = z.object({

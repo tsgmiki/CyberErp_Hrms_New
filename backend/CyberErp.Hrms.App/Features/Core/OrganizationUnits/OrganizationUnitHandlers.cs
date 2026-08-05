@@ -17,6 +17,7 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
     public interface IDeleteOrganizationUnit { Task DeleteAsync(Guid id); }
     public interface IGetOrganizationUnitById { Task<OrganizationUnitDto> GetAsync(Guid id); }
     public interface IGetAllOrganizationUnits { Task<PaginatedResponse<OrganizationUnitDto>> GetAsync(GetAllRequest request); }
+    public interface IGetMyOrganizationUnits { Task<PaginatedResponse<OrganizationUnitDto>> GetAsync(GetAllRequest request); }
     public interface IGetOrganizationTree { Task<List<OrgUnitTreeNodeDto>> GetAsync(); }
 
     public class CreateOrganizationUnit(
@@ -191,6 +192,58 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
                 .ToListAsync();
             foreach (var row in data)
                 row.HasChildren = parentsWithChildren.Contains(row.Id);
+
+            return new PaginatedResponse<OrganizationUnitDto> { Total = total, Data = data };
+        }
+    }
+
+    /// <summary>
+    /// The org units the CALLER may act for (self-service manager tools like Home hiring requests):
+    /// HR admin → all active units; a manager → their own unit + sub-units (subtree); anyone else →
+    /// none. Same DTO/paging shape as GetAll so a form dropdown can swap to it directly.
+    /// </summary>
+    public class GetMyOrganizationUnits(
+        IRepository<OrganizationUnit> repository,
+        Performance.IPerformanceVisibilityService visibility) : IGetMyOrganizationUnits
+    {
+        public async Task<PaginatedResponse<OrganizationUnitDto>> GetAsync(GetAllRequest request)
+        {
+            var skip = int.TryParse(request.Skip, out var s) ? s : 0;
+            var take = int.TryParse(request.Take, out var t) ? t : 15;
+
+            var scope = await visibility.GetScopeAsync();
+            var query = repository.GetAll().Where(x => x.IsActive);
+            // Non-admins are limited to their managed subtree (empty set for non-managers → no rows).
+            if (!scope.IsAdmin)
+                query = query.Where(x => scope.UnitIds.Contains(x.Id));
+
+            if (!string.IsNullOrWhiteSpace(request.SearchText))
+            {
+                var term = request.SearchText.Trim();
+                query = query.Where(x => x.Name.Contains(term) || x.Code.Contains(term));
+            }
+
+            var total = await query.CountAsync();
+            var data = await query
+                .OrderBy(x => x.UnitType).ThenBy(x => x.Name)
+                .Skip(skip).Take(take)
+                .Select(o => new OrganizationUnitDto
+                {
+                    Id = o.Id,
+                    Code = o.Code,
+                    Name = o.Name,
+                    UnitType = o.UnitType.ToString(),
+                    BranchId = o.BranchId,
+                    BranchName = o.Branch != null ? o.Branch.Name : null,
+                    ParentId = o.ParentId,
+                    ParentName = o.Parent != null ? o.Parent.Name : null,
+                    WorkLocationId = o.WorkLocationId,
+                    WorkLocationName = o.WorkLocation != null ? o.WorkLocation.Name : null,
+                    AllocatedHeadcount = o.AllocatedHeadcount,
+                    Description = o.Description,
+                    IsActive = o.IsActive
+                })
+                .ToListAsync();
 
             return new PaginatedResponse<OrganizationUnitDto> { Total = total, Data = data };
         }

@@ -15,8 +15,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public Guid Id { get; set; }
         public Guid FiscalYearId { get; set; }
         public string? FiscalYearName { get; set; }
-        public Guid LeaveTypeId { get; set; }
-        public string? LeaveTypeName { get; set; }
         public int MinExperienceMonths { get; set; }
         public int NewEmployeeLeaveDays { get; set; }
         public int BaseLeaveDays { get; set; }
@@ -31,6 +29,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int PreMilestoneBaseLeaveDays { get; set; }
         public int PreMilestoneIncrementDays { get; set; }
         public int PreMilestoneIntervalYears { get; set; }
+        public decimal DefaultAnnualEntitlement { get; set; }
+        public decimal? CarryForwardMaxDays { get; set; }
+        public int? MaxConsecutiveDays { get; set; }
         public bool IsActive { get; set; }
     }
 
@@ -38,7 +39,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public Guid? Id { get; set; }
         public Guid FiscalYearId { get; set; }
-        public Guid LeaveTypeId { get; set; }
+
         public int MinExperienceMonths { get; set; }
         public int NewEmployeeLeaveDays { get; set; }
         public int BaseLeaveDays { get; set; } = 16;
@@ -54,6 +55,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int PreMilestoneBaseLeaveDays { get; set; } = 14;
         public int PreMilestoneIncrementDays { get; set; } = 1;
         public int PreMilestoneIntervalYears { get; set; } = 1;
+        /// <summary>Fallback entitlement for balances the accrual engine has not generated (was LeaveType.DefaultAnnualEntitlement).</summary>
+        public decimal DefaultAnnualEntitlement { get; set; }
+        /// <summary>Rollover carry cap; null = unlimited, 0 = none (was LeaveType.CarryForwardMaxDays).</summary>
+        public decimal? CarryForwardMaxDays { get; set; }
+        /// <summary>Cap on one continuous request; null = no cap (was LeaveType.MaxConsecutiveDays).</summary>
+        public int? MaxConsecutiveDays { get; set; }
         public bool IsActive { get; set; } = true;
     }
 
@@ -62,7 +69,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public SaveAnnualLeaveSettingDtoValidator()
         {
             RuleFor(x => x.FiscalYearId).NotEmpty().WithMessage("Fiscal year is required.");
-            RuleFor(x => x.LeaveTypeId).NotEmpty().WithMessage("Leave type is required.");
             RuleFor(x => x.MinExperienceMonths).GreaterThanOrEqualTo(0);
             RuleFor(x => x.NewEmployeeLeaveDays).GreaterThanOrEqualTo(0);
             RuleFor(x => x.BaseLeaveDays).GreaterThan(0);
@@ -81,6 +87,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .WithMessage("A milestone date is required for the service-milestone rule.");
             RuleFor(x => x.PreMilestoneBaseLeaveDays).GreaterThanOrEqualTo(0);
             RuleFor(x => x.PreMilestoneIncrementDays).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.DefaultAnnualEntitlement).GreaterThanOrEqualTo(0);
+            RuleFor(x => x.CarryForwardMaxDays).GreaterThanOrEqualTo(0).When(x => x.CarryForwardMaxDays.HasValue);
+            RuleFor(x => x.MaxConsecutiveDays).GreaterThan(0).When(x => x.MaxConsecutiveDays.HasValue);
         }
     }
 
@@ -97,8 +106,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             Id = s.Id,
             FiscalYearId = s.FiscalYearId,
             FiscalYearName = s.FiscalYear != null ? s.FiscalYear.Name : null,
-            LeaveTypeId = s.LeaveTypeId,
-            LeaveTypeName = s.LeaveType != null ? s.LeaveType.Name : null,
+
+
             MinExperienceMonths = s.MinExperienceMonths,
             NewEmployeeLeaveDays = s.NewEmployeeLeaveDays,
             BaseLeaveDays = s.BaseLeaveDays,
@@ -113,6 +122,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             PreMilestoneBaseLeaveDays = s.PreMilestoneBaseLeaveDays,
             PreMilestoneIncrementDays = s.PreMilestoneIncrementDays,
             PreMilestoneIntervalYears = s.PreMilestoneIntervalYears,
+            DefaultAnnualEntitlement = s.DefaultAnnualEntitlement,
+            CarryForwardMaxDays = s.CarryForwardMaxDays,
+            MaxConsecutiveDays = s.MaxConsecutiveDays,
             IsActive = s.IsActive
         };
     }
@@ -121,7 +133,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public class SaveAnnualLeaveSetting(
         IRepository<AnnualLeaveSetting> repository,
         IRepository<FiscalYear> fiscalYears,
-        IRepository<LeaveType> leaveTypes,
         IValidator<SaveAnnualLeaveSettingDto> validator,
         ILogger<SaveAnnualLeaveSetting> logger) : ISaveAnnualLeaveSetting
     {
@@ -132,11 +143,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
             if (!await fiscalYears.GetAll().AnyAsync(f => f.Id == dto.FiscalYearId))
                 throw new NotFoundException(nameof(FiscalYear), dto.FiscalYearId.ToString());
-            if (!await leaveTypes.GetAll().AnyAsync(t => t.Id == dto.LeaveTypeId))
-                throw new NotFoundException(nameof(LeaveType), dto.LeaveTypeId.ToString());
-            if (await repository.GetAll().AnyAsync(s =>
-                    s.FiscalYearId == dto.FiscalYearId && s.LeaveTypeId == dto.LeaveTypeId && s.Id != dto.Id))
-                throw new ValidationException("leaveTypeId", "A setting for this fiscal year and leave type already exists.");
+            // One ANNUAL policy per fiscal year (the LeaveType relationship moved to Other Leave Settings).
+            if (await repository.GetAll().AnyAsync(s => s.FiscalYearId == dto.FiscalYearId && s.Id != dto.Id))
+                throw new ValidationException("fiscalYearId", "A setting for this fiscal year already exists.");
 
             var ruleType = Enum.Parse<LeaveAccrualRuleType>(dto.RuleType);
 
@@ -144,20 +153,22 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(AnnualLeaveSetting), dto.Id.Value.ToString());
-                entity.Update(dto.FiscalYearId, dto.LeaveTypeId, dto.MinExperienceMonths, dto.NewEmployeeLeaveDays,
+                entity.Update(dto.FiscalYearId, dto.MinExperienceMonths, dto.NewEmployeeLeaveDays,
                     dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays, dto.IncrementIntervalYears,
                     dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience, dto.MilestoneDate,
-                    dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays, dto.PreMilestoneIntervalYears, dto.IsActive);
+                    dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays, dto.PreMilestoneIntervalYears,
+                    dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.IsActive);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
             }
 
-            var created = AnnualLeaveSetting.Create(dto.FiscalYearId, dto.LeaveTypeId, dto.MinExperienceMonths,
+            var created = AnnualLeaveSetting.Create(dto.FiscalYearId, dto.MinExperienceMonths,
                 dto.NewEmployeeLeaveDays, dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays,
                 dto.IncrementIntervalYears, dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience,
                 dto.MilestoneDate, dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays,
-                dto.PreMilestoneIntervalYears, dto.IsActive);
+                dto.PreMilestoneIntervalYears, dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays,
+                dto.MaxConsecutiveDays, dto.IsActive);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created AnnualLeaveSetting {Id}", created.Id);

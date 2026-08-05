@@ -9,8 +9,10 @@ function RegisterPage() {
   return (
     <AuthLayout
       maxWidth="lg"
+      title={t("Create account")}
+      subtitle={t("Register a new CyberERP account.")}
       footer={
-        <p className="text-center text-xs text-muted-foreground mt-4">
+        <p className="text-center text-xs text-muted-foreground">
           {t("Already have an account?")}{" "}
           <Link to="/login" className="font-medium text-primary hover:underline">
             {t("Sign in")}

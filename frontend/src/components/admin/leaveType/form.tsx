@@ -100,9 +100,6 @@ function LeaveTypeForm(props: { id: string; setId: (id: string) => void }) {
               value: formData.accrualMethod, displayValue: optionLabel(leaveAccrualOptions, formData.accrualMethod),
               data: leaveAccrualOptions as never,
             },
-            { name: "defaultAnnualEntitlement", label: "Annual Entitlement (days)", value: formData.defaultAnnualEntitlement, onChange: changeHandler, inputType: "number", type: "text" },
-            { name: "carryForwardMaxDays", label: "Carry-forward Max (days)", value: formData.carryForwardMaxDays, onChange: changeHandler, inputType: "number", type: "text" },
-            { name: "maxConsecutiveDays", label: "Max Consecutive Days", value: formData.maxConsecutiveDays, onChange: changeHandler, inputType: "number", type: "text" },
             {
               name: "genderEligibility", label: "Gender Eligibility", type: "dropDown", onSelect: selectHandler,
               value: formData.genderEligibility, displayValue: optionLabel(genderEligibilityOptions, formData.genderEligibility),

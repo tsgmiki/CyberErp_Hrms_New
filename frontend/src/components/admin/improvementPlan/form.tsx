@@ -50,6 +50,16 @@ function ImprovementPlanForm({ id, setId }: { id: string; setId: (id: string) =>
       setObjectives((record.objectives ?? []).map((o) => ({ ...o, targetDate: d10(o.targetDate), _key: nextKey() })));
     }
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({ ...NEW_DEFAULTS });
+      setObjectives([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   const completed = meta.status === "Completed";
 

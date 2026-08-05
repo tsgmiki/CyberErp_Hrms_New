@@ -10,6 +10,7 @@ import type { AnnualLeaveLedgerRow } from "@/models";
 import type ParameterModel from "@/models/ParameterModel";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type { ListDisplayMode } from "@/components/common/dataTableProvider/listViewToolbar";
+import { toast } from "@/components/common/toast";
 
 const num = (v?: number) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 1 });
 const day = (v?: string) => (v ? String(v).slice(0, 10) : "—");
@@ -77,11 +78,11 @@ function AnnualLeaveLedger() {
   const calculate = useMutation({
     mutationFn: () => calculateAnnualLeaveLedger(settingId),
     onSuccess: (r) => {
-      window.alert(r?.message ?? "Ledger calculated.");
+      toast.success(r?.message ?? "Ledger calculated.");
       queryClient.invalidateQueries({ queryKey: ["annualLeaveLedger", settingId] });
       queryClient.invalidateQueries({ queryKey: ["leaveBalances"] });
     },
-    onError: () => window.alert("Failed to calculate the ledger."),
+    onError: () => toast.error("Failed to calculate the ledger."),
   });
 
   const rows = ledger?.rows ?? [];

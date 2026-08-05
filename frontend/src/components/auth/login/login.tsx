@@ -44,7 +44,8 @@ function LoginForm() {
 
   useEffect(() => {
     if (formState.status === "success") {
-      navigate("/");
+      // Land on the subsystem picker; it forwards single-subsystem users straight in.
+      navigate("/landing", { state: { fromLogin: true } });
     }
   }, [formState.status, navigate]);
 
@@ -67,6 +68,7 @@ function LoginForm() {
       <FormProviders
         form={{
           authMode: true,
+          frameless: true, // the auth shell's card is the surface — no nested field frame
           columnsNo: 1,
           isPending,
           submitBtnTitle: t("Sign In"),

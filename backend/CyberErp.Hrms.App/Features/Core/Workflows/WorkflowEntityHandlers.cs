@@ -236,10 +236,6 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         }
     }
 
-    /// <summary>
-    /// Workflow outcomes for disciplinary cases: approval confirms the measure (Resolved);
-    /// rejection voids the case (Cancelled).
-    /// </summary>
     /// <summary>HC242 — final approval computes the reimbursable amount and approves the claim; rejection rejects it.</summary>
     public class MedicalClaimWorkflowHandler(
         IRepository<MedicalClaim> repository,

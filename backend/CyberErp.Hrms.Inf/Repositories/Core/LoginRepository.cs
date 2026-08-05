@@ -54,16 +54,29 @@ public class LoginRepository(
                     throw new UnauthorizedException("Invalid username or password");
                 }
 
-                // Branch scope + head-office visibility are DERIVED from the linked employee's
-                // branch: a user tied to a branch employee is scoped to that branch; a user with
-                // no employee (or an employee without a branch) has global / head-office visibility.
+                // Branch scope + head-office visibility are DERIVED from the linked employee's branch:
+                // a user tied to a REGULAR branch is scoped to that branch, while a user assigned to the
+                // branch flagged Head Office — or one with no branch at all (tenant owner / unlinked
+                // system account) — keeps global visibility across every branch and department.
+                //
+                // Read WITHOUT the repository's tenant/branch filters and re-assert the tenant by hand:
+                // those filters read the *request* cookies, which at login still describe the PREVIOUS
+                // session (logout does not clear BranchId/IsHeadOffice). A stale BranchId made this
+                // lookup return no row, which silently collapsed to "no branch" — the wrong answer for
+                // both scoping and head-office status.
                 Guid? branchId = null;
+                var isBranchHeadOffice = false;
                 if (user.EmployeeId.HasValue)
-                    branchId = await _employeeRepository.GetAll().AsNoTracking()
-                        .Where(e => e.Id == user.EmployeeId.Value)
-                        .Select(e => e.BranchId)
+                {
+                    var assignment = await _employeeRepository.GetAllWithoutTenantFilter().AsNoTracking()
+                        .Where(e => e.Id == user.EmployeeId.Value && e.TenantId == user.TenantId)
+                        .Select(e => new { e.BranchId, IsHeadOfficeBranch = e.Branch != null && e.Branch.IsHeadOffice })
                         .FirstOrDefaultAsync();
-                var isHeadOffice = branchId is null;
+                    branchId = assignment?.BranchId;
+                    isBranchHeadOffice = assignment?.IsHeadOfficeBranch ?? false;
+                }
+
+                var isHeadOffice = branchId is null || isBranchHeadOffice;
 
                 var tokenId = Guid.NewGuid();
                 var userResult = new UserResult

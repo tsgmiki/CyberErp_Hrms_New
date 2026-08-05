@@ -41,13 +41,9 @@ public class LeaveType : BaseEntity, IAggregateRoot, IAuditable
     public bool AllowHalfDay { get; private set; }
     public LeaveGenderEligibility GenderEligibility { get; private set; } = LeaveGenderEligibility.Any;
 
-    /// <summary>Default annual entitlement in days (per HC031); balances seed from this.</summary>
-    public decimal DefaultAnnualEntitlement { get; private set; }
+    // NOTE: entitlement/carry-forward/consecutive-day policy moved to AnnualLeaveSetting (the
+    // per-fiscal-year leave policy) — the type is now purely the category + its intrinsic flags.
     public LeaveAccrualMethod AccrualMethod { get; private set; } = LeaveAccrualMethod.Annual;
-    /// <summary>Maximum days that may carry forward into the next year (null = unlimited, 0 = none).</summary>
-    public decimal? CarryForwardMaxDays { get; private set; }
-    /// <summary>Optional cap on the length of a single continuous request.</summary>
-    public int? MaxConsecutiveDays { get; private set; }
 
     public string? Description { get; private set; }
     public bool IsActive { get; private set; } = true;
@@ -62,14 +58,11 @@ public class LeaveType : BaseEntity, IAggregateRoot, IAuditable
         bool requiresApproval = true,
         bool allowHalfDay = false,
         LeaveGenderEligibility genderEligibility = LeaveGenderEligibility.Any,
-        decimal defaultAnnualEntitlement = 0,
         LeaveAccrualMethod accrualMethod = LeaveAccrualMethod.Annual,
-        decimal? carryForwardMaxDays = null,
-        int? maxConsecutiveDays = null,
         string? description = null,
         bool isActive = true)
     {
-        Validate(code, name, defaultAnnualEntitlement, carryForwardMaxDays, maxConsecutiveDays);
+        Validate(code, name);
         return new LeaveType
         {
             Code = code.Trim(),
@@ -79,10 +72,7 @@ public class LeaveType : BaseEntity, IAggregateRoot, IAuditable
             RequiresApproval = requiresApproval,
             AllowHalfDay = allowHalfDay,
             GenderEligibility = genderEligibility,
-            DefaultAnnualEntitlement = defaultAnnualEntitlement,
             AccrualMethod = accrualMethod,
-            CarryForwardMaxDays = carryForwardMaxDays,
-            MaxConsecutiveDays = maxConsecutiveDays,
             Description = description,
             IsActive = isActive
         };
@@ -96,14 +86,11 @@ public class LeaveType : BaseEntity, IAggregateRoot, IAuditable
         bool requiresApproval,
         bool allowHalfDay,
         LeaveGenderEligibility genderEligibility,
-        decimal defaultAnnualEntitlement,
         LeaveAccrualMethod accrualMethod,
-        decimal? carryForwardMaxDays,
-        int? maxConsecutiveDays,
         string? description,
         bool isActive)
     {
-        Validate(code, name, defaultAnnualEntitlement, carryForwardMaxDays, maxConsecutiveDays);
+        Validate(code, name);
         Code = code.Trim();
         Name = name.Trim();
         NameA = nameA;
@@ -111,26 +98,17 @@ public class LeaveType : BaseEntity, IAggregateRoot, IAuditable
         RequiresApproval = requiresApproval;
         AllowHalfDay = allowHalfDay;
         GenderEligibility = genderEligibility;
-        DefaultAnnualEntitlement = defaultAnnualEntitlement;
         AccrualMethod = accrualMethod;
-        CarryForwardMaxDays = carryForwardMaxDays;
-        MaxConsecutiveDays = maxConsecutiveDays;
         Description = description;
         IsActive = isActive;
         base.Update();
     }
 
-    private static void Validate(string code, string name, decimal entitlement, decimal? carryForward, int? maxConsecutive)
+    private static void Validate(string code, string name)
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("Leave type code cannot be empty.", nameof(code));
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Leave type name cannot be empty.", nameof(name));
-        if (entitlement < 0)
-            throw new ArgumentException("Default annual entitlement cannot be negative.", nameof(entitlement));
-        if (carryForward is < 0)
-            throw new ArgumentException("Carry-forward maximum cannot be negative.", nameof(carryForward));
-        if (maxConsecutive is < 1)
-            throw new ArgumentException("Maximum consecutive days must be at least 1.", nameof(maxConsecutive));
     }
 }

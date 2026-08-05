@@ -24,15 +24,40 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task EnsureCanDecideAsync(WorkflowInstance instance);
         /// <summary>Role ids held by the current user (for batch evaluation in list queries).</summary>
         Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync();
+        /// <summary>
+        /// The DISTINCT Core.User ids who may act on a step — the same resolution
+        /// <see cref="EvaluateAsync"/> performs, but projected to recipients (for notifying approvers).
+        /// Empty for an open step (no configured approvers). <paramref name="requesterEmployeeId"/> anchors
+        /// dynamic (manager) resolution — pass the instance's EmployeeId.
+        /// </summary>
+        Task<HashSet<Guid>> ResolveApproverUserIdsAsync(Guid definitionId, int stepOrder, Guid? requesterEmployeeId);
+        /// <summary>
+        /// Recipients for an OPEN step (one with no configured approvers, which <see cref="EvaluateAsync"/>
+        /// lets ANYONE act on). Without this an open step notifies nobody: the request sits waiting while
+        /// every would-be approver is unaware of it. Bounded to users whose roles carry CanApprove on the
+        /// Workflow Tracking operation — the people entitled to act — rather than the whole tenant.
+        /// </summary>
+        Task<HashSet<Guid>> ResolveOpenStepRecipientsAsync();
+        /// <summary>
+        /// Whether the CURRENT user belongs to the open-step audience — i.e. whether an open step
+        /// should surface in their approval inbox. Deliberately the same rule as
+        /// <see cref="ResolveOpenStepRecipientsAsync"/> so the people alerted about an open step are
+        /// exactly the people who then find it waiting in their inbox.
+        /// </summary>
+        Task<bool> CanActOnOpenStepsAsync();
     }
 
     public class WorkflowApproverAuth(
         IRepository<WorkflowDefinition> definitions,
         IRepository<UserRole> userRoles,
         IRepository<User> users,
+        IRepository<RolePermission> rolePermissions,
         IOrgManagerResolver managerResolver,
         ICurrentUserService currentUser) : IWorkflowApproverAuth
     {
+        /// <summary>Link of the operation that grants the right to act on workflow approvals.</summary>
+        private const string WorkflowOperationLink = "/workflow";
+
         public async Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync()
         {
             var userId = currentUser.GetCurrentUserId();
@@ -122,6 +147,96 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
             return (canDecide, names);
         }
+
+        public async Task<HashSet<Guid>> ResolveApproverUserIdsAsync(
+            Guid definitionId, int stepOrder, Guid? requesterEmployeeId)
+        {
+            var approvers = await definitions.GetAllWithoutTenantFilter()
+                .Where(d => d.Id == definitionId)
+                .SelectMany(d => d.Steps)
+                .Where(s => s.StepOrder == stepOrder)
+                .SelectMany(s => s.Approvers)
+                .Select(a => new { a.ApproverType, a.ApproverId })
+                .ToListAsync();
+
+            var userIds = new HashSet<Guid>();
+
+            foreach (var a in approvers)
+            {
+                switch (a.ApproverType)
+                {
+                    case WorkflowApproverType.User:
+                        userIds.Add(a.ApproverId);
+                        break;
+
+                    case WorkflowApproverType.Role:
+                        var roleUserIds = await userRoles.GetAll()
+                            .Where(u => u.RoleId == a.ApproverId)
+                            .Select(u => u.UserId)
+                            .ToListAsync();
+                        foreach (var id in roleUserIds) userIds.Add(id);
+                        break;
+
+                    case WorkflowApproverType.Subject:
+                        if (requesterEmployeeId.HasValue)
+                        {
+                            var subjectUserIds = await users.GetAll()
+                                .Where(u => u.EmployeeId == requesterEmployeeId.Value)
+                                .Select(u => u.Id)
+                                .ToListAsync();
+                            foreach (var id in subjectUserIds) userIds.Add(id);
+                        }
+                        break;
+
+                    case WorkflowApproverType.ImmediateManager:
+                    case WorkflowApproverType.SecondLevelManager:
+                    case WorkflowApproverType.UnitManager:
+                        var resolved = a.ApproverType switch
+                        {
+                            WorkflowApproverType.ImmediateManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveImmediateManagerAsync(requesterEmployeeId.Value) : null,
+                            WorkflowApproverType.SecondLevelManager => requesterEmployeeId.HasValue
+                                ? await managerResolver.ResolveSecondLevelManagerAsync(requesterEmployeeId.Value) : null,
+                            _ => await managerResolver.ResolveUnitManagerAsync(a.ApproverId, requesterEmployeeId),
+                        };
+                        if (resolved is not null)
+                            foreach (var id in resolved.UserIds) userIds.Add(id);
+                        break;
+                }
+            }
+
+            return userIds;
+        }
+
+        public async Task<HashSet<Guid>> ResolveOpenStepRecipientsAsync()
+        {
+            var roleIds = await WorkflowApproveRoleIdsAsync();
+            if (roleIds.Count == 0) return [];
+
+            return (await userRoles.GetAll()
+                    .Where(u => roleIds.Contains(u.RoleId))
+                    .Select(u => u.UserId)
+                    .Distinct()
+                    .ToListAsync())
+                .ToHashSet();
+        }
+
+        public async Task<bool> CanActOnOpenStepsAsync()
+        {
+            if (currentUser.GetCurrentUserId() is null) return false;
+            var approveRoles = await WorkflowApproveRoleIdsAsync();
+            if (approveRoles.Count == 0) return false;
+            var mine = await GetCurrentUserRoleIdsAsync();
+            return mine.Overlaps(approveRoles);
+        }
+
+        /// <summary>Roles granted approval rights on the Workflow Tracking operation.</summary>
+        private async Task<List<Guid>> WorkflowApproveRoleIdsAsync() =>
+            await rolePermissions.GetAll()
+                .Where(p => p.CanApprove && p.Operation.Link == WorkflowOperationLink)
+                .Select(p => p.RoleId)
+                .Distinct()
+                .ToListAsync();
 
         public async Task EnsureCanDecideAsync(WorkflowInstance instance)
         {

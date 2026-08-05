@@ -122,32 +122,27 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
   };
 
   return (
-    <>
-      <ChildManager
-        title="Disciplinary Measures"
-        addLabel="Add Case"
-        columns={COLUMNS}
-        rows={rows}
-        isLoading={isLoading}
-        error={error}
-        onAdd={() => open(null)}
-        onEdit={open}
-        onDelete={(id) => remove(id)}
-      />
-      {showForm && (
+    <ChildManager
+      title="Disciplinary Measures"
+      addLabel="Add Case"
+      columns={COLUMNS}
+      rows={rows}
+      isLoading={isLoading}
+      error={error}
+      onAdd={() => open(null)}
+      onEdit={open}
+      onDelete={(id) => remove(id)}
+      formOpen={showForm}
+      formTitle={editing ? "Edit Disciplinary Case" : "Add Disciplinary Case"}
+      onBack={() => setShowForm(false)}
+      formView={
         <FormProvider
           form={{
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Disciplinary Case" : "Add Disciplinary Case",
-            description: "Record a disciplinary action and its outcome.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
               {
@@ -198,8 +193,8 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
         >
           <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
         </FormProvider>
-      )}
-    </>
+      }
+    />
   );
 }
 

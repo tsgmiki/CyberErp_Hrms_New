@@ -33,6 +33,8 @@ const AnnualLeaveSettingPage = memo(lazy(() => import("@/pages/admin/annualLeave
 const AnnualLeaveLedgerPage = memo(lazy(() => import("@/pages/admin/annualLeaveLedger")));
 const WorkWeekConfigurationPage = memo(lazy(() => import("@/pages/admin/workWeekConfiguration")));
 const AnnualLeavePage = memo(lazy(() => import("@/pages/admin/annualLeave")));
+const OtherLeavePage = memo(lazy(() => import("@/pages/admin/otherLeave")));
+const OtherLeaveSettingPage = memo(lazy(() => import("@/pages/admin/otherLeaveSetting")));
 const ReportViewerPage = memo(lazy(() => import("@/pages/admin/reportViewer")));
 const ReportDefinitionPage = memo(lazy(() => import("@/pages/admin/reportDefinition")));
 const ReportResultPage = memo(lazy(() => import("@/pages/admin/reportResult")));
@@ -66,6 +68,9 @@ const MyInsuranceClaimsPage = memo(lazy(() => import("@/pages/admin/myInsuranceC
 const LoanTypePage = memo(lazy(() => import("@/pages/admin/loanType")));
 const LoanPage = memo(lazy(() => import("@/pages/admin/loan")));
 const MyLoansPage = memo(lazy(() => import("@/pages/admin/myLoans")));
+// Guarantee Commitments (HRMS §3.12)
+const EmployeeGuaranteePage = memo(lazy(() => import("@/pages/admin/employeeGuarantee")));
+const MyGuaranteesPage = memo(lazy(() => import("@/pages/admin/myGuarantees")));
 // Trip Management (HRMS §3.10.5)
 const PerDiemRatePage = memo(lazy(() => import("@/pages/admin/perDiemRate")));
 const TripBudgetPage = memo(lazy(() => import("@/pages/admin/tripBudget")));
@@ -196,6 +201,8 @@ export default function AppRoutes() {
         <Route path="annualLeaveSetting" element={<AnnualLeaveSettingPage />} />
         <Route path="workWeekConfiguration" element={<WorkWeekConfigurationPage />} />
         <Route path="annualLeave" element={<AnnualLeavePage />} />
+        <Route path="otherLeave" element={<OtherLeavePage />} />
+        <Route path="otherLeaveSetting" element={<OtherLeaveSettingPage />} />
         <Route path="reports" element={<ReportViewerPage />} />
         <Route path="reportDefinition" element={<ReportDefinitionPage />} />
         <Route path="annualLeaveLedger" element={<AnnualLeaveLedgerPage />} />
@@ -229,6 +236,9 @@ export default function AppRoutes() {
         <Route path="loanType" element={<LoanTypePage />} />
         <Route path="loan" element={<LoanPage />} />
         <Route path="myLoans" element={<MyLoansPage />} />
+        {/* Guarantee Commitments (HRMS §3.12) */}
+        <Route path="employeeGuarantee" element={<EmployeeGuaranteePage />} />
+        <Route path="myGuarantees" element={<MyGuaranteesPage />} />
         {/* Trip Management (HRMS §3.10.5) */}
         <Route path="perDiemRate" element={<PerDiemRatePage />} />
         <Route path="tripBudget" element={<TripBudgetPage />} />

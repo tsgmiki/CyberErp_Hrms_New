@@ -163,6 +163,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
 
             var request = LeaveRequest.Create(dto.EmployeeId, fiscalYear.Id, DateTime.UtcNow, dto.Reason);
 
+            // The fiscal year's leave policy — the consecutive-day cap and probation gate
+            // (moved here from LeaveType) both come from it.
+            var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
+                s.FiscalYearId == fiscalYear.Id && s.IsActive);
+
             // Validate + cost each line.
             foreach (var line in dto.Lines)
             {
@@ -194,8 +199,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 if (workingDays <= 0)
                     throw new ValidationException("lines", $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} contains no working days (only rest days/holidays).");
 
-                if (leaveType.MaxConsecutiveDays.HasValue && workingDays > leaveType.MaxConsecutiveDays.Value)
-                    throw new ValidationException("lines", $"Leave type {leaveType.Code} allows at most {leaveType.MaxConsecutiveDays.Value} consecutive days.");
+                if (setting?.MaxConsecutiveDays is int maxRun && workingDays > maxRun)
+                    throw new ValidationException("lines", $"The leave policy allows at most {maxRun} consecutive days per request line.");
 
                 request.AddLine(line.LeaveTypeId, start, end, line.DayPart, workingDays);
             }
@@ -221,18 +226,18 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             foreach (var g in request.Lines.GroupBy(l => l.LeaveTypeId))
             {
                 var leaveType = typeById[g.Key];
-                var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
-                    s.FiscalYearId == fiscalYear.Id && s.LeaveTypeId == g.Key && s.IsActive);
-                if (setting is not null && setting.MinExperienceMonths > 0)
+                // The per-FY setting is the ANNUAL policy — its probation gate only guards annual-accrual types.
+                var probationSetting = leaveType.AccrualMethod == LeaveAccrualMethod.Annual ? setting : null;
+                if (probationSetting is not null && probationSetting.MinExperienceMonths > 0)
                 {
                     var refDate = g.Min(l => l.StartDate);
                     var serviceMonths = emp.HireDate.HasValue
                         ? Math.Max(0, ((refDate.Year - emp.HireDate.Value.Year) * 12) + refDate.Month - emp.HireDate.Value.Month
                             - (refDate.Day < emp.HireDate.Value.Day ? 1 : 0))
                         : 0;
-                    if (serviceMonths < setting.MinExperienceMonths)
+                    if (serviceMonths < probationSetting.MinExperienceMonths)
                         throw new ValidationException("employeeId",
-                            $"This employee has {serviceMonths} month(s) of service; {setting.MinExperienceMonths} are required for {leaveType.Code}.");
+                            $"This employee has {serviceMonths} month(s) of service; {probationSetting.MinExperienceMonths} are required for {leaveType.Code}.");
                 }
 
                 if (leaveType.AccrualMethod != LeaveAccrualMethod.None)

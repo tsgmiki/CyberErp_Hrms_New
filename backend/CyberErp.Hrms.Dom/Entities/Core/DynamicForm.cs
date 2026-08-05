@@ -77,7 +77,7 @@ public class DynamicForm : BaseEntity, IAggregateRoot, IAuditable
         foreach (var s in list)
         {
             _fields.Add(DynamicFormField.Create(Id, s.Name, s.Label, s.DataType, s.Options,
-                s.IsRequired, s.IsActive, s.SortOrder != 0 ? s.SortOrder : order, s.ShowInList));
+                s.IsRequired, s.IsActive, s.SortOrder != 0 ? s.SortOrder : order, s.ShowInList, s.LookupCategory));
             order++;
         }
         base.Update();
@@ -103,7 +103,8 @@ public record DynamicFormFieldSpec(
     bool IsRequired,
     bool IsActive,
     int SortOrder,
-    bool ShowInList);
+    bool ShowInList,
+    string? LookupCategory = null);
 
 /// <summary>A field (column) of a <see cref="DynamicForm"/>. Reuses the HC021 <see cref="EmployeeFieldDataType"/>.</summary>
 public class DynamicFormField : BaseEntity
@@ -113,8 +114,13 @@ public class DynamicFormField : BaseEntity
     public string Name { get; private set; } = string.Empty;
     public string Label { get; private set; } = string.Empty;
     public EmployeeFieldDataType DataType { get; private set; }
-    /// <summary>Comma-separated options for <see cref="EmployeeFieldDataType.Select"/>.</summary>
+    /// <summary>Comma-separated options for <see cref="EmployeeFieldDataType.Select"/> (static source).</summary>
     public string? Options { get; private set; }
+    /// <summary>
+    /// Lookup-category CODE binding the Select field to the centralized lookup system (dynamic source).
+    /// When set, the frontend feeds the dropdown from the category's values instead of <see cref="Options"/>.
+    /// </summary>
+    public string? LookupCategory { get; private set; }
     public bool IsRequired { get; private set; }
     public bool IsActive { get; private set; } = true;
     public int SortOrder { get; private set; }
@@ -124,14 +130,15 @@ public class DynamicFormField : BaseEntity
     private DynamicFormField() : base() { }
 
     public static DynamicFormField Create(Guid dynamicFormId, string name, string label,
-        EmployeeFieldDataType dataType, string? options, bool isRequired, bool isActive, int sortOrder, bool showInList)
+        EmployeeFieldDataType dataType, string? options, bool isRequired, bool isActive, int sortOrder,
+        bool showInList, string? lookupCategory = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Field name cannot be empty.", nameof(name));
         if (string.IsNullOrWhiteSpace(label))
             throw new ArgumentException("Field label cannot be empty.", nameof(label));
-        if (dataType == EmployeeFieldDataType.Select && string.IsNullOrWhiteSpace(options))
-            throw new ArgumentException("Select fields require options.", nameof(options));
+        if (dataType == EmployeeFieldDataType.Select && string.IsNullOrWhiteSpace(options) && string.IsNullOrWhiteSpace(lookupCategory))
+            throw new ArgumentException("Select fields require static options or a lookup category.", nameof(options));
 
         return new DynamicFormField
         {
@@ -140,6 +147,7 @@ public class DynamicFormField : BaseEntity
             Label = label,
             DataType = dataType,
             Options = options,
+            LookupCategory = string.IsNullOrWhiteSpace(lookupCategory) ? null : lookupCategory.Trim(),
             IsRequired = isRequired,
             IsActive = isActive,
             SortOrder = sortOrder,

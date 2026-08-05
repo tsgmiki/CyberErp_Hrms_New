@@ -35,6 +35,8 @@ export default interface FormModel {
   compact?: boolean;
   /** ERP-style login/register layout (card fields + full-width submit) */
   authMode?: boolean;
+  /** authMode only: drop the built-in field-card frame (when the page supplies its own card). */
+  frameless?: boolean;
   showLockOnSubmit?: boolean;
   /** Optional form header inside the card */
   title?: string;

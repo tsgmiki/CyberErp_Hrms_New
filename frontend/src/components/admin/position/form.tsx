@@ -9,6 +9,7 @@ import savePosition from "@/services/admin/position/save";
 import getPosition from "@/services/admin/position/get";
 import getAllPositionClass from "@/services/admin/positionClass/getAll";
 import { parameterInitialData } from "@/constants/initialization";
+import DynamicTabs from "@/components/common/dynamicForm/DynamicTabs";
 
 const FormProvider = memo(FormProviders);
 const lookupParam = { ...parameterInitialData, take: 100 };
@@ -35,6 +36,16 @@ function PositionForm({
       ? { organizationUnitId: presetOrganizationUnitId, organizationUnitName: presetOrganizationUnitName }
       : {},
   );
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData(() =>
+    presetOrganizationUnitId
+      ? { organizationUnitId: presetOrganizationUnitId, organizationUnitName: presetOrganizationUnitName }
+      : {},);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 
@@ -116,6 +127,12 @@ function PositionForm({
       }}
     >
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+      {/* Form Builder custom tabs (Position module) — shown once the position exists. */}
+      {formData.id && (
+        <div className="mt-4">
+          <DynamicTabs module="Position" ownerType="Position" ownerId={formData.id} />
+        </div>
+      )}
     </FormProvider>
   );
 }

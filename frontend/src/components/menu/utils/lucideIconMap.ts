@@ -7,7 +7,7 @@ import {
   LayoutDashboard, LayoutGrid, Lightbulb, ListChecks, ListPlus, ListTree, MapPin, Medal, Megaphone,
   MessageSquareWarning, Network, Newspaper, Package, PanelsTopLeft, Plane, Receipt, Rocket, Route, Scale, ScrollText,
   Shapes, ShieldAlert, ShieldCheck, ShieldPlus, SlidersHorizontal, Sparkles, Star, Stethoscope, Tags, Target, ThumbsUp,
-  TrendingUp, Trophy, UserCheck, UserCog, UserPlus, UserRoundCog, UserX, Users, UsersRound, Vote, Wallet,
+  TrendingUp, Trophy, UserCheck, UserCog, UserPlus, UserRoundCog, UserX, Users, UsersRound, Vote, Wallet,Warehouse,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,7 +25,7 @@ const LUCIDE_ICONS: Record<string, LucideIcon> = {
   LayoutDashboard, LayoutGrid, Lightbulb, ListChecks, ListPlus, ListTree, MapPin, Medal, Megaphone,
   MessageSquareWarning, Network, Newspaper, Package, PanelsTopLeft, Plane, Receipt, Rocket, Route, Scale, ScrollText,
   Shapes, ShieldAlert, ShieldCheck, ShieldPlus, SlidersHorizontal, Sparkles, Star, Stethoscope, Tags, Target, ThumbsUp,
-  TrendingUp, Trophy, UserCheck, UserCog, UserPlus, UserRoundCog, UserX, Users, UsersRound, Vote, Wallet,
+  TrendingUp, Trophy, UserCheck, UserCog, UserPlus, UserRoundCog, UserX, Users, UsersRound, Vote, Wallet,Warehouse,
 };
 
 export function resolveNavIcon(name?: string | null): LucideIcon {

@@ -33,7 +33,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IRunReportSchedule runScheduleHandler,
         IEmailGeneratedReport emailHandler,
         ISetReportRestrictions setRestrictionsHandler,
-        ISeedDefaultReports seedHandler) : BaseController
+        ISeedDefaultReports seedHandler,
+        CyberErp.Hrms.Inf.Common.ITenantService tenantService) : BaseController
     {
         /// <summary>Seeds the standard HRMS report catalog for the current tenant (idempotent by ReportKey).</summary>
         [RequirePermission("reportDefinition")]
@@ -140,7 +141,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         /// <summary>Runs the report: dynamic columns + rows straight from the SP.</summary>
         [RequirePermission("reports")]
         [HttpPost("generate")]
-        public Task<ReportResultDto> Generate([FromBody] GenerateReportDto dto) => generateHandler.GenerateAsync(dto);
+        public async Task<ReportResultDto> Generate([FromBody] GenerateReportDto dto)
+        {
+            var result = await generateHandler.GenerateAsync(dto);
+            // ISO header: the issuing company (tenant) name — resolved here because tenant
+            // context (Finbuckle) lives in Inf, which the App layer cannot reference.
+            result.CompanyName = tenantService.GetCurrentTenant()?.Name;
+            return result;
+        }
 
         // ---- Admin registry -------------------------------------------------
 

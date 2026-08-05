@@ -60,11 +60,12 @@ export const getRecords = (
   formId: string,
   ownerType: string,
   ownerId: string,
-  param: { skip?: number; take?: number },
+  param: { skip?: number; take?: number; searchText?: string },
 ) =>
   api.get<PagedResult<DynamicFormRecordModel>>(
     `DynamicFormRecord?formId=${formId}&ownerType=${encodeURIComponent(ownerType)}&ownerId=${ownerId}` +
-      `&skip=${param.skip ?? 0}&take=${param.take ?? 25}`,
+      `&skip=${param.skip ?? 0}&take=${param.take ?? 25}` +
+      (param.searchText ? `&searchText=${encodeURIComponent(param.searchText)}` : ""),
   );
 
 export const saveRecord = (record: DynamicFormRecordModel) =>

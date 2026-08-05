@@ -2,6 +2,7 @@ using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.Performance;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -46,6 +47,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<WorkforcePlan> workforcePlanRepository,
         INumberSequenceService numberSequence,
         IWorkflowGate workflowGate,
+        IPerformanceVisibilityService visibility,
         IValidator<SaveHiringRequestDto> validator,
         ILogger<SaveHiringRequest> logger) : ISaveHiringRequest
     {
@@ -56,6 +58,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             if (!await organizationUnitRepository.GetAll().AnyAsync(u => u.Id == dto.OrganizationUnitId))
                 throw new NotFoundException(nameof(OrganizationUnit), dto.OrganizationUnitId.ToString());
+
+            // Scope guard (authoritative — enforced regardless of which UI submits): HR admins may
+            // raise a request for any unit; a manager is limited to their OWN department and its
+            // sub-departments (scope.UnitIds = their unit subtree); anyone else has no units at all.
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin && !scope.UnitIds.Contains(dto.OrganizationUnitId))
+                throw new ValidationException("organizationUnitId",
+                    "You can only raise hiring requests for your own department and its sub-departments.");
             if (!await positionClassRepository.GetAll().AnyAsync(c => c.Id == dto.PositionClassId))
                 throw new NotFoundException(nameof(PositionClass), dto.PositionClassId.ToString());
             if (dto.WorkforcePlanId.HasValue &&

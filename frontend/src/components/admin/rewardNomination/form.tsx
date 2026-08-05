@@ -37,6 +37,15 @@ function RewardNominationForm({ id, setId }: { id: string; setId: (id: string) =
   useEffect(() => {
     if (record) setMeta(record);
   }, [record]);
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) {
+      setMeta({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
 
   const set = (name: keyof RewardNominationModel, value: unknown) => setMeta((p) => ({ ...p, [name]: value }));
   const editable = !id || meta.status === "Pending";

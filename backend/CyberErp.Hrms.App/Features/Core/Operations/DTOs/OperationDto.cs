@@ -57,6 +57,9 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.DTOs
         public Guid ModuleId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Module { get; set; } = string.Empty;
+        /// <summary>Owning subsystem (via the module) — the System screens filter/group on it.</summary>
+        public Guid SubsystemId { get; set; }
+        public string SubSystem { get; set; } = string.Empty;
         public string Link { get; set; } = string.Empty;
         public string Filter { get; set; } = string.Empty;
         public string Icon { get; set; } = string.Empty;

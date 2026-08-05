@@ -1,6 +1,8 @@
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import HeaderSearch from "./search";
 
+const GlobalSearch = lazy(() => import("./globalSearch"));
+
 const ThemeSwitcher = memo(lazy(() => import("./themeSwitcher")));
 const LanguageSwitcher = memo(lazy(() => import("./languageSwitcher")));
 const Manual = memo(lazy(() => import("./manual")));
@@ -34,11 +36,13 @@ export const Header = () => {
 
       {searchOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24 backdrop-blur-sm"
           onClick={() => setSearchOpen(false)}
           role="presentation"
         >
-          <SearchDialog onClose={() => setSearchOpen(false)} />
+          <Suspense fallback={null}>
+            <GlobalSearch onClose={() => setSearchOpen(false)} />
+          </Suspense>
         </div>
       ) : null}
     </>
@@ -58,26 +62,6 @@ function HeaderActions() {
       <Suspense fallback={null}>
         <Accounts />
       </Suspense>
-    </div>
-  );
-}
-
-function SearchDialog({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      className="w-full max-w-lg mx-4 rounded-lg border border-border bg-card p-4 shadow-lg"
-      onClick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label="Search"
-    >
-      <p className="text-sm text-muted-foreground">Global search coming soon.</p>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-3 text-xs text-primary hover:underline"
-      >
-        Close
-      </button>
     </div>
   );
 }

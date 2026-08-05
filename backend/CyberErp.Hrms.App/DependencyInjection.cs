@@ -15,6 +15,8 @@ using CyberErp.Hrms.App.Features.Core.Employees;
 using CyberErp.Hrms.App.Features.Core.EmployeeFields;
 using CyberErp.Hrms.App.Features.Core.DocumentTemplates;
 using CyberErp.Hrms.App.Features.Core.Workflows;
+using CyberErp.Hrms.App.Features.Core.Search;
+using CyberErp.Hrms.App.Features.Core.Search.Providers;
 using CyberErp.Hrms.App.Features.Core.ClearanceDepartments;
 using CyberErp.Hrms.App.Features.Core.Roles;
 
@@ -52,6 +54,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IDeleteOrganizationUnit, DeleteOrganizationUnit>();
             services.AddScoped<IGetOrganizationUnitById, GetOrganizationUnitById>();
             services.AddScoped<IGetAllOrganizationUnits, GetAllOrganizationUnits>();
+            services.AddScoped<IGetMyOrganizationUnits, GetMyOrganizationUnits>();
             services.AddScoped<IGetOrganizationTree, GetOrganizationTree>();
 
             // Positions
@@ -113,7 +116,20 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.ICancelAnnualLeave, Features.Core.Leaves.CancelAnnualLeave>();
             services.AddScoped<Features.Core.Leaves.IGetAnnualLeaveById, Features.Core.Leaves.GetAnnualLeaveById>();
             services.AddScoped<Features.Core.Leaves.IGetAllAnnualLeaves, Features.Core.Leaves.GetAllAnnualLeaves>();
+            services.AddScoped<Features.Core.Leaves.IGetMyAnnualLeaveBalance, Features.Core.Leaves.GetMyAnnualLeaveBalance>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.AnnualLeaveWorkflowHandler>();
+            // Other (non-annual) leave: static position-based, gender-aware entitlements per fiscal year
+            services.AddScoped<Features.Core.Leaves.ISaveOtherLeaveSetting, Features.Core.Leaves.SaveOtherLeaveSetting>();
+            services.AddScoped<Features.Core.Leaves.IDeleteOtherLeaveSetting, Features.Core.Leaves.DeleteOtherLeaveSetting>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveSettingById, Features.Core.Leaves.GetOtherLeaveSettingById>();
+            services.AddScoped<Features.Core.Leaves.IGetAllOtherLeaveSettings, Features.Core.Leaves.GetAllOtherLeaveSettings>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveBalances, Features.Core.Leaves.GetOtherLeaveBalances>();
+            services.AddScoped<Features.Core.Leaves.IGetLumpSumEndDate, Features.Core.Leaves.GetLumpSumEndDate>();
+            services.AddScoped<Features.Core.Leaves.ISubmitOtherLeave, Features.Core.Leaves.SubmitOtherLeave>();
+            services.AddScoped<Features.Core.Leaves.ICancelOtherLeave, Features.Core.Leaves.CancelOtherLeave>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveById, Features.Core.Leaves.GetOtherLeaveById>();
+            services.AddScoped<Features.Core.Leaves.IGetAllOtherLeaves, Features.Core.Leaves.GetAllOtherLeaves>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.OtherLeaveWorkflowHandler>();
             // Fiscal-year integration: FY CRUD/resolver, accrual policy, entitlement generation + rollover
             services.AddScoped<Features.Core.Leaves.ISaveFiscalYear, Features.Core.Leaves.SaveFiscalYear>();
             services.AddScoped<Features.Core.Leaves.IGetFiscalYearById, Features.Core.Leaves.GetFiscalYearById>();
@@ -158,6 +174,13 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
             services.AddScoped<IGetMyEmployee, GetMyEmployee>();
+            services.AddScoped<IGetMyProfile, GetMyProfile>();
+            services.AddScoped<IUpdateMyProfile, UpdateMyProfile>();
+            services.AddScoped<IGetProfileChangeFields, GetProfileChangeFields>();
+            services.AddScoped<ISubmitProfileChangeRequest, SubmitProfileChangeRequest>();
+            services.AddScoped<IGetMyProfileChangeRequests, GetMyProfileChangeRequests>();
+            services.AddScoped<IGetPendingProfileChangeRequests, GetPendingProfileChangeRequests>();
+            services.AddScoped<IResolveProfileChangeRequest, ResolveProfileChangeRequest>();
             services.AddScoped<IUploadEmployeePhoto, UploadEmployeePhoto>();
             services.AddScoped<IGetEmployeePhoto, GetEmployeePhoto>();
             services.AddScoped<IGetEmployeesOnProbation, GetEmployeesOnProbation>();
@@ -236,6 +259,13 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IWorkflowGate, WorkflowGate>();
             services.AddScoped<IWorkflowApproverAuth, WorkflowApproverAuth>();
             services.AddScoped<IOrgManagerResolver, OrgManagerResolver>();
+
+            // Global (header) search — orchestrator + one pluggable provider per searchable module.
+            // Add a module to global search by registering another ISearchProvider here; nothing else changes.
+            services.AddScoped<IGlobalSearch, GlobalSearch>();
+            services.AddScoped<ISearchProvider, EmployeeSearchProvider>();
+            services.AddScoped<ISearchProvider, OrganizationUnitSearchProvider>();
+            services.AddScoped<ISearchProvider, LeaveRequestSearchProvider>();
             services.AddScoped<IWorkflowEntityHandler, EmployeeMovementWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, DisciplinaryMeasureWorkflowHandler>();
             services.AddScoped<IWorkflowEntityHandler, SalaryRevisionWorkflowHandler>();
@@ -329,6 +359,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IGetEvaluatorContext, Features.Core.Recruitment.GetEvaluatorContext>();
             services.AddScoped<Features.Core.Recruitment.IBulkMoveApplicationStage, Features.Core.Recruitment.BulkMoveApplicationStage>();
             services.AddScoped<Features.Core.Recruitment.IInterviewNotifier, Features.Core.Recruitment.InterviewNotifier>();
+            // Internal job market — employee self-service (browse open vacancies + apply)
+            services.AddScoped<Features.Core.Recruitment.IGetOpenVacancies, Features.Core.Recruitment.GetOpenVacancies>();
+            services.AddScoped<Features.Core.Recruitment.IApplyToVacancy, Features.Core.Recruitment.ApplyToVacancy>();
+            services.AddScoped<Features.Core.Recruitment.IGetMyApplications, Features.Core.Recruitment.GetMyApplications>();
 
             // Workforce Planning (HC053–HC076)
             services.AddScoped<Features.Core.WorkforcePlans.ISaveWorkforcePlan, Features.Core.WorkforcePlans.SaveWorkforcePlan>();
@@ -733,6 +767,15 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Loans.IRecordLoanRepayment, Features.Core.Loans.RecordLoanRepayment>();
             services.AddScoped<Features.Core.Loans.IIncrementLoanInstallment, Features.Core.Loans.IncrementLoanInstallment>();
             services.AddScoped<Features.Core.Loans.IGiveLoanConsent, Features.Core.Loans.GiveLoanConsent>();
+
+            // §3.12 Employee Guarantee Commitment Management (HC305–HC307)
+            services.AddScoped<Features.Core.Guarantees.ISaveEmployeeGuarantee, Features.Core.Guarantees.SaveEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IDeleteEmployeeGuarantee, Features.Core.Guarantees.DeleteEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IGetEmployeeGuaranteeById, Features.Core.Guarantees.GetEmployeeGuaranteeById>();
+            services.AddScoped<Features.Core.Guarantees.IGetAllEmployeeGuarantees, Features.Core.Guarantees.GetAllEmployeeGuarantees>();
+            services.AddScoped<Features.Core.Guarantees.IReleaseEmployeeGuarantee, Features.Core.Guarantees.ReleaseEmployeeGuarantee>();
+            services.AddScoped<Features.Core.Guarantees.IGetGuaranteeDashboard, Features.Core.Guarantees.GetGuaranteeDashboard>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Guarantees.EmployeeGuaranteeWorkflowHandler>();
 
             // §3.10.5 Trip Management — T1 (per-diem rates + travel budgets)
             services.AddScoped<Features.Core.Trips.ISavePerDiemRate, Features.Core.Trips.SavePerDiemRate>();

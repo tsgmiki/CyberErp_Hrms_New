@@ -233,6 +233,16 @@ dynamic navigation, standard report catalog (13 SP-driven reports), Role Permiss
 (overtime, regularization, permissions, attendance policy, reports, payroll hand-off), leave
 encashment, Payroll (§3.10.6 — explicitly excluded per user).
 
+**Platform expansion (2026-07-29):** a standalone **CyberERP "Home" master portal** now lives at
+`D:\Workspace\CyberErp\Home` (own Dom/App/Inf/Api on port 5015 + React SPA on 5175, own repo; zero
+HRMS code references — it shares only the CERP platform tables and owns `dbo.coreNotification`).
+Architecture is **Home = the sole entry portal**: users log into Home, see only permission-granted
+subsystems, and launch HRMS in a NEW tab auto-signed-in (dual cookie login); HRMS offers no path back
+(its subsystem picker excludes code `HOME`). HRMS is the **central administration console** for every
+subsystem: `coreSubsystem.Url` (migration `AddSubsystemUrl`) + cascading Subsystem→Module filters on
+Role Permissions / Menu Operations / Menu Modules / Operation form. Home hosts exactly two request
+operations (Annual Leave, Other Leave) + Workflow Tracking, whose screens call the HRMS API directly.
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

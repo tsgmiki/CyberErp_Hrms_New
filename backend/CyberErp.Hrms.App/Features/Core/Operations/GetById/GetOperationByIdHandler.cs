@@ -25,9 +25,12 @@ public class GetOperationByIdHandler(
                 ModuleId = x.ModuleId,
                 Name = x.Name,
                 Module = x.Module.Name,
+                SubsystemId = x.Module.SubsystemId,
+                SubSystem = x.Module.Subsystem.Name,
                 Link = x.Link,
                 Filter = x.Filter,
-                Icon = x.Icon
+                Icon = x.Icon,
+                SortOrder = x.SortOrder
             })
             .FirstOrDefaultAsync(ct);
 

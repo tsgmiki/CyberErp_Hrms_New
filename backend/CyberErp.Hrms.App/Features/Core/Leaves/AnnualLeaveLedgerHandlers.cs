@@ -58,17 +58,22 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<LeaveBalance> balances,
         IRepository<Position> positions,
         IRepository<OrganizationUnit> organizationUnits,
+        IRepository<LeaveType> leaveTypes,
         ILeaveAccrualService accrualService) : IGetAnnualLeaveLedger
     {
         public async Task<AnnualLeaveLedgerDto> GetAsync(Guid settingId)
         {
             var setting = await settings.GetAll()
                 .Include(s => s.FiscalYear)
-                .Include(s => s.LeaveType)
                 .FirstOrDefaultAsync(s => s.Id == settingId)
                 ?? throw new NotFoundException(nameof(AnnualLeaveSetting), settingId.ToString());
             var fy = setting.FiscalYear
                 ?? throw new ValidationException("id", "The setting's fiscal year could not be loaded.");
+
+            // The ledger posts against THE annual leave type (the setting no longer names one).
+            var annualLeaveTypeId = await accrualService.ResolveAnnualLeaveTypeIdAsync();
+            var annualLeaveTypeName = await leaveTypes.GetAll()
+                .Where(t => t.Id == annualLeaveTypeId).Select(t => t.Name).FirstOrDefaultAsync();
 
             var fyStart = fy.StartDate.ToDateTimeUtc().Date;
             var fyEnd = fy.EndDate.ToDateTimeUtc().Date;
@@ -112,7 +117,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     .ToDictionaryAsync(x => x.Id, x => x.UnitName);
 
             var existing = await balances.GetAll()
-                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == setting.LeaveTypeId)
+                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == annualLeaveTypeId)
                 .Select(b => new
                 {
                     b.EmployeeId,
@@ -169,8 +174,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 FiscalYearStart = fyStart,
                 FiscalYearEnd = fyEnd,
                 FiscalYearClosed = fy.IsClosed,
-                LeaveTypeId = setting.LeaveTypeId,
-                LeaveTypeName = setting.LeaveType?.Name,
+                LeaveTypeId = annualLeaveTypeId,
+                LeaveTypeName = annualLeaveTypeName,
                 TotalEmployees = rows.Count,
                 GeneratedCount = rows.Count(r => r.IsGenerated),
                 Rows = rows

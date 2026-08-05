@@ -45,6 +45,10 @@ namespace CyberErp.Hrms.App.Features.Core.Users.Logout
                 context.Response.Cookies.Delete("TenantId");
                 context.Response.Cookies.Delete("UserId");
                 context.Response.Cookies.Delete("UserName");
+                // Branch scope must die with the session too — a leftover BranchId/IsHeadOffice from
+                // the previous user otherwise describes the WRONG scope on the next login request.
+                context.Response.Cookies.Delete("BranchId");
+                context.Response.Cookies.Delete("IsHeadOffice");
                 context.Response.Cookies.Delete(".CyberErp.Hrms.Auth");
                 context.Response.Cookies.Delete(".CyberErp.Hrms.Session");
                 

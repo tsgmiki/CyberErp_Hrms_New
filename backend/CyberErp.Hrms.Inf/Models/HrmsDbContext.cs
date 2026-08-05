@@ -162,6 +162,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<EmployeeBenefitEnrollment> EmployeeBenefitEnrollment { get; set; }
     public DbSet<TaxBracket> TaxBracket { get; set; }
     public DbSet<CompensationRequest> CompensationRequest { get; set; }
+    public DbSet<ProfileChangeRequest> ProfileChangeRequest { get; set; }
     public DbSet<MedicalProvider> MedicalProvider { get; set; }
     public DbSet<MedicalPlan> MedicalPlan { get; set; }
     public DbSet<MedicalServiceContract> MedicalServiceContract { get; set; }
@@ -181,6 +182,10 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<TripBudget> TripBudget { get; set; }
     public DbSet<TripRequest> TripRequest { get; set; }
     public DbSet<TripExpense> TripExpense { get; set; }
+    public DbSet<EmployeeGuarantee> EmployeeGuarantee { get; set; }
+    public DbSet<OtherLeaveSetting> OtherLeaveSetting { get; set; }
+    public DbSet<OtherLeaveHeader> OtherLeaveHeader { get; set; }
+    public DbSet<OtherLeaveDetail> OtherLeaveDetail { get; set; }
     public DbSet<RewardNomination> RewardNomination { get; set; }
     public DbSet<RewardPointsTransaction> RewardPointsTransaction { get; set; }
     public DbSet<RewardDisbursement> RewardDisbursement { get; set; }
@@ -234,6 +239,8 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<Operation> Operation { get; set; }
     public DbSet<Subsystem> Subsystem { get; set; }
     public DbSet<RolePermission> RolePermission { get; set; }
+    /// <summary>dbo.coreNotification — Home-owned portal alerts; HRMS only writes (ExcludeFromMigrations).</summary>
+    public DbSet<CoreNotification> CoreNotification { get; set; }
     public DbSet<WorkflowDefinition> WorkflowDefinition { get; set; }
     public DbSet<WorkflowStep> WorkflowStep { get; set; }
     public DbSet<WorkflowStepApprover> WorkflowStepApprover { get; set; }
@@ -417,6 +424,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new EmployeeBenefitEnrollmentConfiguration());
         modelBuilder.ApplyConfiguration(new TaxBracketConfiguration());
         modelBuilder.ApplyConfiguration(new CompensationRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new ProfileChangeRequestConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalProviderConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalPlanConfiguration());
         modelBuilder.ApplyConfiguration(new MedicalServiceContractConfiguration());
@@ -436,6 +444,10 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TripBudgetConfiguration());
         modelBuilder.ApplyConfiguration(new TripRequestConfiguration());
         modelBuilder.ApplyConfiguration(new TripExpenseConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeGuaranteeConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveHeaderConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveDetailConfiguration());
         modelBuilder.ApplyConfiguration(new RecognitionProgramConfiguration());
         modelBuilder.ApplyConfiguration(new RewardNominationConfiguration());
         modelBuilder.ApplyConfiguration(new RewardPointsTransactionConfiguration());
@@ -490,6 +502,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new OperationConfiguration());
         modelBuilder.ApplyConfiguration(new SubsystemConfiguration());
         modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
+        modelBuilder.ApplyConfiguration(new CoreNotificationConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowDefinitionConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowStepConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowStepApproverConfiguration());

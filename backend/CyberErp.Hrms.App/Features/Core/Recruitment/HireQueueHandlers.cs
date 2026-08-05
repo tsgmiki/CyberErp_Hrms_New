@@ -26,6 +26,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? LatestOfferStatus { get; set; }
         public bool ComplianceComplete { get; set; }
         public List<string> MissingComplianceDocuments { get; set; } = [];
+        /// <summary>True when the applicant is an existing employee — the hire records an internal move, not a new employee.</summary>
+        public bool IsInternal { get; set; }
         /// <summary>True when every hire precondition is met (eligible + stage + offer + compliance).</summary>
         public bool CanHire { get; set; }
         /// <summary>The first unmet precondition, for the row's tooltip.</summary>
@@ -43,6 +45,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobRequisition> requisitionRepository,
         IRepository<JobApplication> applicationRepository,
         IRepository<CandidateDocument> candidateDocumentRepository,
+        IRepository<Candidate> candidateRepository,
         IGetApplicationRanking rankingHandler) : IGetHireQueue
     {
         public async Task<List<HireQueueRowDto>> GetAsync()
@@ -86,6 +89,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     .GroupBy(d => d.CandidateId)
                     .ToDictionary(g => g.Key, g => g.Select(d => d.DocumentType).ToList());
 
+                // Internal applicants (existing employees) are placed via a promotion/transfer, not a new
+                // hire — the new-hire compliance-document gate does not apply to them.
+                var internalCandidateIds = (await candidateRepository.GetAll().AsNoTracking()
+                        .Where(c => poolCandidateIds.Contains(c.Id) && c.InternalEmployeeId != null)
+                        .Select(c => c.Id)
+                        .ToListAsync())
+                    .ToHashSet();
+
                 foreach (var r in poolRows)
                 {
                     var eligibility = hasCriteria ? r.HireEligibility! : "Eligible";
@@ -93,8 +104,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         or nameof(ApplicationStage.OfferAccepted);
                     var offerOk = r.LatestOfferStatus is null or nameof(OfferStatus.Accepted);
 
-                    var missing = CandidateShared.MissingComplianceDocuments(
-                        documentsByCandidate.GetValueOrDefault(r.CandidateId) ?? []);
+                    var isInternal = internalCandidateIds.Contains(r.CandidateId);
+                    var missing = isInternal
+                        ? new List<string>()
+                        : CandidateShared.MissingComplianceDocuments(
+                            documentsByCandidate.GetValueOrDefault(r.CandidateId) ?? []);
 
                     var blocked =
                         eligibility != "Eligible" ? $"Waitlisted at rank #{r.Rank} — a higher-ranked candidate holds the slot" :
@@ -121,6 +135,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         LatestOfferStatus = r.LatestOfferStatus,
                         ComplianceComplete = missing.Count == 0,
                         MissingComplianceDocuments = missing,
+                        IsInternal = isInternal,
                         CanHire = blocked is null,
                         BlockedReason = blocked
                     });

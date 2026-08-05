@@ -8,6 +8,8 @@ export interface RenderableFieldDef {
   label?: string;
   dataType?: string;
   options?: string;
+  /** Pre-resolved Select options (e.g. from a bound lookup category) — wins over `options`. */
+  optionsList?: { id: string; name: string }[];
   isRequired?: boolean;
 }
 
@@ -55,7 +57,8 @@ export function buildCustomFieldComponents(
       case "Select":
         return {
           ...common, type: "dropDown", onSelect, value, displayValue: value,
-          data: (def.options ?? "").split(",").map((o) => o.trim()).filter(Boolean).map((o) => ({ id: o, name: o })) as never,
+          data: (def.optionsList
+            ?? (def.options ?? "").split(",").map((o) => o.trim()).filter(Boolean).map((o) => ({ id: o, name: o }))) as never,
         };
       default:
         return { ...common, type: "text", value, onChange };

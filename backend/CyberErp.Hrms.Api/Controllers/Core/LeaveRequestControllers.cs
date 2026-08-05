@@ -35,11 +35,21 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISubmitAnnualLeave submitHandler,
         ICancelAnnualLeave cancelHandler,
         IGetAnnualLeaveById getByIdHandler,
-        IGetAllAnnualLeaves getAllHandler) : BaseController
+        IGetAllAnnualLeaves getAllHandler,
+        IGetMyAnnualLeaveBalance myBalanceHandler) : BaseController
     {
+        /// <summary>The signed-in employee's annual-leave balances across ALL active fiscal years (dashboard widget).</summary>
+        [HttpGet("my-balance")]
+        public Task<MyAnnualLeaveBalancesDto> MyBalance() => myBalanceHandler.GetAsync();
+
         [HttpGet]
         public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>Self-service list — strictly the signed-in employee's own requests (Home portal grid).</summary>
+        [HttpGet("mine")]
+        public Task<PaginatedResponse<AnnualLeaveHeaderDto>> GetMine([FromQuery] GetAllRequest request)
+            => getAllHandler.GetMineAsync(request);
 
         [HttpGet("{id:guid}")]
         public Task<AnnualLeaveHeaderDto> GetById(Guid id) => getByIdHandler.GetAsync(id);

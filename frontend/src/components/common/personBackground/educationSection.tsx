@@ -102,35 +102,30 @@ function EducationSection({ ds }: { ds: BackgroundDataSource<EmployeeEducationMo
     : [];
 
   return (
-    <>
-      <ChildManager
-        title="Educational Background"
-        addLabel="Add Education"
-        columns={COLUMNS}
-        rows={rows}
-        isLoading={isLoading}
-        error={error ?? (isError ? ((queryError as Error)?.message || "Failed to load records") : null)}
-        readOnly={ds.readOnly}
-        hint={ds.hint}
-        onAdd={() => open(null)}
-        onEdit={open}
-        onDelete={(id) => remove(id)}
-      />
-      {showForm && (
+    <ChildManager
+      title="Educational Background"
+      addLabel="Add Education"
+      columns={COLUMNS}
+      rows={rows}
+      isLoading={isLoading}
+      error={error ?? (isError ? ((queryError as Error)?.message || "Failed to load records") : null)}
+      readOnly={ds.readOnly}
+      hint={ds.hint}
+      onAdd={() => open(null)}
+      onEdit={open}
+      onDelete={(id) => remove(id)}
+      formOpen={showForm}
+      formTitle={editing ? "Edit Education" : "Add Education"}
+      onBack={() => setShowForm(false)}
+      formView={
         <FormProvider
           form={{
             formId: "backgroundEducationForm",
             columnsNo: 2,
             submitHandler,
-            fieldLayout: "auth",
+            labelWidth: "w-[35%]",
             isPending: isSaving,
             SubmitButton: "top",
-            showModal: true,
-            modalVisible: true,
-            modalTitle: editing ? "Edit Education" : "Add Education",
-            description: "Academic qualifications and certifications.",
-            modalSize: "lg",
-            onModalClose: () => setShowForm(false),
             submitBtnTitle: "Save",
             components: [
               { name: "educationLevel", label: "Education Level", required: true, type: "dropDown", value: formData.educationLevel, displayValue: formData.educationLevel, onSelect: selectHandler, error: formState?.zodErrors?.educationLevel, data: educationLevels as never },
@@ -152,8 +147,8 @@ function EducationSection({ ds }: { ds: BackgroundDataSource<EmployeeEducationMo
             <p className="mt-3 text-xs text-muted">{t("Save the record first to attach documents.")}</p>
           )}
         </FormProvider>
-      )}
-    </>
+      }
+    />
   );
 }
 

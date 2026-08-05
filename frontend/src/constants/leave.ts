@@ -17,6 +17,25 @@ export const genderEligibilityOptions = [
   { id: "Female", name: "Female only" },
 ];
 
+/** Other-leave gender eligibility (backend GenderEligibility enum: All | Female | Male). */
+export const otherLeaveGenderOptions = [
+  { id: "All", name: "All employees" },
+  { id: "Female", name: "Female only" },
+  { id: "Male", name: "Male only" },
+];
+
+export const otherLeaveGenderLabel = (id?: string) =>
+  otherLeaveGenderOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
+/** How an other-leave block is costed (backend LeaveDayCounting enum). */
+export const otherLeaveDayCountingOptions = [
+  { id: "WorkingDays", name: "Working days only (skip holidays & weekends)" },
+  { id: "CalendarDays", name: "Calendar days (count holidays & weekends)" },
+];
+
+export const otherLeaveDayCountingLabel = (id?: string) =>
+  otherLeaveDayCountingOptions.find((o) => o.id === id)?.name ?? id ?? "";
+
 export const holidayTypeOptions = [
   { id: "Public", name: "Public" },
   { id: "Religious", name: "Religious" },

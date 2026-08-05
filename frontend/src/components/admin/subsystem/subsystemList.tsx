@@ -49,6 +49,12 @@ function SubsystemList({ editHandler }: SubsystemListProps) {
           sort: true,
         },
         {
+          name: "url",
+          label: "Application URL",
+          render: (text: string) =>
+            text ? <span className="text-xs text-muted">{text}</span> : "—",
+        },
+        {
           name: "Action",
           label: "Action",
           render: (_text: unknown, record: SubsystemModel) => (

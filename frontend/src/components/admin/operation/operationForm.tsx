@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import saveOperationService from "@/services/admin/operation/save";
 import getOperation from "@/services/admin/operation/get";
 import getAllModule from "@/services/admin/module/getAll";
+import getAllSubsystems from "@/services/admin/subsystem/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { NAV_ICON_NAMES } from "@/components/menu/utils/lucideIconMap";
@@ -25,6 +26,13 @@ function OperationForm(props: {
   const [formState, setFormState] = useState<any>({});
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({} as OperationModel);
+
+  // stale-form guard: when the id is cleared (back / Add-new) while this form stays
+  // mounted, drop the previously loaded record so Add never shows stale values.
+  useEffect(() => {
+    if (!id) setFormData({} as OperationModel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 
@@ -34,9 +42,18 @@ function OperationForm(props: {
     enabled: typeof id != "undefined" && id != "",
   });
   const [param, setParam] = useState<ParameterModel>({ ...parameterInitialData });
+  const [subsystemParam, setSubsystemParam] = useState<ParameterModel>({
+    ...parameterInitialData,
+    take: 200,
+  });
+  const { data: subsystems, isLoading: subsystemsLoading } = useQuery({
+    queryKey: ["subsystems", subsystemParam],
+    queryFn: () => getAllSubsystems(subsystemParam),
+  });
+  // Cascading: the Module options are scoped to the chosen Subsystem (empty = all).
   const { data: modules, isLoading: modulesLoading } = useQuery({
-    queryKey: ["modules", param],
-    queryFn: () => getAllModule(param),
+    queryKey: ["modules", param, formData.subsystemId ?? ""],
+    queryFn: () => getAllModule({ ...param, subsystemId: formData.subsystemId || undefined }),
   });
 
   const submitHandler = async (e: any) => {
@@ -58,6 +75,16 @@ function OperationForm(props: {
     setFormData((prevState) => ({
       ...prevState,
       [name]: record.id,
+    }));
+  }, []);
+  // Picking a subsystem re-scopes the Module dropdown and clears any stale module choice.
+  const subsystemSelectHandler = useCallback((_name: string, record: any) => {
+    setFormData((prevState) => ({
+      ...prevState,
+      subsystemId: record.id,
+      subSystem: record.name,
+      moduleId: "",
+      module: "",
     }));
   }, []);
   useEffect(() => {
@@ -95,6 +122,21 @@ function OperationForm(props: {
           isPending: isLoading || pending,
           SubmitButton: "top",
           components: [
+            {
+              name: "subsystemId",
+              label: "Subsystem",
+              placeholder: "Subsystem",
+              value: formData.subsystemId,
+              displayValue: formData.subSystem,
+              type: "dropDown",
+              setParam: setSubsystemParam as any,
+              param: subsystemParam,
+              isLoading: subsystemsLoading,
+              onSelect: subsystemSelectHandler,
+              data: subsystems?.data?.map((item: any) => {
+                return { id: item.id, name: item.name };
+              }) as never,
+            },
             {
               name: "moduleId",
               label: "Module",

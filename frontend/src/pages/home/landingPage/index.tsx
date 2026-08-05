@@ -2,28 +2,30 @@ import { useQuery } from "@tanstack/react-query";
 import LandingPage from "@/components/home/landingPage";
 import Spinner from "@/components/common/spinner/spinner";
 import GetAllModuleWithOperation from "@/services/admin/module/getAllWithOperation";
-import type { ModuleModel } from "@/models";
-import { subSystems } from "@/constants/subSystem";
+import getAllSubsystems from "@/services/admin/subsystem/getAll";
+import { parameterInitialData } from "@/constants/initialization";
+import type { ModuleModel, SubsystemModel } from "@/models";
 
-function buildFallbackModules(): ModuleModel[] {
-  return subSystems.map((subsystem, index) => ({
-    id: String(index),
-    name: subsystem.name,
-    subSystem: subsystem.name,
-    operations: [],
-  }));
-}
-
+/**
+ * Subsystem picker — everything is read LIVE from the shared navigation tables:
+ * dbo.coreSubsystem (the subsystem master, incl. each application's URL) and
+ * dbo.coreModule / coreOperation (the role-visible menu feed). Nothing is hardcoded.
+ */
 export default function LandingPageWrapper() {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["moduleWithOperations"],
     queryFn: () => GetAllModuleWithOperation(),
     staleTime: 5 * 60 * 1000,
   });
 
-  const modules = data?.data?.length ? data.data : isError ? buildFallbackModules() : [];
+  const { data: subsystems, isLoading: subsystemsLoading } = useQuery({
+    queryKey: ["subsystems", "landing"],
+    queryFn: () => getAllSubsystems({ ...parameterInitialData, take: 200 }),
+    staleTime: 5 * 60 * 1000,
+  });
 
-  if (isLoading) {
+  // Wait for BOTH feeds: the auto-forward after login needs the subsystem URLs to deep-link.
+  if (isLoading || subsystemsLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Spinner size="lg" showLabel />
@@ -31,5 +33,10 @@ export default function LandingPageWrapper() {
     );
   }
 
-  return <LandingPage modules={modules as ModuleModel[]} />;
+  return (
+    <LandingPage
+      modules={(data?.data ?? []) as ModuleModel[]}
+      subsystems={(subsystems?.data ?? []) as SubsystemModel[]}
+    />
+  );
 }

@@ -6,7 +6,9 @@ export interface DynamicFormFieldModel {
   name?: string;
   label?: string;
   dataType?: string; // Text | Number | Date | Boolean | Select
-  options?: string; // comma-separated for Select
+  options?: string; // comma-separated for Select (static source)
+  /** Lookup-category CODE feeding a Select field dynamically (alternative to options). */
+  lookupCategory?: string;
   isRequired?: boolean;
   isActive?: boolean;
   sortOrder?: number;

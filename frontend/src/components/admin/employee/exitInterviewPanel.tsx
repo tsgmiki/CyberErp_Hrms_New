@@ -2,11 +2,12 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquareQuote, Rocket } from "lucide-react";
+import { Hourglass, MessageSquareQuote, Rocket } from "lucide-react";
 import { getExitInterview, launchExitInterview } from "@/services/admin/employee/exitManagement";
-import ExitInterviewForm from "./exitInterviewForm";
 
-/** HC219 — the case's exit interview: launch (HR), record, or read the completed answers. */
+/** HC219 — the case's exit interview, HR side: launch it and read the submitted answers.
+ *  STRICTLY read-only for HR — only the exiting employee fills the questionnaire (from the
+ *  Home portal's Exit Interview screen); the server enforces the same rule. */
 function ExitInterviewPanel({ terminationId }: { terminationId: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -28,7 +29,7 @@ function ExitInterviewPanel({ terminationId }: { terminationId: string }) {
     setBusy(true);
     const res = await launchExitInterview(terminationId);
     setBusy(false);
-    refresh(res.ok ? t("Interview launched — the employee can now answer from My Exit.") : res.message);
+    refresh(res.ok ? t("Interview launched — the Exit Interview questionnaire is now available to the employee on the Home portal.") : res.message);
   };
 
   return (
@@ -53,10 +54,18 @@ function ExitInterviewPanel({ terminationId }: { terminationId: string }) {
           </button>
         ) : interview.status === "Pending" ? (
           <div className="rounded-md border border-border/70 bg-secondary/10 p-3">
-            <p className="mb-2 text-xs text-muted">
-              {t("Awaiting the employee's answers (My Exit) — or record the conversation here.")}
+            <p className="mb-2 flex items-center gap-1.5 text-xs text-muted">
+              <Hourglass size={13} />
+              {t("Awaiting the employee's answers — they complete the questionnaire from the Home portal. Answers cannot be entered on their behalf.")}
             </p>
-            <ExitInterviewForm interview={interview} onSubmitted={refresh} />
+            <div className="space-y-1.5">
+              {(interview.questions ?? []).map((q) => (
+                <div key={q.key} className="rounded-md border border-border/60 px-3 py-1.5">
+                  <p className="text-xs text-muted">{q.text}</p>
+                  <p className="text-xs italic text-muted/70">{t("Not answered yet")}</p>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
