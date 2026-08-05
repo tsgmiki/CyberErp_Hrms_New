@@ -8,11 +8,12 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-2`** (branched off `main` at `fb9210e`, 2026-08-05).
-  Everything up to that point was merged into `main` via **PR #2**, and the old
-  `feature/hrms-buildout` branch was then **deleted** (local + remote) — historical references to it
-  below are accurate for their date but the branch no longer exists. `main` is the integration
-  branch; open a PR from the current branch when a batch is ready.
+- **CURRENT BRANCH: `feature/hrms-buildout-3`** (branched off `main` at `706b65f`, 2026-08-05).
+  `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
+  rotate to a fresh `feature/hrms-buildout-N`. Completed so far: **PR #2** merged the buildout
+  (18 commits) and **PR #3** merged the doc sync; the `feature/hrms-buildout` and
+  `feature/hrms-buildout-2` branches were deleted after merging. Historical references to them below
+  are accurate for their date, but those branches no longer exist.
 - Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
   Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
