@@ -8,7 +8,13 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- On branch **`feature/hrms-buildout`** (branched off `main`). Commits: `6779d11 Initial commit` →
+- **CURRENT BRANCH: `feature/hrms-buildout-2`** (branched off `main` at `fb9210e`, 2026-08-05).
+  Everything up to that point was merged into `main` via **PR #2**, and the old
+  `feature/hrms-buildout` branch was then **deleted** (local + remote) — historical references to it
+  below are accurate for their date but the branch no longer exists. `main` is the integration
+  branch; open a PR from the current branch when a batch is ready.
+- Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
+  Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
   Attendance & Leave subsystem + fiscal year + ledger + the docs/hook system) → `e2b0f25` (employee
   employment terms + dashboard workforce analytics) → `9dacdca` (grade derived from salary scale,

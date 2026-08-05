@@ -79,8 +79,11 @@ Task RejectAsync(Guid instanceId, string? comment);
 - **Approver inbox** — `GET Workflow/my-approvals` (`GetMyApprovals`) → `{ IsApprover, Items }`:
   `IsApprover` = the user is a *specific* approver (user or role) on any **active** definition's step
   (drives the conditional Dashboard **Approvals** tab); `Items` = Running instances whose **current
-  step** lists them specifically. Open steps (no approvers) are excluded from personal inboxes — they
-  remain actionable from `/workflow`. The Dashboard tab (next to Upcoming Retirements/Clearance) has
+  step** lists them specifically. **Open steps — CHANGED 2026-08-05:** a step with no approver rows
+  means "anyone may act" (`EvaluateAsync` returns `(true, [])`), and such instances are now **included**
+  for users who hold `CanApprove` on the `/workflow` operation — previously they were excluded from
+  every personal inbox, so a request on an open step appeared in nobody's queue. See
+  *Open-step audience* below. The Dashboard tab (next to Upcoming Retirements/Clearance) has
   prominent Approve/Reject buttons opening a comment modal (**reason required to reject**); decisions
   call the standard `Workflow/{id}/approve|reject`. This is *the* approver entry point — without it,
   assigned approvers had no cue that work was waiting (actioning only existed on the tracking page).
@@ -88,6 +91,41 @@ Task RejectAsync(Guid instanceId, string? comment);
 **Seeded defaults** (`SeedDefaultWorkflows`, `POST /api/v1/WorkflowDefinition/seed-defaults`, idempotent):
 Transfer / Promotion / Demotion / Disciplinary (Supervisor Review → HR Approval), Termination
 (Manager → HRBP → Dept Head), **Leave Approval (Supervisor Review → HR Approval)**.
+⚠️ **Seeded steps carry NO approvers** — `SetSteps` takes only `(name, description)`, so every default
+chain ships as open steps. That is why open-step behaviour (below) is the norm, not an edge case.
+
+### Portal alerts + the open-step audience (2026-08-05)
+
+The engine raises alerts into the Home portal's `dbo.coreNotification` via `IPortalNotifier`
+(`Inf/Common/PortalNotifier.cs`), correlated by `SourceEntityType = "WorkflowInstance"` +
+`SourceEntityId = instance.Id`:
+
+| When | What happens |
+|---|---|
+| `StartIfDefinedAsync` | alert the entry step's audience |
+| advance to next step | resolve the previous step's alerts, then alert the new step's audience |
+| terminal approve/reject | resolve the instance's outstanding alerts |
+
+All of it is **best-effort** — wrapped in try/catch and logged; an alert failure must never break the
+governing operation.
+
+**The audience rule.** Both the alert and the inbox derive the recipient set the SAME way, deliberately:
+
+```
+explicit approvers of the current step        (User / Role / Immediate|SecondLevel|Unit Manager / Subject)
+  └─ if that set is EMPTY (an open step) →    users whose roles hold CanApprove on the /workflow operation
+       └─ if that is ALSO empty →             log a WARNING naming the cause; never fail silently
+```
+
+`IWorkflowApproverAuth.ResolveOpenStepRecipientsAsync()` (who to alert) and `CanActOnOpenStepsAsync()`
+(does it belong in *my* inbox) implement the fallback from that one rule, so **the people told about a
+request are exactly the people who then find it waiting**. Deriving them separately is precisely how
+the original defect arose: the system said *anyone may approve this*, then alerted nobody and showed it
+to nobody — silent, with no error and no log. Hiring Requests and Other Leave were the visible victims.
+
+The fallback is a **safety net, not routing** — configuring real approvers on a step takes precedence
+automatically. Note `EnsureCanDecideAsync` still lets ANYONE decide an open step (unchanged): the new
+rule bounds who is *told*, not who *may act*.
 
 ### Dynamic clearance configuration (offboarding — mirrors the workflow approver pattern)
 `hrms_ClearanceDepartment` (Name, Description = checklist requirement text, SortOrder, IsActive) +
@@ -294,6 +332,24 @@ is therefore **derived**, never stored.
   actually change an employee's (derived) grade, reassign the salary scale.
 
 ## 5. Dashboard analytics queries (optimized)
+
+**Aggregate summary (2026-08-05).** The dashboard's counters come from ONE endpoint,
+`GET /api/v1/Dashboard/summary` (`Inf/Common/DashboardSummaryService`), replacing 12 separate queries —
+four of which were full paginated `GetAll?take=1` list calls issued only to read `.total`. It is a
+single Dapper **`QueryMultipleAsync`** round trip of seven statements (branch / org-unit / position /
+employee counts, workflow `Running|Approved|Rejected` via `GROUP BY`, probation count, retirement
+count) reusing the ambient EF connection — the same pattern as `ReportExecutor`.
+
+⚠️ Because it bypasses the repository, **tenant + branch isolation is re-implemented in C# and must
+match `Repository.ApplyBranchFilter` exactly**: `Branch` filters by its own `Id` (it is not
+`IBranchScoped`); `OrganizationUnit`/`Position`/`Employee` filter by `BranchId`; `WorkflowInstance` is
+tenant-only. Head office bypasses the branch predicate entirely. Supporting indexes came from migration
+`AddDashboardSummaryIndexes`: `(TenantId, Status)` on `hrmsWorkflowInstance` and
+`(TenantId, BranchId, EmploymentStatus)` on `hrmsEmployee`. If you add a counter, add it to the same
+batch rather than a new endpoint.
+
+The frontend consumes it through one shared `useDashboardSummary()` query key, so the KPI strip and the
+charts read the same cached payload without a second request.
 
 Two employee widgets on the dashboard, each a dedicated endpoint on `EmployeeController` returning a
 lean projection (tenant/branch-scoped via `IRepository.GetAll()`):
@@ -589,10 +645,27 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   belongs to at most one employee; set on the **user** form ("Linked Employee"). The old
   `Employee.UserId` direction was removed. `User.BranchId` and `User.IsHeadOffice` columns were
   also removed: **branch scope + head-office visibility are DERIVED at login** from the linked
-  employee's branch — a user tied to a branch employee is scoped to that branch; a user with no
-  employee (or an employee without a branch — e.g. the tenant owner) has global / head-office
-  visibility. `LoginRepository` computes this and still writes the `BranchId`/`IsHeadOffice`
+  employee's branch. `LoginRepository` computes this and still writes the `BranchId`/`IsHeadOffice`
   cookies the rest of the app reads, so branch isolation is unchanged downstream.
+  **CORRECTED 2026-08-05 — the rule is the BRANCH FLAG, not the absence of a branch:**
+  ```
+  isHeadOffice = employee has no branch  OR  employee.Branch.IsHeadOffice
+  ```
+  The old rule was `branchId is null` alone, which only recognised users with **no** branch (tenant
+  owner / unlinked account). Because the Head Office is itself a real `Branch` row, everyone assigned
+  to it got `branchId != null` → `isHeadOffice = false`, and was silently scoped to their own org-unit
+  subtree. That single flag drives BOTH visibility gates, which is why the symptom looked like two
+  unrelated bugs:
+  - `Repository.ApplyBranchFilter` — head office bypasses branch isolation entirely; otherwise
+    `Branch` filters by its own `Id` and `IBranchScoped` entities by `BranchId`.
+  - `PerformanceVisibilityService.IsAdminAsync` — head office ⇒ unrestricted; otherwise a managerial
+    employee sees their unit subtree and everyone else sees only themselves.
+  ⚠️ The value lives in a **cookie minted at sign-in**, so a change only takes effect on the user's
+  **next login**. Two coupled hardenings shipped with it: the login-time lookup reads **without** the
+  repository's tenant/branch filters (they read the *previous* session's cookies, and a stale
+  `BranchId` made the lookup return no row → collapsed to "no branch" → wrongly granted head office to
+  the next user), re-asserting `TenantId` by hand; and logout now clears `BranchId`/`IsHeadOffice`,
+  which it previously left behind.
 - **Evaluator permissions (an assigned evaluator only handles their own applicants) — enforced at
   three layers:** the current user is resolved to their employee via **`User.EmployeeId`**; an
   employee assigned as a criterion evaluator ANYWHERE is a "constrained evaluator"

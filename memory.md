@@ -61,12 +61,34 @@ migration + frontend, verified end-to-end against the live DB before moving on.
    shapes, DB range CHECKs, `(TenantId, Status)` composite indexes, and a per-tenant atomic counter
    to replace race-prone `count+1` numbering before the public portal. Full decision record:
    `logic.md` §7.1.
+10. **Subsystem→portal integration is CONFIGURATION, not code — 2026-08-05.** A subsystem (Finance,
+    Payroll, PSMS, PM) reaches the Home portal through five surfaces, four of which need zero edits to
+    any shared page or component: registration (`coreSubsystem`/`coreModule`/`coreOperation` rows),
+    notifications (`dbo.coreNotification` row or `POST /Notification`), the approvals inbox (one entry
+    in Home's `config/approvalSources.ts`), My Requests (`config/requestSources.ts`), and dashboard
+    widgets (`config/dashboardLayout.tsx`). Subsystem APIs are likewise an env map
+    (`VITE_SUBSYSTEM_APIS`) — the portal signs into each at login and `apiFor(code)` returns a bound
+    client. Do not hardcode a subsystem anywhere in the portal. Full guide, contracts and worked
+    example: **`Home/docs/subsystem-integration.md`**.
+11. **Shared login UI, SEPARATE sign-in — decided 2026-08-05.** Each subsystem keeps its own login
+    page, route and authentication against its own API; only the *presentation* is shared (HRMS's
+    `authLayout` is a deliberate copy of Home's, with the brand supplied per-app by the
+    `BrandPrefix`/`BrandAccent` translations). A redirect-based single sign-on (HRMS handing off to
+    Home's `/login` with a `returnUrl`) was built and **explicitly rejected by the user** — do not
+    rebuild it. Keep the two `authLayout.tsx` files in step when either changes.
 
 ## 4. Current application state (as of this doc's last update)
 
 **Environment:** DB **`CERP`** on `CLOUDX-SICS2\SQLEXPRESS` (SQL Server). API runs at
 `http://localhost:5241` (or IIS Express 44363 in Visual Studio). Login: **`hoadmin` / `Passw0rd!`**,
 tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = global visibility).
+
+**Head-office visibility (corrected 2026-08-05):** `IsHeadOffice` is derived at login from the linked
+employee's **`Branch.IsHeadOffice` flag** — NOT from "the employee has no branch", which was the old
+rule and silently scoped every user of the real head-office branch to their own org-unit subtree. That
+one flag drives both `Repository.ApplyBranchFilter` (head office bypasses branch isolation) and
+`PerformanceVisibilityService.IsAdminAsync` (unrestricted vs manager-subtree). It is written into a
+cookie at sign-in, so **the fix only takes effect on the user's next login**.
 
 **Cross-cutting services:** `IEmailService` (Email config section: Enabled switch, SMTP relay or
 `PickupDirectory` .eml delivery for dev/test; attachments supported; never throws; authenticated
@@ -117,10 +139,24 @@ Brotli/gzip response compression, FE React Query staleTime 30 s. List page: 1.1�
   grade+step+amount); **`Employee.JobGradeId` was dropped — the grade is DERIVED via `SalaryScale.JobGradeId`.**
   The Job Grade dropdown survives frontend-only as a **filter** for the scale list; scale auto-fills the
   editable salary. **Dashboard analytics:** Employees-on-Probation + Upcoming-Retirements widgets (retirement =
-  DOB + 60y, sargable filter).
+  DOB + 60y, sargable filter). **Home dashboard rebuilt 2026-08-05:** one aggregated
+  `GET /Dashboard/summary` (a single Dapper `QueryMultipleAsync` round trip replacing 12 queries,
+  incl. four `GetAll?take=1` calls made only to read `.total`), six lazy-loaded + `memo()`'d widgets
+  behind their own Suspense boundaries with dimension-matched zero-CLS skeletons, and a chart-led,
+  high-density presentation built from the app's own data-table language (uppercase column headers,
+  column-aligned rows) plus dependency-free SVG donut/bar charts driven by the cached summary.
+  Trend sparklines and headcount-by-department were deliberately NOT built — that data is not
+  fetched anywhere, and inventing it on a decision-making screen is not acceptable.
 - **Document Templates (HC022):** `{{placeholder}}` merge engine, TipTap editor, generate/print.
 - **Personnel Actions:** Transfer / Promotion / Demotion (EmployeeMovement) + Disciplinary Measures.
 - **Workflow Engine:** generic definitions/steps/approvers/instances/action-log; tracking UI + dashboard.
+  ⚠️ **Open steps (2026-08-05):** a step with NO configured approvers means "anyone may act", and both
+  the portal alert and the `Workflow/my-approvals` inbox now resolve that audience the SAME way —
+  users whose roles hold `CanApprove` on the `/workflow` operation. Previously both derived from the
+  (empty) approver rows, so such a request alerted nobody AND appeared in nobody's inbox: invisible,
+  silent, undecidable from Home. The seeded default chains ship with open steps, which is why Hiring
+  Requests and Other Leave were affected. The fallback is a safety net — configure real approvers for
+  proper routing; doing so takes precedence automatically.
 - **Termination & Clearance:** voluntary/involuntary; Manager→HRBP→Dept Head approval. **Clearance is
   dynamic:** admin-configured `ClearanceDepartment`s (+ per-department User/Role approvers, any one
   authorized user clears; open when none) drive the checklist — built-in IT/Store/Finance only as
@@ -243,9 +279,34 @@ subsystem: `coreSubsystem.Url` (migration `AddSubsystemUrl`) + cascading Subsyst
 Role Permissions / Menu Operations / Menu Modules / Operation form. Home hosts exactly two request
 operations (Annual Leave, Other Leave) + Workflow Tracking, whose screens call the HRMS API directly.
 
+**Portal hardened for multi-subsystem use (2026-08-05, Home repo `main`).** The portal is no longer
+HRMS-shaped: (a) subsystem APIs come from a `VITE_SUBSYSTEM_APIS` env map — login fans out to every
+one in parallel and `apiFor(code)` returns a client bound to it, while `api` still targets the default
+(HRMS) so existing call sites are untouched; (b) notification **broadcasts** (`userId: null`) used to
+be stored and seen by NOBODY — reads match strictly on UserId — so they are now fanned out one row per
+tenant user (⚠️ `Core.User` has NO tenant query filter, so that fan-out scopes by tenant by hand);
+(c) `POST /Notification` accepts the `sourceEntityType`/`sourceEntityId` correlation key and a
+`POST /Notification/resolve` clears every recipient's copy; (d) **service-key auth** lets a background
+job raise alerts with no user session — each credential is scoped to ONE (subsystem, tenant) and the
+tenant is derived FROM THE KEY, and the principal carries no user-id claim so it can write but never
+read. Keys are env-only (`ServiceClients__<name>__{Subsystem,TenantId,Key}`); `appsettings.json`
+deliberately has no such section.
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`
   works on CERP but **rebuild after `migrations add`** before applying (or the new migration isn't in the DLL).
 - Kill running API (`CyberErp.Hrms.Api.exe` / stray `dotnet.exe`) before `dotnet build`.
-- The repo is at **1 commit ("Initial commit")** with a very large uncommitted working tree.
+- **Repo state (2026-08-05):** the buildout was merged to `main` via **PR #2** and the old
+  `feature/hrms-buildout` branch deleted; work continues on **`feature/hrms-buildout-2`**, with `main`
+  as the integration branch. (This line previously said "1 commit + a large uncommitted tree" — long
+  obsolete.) `gh` CLI is **not installed** on this machine; GitHub API calls authenticate with the
+  token already in the Git credential manager.
+- ⚠️ **Frontend colour utilities are HAND-WRITTEN, not Tailwind-generated.** Both SPAs define their
+  palette in `src/config/theme.css` as literal classes (`bg-primary/10`, `border-success/20`, …).
+  A step that is not in that file — `bg-secondary/40`, `bg-border`, `hover:border-primary/30`,
+  `divide-border/60` — compiles to **nothing** and renders transparent, silently. Use a class that
+  exists, or an arbitrary value bound to the CSS variable (`bg-[var(--secondary)]`), which Tailwind
+  always generates. Related: `.text-foreground` maps to `--text` (slate-900), NOT `--foreground`
+  (slate-600) — the variable names mislead. Tailwind conflicts also resolve by CSS order, so
+  appending `border-0` after `border` does not reliably win; omit the class instead.
