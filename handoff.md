@@ -54,6 +54,40 @@
 
 ## 1. Most recent changes (latest first)
 
+00DC. **Head-office users were scoped to their own department subtree — `IsHeadOffice` now reads the
+    branch flag (2026-08-05, no migration).** A user assigned to the branch flagged `IsHeadOffice = 1`
+    (here `Corporate`) could only see their own department + child departments in the Employee module's
+    org-tree list. Root cause in `Inf/Repositories/Core/LoginRepository.cs`: head-office status was
+    derived as `var isHeadOffice = branchId is null;` — i.e. it only recognised users with **no branch at
+    all** (tenant owner / unlinked account) and completely ignored `Branch.IsHeadOffice`. Because the
+    Head Office is itself a real branch row, its staff got `branchId != null` → `isHeadOffice = false`.
+    That one flag drives BOTH visibility gates: `Repository.ApplyBranchFilter` (head office bypasses
+    branch isolation) and `PerformanceVisibilityService.IsAdminAsync` (starts with
+    `if (currentUser.IsHeadOffice()) return true`) — returning false dropped them into the **manager**
+    branch of `GetAllEmployees`, which restricts to `scope.UnitIds` = own unit + descendants. Fix:
+    resolve the employee's branch flag in the same projection (`e.Branch != null && e.Branch.IsHeadOffice`)
+    and use `isHeadOffice = branchId is null || isBranchHeadOffice`. Measured on CERP tenant
+    `aadb4e82…`: gibril (Finance Unit) and medhanit (Human Resource Unit) went 3/10 → 10/10 visible
+    employees, admin (CEO) 5/10 → 10/10.
+    **Two coupled fixes in the same path (the primary fix is unreliable without them):** (a) that lookup
+    ran through the repository's tenant/branch filters, which at login still read the *previous*
+    session's cookies — a stale `BranchId` made it return no row, collapsing to "no branch" and silently
+    granting head-office access to the next user to log in; it now uses `GetAllWithoutTenantFilter()`
+    with an explicit `e.TenantId == user.TenantId` re-assertion (tenant isolation unchanged).
+    (b) logout never cleared `BranchId`/`IsHeadOffice` — both cookie names added to the delete lists in
+    `LogoutCookieHandler` and `LogoutUser`.
+    Verified live (login A/B reading the issued cookie): employee on the head-office branch → `true`
+    (was `false`); on a regular branch → `false` (still correctly scoped, not a blanket grant); no
+    branch → `true` (unchanged). The A/B temporarily repointed the `demo` test employee's branch;
+    baseline captured and restored, branch distribution confirmed identical afterwards (NULL 9 /
+    Corporate 7). NOTE (unchanged, by design): selecting a tree node lists employees assigned **directly**
+    to that unit, not its descendants — select the root "All Units" for everyone.
+    NOTE: the dashboard UI redesign attempted this session was rejected by the user and reverted; it is
+    parked in `stash@{0}` ("discarded dashboard UI redesign"), NOT committed. Useful finding from it:
+    this app does **not** feed its palette into Tailwind's theme — every colour utility
+    (`bg-primary/10`, `border-success/20`, …) is hand-written in `frontend/src/config/theme.css`, so an
+    invented step like `bg-secondary/40` or `bg-border` compiles to nothing and renders transparent.
+
 00DB. **HRMS home dashboard rebuilt: aggregated summary endpoint + lazy/memoized widget split
     (2026-08-04, migration `AddDashboardSummaryIndexes`, applied to CERP).** The dashboard
     (`pages/home/dashboard.tsx`) fired 12 separate `useQuery` calls on mount, four of which were full
