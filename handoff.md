@@ -48,11 +48,67 @@
   needs the Home repo's `AddNotificationSourceRef` migration, already applied to CERP) and 00AL (annual-leave
   own-only `/mine` grid + `/my-balance` dashboard endpoints). Companion Home-repo work: strict notification
   isolation, the annual-leave grid/dashboard/subsystem-link fixes.
+- **2026-08-05 commits.** HRMS `feature/hrms-buildout`: `71764c5` (§1 00DC head-office scoping),
+  `bb34c5d` (00DD dashboard rework), `e213a57` (00DE open-step notifications + inbox) — no migrations,
+  all pushed. Companion **Home repo** (`main`, own remote `CyberErp_Home`): `cb76844` → `56a7d8b`,
+  §1 item 00DF — the subsystem integration guide plus the notification/multi-API/service-key contract
+  fixes. No migration in either repo; the Home API needs a rebuild for its changes to take effect.
 - Commit/push only when the user explicitly asks. The pre-commit hook prompts you to confirm
   `memory.md` / `handoff.md` / `logic.md` are updated when a commit changes code without them
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DF. **Home portal made genuinely pluggable for other subsystems: integration guide + four contract
+    fixes (2026-08-05, HOME REPO ONLY — `main`, commits `cb76844` → `56a7d8b`; no migration, no HRMS
+    change).** Asked how Finance/Payroll/PSMS/Project-Management add their requests without hardcoded
+    changes. Answer: four of the five surfaces already needed ZERO core changes — writing the guide is
+    what exposed the gaps, and all four are now closed.
+    - **The guide: `Home/docs/subsystem-integration.md`** (527 lines; every cited path verified to
+      resolve). Five integration surfaces — subsystem registration (`coreSubsystem`/`coreModule`/
+      `coreOperation` rows), notifications, the approvals inbox (`config/approvalSources.ts`), My
+      Requests (`config/requestSources.ts`), custom widgets (`config/dashboardLayout.tsx`) — plus the
+      contract rules (assigned-only / self-scoped / best-effort-null-on-failure), a worked Finance
+      expense-claim example, a phase-grouped checklist and a purpose-grouped reference table.
+    - **Fix 1 — broadcasts reached NOBODY.** `CreateNotificationDto` advertised `userId: null` as a
+      tenant broadcast, but the read path is strictly `n.UserId == uid` (the blanket `|| UserId == null`
+      clause had been removed for isolation), so the row was stored and invisible to everyone. Now
+      fanned out to one row per tenant user, returning `{id, created}`. ⚠️ `Core.User` deliberately has
+      **no tenant query filter** ("login searches across tenants"), so the fan-out scopes by tenant BY
+      HAND — without that it would notify every tenant on the platform.
+    - **Fix 2 — the HTTP API could not set the correlation key.** `Notification.Create` didn't accept
+      `SourceEntityType`/`SourceEntityId` (though entity+table had them), so API-raised alerts could
+      never be auto-cleared. Both now accepted, plus `POST /Notification/resolve` clearing every
+      recipient's copy. Domain `ArgumentException`s at this boundary became actionable 400s (a bad
+      `severity` used to surface to a calling subsystem as an opaque 500).
+    - **Fix 3 — the SPA knew ONE subsystem API.** `apiClient` read a single `VITE_API_BASE_URL` and
+      login signed into exactly two backends. Now `src/config/subsystemApis.ts` builds the registry
+      from `VITE_SUBSYSTEM_APIS={"HRMS":"…","Finance":"…"}`; `createApiClient(baseUrl)` +
+      `apiFor("Finance")` (throws for an unconfigured code rather than silently falling back to HRMS);
+      login fans out to every entry IN PARALLEL and names failures. `api` still binds to the default
+      subsystem so the ~35 existing call sites are untouched, and legacy `VITE_API_BASE_URL` is still
+      honoured as HRMS. `portalApiClient` now builds on the same factory (it already exported
+      `portalApi` to 9 consumers — a duplicate export was nearly introduced).
+    - **Fix 4 — no service-to-service auth.** Write endpoints now accept a user cookie OR a service key
+      (`X-Service-Key`), so a background job can raise alerts with no human present. **Each credential
+      is scoped to one (subsystem, tenant) and the tenant is derived FROM THE KEY**, so a caller cannot
+      choose the tenant it writes to. Config is a NAMED credential
+      (`ServiceClients__financeAcme__{Subsystem,TenantId,Key}`) supplied by environment variables —
+      `appsettings.json` deliberately has no `ServiceClients` section. Boundaries: service principal is
+      issued **no user-id claim**, so every read path (which filters on user id) resolves to zero rows —
+      it can write only, never read; cross-subsystem impersonation → 400; wrong/incomplete key, or a
+      secret reused across credentials → 401; `FixedTimeEquals` over every client; keys never logged.
+    - **GOTCHAS worth keeping.** (a) **CORS is the trap**: a subsystem API missing the portal origin in
+      `Cors:AllowedOrigins` looks EXACTLY like "the subsystem is down" — cost a failed test run; use a
+      `Cors__AllowedOrigins__N` env override to test without editing appsettings. (b) A **tenant GUID
+      contains hyphens**, which are not legal in shell env-var names — that is why the service
+      credential is `ServiceClients__<name>__TenantId=<guid>` and not `ServiceClients__Finance__<guid>`.
+      (c) `Core.User` has no tenant filter (see Fix 1).
+    - Verified live throughout: 10/10 registry-parsing units; 9/9 browser test across three backends
+      (portal + HRMS + a deliberately-dead Finance) proving the fan-out, that HRMS still returns 200 and
+      routes correctly, and that only the down subsystem is named; 8/8 service-key security tests
+      including a tenant-A key refused for tenant B and a tenant-B broadcast landing on exactly tenant
+      B's 10 users; human-session regressions each time. All test rows deleted, DB back to baseline.
 
 00DE. **Open workflow steps were invisible end-to-end: no portal alert AND absent from the approval
     inbox — Hiring Requests could never be approved from Home (2026-08-05, backend only, no
