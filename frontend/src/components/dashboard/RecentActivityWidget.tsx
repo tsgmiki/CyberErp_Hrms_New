@@ -6,7 +6,21 @@ import { ScrollText } from "lucide-react";
 import getAllAuditLog from "@/services/admin/auditLog/getAll";
 import { parameterInitialData } from "@/constants/initialization";
 import type ParameterModel from "@/models/ParameterModel";
-import { ACTION_TONE, Card, EmptyRow, relativeTime } from "./shared";
+import {
+  ACTION_TONE,
+  Card,
+  EmptyRow,
+  HAIRLINE,
+  TABLE_HEAD,
+  TABLE_ROW,
+  TD,
+  TD_STRONG,
+  TH,
+  relativeTime,
+} from "./shared";
+
+/** Narrow right-rail table: action chip + record. */
+const COLS = "grid-cols-[74px_minmax(0,1fr)]";
 
 const feedParam: ParameterModel = { ...parameterInitialData, take: 6 };
 
@@ -29,23 +43,26 @@ function RecentActivityWidget() {
         </Link>
       }
     >
-      <div className="divide-y divide-border/60">
+      <div className={`${TABLE_HEAD} ${COLS}`}>
+        <span className={TH}>{t("Action", "Action")}</span>
+        <span className={TH}>{t("Record", "Record")}</span>
+      </div>
+      <div className={`divide-y ${HAIRLINE}`}>
         {la && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
         {!la && (activity?.data?.length ?? 0) === 0 && (
           <EmptyRow text={t("No activity recorded yet.", "No activity recorded yet.")} />
         )}
         {activity?.data?.map((a) => (
-          <div key={a.id} className="flex items-center gap-3 px-4 py-2.5">
+          <div key={a.id} className={`${TABLE_ROW} ${COLS}`}>
             <span
-              className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold ${ACTION_TONE[a.action ?? ""] ?? "bg-muted/30 text-muted"}`}
+              className={`inline-flex items-center gap-1.5 justify-self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${ACTION_TONE[a.action ?? ""] ?? "bg-muted/30 text-muted"}`}
             >
-              {a.action}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+              <span className="truncate">{a.action}</span>
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] text-foreground">
-                <span className="font-medium">{a.entityName || a.entityType}</span>
-              </p>
-              <p className="truncate text-[11px] text-muted">
+            <div className="min-w-0">
+              <p className={TD_STRONG}>{a.entityName || a.entityType}</p>
+              <p className={TD}>
                 {a.performedBy || "—"} · {relativeTime(a.timestamp)}
               </p>
             </div>

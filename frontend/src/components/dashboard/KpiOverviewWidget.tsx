@@ -18,7 +18,7 @@ function KpiOverviewWidget() {
 
   return (
     <div
-      className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${isChangeApprover ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}
+      className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:gap-4 ${isChangeApprover ? "xl:grid-cols-7" : "xl:grid-cols-6"}`}
     >
       <KpiTile to="/employee" label="Employees" icon={<Users className="h-4.5 w-4.5" />} total={summary?.employeeCount} isLoading={ls} />
       <KpiTile to="/branch" label="Branches" icon={<Building className="h-4.5 w-4.5" />} total={summary?.branchCount} isLoading={ls} />

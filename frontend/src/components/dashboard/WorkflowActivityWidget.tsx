@@ -7,10 +7,25 @@ import { getAllWorkflows } from "@/services/admin/workflow";
 import { workflowEntityTypeLabel } from "@/constants/orgStructure";
 import { parameterInitialData } from "@/constants/initialization";
 import type ParameterModel from "@/models/ParameterModel";
-import { Card, EmptyRow, WF_TONE, relativeTime } from "./shared";
+import {
+  Card,
+  EmptyRow,
+  HAIRLINE,
+  StatChip,
+  TABLE_HEAD,
+  TABLE_ROW,
+  TD,
+  TD_STRONG,
+  TH,
+  WF_TONE,
+  relativeTime,
+} from "./shared";
 import { useDashboardSummary } from "./useDashboardSummary";
 
 const feedParam: ParameterModel = { ...parameterInitialData, take: 6 };
+
+/** Shared column template — header and rows use the SAME grid so every cell lines up exactly. */
+const COLS = "grid-cols-[78px_minmax(0,1fr)_120px_64px]";
 
 /**
  * "Approvals & Workflows" card. The Running/Approved/Rejected badges come from the aggregated
@@ -32,53 +47,47 @@ function WorkflowActivityWidget() {
       title={t("Approvals & Workflows")}
       icon={<GitPullRequestArrow className="h-4 w-4" />}
       action={
-        <div className="flex items-center gap-3">
-          <span className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
-            <span className="h-2 w-2 rounded-full bg-warning" />
-            {t("Running")}: <b className="text-foreground tabular-nums">{ls ? "—" : summary?.workflowRunning ?? 0}</b>
-          </span>
-          <span className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
-            <span className="h-2 w-2 rounded-full bg-success" />
-            {t("Approved")}: <b className="text-foreground tabular-nums">{ls ? "—" : summary?.workflowApproved ?? 0}</b>
-          </span>
-          <span className="hidden items-center gap-1.5 text-xs text-muted sm:flex">
-            <span className="h-2 w-2 rounded-full bg-error" />
-            {t("Rejected")}: <b className="text-foreground tabular-nums">{ls ? "—" : summary?.workflowRejected ?? 0}</b>
-          </span>
-          <Link to="/workflow" className="text-xs font-medium text-primary hover:underline">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatChip tone="warning" label={t("Running")} value={ls ? "—" : summary?.workflowRunning ?? 0} />
+          <StatChip tone="success" label={t("Approved")} value={ls ? "—" : summary?.workflowApproved ?? 0} />
+          <StatChip tone="error" label={t("Rejected")} value={ls ? "—" : summary?.workflowRejected ?? 0} />
+          <Link to="/workflow" className="ml-1 text-xs font-medium text-primary hover:underline">
             {t("View all", "View all")}
           </Link>
         </div>
       }
     >
-      <div className="divide-y divide-border/60">
+      <div className={`${TABLE_HEAD} ${COLS}`}>
+        <span className={TH}>{t("Status", "Status")}</span>
+        <span className={TH}>{t("Request", "Request")}</span>
+        <span className={`${TH} hidden sm:block`}>{t("Requested By", "Requested By")}</span>
+        <span className={`${TH} hidden text-right sm:block`}>{t("When", "When")}</span>
+      </div>
+      <div className={`divide-y ${HAIRLINE}`}>
         {lwr && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
         {!lwr && (wfRecent?.data?.length ?? 0) === 0 && (
           <EmptyRow text={t("No workflow requests yet.", "No workflow requests yet.")} />
         )}
         {wfRecent?.data?.map((w) => (
-          <Link
-            key={w.id}
-            to="/workflow"
-            className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-secondary/40"
-          >
+          <Link key={w.id} to="/workflow" className={`${TABLE_ROW} ${COLS}`}>
             <span
-              className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-semibold ${WF_TONE[w.status ?? ""] ?? "bg-muted/30 text-muted"}`}
+              className={`inline-flex items-center gap-1.5 justify-self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${WF_TONE[w.status ?? ""] ?? "bg-muted/30 text-muted"}`}
             >
-              {t(w.status ?? "")}
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+              <span className="truncate">{t(w.status ?? "")}</span>
             </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-foreground">{w.summary}</p>
-              <p className="truncate text-xs text-muted">
+            <div className="min-w-0">
+              <p className={TD_STRONG}>{w.summary}</p>
+              <p className={TD}>
                 {workflowEntityTypeLabel(w.entityType)}
                 {w.status === "Running" &&
                   ` · ${t("Step")} ${w.currentStepOrder}/${w.totalSteps} — ${w.currentStepName}`}
               </p>
             </div>
-            <div className="shrink-0 text-right text-xs text-muted">
-              <p>{w.requestedBy || "—"}</p>
-              <p className="text-[11px] text-muted/80">{relativeTime(w.requestedAt)}</p>
-            </div>
+            <span className={`hidden text-[11px] text-label sm:block ${TD_STRONG} !font-normal`}>
+              {w.requestedBy || "—"}
+            </span>
+            <span className={`hidden text-right ${TD} sm:block`}>{relativeTime(w.requestedAt)}</span>
           </Link>
         ))}
       </div>

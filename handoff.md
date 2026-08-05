@@ -54,6 +54,40 @@
 
 ## 1. Most recent changes (latest first)
 
+00DD. **Dashboard UI reworked as a chart-led, high-density page in the app's own table language
+    (2026-08-05, frontend only, no migration, no API change).** Pure visual/JSX pass — verified by
+    diff that ZERO hooks, queries, state, handlers, services or backend files changed. Took four
+    attempts; recording what actually mattered so nobody re-treads it:
+    - **What the earlier attempts got wrong.** (a) The dashboard's feeds were loose stacked lists in
+      an invented style, while every other screen in the system (`components/common/dataTableProvider`)
+      uses column-aligned tables with uppercase micro-caps headers over a `bg-muted/50` strip — so the
+      page read as foreign. (b) It was far too airy. (c) It had NO data visualisation at all, which is
+      the thing that most separates a Fiori/D365 dashboard from a list of cards.
+    - **Now:** feeds are real tables (header strip + rows share ONE css-grid template so columns align
+      exactly); KPI tiles are horizontal ~72px (was ~110px) with a semantic left accent rail; card
+      headers `py-2` uppercase w/ inline icon; rows `py-2`, 12px primary / 11px secondary; canvas is
+      neutral `bg-background` (was the pale-blue `bg-secondary`, which washed the page and made white
+      cards vanish into it). Roughly 30% more content per screen.
+    - **New files:** `components/dashboard/charts.tsx` (dependency-free SVG donut / legend / bars,
+      purely presentational, no data access) and `WorkforceAnalyticsWidget.tsx` (Workflow Status donut
+      + Workforce Composition bars). The widget reuses the EXISTING `useDashboardSummary()` hook —
+      same queryKey, so React Query serves it from cache: **zero extra network calls.**
+    - **Deliberately NOT built:** trend sparklines and headcount-by-department. Neither exists in the
+      data currently fetched (no historical series; summary returns totals with no dept breakdown) and
+      fabricating them on a decision-making screen is not acceptable. Dept breakdown would be one extra
+      `GROUP BY` in the existing `DashboardSummaryService` Dapper batch if wanted later.
+    - **⚠️ THE TRAP THAT COST TWO ROUNDS:** this app does NOT feed its palette into Tailwind's theme.
+      Every colour utility (`bg-primary/10`, `border-success/20`, …) is HAND-WRITTEN in
+      `frontend/src/config/theme.css`. A step that isn't in that file — `bg-secondary/40`, `bg-border`,
+      `hover:border-primary/30`, `divide-border/60` — compiles to NOTHING and renders transparent,
+      silently. Anything outside the hand-written set must be an arbitrary value bound to the CSS var
+      (`bg-[var(--secondary)]`, `border-[color-mix(in_srgb,var(--primary)_40%,transparent)]`), which
+      Tailwind always generates. Also note `.text-foreground` maps to `--text` (slate-900, high
+      contrast), NOT `--foreground` (slate-600) — the variable names are misleading.
+    Verified: `tsc -b` + eslint clean; Playwright at 1600/1150px with stubbed populated data 10/10
+    (no overlapping cells, no horizontal overflow, no stray skeletons, donut renders real proportional
+    arcs); dark mode checked. NOTE: an earlier rejected redesign is parked in `stash@{0}` — drop it.
+
 00DC. **Head-office users were scoped to their own department subtree — `IsHeadOffice` now reads the
     branch flag (2026-08-05, no migration).** A user assigned to the branch flagged `IsHeadOffice = 1`
     (here `Corporate`) could only see their own department + child departments in the Employee module's

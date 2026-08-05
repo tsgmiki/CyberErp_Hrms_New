@@ -2,7 +2,7 @@ import { memo, useCallback, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Inbox, ShieldAlert } from "lucide-react";
 import type { MyApprovalItemModel, MyClearanceItemModel } from "@/models";
 import type { ProfileChangeRequestModel } from "@/services/admin/employee/profileChangeRequest";
 import { resolveProfileChangeRequest } from "@/services/admin/employee/profileChangeRequest";
@@ -10,7 +10,15 @@ import { updateClearance } from "@/services/admin/employee/termination";
 import { approveWorkflow, rejectWorkflow } from "@/services/admin/workflow";
 import { workflowEntityTypeLabel } from "@/constants/orgStructure";
 import Modal from "@/components/common/modal";
-import { EmptyRow, type ApprovalVerb, type ClearanceDecision } from "./shared";
+import {
+  EmptyRow,
+  HAIRLINE,
+  RECESSED,
+  ROW_HOVER,
+  SURFACE,
+  type ApprovalVerb,
+  type ClearanceDecision,
+} from "./shared";
 import { TabbedCardSkeleton } from "./DashboardSkeletons";
 import { useMyApprovals, useMyClearances, useProfileChangeRequests } from "./useActionQueues";
 
@@ -28,15 +36,15 @@ function ClearanceQueueRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className={`flex items-center gap-3 px-4 py-2 transition-colors ${ROW_HOVER}`}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">
+        <p className="truncate text-[12px] font-semibold text-foreground">
           {item.employeeName}
-          <span className="ml-1.5 rounded bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted">
+          <span className="ml-1.5 rounded border border-border bg-[color-mix(in_srgb,var(--secondary)_45%,var(--card))] px-1.5 py-0.5 text-[11px] font-medium text-muted">
             {item.department}
           </span>
         </p>
-        <p className="mt-0.5 truncate text-xs text-muted">
+        <p className="truncate text-[11px] text-muted">
           {item.employeeNumber} — {item.description}
           {item.lastWorkingDate
             ? ` · ${t("Last day")} ${new Date(item.lastWorkingDate).toLocaleDateString()}`
@@ -48,17 +56,17 @@ function ClearanceQueueRow({
           type="button"
           disabled={busy}
           onClick={() => onPick(item, "Cleared")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-md border border-success/20 bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CheckCircle2 size={17} /> {t("Clear")}
+          <CheckCircle2 size={14} /> {t("Clear")}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={() => onPick(item, "Blocked")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-md border border-error/20 bg-error/15 px-2.5 py-1 text-[11px] font-semibold text-error transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ShieldAlert size={17} /> {t("Block")}
+          <ShieldAlert size={14} /> {t("Block")}
         </button>
       </div>
     </div>
@@ -77,10 +85,10 @@ function ApprovalQueueRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className={`flex items-center gap-3 px-4 py-2 transition-colors ${ROW_HOVER}`}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">{item.summary}</p>
-        <p className="mt-0.5 truncate text-xs text-muted">
+        <p className="truncate text-[12px] font-semibold text-foreground">{item.summary}</p>
+        <p className="truncate text-[11px] text-muted">
           {workflowEntityTypeLabel(item.entityType)} · {t("Step")} {item.currentStepOrder}/{item.totalSteps} —{" "}
           {item.currentStepName}
           {item.requestedBy ? ` · ${item.requestedBy}` : ""}
@@ -91,9 +99,9 @@ function ApprovalQueueRow({
           // Appraisals are acted on from the appraisal screen (score / sign / complete), not the generic buttons.
           <Link
             to="/appraisal"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3.5 py-2 text-[13px] font-semibold text-primary transition-colors hover:bg-primary/20"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-opacity hover:opacity-80"
           >
-            <CheckCircle2 size={17} /> {t("Open in Appraisals")}
+            <CheckCircle2 size={14} /> {t("Open in Appraisals")}
           </Link>
         ) : (
           <>
@@ -101,17 +109,17 @@ function ApprovalQueueRow({
               type="button"
               disabled={busy}
               onClick={() => onPick(item, "approve")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-md border border-success/20 bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <CheckCircle2 size={17} /> {t("Approve")}
+              <CheckCircle2 size={14} /> {t("Approve")}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => onPick(item, "reject")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-md border border-error/20 bg-error/15 px-2.5 py-1 text-[11px] font-semibold text-error transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <ShieldAlert size={17} /> {t("Reject")}
+              <ShieldAlert size={14} /> {t("Reject")}
             </button>
           </>
         )}
@@ -131,12 +139,12 @@ function ChangeRequestQueueRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    <div className={`flex items-center gap-3 px-4 py-2 transition-colors ${ROW_HOVER}`}>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-foreground">
+        <p className="truncate text-[12px] font-semibold text-foreground">
           {item.employeeName || item.employeeNumber} · {t(item.fieldLabel)}
         </p>
-        <p className="mt-0.5 truncate text-xs text-muted">
+        <p className="truncate text-[11px] text-muted">
           <span className="text-muted line-through">{item.currentValue || t("(empty)")}</span>
           {" → "}
           <span className="font-medium text-foreground">{item.requestedValue}</span>
@@ -149,17 +157,17 @@ function ChangeRequestQueueRow({
           type="button"
           disabled={busy}
           onClick={() => onPick(item, "approve")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-3.5 py-2 text-[13px] font-semibold text-success transition-colors hover:bg-success/20 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-md border border-success/20 bg-success/15 px-2.5 py-1 text-[11px] font-semibold text-success transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <CheckCircle2 size={17} /> {t("Approve")}
+          <CheckCircle2 size={14} /> {t("Approve")}
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={() => onPick(item, "reject")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-error/10 px-3.5 py-2 text-[13px] font-semibold text-error transition-colors hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-md border border-error/20 bg-error/15 px-2.5 py-1 text-[11px] font-semibold text-error transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ShieldAlert size={17} /> {t("Reject")}
+          <ShieldAlert size={14} /> {t("Reject")}
         </button>
       </div>
     </div>
@@ -302,32 +310,39 @@ function ActionQueueWidget() {
 
   return (
     <>
-      <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex items-center gap-1 border-b border-border px-2 pt-1.5">
+      <section className={`flex flex-col overflow-hidden ${SURFACE}`}>
+        <header className={`flex items-center gap-2 border-b px-4 py-2 ${HAIRLINE}`}>
+          <Inbox className="h-4 w-4 shrink-0 text-primary" />
+          <h3 className="truncate text-[12px] font-semibold uppercase tracking-wide text-foreground">
+            {t("Action Required", "Action Required")}
+          </h3>
+        </header>
+        <div className={`flex flex-wrap items-center gap-1 border-b px-2 py-1.5 ${HAIRLINE} ${RECESSED}`}>
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`relative flex items-center gap-2 rounded-t-lg px-3 py-2 text-[13px] font-medium transition-colors ${
-                currentTab === tab.key ? "text-primary" : "text-muted hover:text-foreground"
+              className={`flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                currentTab === tab.key
+                  ? "bg-card text-primary shadow-[0_1px_2px_rgba(15,23,42,0.08)] ring-1 ring-[var(--border)]"
+                  : "text-muted hover:text-foreground"
               }`}
             >
               {tab.label}
               <span
-                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
-                  currentTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted/25 text-muted"
+                className={`rounded px-1.5 py-px text-[11px] font-semibold tabular-nums ${
+                  currentTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted/30 text-muted"
                 }`}
               >
                 {tab.count}
               </span>
-              {currentTab === tab.key && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />}
             </button>
           ))}
         </div>
 
         {currentTab === "approvals" && (
-          <div className="divide-y divide-border/60">
+          <div className={`divide-y ${HAIRLINE}`}>
             {lma && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
             {!lma && approvalItems.length === 0 && (
               <EmptyRow text={t("No approvals awaiting your decision.", "No approvals awaiting your decision.")} />
@@ -335,7 +350,7 @@ function ActionQueueWidget() {
             {approvalItems.map((item) => (
               <ApprovalQueueRow key={item.instanceId} item={item} busy={approvalBusy} onPick={pickApproval} />
             ))}
-            <div className="px-4 py-2 text-right">
+            <div className={`border-t px-4 py-2 text-right ${HAIRLINE} ${RECESSED}`}>
               <Link to="/workflow" className="text-xs font-medium text-primary hover:underline">
                 {t("Open Workflow Tracking")}
               </Link>
@@ -344,7 +359,7 @@ function ActionQueueWidget() {
         )}
 
         {currentTab === "clearance" && (
-          <div className="divide-y divide-border/60">
+          <div className={`divide-y ${HAIRLINE}`}>
             {lmc && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
             {!lmc && clearanceItems.length === 0 && (
               <EmptyRow text={t("No clearances awaiting your approval.", "No clearances awaiting your approval.")} />
@@ -356,7 +371,7 @@ function ActionQueueWidget() {
         )}
 
         {currentTab === "changeRequests" && (
-          <div className="divide-y divide-border/60">
+          <div className={`divide-y ${HAIRLINE}`}>
             {lpc && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
             {!lpc && changeItems.length === 0 && (
               <EmptyRow text={t("No profile change requests awaiting review.", "No profile change requests awaiting review.")} />
@@ -486,7 +501,7 @@ function ActionQueueWidget() {
           }
         >
           <div className="space-y-2">
-            <div className="rounded-md border border-border bg-secondary/20 px-3 py-2 text-sm">
+            <div className="rounded-md border border-border bg-[color-mix(in_srgb,var(--secondary)_45%,var(--card))] px-3 py-2 text-sm">
               <p className="text-muted line-through">{changeDecision.item.currentValue || t("(empty)")}</p>
               <p className="font-medium text-foreground">→ {changeDecision.item.requestedValue}</p>
               {changeDecision.item.reason && (
@@ -496,7 +511,7 @@ function ActionQueueWidget() {
               )}
             </div>
             {changeDecision.verb === "approve" && (
-              <p className="rounded-md border border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
+              <p className="rounded-md border border-info/20 bg-info/15 px-3 py-2 text-xs text-info">
                 {changeDecision.item.kind === "Structural"
                   ? t("Approving records your decision — apply this change through the relevant HR module.")
                   : t("Approving writes this value to the employee record immediately.")}
