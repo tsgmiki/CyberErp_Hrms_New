@@ -68,6 +68,7 @@ function LoginForm() {
       <FormProviders
         form={{
           authMode: true,
+          frameless: true, // the auth shell's card is the surface — no nested field frame
           columnsNo: 1,
           isPending,
           submitBtnTitle: t("Sign In"),

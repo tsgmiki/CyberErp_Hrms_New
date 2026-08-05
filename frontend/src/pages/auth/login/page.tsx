@@ -8,8 +8,10 @@ function LoginPage() {
 
   return (
     <AuthLayout
+      title={t("Sign in")}
+      subtitle={t("Use your CyberERP account to access your workspace.")}
       footer={
-        <p className="text-center text-xs text-muted-foreground mt-4">
+        <p className="text-center text-xs text-muted-foreground">
           {t("Don't have an account?")}{" "}
           <Link to="/register" className="font-medium text-primary hover:underline">
             {t("Create account")}

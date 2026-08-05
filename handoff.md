@@ -59,6 +59,32 @@
 
 ## 1. Most recent changes (latest first)
 
+00DG. **HRMS login page now uses the SAME UI as the Home portal's (2026-08-05, HRMS frontend only,
+    no migration, no auth/behaviour change).** Purely visual: both apps keep their OWN login pages,
+    their own `/login` route and their own sign-in against their own API — only the presentation was
+    unified.
+    - Ported Home's auth shell into `components/auth/authLayout/authLayout.tsx`: gradient backdrop +
+      dot grid + outlined circles, top-left product mark with the ERP tagline, one elevated centred
+      card (accent bar, in-card mark, heading, form, divided footer), slim legal footer. Login page
+      passes `title`/`subtitle`; register page gained a heading (it shares the layout and would
+      otherwise render a headless card). `authBrand.tsx` deleted — orphaned by the replacement.
+    - **The brand adapts by itself**: both apps already define `BrandPrefix`/`BrandAccent`, so the
+      identical layout renders "CyberHRMS" here and "CyberHome" there. Footer uses HRMS's own
+      `Cyber HRMS v1.0` key. Keep the two `authLayout.tsx` files in step when either changes.
+    - Ported Home's opt-in `frameless` flag (`FormModel` + `formProvider` authMode branch) so the
+      fields sit directly on the card instead of in a nested frame.
+    - ⚠️ **GOTCHA that cost a round:** HRMS's existing pattern APPENDS override classes
+      (`… border … ${inModal ? "border-0 p-0 shadow-none" : ""}`). That does not reliably win —
+      Tailwind conflicts resolve by CSS order, NOT by the order classes appear in the attribute, so
+      the frame stayed visible. Home instead OMITS the frame classes; `frameless` now does the same.
+      Scoped so `inModal` keeps its exact previous string ⇒ every non-frameless form is byte-identical
+      and no other screen is affected.
+    - **NOT wanted, do not rebuild:** an earlier attempt in this session delegated HRMS sign-in to the
+      portal (redirect to Home's `/login` + `returnUrl`, `VITE_PORTAL_URL`, an origin allow-list). The
+      user rejected it and it was reverted in full — the requirement is shared UI, NOT shared sign-in.
+    Verified: `tsc -b` + eslint clean; both `/login` and `/register` render with zero console errors;
+    Home repo untouched.
+
 00DF. **Home portal made genuinely pluggable for other subsystems: integration guide + four contract
     fixes (2026-08-05, HOME REPO ONLY — `main`, commits `cb76844` → `56a7d8b`; no migration, no HRMS
     change).** Asked how Finance/Payroll/PSMS/Project-Management add their requests without hardcoded

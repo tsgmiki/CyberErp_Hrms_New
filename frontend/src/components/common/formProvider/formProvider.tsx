@@ -107,9 +107,16 @@ function FormBody({ form, children, inModal, formRef }: FormBodyProps) {
           onSubmit={form.submitHandler}
         >
           <div
-            className={`rounded-xl border border-border bg-card p-6 shadow-sm ${
-              inModal ? "border-0 p-0 shadow-none" : ""
-            }`}
+            // `frameless` OMITS the frame classes rather than appending overrides: `border-0` after
+            // `border` does not reliably win (Tailwind conflicts resolve by CSS order, not by the
+            // order classes appear in the attribute). `inModal` keeps its original behaviour.
+            className={
+              form.frameless
+                ? ""
+                : `rounded-xl border border-border bg-card p-6 shadow-sm ${
+                    inModal ? "border-0 p-0 shadow-none" : ""
+                  }`
+            }
           >
             <div
               className={`grid gap-4 ${
