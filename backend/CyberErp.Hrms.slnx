@@ -8,5 +8,8 @@
   <Folder Name="/Infrastracture/">
     <Project Path="CyberErp.Hrms.Inf/CyberErp.Hrms.Inf.csproj" />
   </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="CyberErp.Hrms.Tests/CyberErp.Hrms.Tests.csproj" />
+  </Folder>
   <Project Path="CyberErp.Hrms.Api/CyberErp.Hrms.Api.csproj" />
 </Solution>

@@ -54,6 +54,13 @@ export interface SalaryRevisionLineModel {
   proposedSalary?: number;
   increase?: number;
   increasePercent?: number;
+  /** Step basis only — rung today, rung landed on (may be fractional, e.g. 5.5). */
+  currentStep?: number | null;
+  proposedStep?: number | null;
+  /** True when the salary was interpolated between two rungs rather than read off one. */
+  interpolated?: boolean;
+  /** Why the salary did not move; null when it did. */
+  note?: string | null;
 }
 
 /** Salary revision plan (HC228). */
@@ -85,6 +92,10 @@ export interface SalarySimulationModel {
   averagePercent?: number;
   lines?: SalaryRevisionLineModel[];
   linesTruncated?: boolean;
+  /** Step basis only: employees the scale could not move (off-scale, no rows, already at ceiling). */
+  unresolvedCount?: number;
+  /** Step basis only: employees whose salary was interpolated between two rungs. */
+  interpolatedCount?: number;
 }
 
 /** Benefit plan (HC230). */

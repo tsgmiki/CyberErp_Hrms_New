@@ -673,6 +673,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Compensation.IDeleteEmployeeAllowance, Features.Core.Compensation.DeleteEmployeeAllowance>();
             services.AddScoped<Features.Core.Compensation.IGetCompensationSummary, Features.Core.Compensation.GetCompensationSummary>();
             // CB2 — salary revision planning + simulation (HC228)
+            // Shared by simulate + save: builds the per-grade pay ladders in ONE query per run.
+            services.AddScoped<Features.Core.Compensation.ISalaryScaleLadderFactory, Features.Core.Compensation.SalaryScaleLadderFactory>();
             services.AddScoped<Features.Core.Compensation.ISimulateSalaryRevision, Features.Core.Compensation.SimulateSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.ISaveSalaryRevision, Features.Core.Compensation.SaveSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionById, Features.Core.Compensation.GetSalaryRevisionById>();

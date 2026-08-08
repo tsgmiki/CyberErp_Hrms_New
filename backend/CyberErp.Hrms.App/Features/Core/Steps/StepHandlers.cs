@@ -15,6 +15,8 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
+        /// <summary>Position on the pay ladder — the key for step arithmetic (see Step.Ordinal).</summary>
+        public int Ordinal { get; set; }
     }
 
     public class SaveStepDto
@@ -22,6 +24,7 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
         public Guid? Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
+        public int Ordinal { get; set; }
     }
 
     public class SaveStepDtoValidator : AbstractValidator<SaveStepDto>
@@ -30,6 +33,8 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
         {
             RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
             RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
+            RuleFor(x => x.Ordinal).GreaterThanOrEqualTo(1)
+                .WithMessage("Ordinal is the rung number on the pay ladder and must be 1 or greater.");
         }
     }
 
@@ -57,13 +62,13 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(Step), dto.Id.Value.ToString());
-                entity.Update(dto.Name, dto.Code);
+                entity.Update(dto.Name, dto.Code, dto.Ordinal);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
             }
 
-            var created = Step.Create(dto.Name, dto.Code);
+            var created = Step.Create(dto.Name, dto.Code, dto.Ordinal);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created Step {Id} ({Code})", created.Id, created.Code);
@@ -78,7 +83,7 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
         {
             var s = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(Step), id.ToString());
-            return new StepDto { Id = s.Id, Name = s.Name, Code = s.Code };
+            return new StepDto { Id = s.Id, Name = s.Name, Code = s.Code, Ordinal = s.Ordinal };
         }
     }
 
@@ -99,9 +104,9 @@ namespace CyberErp.Hrms.App.Features.Core.Steps
 
             var total = await query.CountAsync();
             var data = await query
-                .OrderBy(x => x.Code).ThenBy(x => x.Name)
+                .OrderBy(x => x.Ordinal).ThenBy(x => x.Code)
                 .Skip(skip).Take(take)
-                .Select(x => new StepDto { Id = x.Id, Name = x.Name, Code = x.Code })
+                .Select(x => new StepDto { Id = x.Id, Name = x.Name, Code = x.Code, Ordinal = x.Ordinal })
                 .ToListAsync();
 
             return new PaginatedResponse<StepDto> { Total = total, Data = data };
