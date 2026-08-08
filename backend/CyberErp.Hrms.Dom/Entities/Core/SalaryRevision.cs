@@ -7,7 +7,15 @@ public enum SalaryRevisionType
 {
     Merit = 0,
     Market = 1,
-    CostOfLiving = 2
+    CostOfLiving = 2,
+    /// <summary>
+    /// The award is banded by each employee's appraisal score instead of one flat <c>Rate</c>.
+    /// Unlike the other values — which are labels describing WHY pay is being revised — this one
+    /// changes HOW the amount is derived: the bands on the revision supply a per-employee value,
+    /// expressed in the units of the chosen <see cref="SalaryAdjustmentBasis"/> (steps, percent or
+    /// amount). Requires at least one band.
+    /// </summary>
+    Performance = 3
 }
 
 /// <summary>How the revision adjusts each salary.</summary>
@@ -53,6 +61,12 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>Optional target filters (null = all employees with a base salary).</summary>
     public Guid? TargetJobGradeId { get; private set; }
     public Guid? TargetOrganizationUnitId { get; private set; }
+    /// <summary>
+    /// Performance revisions only: which review cycle's appraisal supplies the score. Null means
+    /// "each employee's most recently completed appraisal", which can mix cycle types (a probation
+    /// appraisal for one person, an annual for another) — pin the cycle when that matters.
+    /// </summary>
+    public Guid? TargetReviewCycleId { get; private set; }
     public SalaryRevisionStatus Status { get; private set; } = SalaryRevisionStatus.Draft;
     public DateTime? AppliedOn { get; private set; }
     public string? Notes { get; private set; }
@@ -60,10 +74,34 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
     private readonly List<SalaryRevisionLine> _lines = [];
     public IReadOnlyCollection<SalaryRevisionLine> Lines => _lines;
 
+    private readonly List<SalaryRevisionBand> _bands = [];
+    /// <summary>Score bands for a Performance revision; empty for the flat-rate types.</summary>
+    public IReadOnlyCollection<SalaryRevisionBand> Bands => _bands;
+
+    /// <summary>
+    /// Replaces the whole band set (draft only). Bands are stored highest-threshold-first and matched
+    /// on <c>score &gt;= MinScore</c>, so the lowest band should use a floor of 0 to act as a catch-all.
+    /// </summary>
+    public void ReplaceBands(IEnumerable<(decimal MinScore, decimal Value, string? Label)> bands)
+    {
+        if (Status != SalaryRevisionStatus.Draft)
+            throw new InvalidOperationException("Only a draft revision's bands can be edited.");
+
+        var incoming = bands.OrderByDescending(b => b.MinScore).ToList();
+        if (incoming.Select(b => b.MinScore).Distinct().Count() != incoming.Count)
+            throw new ArgumentException("Two bands cannot share the same minimum score.", nameof(bands));
+
+        _bands.Clear();
+        foreach (var b in incoming)
+            _bands.Add(SalaryRevisionBand.Create(Id, b.MinScore, b.Value, b.Label));
+        base.Update();
+    }
+
     private SalaryRevision() : base() { }
 
     public static SalaryRevision Create(string name, SalaryRevisionType type, SalaryAdjustmentBasis basis,
-        decimal rate, DateTime effectiveDate, Guid? targetJobGradeId, Guid? targetOrganizationUnitId, string? notes)
+        decimal rate, DateTime effectiveDate, Guid? targetJobGradeId, Guid? targetOrganizationUnitId,
+        Guid? targetReviewCycleId, string? notes)
     {
         Guard(name, basis, rate);
         return new SalaryRevision
@@ -75,12 +113,14 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
             EffectiveDate = effectiveDate,
             TargetJobGradeId = targetJobGradeId,
             TargetOrganizationUnitId = targetOrganizationUnitId,
+            TargetReviewCycleId = targetReviewCycleId,
             Notes = notes
         };
     }
 
     public void UpdateDraft(string name, SalaryRevisionType type, SalaryAdjustmentBasis basis,
-        decimal rate, DateTime effectiveDate, Guid? targetJobGradeId, Guid? targetOrganizationUnitId, string? notes)
+        decimal rate, DateTime effectiveDate, Guid? targetJobGradeId, Guid? targetOrganizationUnitId,
+        Guid? targetReviewCycleId, string? notes)
     {
         if (Status != SalaryRevisionStatus.Draft)
             throw new InvalidOperationException("Only a draft revision can be edited.");
@@ -92,6 +132,7 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
         EffectiveDate = effectiveDate;
         TargetJobGradeId = targetJobGradeId;
         TargetOrganizationUnitId = targetOrganizationUnitId;
+        TargetReviewCycleId = targetReviewCycleId;
         Notes = notes;
         base.Update();
     }
@@ -173,5 +214,46 @@ public class SalaryRevisionLine : BaseEntity
             throw new ArgumentException("Proposed salary cannot be negative.", nameof(proposedSalary));
         ProposedSalary = proposedSalary;
         base.Update();
+    }
+}
+
+/// <summary>
+/// One score band of a Performance revision: "score at or above <see cref="MinScore"/> earns
+/// <see cref="Value"/>". <see cref="Value"/> is expressed in the units of the parent revision's
+/// <see cref="SalaryAdjustmentBasis"/> — steps, percent, or a flat amount — so the same band set
+/// means "2.5 steps" or "15%" depending on the basis chosen.
+///
+/// <para>Bands are DATA, not constants, because the appraisal score scale is configured per tenant:
+/// live rating scales here run 1-5, 1-3 and 0-130. A hard-coded "&gt; 90" tier would never fire on a
+/// 1-5 scale and would silently drop every employee into the lowest band.</para>
+/// </summary>
+public class SalaryRevisionBand : BaseEntity
+{
+    public Guid SalaryRevisionId { get; private set; }
+    /// <summary>Inclusive lower bound: this band applies when <c>score &gt;= MinScore</c>.</summary>
+    public decimal MinScore { get; private set; }
+    /// <summary>Award for this band, in the parent revision's basis units.</summary>
+    public decimal Value { get; private set; }
+    /// <summary>Optional display label, e.g. "Exceeds expectations".</summary>
+    public string? Label { get; private set; }
+
+    private SalaryRevisionBand() : base() { }
+
+    public static SalaryRevisionBand Create(Guid salaryRevisionId, decimal minScore, decimal value, string? label)
+    {
+        if (salaryRevisionId == Guid.Empty)
+            throw new ArgumentException("Revision is required.", nameof(salaryRevisionId));
+        if (minScore < 0)
+            throw new ArgumentException("Minimum score cannot be negative.", nameof(minScore));
+        if (value < 0)
+            throw new ArgumentException("Band value cannot be negative.", nameof(value));
+
+        return new SalaryRevisionBand
+        {
+            SalaryRevisionId = salaryRevisionId,
+            MinScore = minScore,
+            Value = value,
+            Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim()
+        };
     }
 }

@@ -178,6 +178,7 @@ export type {
   SalaryRevisionModel,
   SalaryRevisionLineModel,
   SalarySimulationModel,
+  SalaryRevisionBandModel,
   BenefitPlanModel,
   BenefitEnrollmentModel,
   TaxBracketModel,

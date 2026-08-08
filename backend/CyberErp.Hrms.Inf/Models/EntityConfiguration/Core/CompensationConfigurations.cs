@@ -113,7 +113,32 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(r => r.Notes).HasMaxLength(1000);
 
             builder.Navigation(r => r.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            builder.Navigation(r => r.Bands).UsePropertyAccessMode(PropertyAccessMode.Field);
             builder.HasIndex(r => r.Status);
+        }
+    }
+
+    public class SalaryRevisionBandConfiguration : IEntityTypeConfiguration<SalaryRevisionBand>
+    {
+        public void Configure(EntityTypeBuilder<SalaryRevisionBand> builder)
+        {
+            builder.ToTable("hrmsSalaryRevisionBand", "dbo");
+
+            builder.HasKey(b => b.Id);
+
+            // MinScore is an appraisal score (tenant rating scales run 1-5 up to 0-130), Value is an
+            // award in the revision's basis units (steps can be fractional, e.g. 2.5).
+            builder.Property(b => b.MinScore).HasColumnType("decimal(9,2)");
+            builder.Property(b => b.Value).HasColumnType("decimal(18,2)");
+            builder.Property(b => b.Label).HasMaxLength(100);
+
+            builder.HasOne<SalaryRevision>()
+                .WithMany(r => r.Bands)
+                .HasForeignKey(b => b.SalaryRevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Bands are always read as a whole set for one revision, highest threshold first.
+            builder.HasIndex(b => new { b.SalaryRevisionId, b.MinScore });
         }
     }
 

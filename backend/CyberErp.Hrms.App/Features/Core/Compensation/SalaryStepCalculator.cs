@@ -119,3 +119,92 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         }
     }
 }
+
+namespace CyberErp.Hrms.App.Features.Core.Compensation
+{
+    /// <summary>A resolved band for one employee.</summary>
+    public readonly record struct PerformanceAward(decimal? Score, decimal Value, string? BandLabel, string? Reason);
+
+    /// <summary>Score bands + the appraisal scores of the targeted population, resolved once per run.</summary>
+    public interface IPerformanceAwardResolver
+    {
+        /// <summary>Band value for this employee, or a reason why none applies.</summary>
+        PerformanceAward Resolve(Guid employeeId);
+        /// <summary>Lowest/highest score actually seen — lets the UI expose a mis-scaled band set.</summary>
+        (decimal? Min, decimal? Max) ObservedScoreRange { get; }
+        int ScoredEmployeeCount { get; }
+    }
+
+    public interface IPerformanceAwardResolverFactory
+    {
+        Task<IPerformanceAwardResolver> BuildAsync(
+            IReadOnlyCollection<Guid> employeeIds,
+            IReadOnlyCollection<(decimal MinScore, decimal Value, string? Label)> bands,
+            Guid? reviewCycleId,
+            CancellationToken ct = default);
+    }
+
+    internal sealed class PerformanceAwardResolver(
+        Dictionary<Guid, decimal> scores,
+        (decimal MinScore, decimal Value, string? Label)[] bandsDesc) : IPerformanceAwardResolver
+    {
+        public (decimal? Min, decimal? Max) ObservedScoreRange =>
+            scores.Count == 0 ? (null, null) : (scores.Values.Min(), scores.Values.Max());
+
+        public int ScoredEmployeeCount => scores.Count;
+
+        public PerformanceAward Resolve(Guid employeeId)
+        {
+            // No completed appraisal is NOT the same as a low score: awarding the bottom band would
+            // quietly hand out (or withhold) money based on missing data. Leave them out and report it.
+            if (!scores.TryGetValue(employeeId, out var score))
+                return new PerformanceAward(null, 0m, null, "No completed appraisal score for this employee.");
+
+            // Bands are held highest-first, so the first threshold at or below the score wins.
+            foreach (var b in bandsDesc)
+                if (score >= b.MinScore)
+                    return new PerformanceAward(score, b.Value, b.Label, null);
+
+            return new PerformanceAward(score, 0m,  null,
+                $"Score {score} is below every band threshold; no award.");
+        }
+    }
+
+    public sealed class PerformanceAwardResolverFactory(IRepository<Appraisal> appraisals)
+        : IPerformanceAwardResolverFactory
+    {
+        public async Task<IPerformanceAwardResolver> BuildAsync(
+            IReadOnlyCollection<Guid> employeeIds,
+            IReadOnlyCollection<(decimal MinScore, decimal Value, string? Label)> bands,
+            Guid? reviewCycleId,
+            CancellationToken ct = default)
+        {
+            var bandsDesc = bands.OrderByDescending(b => b.MinScore).ToArray();
+            if (employeeIds.Count == 0)
+                return new PerformanceAwardResolver([], bandsDesc);
+
+            // ONE query for the whole population. Scoring each employee with their own query would be
+            // an N+1 (10k employees -> 10k round trips); this projects just the three columns needed
+            // and picks the latest completed appraisal per employee in memory, which is cheap because
+            // the row count is bounded by employees x cycles, not by anything unbounded.
+            var q = appraisals.GetAll().AsNoTracking()
+                .Where(a => employeeIds.Contains(a.EmployeeId)
+                            && a.CompletedAt != null
+                            && a.OverallScore != null);
+            if (reviewCycleId.HasValue)
+                q = q.Where(a => a.ReviewCycleId == reviewCycleId.Value);
+
+            var rows = await q
+                .Select(a => new { a.EmployeeId, a.OverallScore, a.CompletedAt })
+                .ToListAsync(ct);
+
+            var scores = rows
+                .GroupBy(r => r.EmployeeId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderByDescending(r => r.CompletedAt!.Value).First().OverallScore!.Value);
+
+            return new PerformanceAwardResolver(scores, bandsDesc);
+        }
+    }
+}
