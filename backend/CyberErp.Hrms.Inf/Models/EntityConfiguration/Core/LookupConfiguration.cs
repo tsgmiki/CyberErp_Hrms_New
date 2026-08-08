@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LookupCategory> builder)
         {
-            builder.ToTable("LookUpCategory", "Core");
+            builder.ToTable("LookUpCategory", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
@@ -27,7 +27,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LookupCategoryList> builder)
         {
-            builder.ToTable("LookUpCategoryList", "Core");
+            builder.ToTable("LookUpCategoryList", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Code).IsRequired().HasMaxLength(50);

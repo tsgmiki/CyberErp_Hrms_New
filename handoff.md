@@ -79,6 +79,20 @@
 
 ## 1. Most recent changes (latest first)
 
+00DO. **Lookup tables moved to the Hrms schema (2026-08-08, HRMS only, MIGRATION
+    `MoveLookupTablesToHrmsSchema`, APPLIED TO CERP).** `Core.LookUpCategory` → `Hrms.LookUpCategory`
+    and `Core.LookUpCategoryList` → `Hrms.LookUpCategoryList` — names unchanged, schema only, so EF
+    emitted two plain `ALTER SCHEMA TRANSFER`s with no FK/index churn.
+    - The lookup system is HRMS-owned (Education Level, Field of Study, Guarantee Type), so `Core` was
+      the wrong home for it; nothing outside HRMS referenced them (checked both repos, bare and
+      bracketed forms, no raw SQL).
+    - Verified: 3 categories / 20 items intact, FK preserved, table + FK totals unchanged (204/239),
+      `/Lookup` and `/Lookup/items/{code}` return all three categories and their items, lookup
+      consumers (Employee, EmployeeGuarantee, dashboard) still 200, 0 API-log errors, 59/59 tests.
+    - **`CLAUDE.md` was still documenting the OLD `dbo.hrmsX` convention** and has been corrected —
+      it is loaded as project instructions every session, so a stale statement there is worse than one
+      in the changelog. It now also points at `memory.md` §4 for the rename traps.
+
 00DN. **Module-schema rename — every table moved to its module's schema (2026-08-08, both apps,
     MIGRATIONS `ModuleSchemaRename` + `NotificationModuleSchema`, APPLIED TO CERP).**
     `dbo.hrmsAchievement` → `Hrms.Achievement`, `dbo.coreModule` → `Core.Module`,
