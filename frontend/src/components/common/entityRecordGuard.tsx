@@ -11,11 +11,14 @@ import { NEW_SEGMENT } from "@/template";
  * without the guard, "/branch/garbage" would fire a doomed request and then render a form that
  * looks blank-but-editable rather than broken.
  *
- * "new" shares the `:id` slot (see entityRoutes for why) so it is admitted explicitly here.
+ * Mounted on the entity's shared parent route, so it also renders for the LIST (where there is no
+ * `:id` at all) — see entityRoutes for why both children must sit at the same depth. Hence three
+ * accepted cases: no id (list), the literal "new" (create), and a well-formed GUID (edit).
  */
 function EntityRecordGuard() {
   const { id } = useParams();
-  if (id !== NEW_SEGMENT && !isValidGUID(id)) return <NotFoundPage />;
+  const invalid = id !== undefined && id !== NEW_SEGMENT && !isValidGUID(id);
+  if (invalid) return <NotFoundPage />;
   return <Outlet />;
 }
 

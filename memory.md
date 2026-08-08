@@ -87,9 +87,14 @@ selection stays local state. A module is migrated by swapping `useEntityCrudModu
 route. 40 flat routes remain for screens with no single-record concept (dashboards, read-only lists,
 wizards, modal-detail screens) — that split is deliberate, not unfinished work. `useEntityCrudModule`
 is still required by embedded sections that have no route of their own.
-Three rules that are easy to break:
+Four rules that are easy to break:
 - `new` must ride the SAME `:id` slot as the guid. A static `path="new"` sibling leaves
   `useParams().id` undefined there, so the module cannot tell `/x/new` from the list.
+- **Both children must render at the SAME tree depth.** The GUID guard belongs on the shared parent
+  route, not in an extra wrapper around `:id` — a depth mismatch makes React remount the module when
+  moving list ↔ form, wiping every piece of local state held alongside the record (the Salary Scale
+  grade filter, the org-tree selection, the Positions unit preset). Nothing type-checks against this;
+  it broke Salary Scale registration entirely and was only caught in the browser.
 - Anything matching a URL to a `coreOperation.Link` must use `utils/routeMatch.ts` (longest **segment**
   match). Exact matching ungates nested record URLs; `String.includes` makes `/loanType` inherit
   `/loan`'s grants.
@@ -97,10 +102,19 @@ Three rules that are easy to break:
   into a **duplicate-creating POST**. Guarded centrally in `createSaveService` + per-form fallbacks;
   those fallbacks must yield `undefined`, never `""`, or .NET Guid binding breaks creates.
 
-**Salary revisions support `Step` basis (2026-08-08)** — fractional step increments interpolated
-against the salary scale; see `logic.md` §9. `lupStep.Ordinal` is the only valid key for step
-arithmetic (codes are free text and differ per tenant); its backfill is an inference worth verifying
-per tenant. A step revision never reduces pay.
+**Salary revisions support `Step` basis and a `Performance` type (2026-08-08)** — fractional step
+increments interpolated against the salary scale, plus score-banded awards; see `logic.md` §9.
+`lupStep.Ordinal` is the only valid key for step arithmetic (codes are free text and differ per
+tenant); its backfill is an inference worth verifying per tenant. A step revision never reduces pay.
+Performance **bands are data, not constants** — appraisal scores are scored against a per-tenant
+rating scale (live ones run 1-5, 1-3 and 0-130), so 90/70 thresholds silently match nobody on a 1-5
+scale; the simulation reports the observed score range so that is visible before applying.
+
+**Detail views are pages, not popups.** Salary Revision set the pattern: selecting a row navigates to
+`/x/{guid}` and swaps the page to a full `EntityListShell` grid with the shell's standard Back arrow.
+Two traps found building it: a double-submit guard must live in a `useRef` (state is captured per
+render, so two clicks in one frame both fire), and a detail view must handle its record disappearing
+or it spins on `<Loading/>` forever.
 
 **Tests:** `CyberErp.Hrms.Tests` (xUnit) is the solution's first and currently only test project —
 35 tests covering the salary-step interpolation and the no-cut policy. Everything else in this repo is
