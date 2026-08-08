@@ -66,6 +66,64 @@
 
 ## 1. Most recent changes (latest first)
 
+00DM. **Salary Revision detail is a full grid, not a popup (2026-08-08, HRMS frontend only).**
+    `detailModal.tsx` DELETED. Selecting a row now navigates to `/salaryRevision/{guid}` and swaps the
+    page to the per-employee increment grid; the shell's standard Back arrow returns. Three URL-backed
+    views: `/salaryRevision` (list) · `/new` (planning form) · `/{guid}` (increment grid). This also
+    fixes a latent bug — `/salaryRevision/{guid}` previously rendered the CREATE form, because
+    `SalaryRevisionForm` takes only `onDone` and ignores the id.
+    - Built on `EntityListShell`, so it inherits the house chrome (search, column picker, export,
+      list/grid toggle, pagination) instead of a bespoke in-dialog table. Summary + lifecycle actions
+      go in its `header` slot. Lines are paged/searched IN MEMORY — the revision endpoint already
+      returns them all, so no second endpoint.
+    - Columns adapt: a **Step** column only for step-basis (`1 → 3.5`, flags interpolation), a
+      **Score** column only for Performance, plus a **Note** column for lines that did not move.
+    - **`useRef`, not state, for the double-submit guard.** `if (busy) return` reads a value captured
+      at render time, so two clicks in the SAME frame both see false and both fire. That is what
+      produced the reported `NotFoundException` on Delete: the first call succeeded, the second hit a
+      row that no longer existed. Verified by test (2 requests → 1). The modal version shipped in the
+      prior commit had the same latent flaw and passed only by timing luck.
+    - Also: action failures now surface in an error banner (every non-ok result used to be silently
+      swallowed, so a rejected action looked like a dead button); a record deleted underneath the view
+      shows "no longer available" with a resyncing Back instead of an ENDLESS SPINNER
+      (`isLoading || !detail ? <Loading/>` never resolved once the fetch had failed); and a
+      "not found" result resyncs the list and leaves rather than alarming the user.
+
+00DL. **Route shape fixed: module state no longer wiped when opening a record (2026-08-08, HRMS
+    frontend only). REGRESSION from 00DH.** The GUID guard wrapped ONLY the `:id` route, so the
+    component tree was a different depth for list vs form:
+    `Route(index) → Page` versus `Route(guard) → Route(:id) → Page`. React therefore UNMOUNTED and
+    remounted the module on Add/Edit, destroying every piece of local state held alongside the
+    record. The guard now sits on the shared parent (`<Route path="x" element={<EntityRecordGuard/>}>`)
+    so both children render at identical depth; the guard admits three cases — no id (list), "new",
+    and a GUID.
+    - Symptoms this caused: Salary Scale could not be registered at all (the grade filter is local
+      state → hidden `jobGradeId` went out empty → "Job grade is required"); the Positions
+      "add under this selected unit" preset was lost; the Employee org-tree selection reset.
+    - **If you ever add another wrapper route, keep both children at the same depth** or the same
+      class of bug returns silently — nothing type-checks or lints against it.
+    - Salary Scale also gained the position-style guard: a cold `/salaryScale/new` (pasted link,
+      refresh) has no grade and, unlike Positions, cannot show its picker because the module SWAPS
+      list for form — so the hint carries its own "Back to list" action.
+
+00DK. **Salary revision "By Performance" — score-banded awards (2026-08-08, backend + frontend,
+    MIGRATION `SalaryRevisionPerformanceBands`, 24 new tests).** `SalaryRevisionType.Performance`
+    makes the award per-employee: the appraisal score selects a band, and the band's value is
+    expressed in the units of the chosen **basis**, so one band set means "2.5 steps", "15%" or
+    "3000". Under Performance the flat `Rate` is hidden and ignored.
+    - New child entity `SalaryRevisionBand` (MinScore inclusive, Value, Label) + optional
+      `SalaryRevision.TargetReviewCycleId` (null = each employee's latest completed appraisal).
+    - **Bands are DATA, never constants.** `Appraisal.OverallScore` is scored against a
+      per-tenant `RatingScale`; live scales here run **1-5, 1-3 and 0-130**. A hard-coded "> 90" tier
+      fires correctly on 0-130 and silently drops EVERYONE into the bottom band on 1-5. Demonstrated
+      on the demo tenant (all scores 4.00 on 0-5): 90/70/0 → 0% for everyone; 4/3/0 → the 15% band.
+    - The simulation therefore reports `MinObservedScore`/`MaxObservedScore` + `NoScoreCount`, and the
+      form warns when a threshold sits above every score seen.
+    - A missing appraisal is NOT a low score — those employees are left untouched and counted, not
+      handed the bottom band. A zero band ("< 70: 0%") is a deliberate no-award and is not flagged.
+    - Scores are batch-loaded ONCE per run (`IPerformanceAwardResolverFactory`), same N+1 avoidance as
+      the pay ladder. Non-performance revisions never touch the appraisal table.
+
 00DJ. **Salary revision "by step" — fractional step increments interpolated against the salary scale
     (2026-08-08, backend + frontend, MIGRATION `SalaryStepOrdinalAndStepBasis`, first unit tests).**
     `SalaryAdjustmentBasis` gains `Step = 2` alongside `Percentage`/`FixedAmount`. `Rate` is then a

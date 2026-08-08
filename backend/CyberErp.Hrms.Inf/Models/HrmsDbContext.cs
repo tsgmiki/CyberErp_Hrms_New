@@ -158,6 +158,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<EmployeeAllowance> EmployeeAllowance { get; set; }
     public DbSet<SalaryRevision> SalaryRevision { get; set; }
     public DbSet<SalaryRevisionLine> SalaryRevisionLine { get; set; }
+    public DbSet<SalaryRevisionBand> SalaryRevisionBand { get; set; }
     public DbSet<BenefitPlan> BenefitPlan { get; set; }
     public DbSet<EmployeeBenefitEnrollment> EmployeeBenefitEnrollment { get; set; }
     public DbSet<TaxBracket> TaxBracket { get; set; }
@@ -420,6 +421,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new EmployeeAllowanceConfiguration());
         modelBuilder.ApplyConfiguration(new SalaryRevisionConfiguration());
         modelBuilder.ApplyConfiguration(new SalaryRevisionLineConfiguration());
+        modelBuilder.ApplyConfiguration(new SalaryRevisionBandConfiguration());
         modelBuilder.ApplyConfiguration(new BenefitPlanConfiguration());
         modelBuilder.ApplyConfiguration(new EmployeeBenefitEnrollmentConfiguration());
         modelBuilder.ApplyConfiguration(new TaxBracketConfiguration());

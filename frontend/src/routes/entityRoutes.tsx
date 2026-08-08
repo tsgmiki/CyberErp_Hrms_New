@@ -224,11 +224,14 @@ export const ENTITY_ROUTES: EntityRouteDef[] = [
  */
 export const renderEntityRoutes = (defs: readonly EntityRouteDef[]) =>
   defs.map(({ path, Page }) => (
-    <Route key={path} path={path}>
+    // The guard sits on the SHARED PARENT, not on an extra wrapper around `:id` only. Both children
+    // must render at the same tree depth, otherwise React sees a different element shape when moving
+    // list -> form and REMOUNTS the module, wiping any local state it holds alongside the record —
+    // the salary-scale grade filter, the org-tree selection, the position "add under this unit"
+    // preset. Same depth + same element type = state survives the transition.
+    <Route key={path} path={path} element={<EntityRecordGuard />}>
       <Route index element={<Page />} />
-      <Route element={<EntityRecordGuard />}>
-        <Route path=":id" element={<Page />} />
-      </Route>
+      <Route path=":id" element={<Page />} />
     </Route>
   ));
 

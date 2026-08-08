@@ -31,6 +31,22 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public bool Interpolated { get; set; }
         /// <summary>Why the salary did not move (off-scale, no scale rows, ceiling); null when it did.</summary>
         public string? Note { get; set; }
+        // ---- Performance type only ----
+        /// <summary>Appraisal score that selected the band; null when the employee has none.</summary>
+        public decimal? PerformanceScore { get; set; }
+        /// <summary>Band that matched, e.g. "Exceeds expectations".</summary>
+        public string? BandLabel { get; set; }
+        /// <summary>Award the band supplied, in the basis units.</summary>
+        public decimal? BandValue { get; set; }
+    }
+
+    public class SalaryRevisionBandDto
+    {
+        /// <summary>Inclusive lower bound: this band applies when score &gt;= MinScore.</summary>
+        public decimal MinScore { get; set; }
+        /// <summary>Award in the revision's basis units (steps / percent / amount).</summary>
+        public decimal Value { get; set; }
+        public string? Label { get; set; }
     }
 
     public class SalaryRevisionDto
@@ -43,6 +59,8 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public DateTime EffectiveDate { get; set; }
         public Guid? TargetJobGradeId { get; set; }
         public Guid? TargetOrganizationUnitId { get; set; }
+        public Guid? TargetReviewCycleId { get; set; }
+        public List<SalaryRevisionBandDto> Bands { get; set; } = [];
         public string Status { get; set; } = string.Empty;
         public DateTime? AppliedOn { get; set; }
         public string? Notes { get; set; }
@@ -65,6 +83,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public DateTime EffectiveDate { get; set; }
         public Guid? TargetJobGradeId { get; set; }
         public Guid? TargetOrganizationUnitId { get; set; }
+        /// <summary>Performance revisions: pin the review cycle, or null for each employee's latest.</summary>
+        public Guid? TargetReviewCycleId { get; set; }
+        /// <summary>Performance revisions: the score bands. Ignored by the flat-rate types.</summary>
+        public List<SalaryRevisionBandDto> Bands { get; set; } = [];
         public string? Notes { get; set; }
     }
 
@@ -76,7 +98,13 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             RuleFor(x => x.Rate).GreaterThanOrEqualTo(0);
             RuleFor(x => x.EffectiveDate).NotEmpty();
             RuleFor(x => x.RevisionType).Must(v => Enum.TryParse<SalaryRevisionType>(v, true, out _))
-                .WithMessage("Revision type must be Merit, Market or CostOfLiving.");
+                .WithMessage("Revision type must be Merit, Market, CostOfLiving or Performance.");
+            // A Performance revision derives its amounts from the bands, so an empty band set would
+            // silently award nothing to everyone.
+            RuleFor(x => x.Bands)
+                .NotEmpty()
+                .When(x => string.Equals(x.RevisionType, nameof(SalaryRevisionType.Performance), StringComparison.OrdinalIgnoreCase))
+                .WithMessage("A performance revision needs at least one score band.");
             RuleFor(x => x.Basis).Must(v => Enum.TryParse<SalaryAdjustmentBasis>(v, true, out _))
                 .WithMessage("Basis must be Percentage, FixedAmount or Step.");
             // A step increment is a ladder distance, so fractions are expected (1.5, 2.5) but it must
@@ -92,9 +120,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
     public class SimulateSalaryRevisionDto
     {
         public string Basis { get; set; } = nameof(SalaryAdjustmentBasis.Percentage);
+        public string RevisionType { get; set; } = nameof(SalaryRevisionType.Merit);
         public decimal Rate { get; set; }
         public Guid? TargetJobGradeId { get; set; }
         public Guid? TargetOrganizationUnitId { get; set; }
+        public Guid? TargetReviewCycleId { get; set; }
+        public List<SalaryRevisionBandDto> Bands { get; set; } = [];
     }
 
     public class SalarySimulationDto
@@ -111,6 +142,14 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public int UnresolvedCount { get; set; }
         /// <summary>Employees whose new salary was interpolated between two rungs.</summary>
         public int InterpolatedCount { get; set; }
+        // ---- Performance type only ----
+        /// <summary>Targeted employees with no completed appraisal, so no award.</summary>
+        public int NoScoreCount { get; set; }
+        /// <summary>Lowest/highest appraisal score actually seen. Rating scales are configured per
+        /// tenant (live ones run 1-5, 1-3 and 0-130), so this is what reveals band thresholds set for
+        /// the wrong scale — e.g. a "&gt; 90" tier against scores that top out at 5.</summary>
+        public decimal? MinObservedScore { get; set; }
+        public decimal? MaxObservedScore { get; set; }
     }
 
     // ---- Interfaces ---------------------------------------------------------
@@ -173,6 +212,34 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// consult the employee's own grade ladder, so it takes the pre-built <paramref name="ladder"/>
         /// (see <see cref="SalaryScaleLadderFactory"/> for why that is loaded once, not per employee).
         /// </summary>
+        /// <summary>
+        /// A Performance revision replaces the single flat <paramref name="rate"/> with a per-employee
+        /// value taken from the score bands. The BASIS is unchanged — the band value is expressed in
+        /// whatever unit the basis uses, so one band set means "2.5 steps", "15%" or "3000" depending
+        /// on it. Employees with no completed appraisal are left untouched rather than being awarded
+        /// the bottom band, since missing data is not the same as a low score.
+        /// </summary>
+        internal static StepResolution ProposeFor(
+            SalaryRevisionType type, SalaryAdjustmentBasis basis, decimal rate,
+            EmployeeCompRow row, ISalaryScaleLadder? ladder, IPerformanceAwardResolver? awards)
+        {
+            if (type != SalaryRevisionType.Performance)
+                return Propose(basis, rate, row, ladder);
+
+            if (awards is null)
+                return StepResolution.Unchanged(row.Base, "No performance bands loaded.");
+
+            var award = awards.Resolve(row.EmployeeId);
+            if (award.Reason is not null)
+                return StepResolution.Unchanged(row.Base, award.Reason);
+
+            // A zero band ("< 70: 0%") is a deliberate no-award, not a failure — keep pay, no note.
+            if (award.Value == 0m)
+                return new StepResolution(row.Base, 0m, false, false, null);
+
+            return Propose(basis, award.Value, row, ladder);
+        }
+
         internal static StepResolution Propose(
             SalaryAdjustmentBasis basis, decimal rate, EmployeeCompRow row, ISalaryScaleLadder? ladder)
         {
@@ -227,6 +294,42 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// <summary>Sanity bound — real ladders are ~10 rungs, so this only catches fat-finger input.</summary>
         internal const decimal MaxStepIncrement = 50m;
 
+        /// <summary>
+        /// Band values live in the basis units, so they inherit that basis's bounds — a 150% band or a
+        /// 200-step band is as wrong as a flat rate of the same size.
+        /// </summary>
+        internal static void GuardBands(
+            SalaryRevisionType type, SalaryAdjustmentBasis basis,
+            IReadOnlyCollection<SalaryRevisionBandDto> bands)
+        {
+            if (type != SalaryRevisionType.Performance) return;
+            if (bands.Count == 0)
+                throw new ValidationException("Bands", "A performance revision needs at least one score band.");
+            if (bands.Select(b => b.MinScore).Distinct().Count() != bands.Count)
+                throw new ValidationException("Bands", "Two bands cannot share the same minimum score.");
+            foreach (var b in bands)
+            {
+                if (b.MinScore < 0)
+                    throw new ValidationException("Bands", "A band's minimum score cannot be negative.");
+                if (b.Value < 0)
+                    throw new ValidationException("Bands", "A band's award cannot be negative.");
+                GuardRate(basis, b.Value);
+            }
+        }
+
+        internal static List<(decimal MinScore, decimal Value, string? Label)> ToBandTuples(
+            IEnumerable<SalaryRevisionBandDto> bands) =>
+            bands.Select(b => (b.MinScore, b.Value, b.Label)).ToList();
+
+        /// <summary>Performance revisions read appraisal scores; the other types never touch them.</summary>
+        internal static async Task<IPerformanceAwardResolver?> AwardsIfNeededAsync(
+            SalaryRevisionType type, IPerformanceAwardResolverFactory factory,
+            IReadOnlyCollection<EmployeeCompRow> rows,
+            IReadOnlyCollection<SalaryRevisionBandDto> bands, Guid? reviewCycleId) =>
+            type == SalaryRevisionType.Performance
+                ? await factory.BuildAsync(rows.Select(r => r.EmployeeId).ToList(), ToBandTuples(bands), reviewCycleId)
+                : null;
+
         internal static void FillAggregate(SalaryRevisionDto dto)
         {
             dto.EmployeeCount = dto.Lines.Count;
@@ -241,6 +344,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
     public class SimulateSalaryRevision(
         IRepository<Employee> employeeRepository,
         ISalaryScaleLadderFactory ladderFactory,
+        IPerformanceAwardResolverFactory awardFactory,
         IPerformanceVisibilityService visibility) : ISimulateSalaryRevision
     {
         private const int PreviewCap = 200;
@@ -251,14 +355,18 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can run salary simulations.");
 
             var basis = Enum.Parse<SalaryAdjustmentBasis>(dto.Basis, true);
-            SalaryRevisionShared.GuardRate(basis, dto.Rate);
+            var type = Enum.Parse<SalaryRevisionType>(dto.RevisionType, true);
+            if (type == SalaryRevisionType.Performance) SalaryRevisionShared.GuardBands(type, basis, dto.Bands);
+            else SalaryRevisionShared.GuardRate(basis, dto.Rate);
 
             var rows = await SalaryRevisionShared.TargetsAsync(employeeRepository, dto.TargetJobGradeId, dto.TargetOrganizationUnitId);
             var ladder = await SalaryRevisionShared.LadderIfNeededAsync(basis, ladderFactory, dto.TargetJobGradeId);
+            var awards = await SalaryRevisionShared.AwardsIfNeededAsync(type, awardFactory, rows, dto.Bands, dto.TargetReviewCycleId);
 
             var lines = rows.Select(r =>
             {
-                var res = SalaryRevisionShared.Propose(basis, dto.Rate, r, ladder);
+                var res = SalaryRevisionShared.ProposeFor(type, basis, dto.Rate, r, ladder, awards);
+                var award = awards?.Resolve(r.EmployeeId);
                 return new SalaryRevisionLineDto
                 {
                     EmployeeId = r.EmployeeId,
@@ -269,7 +377,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                     CurrentStep = r.StepOrdinal,
                     ProposedStep = basis == SalaryAdjustmentBasis.Step ? res.ResolvedStep : null,
                     Interpolated = res.Interpolated,
-                    Note = res.Reason
+                    Note = res.Reason,
+                    PerformanceScore = award?.Score,
+                    BandLabel = award?.BandLabel,
+                    BandValue = award is null || award.Value.Reason is not null ? null : award.Value.Value
                 };
             }).ToList();
 
@@ -288,7 +399,11 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 // move (off-scale employees, grades with no rows, ceiling hits) rather than
                 // discovering a silent no-op after applying.
                 UnresolvedCount = lines.Count(l => l.Note != null),
-                InterpolatedCount = lines.Count(l => l.Interpolated)
+                InterpolatedCount = lines.Count(l => l.Interpolated),
+                NoScoreCount = type == SalaryRevisionType.Performance
+                    ? lines.Count(l => l.PerformanceScore == null) : 0,
+                MinObservedScore = awards?.ObservedScoreRange.Min,
+                MaxObservedScore = awards?.ObservedScoreRange.Max
             };
         }
     }
@@ -298,6 +413,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IRepository<SalaryRevisionLine> lineRepository,
         IRepository<Employee> employeeRepository,
         ISalaryScaleLadderFactory ladderFactory,
+        IPerformanceAwardResolverFactory awardFactory,
         IPerformanceVisibilityService visibility,
         IValidator<SaveSalaryRevisionDto> validator,
         ILogger<SaveSalaryRevision> logger) : ISaveSalaryRevision
@@ -311,10 +427,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
             var type = Enum.Parse<SalaryRevisionType>(dto.RevisionType, true);
             var basis = Enum.Parse<SalaryAdjustmentBasis>(dto.Basis, true);
-            SalaryRevisionShared.GuardRate(basis, dto.Rate);
+            if (type == SalaryRevisionType.Performance) SalaryRevisionShared.GuardBands(type, basis, dto.Bands);
+            else SalaryRevisionShared.GuardRate(basis, dto.Rate);
 
             var rows = await SalaryRevisionShared.TargetsAsync(employeeRepository, dto.TargetJobGradeId, dto.TargetOrganizationUnitId);
             var ladder = await SalaryRevisionShared.LadderIfNeededAsync(basis, ladderFactory, dto.TargetJobGradeId);
+            var awards = await SalaryRevisionShared.AwardsIfNeededAsync(type, awardFactory, rows, dto.Bands, dto.TargetReviewCycleId);
 
             Guid planId;
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
@@ -323,7 +441,9 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                     ?? throw new NotFoundException(nameof(SalaryRevision), dto.Id.Value.ToString());
                 if (entity.Status != SalaryRevisionStatus.Draft)
                     throw new ValidationException(nameof(dto.Id), "Only a draft revision can be edited.");
-                entity.UpdateDraft(dto.Name, type, basis, dto.Rate, dto.EffectiveDate, dto.TargetJobGradeId, dto.TargetOrganizationUnitId, dto.Notes);
+                entity.UpdateDraft(dto.Name, type, basis, dto.Rate, dto.EffectiveDate, dto.TargetJobGradeId,
+                    dto.TargetOrganizationUnitId, dto.TargetReviewCycleId, dto.Notes);
+                entity.ReplaceBands(SalaryRevisionShared.ToBandTuples(dto.Bands));
                 repository.UpdateAsync(entity);
                 // Regenerate the scenario lines against the new parameters.
                 await lineRepository.Delete(l => l.SalaryRevisionId == entity.Id);
@@ -332,14 +452,15 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             else
             {
                 var created = SalaryRevision.Create(dto.Name, type, basis, dto.Rate, dto.EffectiveDate,
-                    dto.TargetJobGradeId, dto.TargetOrganizationUnitId, dto.Notes);
+                    dto.TargetJobGradeId, dto.TargetOrganizationUnitId, dto.TargetReviewCycleId, dto.Notes);
+                created.ReplaceBands(SalaryRevisionShared.ToBandTuples(dto.Bands));
                 await repository.AddAsync(created);
                 planId = created.Id;
             }
 
             foreach (var r in rows)
                 await lineRepository.AddAsync(SalaryRevisionLine.Create(planId, r.EmployeeId, r.Base,
-                    SalaryRevisionShared.Propose(basis, dto.Rate, r, ladder).Salary));
+                    SalaryRevisionShared.ProposeFor(type, basis, dto.Rate, r, ladder, awards).Salary));
 
             await repository.SaveChangesAsync();
             logger.LogInformation("Saved SalaryRevision {Id} with {Count} lines", planId, rows.Count);
@@ -365,6 +486,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                     EffectiveDate = x.EffectiveDate,
                     TargetJobGradeId = x.TargetJobGradeId,
                     TargetOrganizationUnitId = x.TargetOrganizationUnitId,
+                    TargetReviewCycleId = x.TargetReviewCycleId,
+                    Bands = x.Bands.OrderByDescending(b => b.MinScore)
+                        .Select(b => new SalaryRevisionBandDto { MinScore = b.MinScore, Value = b.Value, Label = b.Label })
+                        .ToList(),
                     Status = x.Status.ToString(),
                     AppliedOn = x.AppliedOn,
                     Notes = x.Notes

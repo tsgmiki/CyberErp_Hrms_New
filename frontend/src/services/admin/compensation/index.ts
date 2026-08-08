@@ -4,7 +4,7 @@ import errorMessageParser from "@/components/util/errorMessageParser";
 import isValidJson from "@/components/util/validateJson";
 import type {
   AllowanceTypeModel, EmployeeAllowanceModel, CompensationSummaryModel,
-  SalaryRevisionModel, SalarySimulationModel,
+  SalaryRevisionModel, SalarySimulationModel, SalaryRevisionBandModel,
   BenefitPlanModel, BenefitEnrollmentModel,
   TaxBracketModel, PayrollDeductionsModel,
   MyCompensationModel, CompensationRequestModel,
@@ -44,7 +44,16 @@ export const deleteEmployeeAllowance = (id: string) => action("DELETE", `Employe
 /* ---- Salary revision + simulation (HC228) ---- */
 export const getAllSalaryRevisions = createPagedQuery<SalaryRevisionModel>("SalaryRevision");
 export const getSalaryRevision = (id: string) => api.get<SalaryRevisionModel>(`SalaryRevision/${id}`);
-export const simulateSalaryRevision = (body: { basis: string; rate: number; targetJobGradeId?: string; targetOrganizationUnitId?: string }) =>
+export const simulateSalaryRevision = (body: {
+  basis: string;
+  /** Merit | Market | CostOfLiving | Performance — Performance derives the rate from `bands`. */
+  revisionType?: string;
+  rate: number;
+  bands?: SalaryRevisionBandModel[];
+  targetJobGradeId?: string;
+  targetOrganizationUnitId?: string;
+  targetReviewCycleId?: string;
+}) =>
   api.post<SalarySimulationModel>("SalaryRevision/simulate", body);
 export const saveSalaryRevision = (m: SalaryRevisionModel) => action(m.id ? "PUT" : "POST", "SalaryRevision", m);
 export const setSalaryRevisionLine = (lineId: string, proposedSalary: number) =>

@@ -949,6 +949,8 @@ different per `SalaryAdjustmentBasis`, which is why the UI relabels the field:
 | `FixedAmount` | flat amount | `current + rate` |
 | `Step` | **step increment** (fractional: 1.5, 2.5) | read/interpolated from the salary scale |
 
+A fourth **type**, `Performance`, overrides where `Rate` comes from: see below.
+
 ### Step basis — how the salary is derived
 
 1. Employee's grade + rung come from `Employee.SalaryScaleId → coreSalaryScale (JobGradeId, StepId)`,
@@ -981,3 +983,34 @@ employees → 10k+ round trips). The scale is bounded by grades × steps, so one
 each employee then resolves in O(log steps) in memory. Any change here must preserve that.
 
 Covered by `CyberErp.Hrms.Tests/Compensation/*` (35 tests) — the only unit tests in the solution.
+
+### Performance-banded revisions (`SalaryRevisionType.Performance`)
+
+A fourth **type** that changes where the amount comes from. The `Basis` still decides the UNIT; the
+bands decide the VALUE, per employee:
+
+```
+score  ──selects──>  band (MinScore inclusive, highest match wins)
+band.Value ──feeds──> the chosen basis  →  2.5 steps  |  15%  |  3000
+```
+
+1. Score = the employee's most recent **completed** appraisal (`CompletedAt` + `OverallScore`),
+   optionally pinned to `TargetReviewCycleId`. Loaded for the whole population in ONE query.
+2. Bands are matched highest-threshold-first on `score >= MinScore`; give the lowest band a floor of
+   `0` so it acts as a catch-all.
+3. The band value is then applied through the normal basis path — including the step ladder's
+   interpolation and the never-cut-pay rule.
+
+**Bands are configuration, never constants.** `Appraisal.OverallScore` is scored against a
+**per-tenant `RatingScale`**; the live scales in this DB run **1-5, 1-3 and 0-130**. A hard-coded
+"> 90" tier works on 0-130 and silently puts EVERY employee in the bottom band on a 1-5 scale. The
+simulation therefore returns `MinObservedScore` / `MaxObservedScore` / `NoScoreCount`, and the UI
+warns when a threshold sits above every score observed. Any change here must keep that signal.
+
+Two deliberate rules:
+- **No appraisal ≠ low score.** Employees without a completed appraisal are left untouched and
+  counted in `NoScoreCount`, rather than being awarded the bottom band on missing data.
+- **A zero band is a real decision.** "< 70 → 0%" leaves pay unchanged and is NOT flagged as a
+  problem, unlike an unresolved line.
+
+Covered by `CyberErp.Hrms.Tests/Compensation/PerformanceBandTests.cs` (24 tests).

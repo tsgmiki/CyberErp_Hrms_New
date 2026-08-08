@@ -61,17 +61,25 @@ export interface SalaryRevisionLineModel {
   interpolated?: boolean;
   /** Why the salary did not move; null when it did. */
   note?: string | null;
+  /** Performance type only: the score that selected the band, and the band itself. */
+  performanceScore?: number | null;
+  bandLabel?: string | null;
+  bandValue?: number | null;
 }
 
 /** Salary revision plan (HC228). */
 export interface SalaryRevisionModel extends AbstractModel {
   name?: string;
-  revisionType?: string; // Merit | Market | CostOfLiving
-  basis?: string; // Percentage | FixedAmount
+  revisionType?: string; // Merit | Market | CostOfLiving | Performance
+  basis?: string; // Percentage | FixedAmount | Step
   rate?: number;
   effectiveDate?: string;
   targetJobGradeId?: string;
   targetOrganizationUnitId?: string;
+  /** Performance type: pin the review cycle, or omit for each employee's latest completed appraisal. */
+  targetReviewCycleId?: string;
+  /** Performance type: the score bands. Ignored by the flat-rate types. */
+  bands?: SalaryRevisionBandModel[];
   status?: string; // Draft | PendingApproval | Approved | Applied | Cancelled
   appliedOn?: string;
   notes?: string;
@@ -96,6 +104,20 @@ export interface SalarySimulationModel {
   unresolvedCount?: number;
   /** Step basis only: employees whose salary was interpolated between two rungs. */
   interpolatedCount?: number;
+  /** Performance type only: targeted employees with no completed appraisal, so no award. */
+  noScoreCount?: number;
+  /** Performance type only: the score range actually seen — reveals bands set for the wrong scale. */
+  minObservedScore?: number | null;
+  maxObservedScore?: number | null;
+}
+
+/** One score band of a performance-based revision. */
+export interface SalaryRevisionBandModel {
+  /** Inclusive lower bound: this band applies when score >= minScore. */
+  minScore?: number;
+  /** Award in the revision's basis units (steps / percent / amount). */
+  value?: number;
+  label?: string;
 }
 
 /** Benefit plan (HC230). */

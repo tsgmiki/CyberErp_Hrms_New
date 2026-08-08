@@ -675,6 +675,8 @@ namespace CyberErp.Hrms.App
             // CB2 — salary revision planning + simulation (HC228)
             // Shared by simulate + save: builds the per-grade pay ladders in ONE query per run.
             services.AddScoped<Features.Core.Compensation.ISalaryScaleLadderFactory, Features.Core.Compensation.SalaryScaleLadderFactory>();
+            // Performance revisions: one batched appraisal-score read per run (never per employee).
+            services.AddScoped<Features.Core.Compensation.IPerformanceAwardResolverFactory, Features.Core.Compensation.PerformanceAwardResolverFactory>();
             services.AddScoped<Features.Core.Compensation.ISimulateSalaryRevision, Features.Core.Compensation.SimulateSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.ISaveSalaryRevision, Features.Core.Compensation.SaveSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionById, Features.Core.Compensation.GetSalaryRevisionById>();
