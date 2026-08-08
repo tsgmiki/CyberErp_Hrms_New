@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarDays } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const LeaveTypeForm = memo(lazy(() => import("./form")));
 const LeaveTypeList = memo(lazy(() => import("./list")));
 
 function LeaveType() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/leaveType");
 
   return (
     <EntityModuleShell

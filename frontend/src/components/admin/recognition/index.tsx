@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Sparkles } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RecognitionForm = memo(lazy(() => import("./form")));
 const RecognitionList = memo(lazy(() => import("./list")));
 
 function Recognition() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/recognition");
 
   return (
     <EntityModuleShell

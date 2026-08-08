@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { SlidersHorizontal } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const AnnualLeaveSettingForm = memo(lazy(() => import("./form")));
 const AnnualLeaveSettingList = memo(lazy(() => import("./list")));
 
 function AnnualLeaveSetting() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/annualLeaveSetting");
 
   return (
     <EntityModuleShell

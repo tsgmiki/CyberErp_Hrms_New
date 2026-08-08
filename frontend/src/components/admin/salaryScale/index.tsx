@@ -1,7 +1,7 @@
 import { lazy, memo, useMemo, useState } from "react";
 import { Coins } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import getAllJobGrade from "@/services/admin/jobGrade/getAll";
 import { parameterInitialData } from "@/constants/initialization";
 import type { JobGradeModel } from "@/models";
@@ -11,7 +11,7 @@ const SalaryScaleList = memo(lazy(() => import("./list")));
 
 function SalaryScale() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/salaryScale");
   const [jobGradeId, setJobGradeId] = useState("");
 
   const [gradeParam] = useState({ ...parameterInitialData, take: 200 });

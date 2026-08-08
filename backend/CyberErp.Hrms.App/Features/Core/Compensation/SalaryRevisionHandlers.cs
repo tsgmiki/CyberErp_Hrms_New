@@ -22,6 +22,15 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public decimal ProposedSalary { get; set; }
         public decimal Increase => ProposedSalary - CurrentSalary;
         public decimal IncreasePercent => CurrentSalary > 0 ? Math.Round((ProposedSalary - CurrentSalary) / CurrentSalary * 100m, 2) : 0m;
+        // ---- Step basis only (null for Percentage/FixedAmount) ----
+        /// <summary>Rung the employee sits on today.</summary>
+        public int? CurrentStep { get; set; }
+        /// <summary>Rung they land on, e.g. 5.5 — may be fractional.</summary>
+        public decimal? ProposedStep { get; set; }
+        /// <summary>True when the salary was interpolated between two rungs rather than read directly.</summary>
+        public bool Interpolated { get; set; }
+        /// <summary>Why the salary did not move (off-scale, no scale rows, ceiling); null when it did.</summary>
+        public string? Note { get; set; }
     }
 
     public class SalaryRevisionDto
@@ -69,7 +78,13 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             RuleFor(x => x.RevisionType).Must(v => Enum.TryParse<SalaryRevisionType>(v, true, out _))
                 .WithMessage("Revision type must be Merit, Market or CostOfLiving.");
             RuleFor(x => x.Basis).Must(v => Enum.TryParse<SalaryAdjustmentBasis>(v, true, out _))
-                .WithMessage("Basis must be Percentage or FixedAmount.");
+                .WithMessage("Basis must be Percentage, FixedAmount or Step.");
+            // A step increment is a ladder distance, so fractions are expected (1.5, 2.5) but it must
+            // still be a real move on a real ladder.
+            RuleFor(x => x.Rate)
+                .GreaterThan(0)
+                .When(x => string.Equals(x.Basis, nameof(SalaryAdjustmentBasis.Step), StringComparison.OrdinalIgnoreCase))
+                .WithMessage("A step revision needs a step increment greater than zero.");
         }
     }
 
@@ -92,6 +107,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// <summary>Per-employee preview, capped for the response; the aggregate covers everyone.</summary>
         public List<SalaryRevisionLineDto> Lines { get; set; } = [];
         public bool LinesTruncated { get; set; }
+        /// <summary>Employees the scale could not move (off-scale, no grade rows, already at ceiling).</summary>
+        public int UnresolvedCount { get; set; }
+        /// <summary>Employees whose new salary was interpolated between two rungs.</summary>
+        public int InterpolatedCount { get; set; }
     }
 
     // ---- Interfaces ---------------------------------------------------------
@@ -114,6 +133,9 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public decimal? Salary { get; set; }
         public decimal? ScaleSalary { get; set; }
         public decimal Base => Salary ?? ScaleSalary ?? 0m;
+        /// <summary>Grade + rung the employee currently sits on — the origin for a Step revision.</summary>
+        public Guid? JobGradeId { get; set; }
+        public int? StepOrdinal { get; set; }
     }
 
     internal static class SalaryRevisionShared
@@ -138,16 +160,72 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber,
                 Number = e.EmployeeNumber,
                 Salary = e.Salary,
-                ScaleSalary = e.SalaryScale != null ? (decimal?)e.SalaryScale.Salary : null
+                ScaleSalary = e.SalaryScale != null ? (decimal?)e.SalaryScale.Salary : null,
+                JobGradeId = e.SalaryScale != null ? (Guid?)e.SalaryScale.JobGradeId : null,
+                StepOrdinal = e.SalaryScale != null ? (int?)e.SalaryScale.Step.Ordinal : null
             }).ToListAsync();
 
             return rows.Where(r => r.Base > 0).ToList();
         }
 
-        internal static decimal Propose(SalaryAdjustmentBasis basis, decimal rate, decimal current) =>
-            basis == SalaryAdjustmentBasis.Percentage
-                ? Math.Round(current * (1 + rate / 100m), 2)
-                : current + rate;
+        /// <summary>
+        /// Percentage/FixedAmount are pure functions of the current salary. Step is not — it has to
+        /// consult the employee's own grade ladder, so it takes the pre-built <paramref name="ladder"/>
+        /// (see <see cref="SalaryScaleLadderFactory"/> for why that is loaded once, not per employee).
+        /// </summary>
+        internal static StepResolution Propose(
+            SalaryAdjustmentBasis basis, decimal rate, EmployeeCompRow row, ISalaryScaleLadder? ladder)
+        {
+            var current = row.Base;
+            return basis switch
+            {
+                SalaryAdjustmentBasis.Percentage =>
+                    new StepResolution(Math.Round(current * (1 + rate / 100m), 2), 0m, false, false, null),
+                SalaryAdjustmentBasis.FixedAmount =>
+                    new StepResolution(current + rate, 0m, false, false, null),
+                SalaryAdjustmentBasis.Step =>
+                    ladder is null
+                        ? StepResolution.Unchanged(current, "No salary scale loaded.")
+                        : HoldPay(ladder.Resolve(row.JobGradeId, row.StepOrdinal, rate, current), current),
+                _ => StepResolution.Unchanged(current, "Unsupported basis.")
+            };
+        }
+
+        /// <summary>
+        /// A step revision must never CUT pay. Employees paid above their rung (red-circled, off-scale,
+        /// or promoted ahead of a scale refresh) are common, and for them the scale value can sit below
+        /// what they already earn — an unguarded "advance 1 step" would hand thousands of people a pay
+        /// cut in one click. Hold the current salary instead and say why, so it shows up in the
+        /// simulation's "not moved" count rather than in next month's payroll.
+        /// </summary>
+        private static StepResolution HoldPay(StepResolution resolved, decimal current) =>
+            resolved.Salary >= current
+                ? resolved
+                : resolved with
+                {
+                    Salary = current,
+                    Reason = "Scale value is below current pay; salary held (paid above their step)."
+                };
+
+        /// <summary>Step revisions read the ladder; the other bases never touch the scale table.</summary>
+        internal static async Task<ISalaryScaleLadder?> LadderIfNeededAsync(
+            SalaryAdjustmentBasis basis, ISalaryScaleLadderFactory factory, Guid? targetGradeId) =>
+            basis == SalaryAdjustmentBasis.Step ? await factory.BuildAsync(targetGradeId) : null;
+
+        /// <summary>
+        /// Basis-specific bounds. The percentage ceiling must NOT be applied to a step increment —
+        /// "2.5" is a perfectly ordinary number of steps but would look like a 2.5% rise.
+        /// </summary>
+        internal static void GuardRate(SalaryAdjustmentBasis basis, decimal rate)
+        {
+            if (basis == SalaryAdjustmentBasis.Percentage && rate > 100)
+                throw new ValidationException("Rate", "A percentage revision cannot exceed 100.");
+            if (basis == SalaryAdjustmentBasis.Step && rate > MaxStepIncrement)
+                throw new ValidationException("Rate", $"A step revision cannot advance more than {MaxStepIncrement} steps.");
+        }
+
+        /// <summary>Sanity bound — real ladders are ~10 rungs, so this only catches fat-finger input.</summary>
+        internal const decimal MaxStepIncrement = 50m;
 
         internal static void FillAggregate(SalaryRevisionDto dto)
         {
@@ -162,6 +240,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
     // ---- Handlers -----------------------------------------------------------
     public class SimulateSalaryRevision(
         IRepository<Employee> employeeRepository,
+        ISalaryScaleLadderFactory ladderFactory,
         IPerformanceVisibilityService visibility) : ISimulateSalaryRevision
     {
         private const int PreviewCap = 200;
@@ -172,17 +251,26 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can run salary simulations.");
 
             var basis = Enum.Parse<SalaryAdjustmentBasis>(dto.Basis, true);
-            if (basis == SalaryAdjustmentBasis.Percentage && dto.Rate > 100)
-                throw new ValidationException(nameof(dto.Rate), "A percentage revision cannot exceed 100.");
+            SalaryRevisionShared.GuardRate(basis, dto.Rate);
 
             var rows = await SalaryRevisionShared.TargetsAsync(employeeRepository, dto.TargetJobGradeId, dto.TargetOrganizationUnitId);
-            var lines = rows.Select(r => new SalaryRevisionLineDto
+            var ladder = await SalaryRevisionShared.LadderIfNeededAsync(basis, ladderFactory, dto.TargetJobGradeId);
+
+            var lines = rows.Select(r =>
             {
-                EmployeeId = r.EmployeeId,
-                EmployeeName = r.Name,
-                EmployeeNumber = r.Number,
-                CurrentSalary = r.Base,
-                ProposedSalary = SalaryRevisionShared.Propose(basis, dto.Rate, r.Base)
+                var res = SalaryRevisionShared.Propose(basis, dto.Rate, r, ladder);
+                return new SalaryRevisionLineDto
+                {
+                    EmployeeId = r.EmployeeId,
+                    EmployeeName = r.Name,
+                    EmployeeNumber = r.Number,
+                    CurrentSalary = r.Base,
+                    ProposedSalary = res.Salary,
+                    CurrentStep = r.StepOrdinal,
+                    ProposedStep = basis == SalaryAdjustmentBasis.Step ? res.ResolvedStep : null,
+                    Interpolated = res.Interpolated,
+                    Note = res.Reason
+                };
             }).ToList();
 
             var totalCurrent = lines.Sum(l => l.CurrentSalary);
@@ -195,7 +283,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 TotalIncrease = totalProposed - totalCurrent,
                 AveragePercent = totalCurrent > 0 ? Math.Round((totalProposed - totalCurrent) / totalCurrent * 100m, 2) : 0m,
                 Lines = lines.OrderByDescending(l => l.Increase).Take(PreviewCap).ToList(),
-                LinesTruncated = lines.Count > PreviewCap
+                LinesTruncated = lines.Count > PreviewCap,
+                // Surfaced so HR can see, before committing, how many people the scale could not
+                // move (off-scale employees, grades with no rows, ceiling hits) rather than
+                // discovering a silent no-op after applying.
+                UnresolvedCount = lines.Count(l => l.Note != null),
+                InterpolatedCount = lines.Count(l => l.Interpolated)
             };
         }
     }
@@ -204,6 +297,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IRepository<SalaryRevision> repository,
         IRepository<SalaryRevisionLine> lineRepository,
         IRepository<Employee> employeeRepository,
+        ISalaryScaleLadderFactory ladderFactory,
         IPerformanceVisibilityService visibility,
         IValidator<SaveSalaryRevisionDto> validator,
         ILogger<SaveSalaryRevision> logger) : ISaveSalaryRevision
@@ -217,10 +311,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
             var type = Enum.Parse<SalaryRevisionType>(dto.RevisionType, true);
             var basis = Enum.Parse<SalaryAdjustmentBasis>(dto.Basis, true);
-            if (basis == SalaryAdjustmentBasis.Percentage && dto.Rate > 100)
-                throw new ValidationException(nameof(dto.Rate), "A percentage revision cannot exceed 100.");
+            SalaryRevisionShared.GuardRate(basis, dto.Rate);
 
             var rows = await SalaryRevisionShared.TargetsAsync(employeeRepository, dto.TargetJobGradeId, dto.TargetOrganizationUnitId);
+            var ladder = await SalaryRevisionShared.LadderIfNeededAsync(basis, ladderFactory, dto.TargetJobGradeId);
 
             Guid planId;
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
@@ -245,7 +339,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
             foreach (var r in rows)
                 await lineRepository.AddAsync(SalaryRevisionLine.Create(planId, r.EmployeeId, r.Base,
-                    SalaryRevisionShared.Propose(basis, dto.Rate, r.Base)));
+                    SalaryRevisionShared.Propose(basis, dto.Rate, r, ladder).Salary));
 
             await repository.SaveChangesAsync();
             logger.LogInformation("Saved SalaryRevision {Id} with {Count} lines", planId, rows.Count);

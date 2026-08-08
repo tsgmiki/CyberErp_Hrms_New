@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Handshake } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const GuaranteeForm = memo(lazy(() => import("../employeeGuarantee/form")));
 const GuaranteeList = memo(lazy(() => import("../employeeGuarantee/list")));
 
 /** §3.12 HC306 — the signed-in employee records and amends their OWN guarantee commitments. */
 function MyGuarantees() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/myGuarantees");
   return (
     <EntityModuleShell
       title="My Guarantees"

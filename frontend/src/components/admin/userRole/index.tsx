@@ -1,6 +1,6 @@
 import { lazy, memo } from "react";
 import { UserCog } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const UserRoleForm = memo(lazy(() => import("./userRoleForm")));
 const UserRoleList = memo(lazy(() => import("./userRoleList")));
@@ -8,7 +8,7 @@ const UserRoleList = memo(lazy(() => import("./userRoleList")));
 function UserRole(props:{userId?:string}) {
   const {userId} = props
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/userRole");
 
   return (
     <EntityModuleShell

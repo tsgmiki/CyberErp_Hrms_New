@@ -935,3 +935,49 @@ Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission
 self-references (OrgUnit.ParentId, Position.ReportsTo, PositionClass.ReportsTo) are `Restrict` with
 cycle-prevention in the update handlers. `UserRole` maps `RoleId`/`UserId` as **plain scalar columns**
 (the DB enforces its own FKs) to avoid duplicate shadow FKs.
+
+---
+
+## 9. Salary revision — the three bases (and the step ladder)
+
+A `SalaryRevision` proposes a new salary for every targeted employee. `Rate` means something
+different per `SalaryAdjustmentBasis`, which is why the UI relabels the field:
+
+| Basis | `Rate` means | New salary |
+|---|---|---|
+| `Percentage` | percent uplift | `round(current × (1 + rate/100), 2)`; rejected above 100 |
+| `FixedAmount` | flat amount | `current + rate` |
+| `Step` | **step increment** (fractional: 1.5, 2.5) | read/interpolated from the salary scale |
+
+### Step basis — how the salary is derived
+
+1. Employee's grade + rung come from `Employee.SalaryScaleId → coreSalaryScale (JobGradeId, StepId)`,
+   with the rung number being **`lupStep.Ordinal`** — never `Code`/`Name`, which are free text and
+   differ per tenant (`01`/`1`–`8`/`11` vs `S1` vs `ST1`, with "Base" coded `01` and "Celling" `11`).
+2. `target = currentOrdinal + increment`.
+3. **Clamp** to that grade's ladder: at/above the top rung pays the ceiling (`Capped`), at/below the
+   bottom pays the base. It never extrapolates past the ends — a grade has no authority to pay
+   outside its own scale.
+4. **Bracket + interpolate.** Ladders are GAPPED in real data (grade `01` → ordinals 2,4,5; grade
+   `13` → 1,2,3,10), so the landing point is bracketed by the two nearest **defined** rungs
+   (binary search), not by `floor`/`ceil`:
+
+   ```
+   fraction = (target − loOrdinal) / (hiOrdinal − loOrdinal)
+   salary   = round(loSalary + (hiSalary − loSalary) × fraction, 2)
+   ```
+
+   Landing exactly on a defined rung is read directly and is NOT flagged `Interpolated`.
+5. **Never cut pay.** If the scale value is below what the employee already earns (red-circled /
+   off-scale / promoted ahead of a scale refresh), the salary is HELD at current and the line carries
+   a `Note`. Without this, "advance everyone 1 step" hands a pay cut to every above-scale employee.
+6. Employees with no grade, no step, or a grade with no scale rows keep their pay and are counted in
+   the simulation's `UnresolvedCount`.
+
+**Performance contract:** the ladders are built **once per revision run**
+(`ISalaryScaleLadderFactory`), never per employee — a per-employee bracket query is an N+1 (10k
+employees → 10k+ round trips). The scale is bounded by grades × steps, so one projected read
+(index-only via `IX_coreSalaryScale_TenantId_JobGradeId_StepId INCLUDE (Salary)`) serves every lookup;
+each employee then resolves in O(log steps) in memory. Any change here must preserve that.
+
+Covered by `CyberErp.Hrms.Tests/Compensation/*` (35 tests) — the only unit tests in the solution.

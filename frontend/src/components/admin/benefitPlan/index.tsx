@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { HeartPulse } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const BenefitPlanForm = memo(lazy(() => import("./form")));
 const BenefitPlanList = memo(lazy(() => import("./list")));
 
 function BenefitPlan() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/benefitPlan");
 
   return (
     <EntityModuleShell

@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { FileSignature } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MedicalContractForm = memo(lazy(() => import("./form")));
 const MedicalContractList = memo(lazy(() => import("./list")));
 
 function MedicalContract() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/medicalContract");
 
   return (
     <EntityModuleShell

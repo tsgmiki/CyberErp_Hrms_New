@@ -62,6 +62,9 @@ function OtherLeaveSettingForm({ id, setId }: { id: string; setId: (id: string) 
     setIsLoading(true);
     const res = await saveOtherLeaveSetting({
       ...formData,
+      // Route id fallback: if the record failed to load, an empty id would make this a CREATE and
+      // silently duplicate the row instead of failing the update.
+      id: formData.id || id || undefined,
       standardDays: Number(formData.standardDays),
       managerialDays: Number(formData.managerialDays),
       isLumpSum: formData.isLumpSum === true || String(formData.isLumpSum) === "true",

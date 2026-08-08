@@ -82,6 +82,8 @@ function EmployeeGoalForm({ id, setId }: { id: string; setId: (id: string) => vo
     setIsSaving(true);
     const payload: EmployeeGoalModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       organizationalObjectiveId: meta.organizationalObjectiveId || undefined,
       weight: num(meta.weight) ?? 0,
       progressPercent: num(meta.progressPercent) ?? 0,

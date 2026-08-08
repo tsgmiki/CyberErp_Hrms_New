@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { MapPin } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const WorkLocationForm = memo(lazy(() => import("./form")));
 const WorkLocationList = memo(lazy(() => import("./list")));
 
 function WorkLocation() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/workLocation");
 
   return (
     <EntityModuleShell

@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { ShieldAlert } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const CriticalPositionForm = memo(lazy(() => import("./form")));
 const CriticalPositionList = memo(lazy(() => import("./list")));
 
 function CriticalPosition() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/criticalPosition");
   return (
     <EntityModuleShell
       title="Critical Positions"

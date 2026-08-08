@@ -1,6 +1,6 @@
 import { lazy, memo, useCallback, useState } from "react";
 import { Network, GitFork, PanelsTopLeft } from "lucide-react";
-import { EntityModuleShell } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import type { OrgUnitTreeNode } from "@/models";
 
 const OrgTree = memo(lazy(() => import("./orgTree")));
@@ -27,29 +27,36 @@ function ViewToggle({ view, setView }: { view: View; setView: (v: View) => void 
 }
 
 function OrganizationUnit() {
+  // URL-backed: /organizationUnit · /organizationUnit/new · /organizationUnit/{guid}. Here the form
+  // is a MODAL over the tree rather than a page swap, so `showForm` gates the overlay — the shell
+  // still always renders its children.
+  const {
+    id: editId,
+    showForm,
+    backHandler: closeForm,
+    addHandler: openAdd,
+    editHandler: openEdit,
+  } = useEntityRouteModule("/organizationUnit");
+
   const [view, setView] = useState<View>("structure");
   const [selectedNode, setSelectedNode] = useState<OrgUnitTreeNode | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState("");
   const [presetParentId, setPresetParentId] = useState<string | undefined>();
   const [presetParentName, setPresetParentName] = useState<string | undefined>();
 
-  // Add: prefill the parent with the currently selected tree node (if any).
+  // Add: prefill the parent with the currently selected tree node (if any). The preset is a
+  // convenience captured at click time — it deliberately stays out of the URL, so a cold
+  // /organizationUnit/new simply opens with no parent prefilled.
   const addHandler = useCallback(() => {
-    setEditId("");
     setPresetParentId(selectedNode?.id);
     setPresetParentName(selectedNode?.name);
-    setShowForm(true);
-  }, [selectedNode]);
+    openAdd();
+  }, [selectedNode, openAdd]);
 
   const editHandler = useCallback((id: string) => {
-    setEditId(id);
     setPresetParentId(undefined);
     setPresetParentName(undefined);
-    setShowForm(true);
-  }, []);
-
-  const closeForm = useCallback(() => setShowForm(false), []);
+    openEdit(id);
+  }, [openEdit]);
 
   return (
     <EntityModuleShell

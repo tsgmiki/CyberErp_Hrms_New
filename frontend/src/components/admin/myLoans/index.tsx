@@ -1,6 +1,6 @@
 import { lazy, memo, useState } from "react";
 import { HandCoins } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MyLoanRequestForm = memo(lazy(() => import("./form")));
 const MyLoanList = memo(lazy(() => import("./list")));
@@ -8,7 +8,7 @@ const MyLoanDetailModal = memo(lazy(() => import("./detailModal")));
 
 /** HC252/HC257 — the signed-in employee requests staff loans, tracks balances and gives consent. */
 function MyLoans() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/myLoans");
   const [selId, setSelId] = useState<string | null>(null);
 
   return (

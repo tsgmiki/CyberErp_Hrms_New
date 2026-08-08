@@ -2,6 +2,7 @@ import store from "@/store";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
+import { findBestRouteMatch, matchesRoute } from "@/utils/routeMatch";
 
 export interface FormPermissionState {
   finalDisable: boolean;
@@ -22,22 +23,20 @@ export function useFormPermissions(
   const pathName = useLocation().pathname;
 
   return useMemo(() => {
-    // Match on a full path segment, NOT a raw substring — otherwise a sibling route whose link is a
-    // prefix of another (e.g. "/loan" ⊂ "/loanType", "/trip" ⊂ "/tripBudget") would wrongly inherit
-    // the shorter route's permissions and disable Save. Still matches nested routes ("/loan/123").
-    const matchesRoute = (link?: string) => {
-      if (!link) return false;
-      return pathName === link || pathName.startsWith(`${link}/`);
-    };
-
-    const routePermission = permissions?.find((p) => matchesRoute(p.link as string));
+    // Segment matching (shared with the route guard and the list/grid gates) — NOT a raw substring,
+    // otherwise a sibling route whose link is a prefix of another (e.g. "/loan" ⊂ "/loanType",
+    // "/trip" ⊂ "/tripBudget") would inherit the shorter route's permissions and disable Save.
+    // Longest-match so a nested record URL ("/loanType/{guid}") lands on its own operation.
+    const routePermission = findBestRouteMatch(pathName, permissions, (p) =>
+      p.link ? String(p.link) : undefined,
+    );
 
     const blockedByRoute =
       typeof permissions !== "undefined" &&
       permissions.length > 0 &&
       permissions.some(
         (p) =>
-          matchesRoute(p.link as string) &&
+          matchesRoute(pathName, p.link as string) &&
           (p.canAdd === false || p.canEdit === false),
       );
 

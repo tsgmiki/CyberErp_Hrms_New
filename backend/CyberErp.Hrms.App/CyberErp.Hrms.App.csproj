@@ -14,4 +14,11 @@
     <ProjectReference Include="..\CyberErp.Hrms.Dom\CyberErp.Hrms.Dom.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The pay-ladder maths (SalaryScaleLadder, SalaryRevisionShared) is internal on purpose: it is
+         an implementation detail behind ISalaryScaleLadder. Expose it to the test project rather than
+         widening the public surface just to make it testable. -->
+    <InternalsVisibleTo Include="CyberErp.Hrms.Tests" />
+  </ItemGroup>
+
 </Project>

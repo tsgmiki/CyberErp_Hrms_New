@@ -1,13 +1,13 @@
 import { lazy, memo, useState } from "react";
 import { Wallet } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import UtilizationModal from "./utilizationModal";
 
 const TripBudgetForm = memo(lazy(() => import("./form")));
 const TripBudgetList = memo(lazy(() => import("./list")));
 
 function TripBudget() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/tripBudget");
   const [utilId, setUtilId] = useState<string | null>(null);
 
   return (

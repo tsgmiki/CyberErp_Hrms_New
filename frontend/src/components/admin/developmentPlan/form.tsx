@@ -73,6 +73,8 @@ function DevelopmentPlanForm({ id, setId }: { id: string; setId: (id: string) =>
     setIsSaving(true);
     const payload: DevelopmentPlanModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       appraisalId: meta.appraisalId || undefined,
       actions: actions.map(({ _key, ...a }, i) => ({
         ...a,

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarClock } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const ReviewCycleForm = memo(lazy(() => import("./form")));
 const ReviewCycleList = memo(lazy(() => import("./list")));
 
 function ReviewCycle() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/reviewCycle");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Medal } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const AchievementForm = memo(lazy(() => import("./form")));
 const AchievementList = memo(lazy(() => import("./list")));
 
 function Achievement() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/achievement");
 
   return (
     <EntityModuleShell

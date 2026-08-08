@@ -54,7 +54,7 @@ function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) =
   const submit = async () => {
     setIsSaving(true);
     const result = await saveDisciplinaryCase({
-      id: meta.id,
+      id: meta.id || id || undefined,
       employeeId: meta.employeeId,
       violationDate: meta.violationDate,
       violationType: meta.violationType,

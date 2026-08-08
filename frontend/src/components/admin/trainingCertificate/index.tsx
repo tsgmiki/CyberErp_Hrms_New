@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { ScrollText } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const TrainingCertificateForm = memo(lazy(() => import("./form")));
 const TrainingCertificateList = memo(lazy(() => import("./list")));
 
 function TrainingCertificate() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/trainingCertificate");
 
   return (
     <EntityModuleShell

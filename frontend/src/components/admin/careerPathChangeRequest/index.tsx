@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { GitPullRequestArrow } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const ChangeRequestForm = memo(lazy(() => import("./form")));
 const ChangeRequestList = memo(lazy(() => import("./list")));
 
 function CareerPathChangeRequest() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/careerPathChangeRequest");
   return (
     <EntityModuleShell
       title="Career Path Change Requests"

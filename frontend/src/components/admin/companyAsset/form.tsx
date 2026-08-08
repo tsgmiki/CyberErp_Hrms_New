@@ -37,7 +37,7 @@ function CompanyAssetForm({ id, setId }: { id: string; setId: (id: string) => vo
   const submit = async () => {
     setIsSaving(true);
     const result = await saveCompanyAsset({
-      id: meta.id,
+      id: meta.id || id || undefined,
       name: meta.name,
       category: meta.category,
       serialNo: meta.serialNo || undefined,

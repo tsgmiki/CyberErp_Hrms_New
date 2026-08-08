@@ -87,7 +87,7 @@ function RoleForm(props: { id: string; setRoleId: (id: string) => void }) {
             },
             {
               name: "id",
-              value: formData.id,
+              value: formData.id || id,
               type: "hidden",
             },
           ],

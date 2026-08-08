@@ -40,7 +40,7 @@ function TrainingBudgetForm({ id, setId }: { id: string; setId: (id: string) => 
   const submit = async () => {
     setIsSaving(true);
     const result = await saveTrainingBudget({
-      id: meta.id,
+      id: meta.id || id || undefined,
       fiscalYear: Number(meta.fiscalYear),
       organizationUnitId: meta.organizationUnitId || undefined,
       amount: Number(meta.amount ?? 0),

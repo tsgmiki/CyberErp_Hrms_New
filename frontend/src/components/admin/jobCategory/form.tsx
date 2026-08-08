@@ -4,11 +4,13 @@ import { memo, useCallback, useEffect, useState } from "react";
 import type { JobCategoryModel } from "@/models";
 import { StatusMessage } from "../../common/statusMessage/status";
 import React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import saveJobCategory from "@/services/admin/jobCategory/save";
 import getJobCategory from "@/services/admin/jobCategory/get";
 import Loading from "../../common/loader/loader";
 import { activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
+import { useEntityRecord } from "@/template";
+import RecordNotFound from "../../common/recordNotFound";
 
 const FormProvider = memo(FormProviders);
 
@@ -28,11 +30,12 @@ function JobCategoryForm(props: { id: string; setId: (id: string) => void }) {
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 
-  const { data: record, isLoading: pending } = useQuery({
-    queryKey: ["jobCategory", id],
-    queryFn: () => getJobCategory(id),
-    enabled: typeof id != "undefined" && id != "",
-  });
+  // Shared by-id fetch; `notFound` guards the stale-deep-link → duplicate-create path.
+  const { data: record, isLoading: pending, notFound } = useEntityRecord<JobCategoryModel>(
+    "jobCategory",
+    getJobCategory,
+    { id },
+  );
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -64,6 +67,8 @@ function JobCategoryForm(props: { id: string; setId: (id: string) => void }) {
     }
   }, [formState]);
 
+  if (notFound) return <RecordNotFound onBack={() => setId("")} />;
+
   return (
     <div className="text-white">
       {pending && <Loading />}
@@ -84,7 +89,8 @@ function JobCategoryForm(props: { id: string; setId: (id: string) => void }) {
               data: activeStatusOptions as never,
             },
             { name: "description", label: "Description", placeholder: "Description", value: formData.description, onChange: changeHandler, type: "textarea", colSpan: "full" },
-            { name: "id", value: formData.id, type: "hidden" },
+            // Route id fallback so an unloaded record can never degrade PUT into POST.
+            { name: "id", value: formData.id ?? id, type: "hidden" },
           ],
         }}
       />

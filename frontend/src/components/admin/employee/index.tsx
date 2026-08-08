@@ -1,6 +1,6 @@
-import { lazy, memo, useCallback, useState } from "react";
+import { lazy, memo, useState } from "react";
 import { Users } from "lucide-react";
-import { EntityModuleShell } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import type { OrgUnitTreeNode } from "@/models";
 
 const OrgTree = memo(lazy(() => import("@/components/admin/organizationUnit/orgTree")));
@@ -8,21 +8,19 @@ const EmployeeList = memo(lazy(() => import("./list")));
 const EmployeeProfile = memo(lazy(() => import("./profile")));
 
 function Employee() {
+  // URL-backed: /employee (tree + list) · /employee/new · /employee/{guid} (profile).
+  // The org-tree selection stays local — it filters the list, it isn't the record being edited,
+  // so it has no place in the URL.
+  const {
+    id: editId,
+    setId: setEditId,
+    showForm: showProfile,
+    backHandler,
+    addHandler,
+    editHandler,
+  } = useEntityRouteModule("/employee");
+
   const [selectedNode, setSelectedNode] = useState<OrgUnitTreeNode | null>(null);
-  const [showProfile, setShowProfile] = useState(false);
-  const [editId, setEditId] = useState("");
-
-  const addHandler = useCallback(() => {
-    setEditId("");
-    setShowProfile(true);
-  }, []);
-
-  const editHandler = useCallback((id: string) => {
-    setEditId(id);
-    setShowProfile(true);
-  }, []);
-
-  const backHandler = useCallback(() => setShowProfile(false), []);
 
   return (
     <EntityModuleShell

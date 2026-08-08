@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Scale } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const CalibrationForm = memo(lazy(() => import("./form")));
 const CalibrationList = memo(lazy(() => import("./list")));
 
 function Calibration() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/calibration");
 
   return (
     <EntityModuleShell

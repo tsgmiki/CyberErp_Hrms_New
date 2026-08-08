@@ -77,7 +77,7 @@ function TrainingNeedForm({ id, setId }: { id: string; setId: (id: string) => vo
   const submit = async () => {
     setIsSaving(true);
     const result = await saveTrainingNeed({
-      id: meta.id,
+      id: meta.id || id || undefined,
       employeeId: meta.employeeId,
       trainingCourseId: meta.trainingCourseId || undefined,
       topic: meta.topic,

@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { Coins } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const AllowanceTypeForm = memo(lazy(() => import("./form")));
 const AllowanceTypeList = memo(lazy(() => import("./list")));
 
 function AllowanceType() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/allowanceType");
 
   return (
     <EntityModuleShell

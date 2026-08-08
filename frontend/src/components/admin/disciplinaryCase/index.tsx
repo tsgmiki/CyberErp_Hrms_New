@@ -1,6 +1,6 @@
 import { lazy, memo } from "react";
 import { ShieldAlert } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const DisciplinaryCaseForm = memo(lazy(() => import("./form")));
 const DisciplinaryCaseList = memo(lazy(() => import("./list")));
@@ -12,7 +12,7 @@ const DisciplinaryCaseList = memo(lazy(() => import("./list")));
  */
 function DisciplinaryCase() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/disciplinaryCase");
 
   return (
     <EntityModuleShell

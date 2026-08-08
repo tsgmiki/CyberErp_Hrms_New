@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Goal } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const OrganizationalObjectiveForm = memo(lazy(() => import("./form")));
 const OrganizationalObjectiveList = memo(lazy(() => import("./list")));
 
 function OrganizationalObjective() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/organizationalObjective");
 
   return (
     <EntityModuleShell

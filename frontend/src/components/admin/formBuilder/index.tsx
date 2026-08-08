@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { LayoutGrid } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const FormBuilderForm = memo(lazy(() => import("./form")));
 const FormBuilderList = memo(lazy(() => import("./list")));
 
 function FormBuilder() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/formBuilder");
 
   return (
     <EntityModuleShell

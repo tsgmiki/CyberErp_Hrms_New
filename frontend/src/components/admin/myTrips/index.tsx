@@ -1,6 +1,6 @@
 import { lazy, memo, useState } from "react";
 import { Plane } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MyTripRequestForm = memo(lazy(() => import("./form")));
 const MyTripList = memo(lazy(() => import("./list")));
@@ -8,7 +8,7 @@ const MyTripDetailModal = memo(lazy(() => import("./detailModal")));
 
 /** HC260/HC262/HC264 — the signed-in employee requests trips, records expenses and settles advances. */
 function MyTrips() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/myTrips");
   const [selId, setSelId] = useState<string | null>(null);
 
   return (

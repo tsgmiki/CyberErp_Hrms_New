@@ -81,7 +81,7 @@ function LearningPathForm({ id, setId }: { id: string; setId: (id: string) => vo
   const submit = async () => {
     setIsSaving(true);
     const result = await saveLearningPath({
-      id: meta.id,
+      id: meta.id || id || undefined,
       name: meta.name,
       description: meta.description || undefined,
       targetPositionId: meta.targetPositionId || undefined,

@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { BookOpenCheck, Calculator, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { EntityModuleShell, useEntityCrudModule, EntityListShell } from "@/template";
+import { EntityModuleShell, useEntityRouteModule, EntityListShell } from "@/template";
 import getAllSetting from "@/services/admin/annualLeaveSetting/getAll";
 import getAnnualLeaveLedger from "@/services/admin/annualLeaveLedger/get";
 import calculateAnnualLeaveLedger from "@/services/admin/annualLeaveLedger/calculate";
@@ -54,7 +54,7 @@ const COLUMNS: DataTableColumnModel[] = [
 ];
 
 function AnnualLeaveLedger() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/annualLeaveLedger");
   const [settingId, setSettingId] = useState("");
   const queryClient = useQueryClient();
 

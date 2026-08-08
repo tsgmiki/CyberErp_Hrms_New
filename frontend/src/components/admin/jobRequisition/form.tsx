@@ -206,7 +206,8 @@ function JobRequisitionForm(props: { id: string; setId: (id: string) => void }) 
   const submitHandler = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
-    const result = await saveJobRequisition({ ...formData, screeningCriteria: criteria });
+    /* route-id fallback: an unloaded record must not degrade this update into a create */
+    const result = await saveJobRequisition({ ...formData, id: formData.id || id || undefined, screeningCriteria: criteria });
     setFormState(result);
     setIsLoading(false);
   };

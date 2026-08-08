@@ -26,7 +26,20 @@ const TYPE_OPTIONS = [
 const BASIS_OPTIONS = [
   { id: "Percentage", name: "Percentage" },
   { id: "FixedAmount", name: "Fixed amount" },
+  { id: "Step", name: "By step (salary scale)" },
 ];
+
+/** The `rate` field means something different per basis, so it is labelled and hinted per basis. */
+const RATE_FIELD: Record<string, { label: string; help: string }> = {
+  Percentage: { label: "Percent", help: "Uplift applied to each current salary, e.g. 7.5 for 7.5%." },
+  FixedAmount: { label: "Amount", help: "Flat amount added to each current salary." },
+  Step: {
+    label: "Step increment",
+    help: "Steps to advance on each employee's own grade ladder. Fractions are allowed (e.g. 1.5, 2.5) — "
+      + "a landing step between two rungs is interpolated between them. Employees already at the grade "
+      + "ceiling stay there.",
+  },
+};
 const NEW_DEFAULTS: SalaryRevisionModel = { revisionType: "CostOfLiving", basis: "Percentage", rate: 0 };
 
 function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
@@ -107,13 +120,25 @@ function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
             { name: "revisionType", label: "Type", type: "select", value: formData.revisionType, onChange: changeHandler, data: TYPE_OPTIONS as never },
             { name: "effectiveDate", label: "Effective date", required: true, type: "date", value: formData.effectiveDate, onChange: changeHandler },
             { name: "basis", label: "Basis", type: "select", value: formData.basis, onChange: changeHandler, data: BASIS_OPTIONS as never },
-            { name: "rate", label: formData.basis === "Percentage" ? "Percent" : "Amount", type: "text", inputType: "number", value: formData.rate, onChange: changeHandler },
+            // InputField already emits step="0.0001" for inputType number, so fractional step
+            // increments (1.5, 2.5) are accepted without a bespoke control.
+            {
+              name: "rate", type: "text", inputType: "number",
+              label: (RATE_FIELD[formData.basis ?? "Percentage"] ?? RATE_FIELD.Percentage).label,
+              placeholder: formData.basis === "Step" ? "e.g. 1.5" : undefined,
+              value: formData.rate, onChange: changeHandler, error: formState?.zodErrors?.rate,
+            },
             { name: "targetJobGradeId", label: "Target grade", type: "dropDown", onSelect: selectHandler, value: formData.targetJobGradeId ?? "", displayValue: optionLabel(gradeOptions, formData.targetJobGradeId ?? ""), data: gradeOptions as never },
             { name: "targetOrganizationUnitId", label: "Target unit", type: "dropDown", onSelect: selectHandler, value: formData.targetOrganizationUnitId ?? "", displayValue: optionLabel(unitOptions, formData.targetOrganizationUnitId ?? ""), data: unitOptions as never },
             { name: "notes", label: "Notes", type: "textarea", colSpan: "full", rowNo: 2, value: formData.notes, onChange: changeHandler },
           ],
         }}
       />
+
+      {/* What `rate` means changes with the basis, so say so where the number is entered. */}
+      <p className="mt-1 px-1 text-xs text-muted">
+        {t((RATE_FIELD[formData.basis ?? "Percentage"] ?? RATE_FIELD.Percentage).help)}
+      </p>
 
       <div className="mt-3">
         <DetailSection title="Simulation">
@@ -125,6 +150,25 @@ function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
                 <div><p className="text-[11px] uppercase text-muted">{t("Current total")}</p><p className="font-semibold tabular-nums">{money(sim.totalCurrent)}</p></div>
                 <div><p className="text-[11px] uppercase text-muted">{t("Proposed total")}</p><p className="font-semibold tabular-nums">{money(sim.totalProposed)}</p></div>
                 <div><p className="text-[11px] uppercase text-muted">{t("Increase")}</p><p className="font-semibold tabular-nums text-primary">+{money(sim.totalIncrease)} ({sim.averagePercent}%)</p></div>
+              </div>
+            )}
+            {/* A step revision can legitimately move nobody (everyone at the ceiling, or off-scale).
+                Without this the aggregate would just read 0 and look like a broken simulation. */}
+            {sim && formData.basis === "Step" && (
+              <div className="flex flex-wrap gap-4 rounded-md border border-border bg-secondary/20 px-3 py-2 text-xs">
+                <span className="text-muted">
+                  {t("Interpolated between rungs")}:{" "}
+                  <span className="font-semibold text-foreground tabular-nums">{sim.interpolatedCount ?? 0}</span>
+                </span>
+                <span className="text-muted">
+                  {t("Not moved by the scale")}:{" "}
+                  <span className={`font-semibold tabular-nums ${(sim.unresolvedCount ?? 0) > 0 ? "text-warning" : "text-foreground"}`}>
+                    {sim.unresolvedCount ?? 0}
+                  </span>
+                </span>
+                {(sim.unresolvedCount ?? 0) > 0 && (
+                  <span className="text-muted">{t("Off-scale employees, grades without scale rows, or already at the ceiling.")}</span>
+                )}
               </div>
             )}
           </div>

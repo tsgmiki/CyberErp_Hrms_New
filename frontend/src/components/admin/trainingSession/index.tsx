@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarDays } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const TrainingSessionForm = memo(lazy(() => import("./form")));
 const TrainingSessionList = memo(lazy(() => import("./list")));
 
 function TrainingSession() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/trainingSession");
 
   return (
     <EntityModuleShell

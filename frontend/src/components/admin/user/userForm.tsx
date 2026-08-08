@@ -171,7 +171,7 @@ function UserForm(props: { id: string; setUserId: (id: string) => void }) {
 
             {
               name: "id",
-              value: formData.id,
+              value: formData.id || id,
               type: "hidden",
             },
           ],

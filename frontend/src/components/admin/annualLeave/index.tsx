@@ -2,7 +2,7 @@ import { lazy, memo } from "react";
 import { CalendarCheck, UserX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import getMyEmployee from "@/services/admin/employee/me";
 import Loading from "../../common/loader/loader";
 
@@ -25,7 +25,7 @@ function NotLinked() {
 
 function AnnualLeave() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/annualLeave");
 
   // The Employee field is ALWAYS the signed-in employee here — resolved once, then locked
   // read-only in the form (no other employee can be selected on this screen).

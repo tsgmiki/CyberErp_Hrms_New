@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { Landmark } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const LoanTypeForm = memo(lazy(() => import("./form")));
 const LoanTypeList = memo(lazy(() => import("./list")));
 
 function LoanType() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/loanType");
 
   return (
     <EntityModuleShell

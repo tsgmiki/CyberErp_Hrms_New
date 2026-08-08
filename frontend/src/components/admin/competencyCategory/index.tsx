@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Shapes } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const CompetencyCategoryForm = memo(lazy(() => import("./form")));
 const CompetencyCategoryList = memo(lazy(() => import("./list")));
 
 function CompetencyCategory() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/competencyCategory");
 
   return (
     <EntityModuleShell

@@ -56,7 +56,8 @@ function ClearanceDepartmentForm(props: { id: string; setId: (id: string) => voi
   const submitHandler = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
-    const result = await saveClearanceDepartment({ ...formData, approvers });
+    // `id: formData.id || id || undefined` — route id fallback so an unloaded record can't POST a duplicate.
+    const result = await saveClearanceDepartment({ ...formData, id: formData.id || id || undefined, approvers });
     setFormState(result);
     setIsLoading(false);
   };

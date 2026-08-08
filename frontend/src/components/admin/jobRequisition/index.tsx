@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Megaphone } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const JobRequisitionForm = memo(lazy(() => import("./form")));
 const JobRequisitionList = memo(lazy(() => import("./list")));
 
 function JobRequisition() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/jobRequisition");
 
   return (
     <EntityModuleShell

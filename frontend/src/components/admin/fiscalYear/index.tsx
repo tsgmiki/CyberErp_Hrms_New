@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarCog } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const FiscalYearForm = memo(lazy(() => import("./form")));
 const FiscalYearList = memo(lazy(() => import("./list")));
 
 function FiscalYear() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/fiscalYear");
 
   return (
     <EntityModuleShell

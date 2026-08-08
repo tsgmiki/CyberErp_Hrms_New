@@ -210,6 +210,8 @@ function AnnualLeaveForm({
     setIsSaving(true);
     const payload: AnnualLeaveModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       details: details.map(({ _key, ...d }) => ({
         leaveUsage: d.leaveUsage || "FullDay",
         startDate: d.startDate,

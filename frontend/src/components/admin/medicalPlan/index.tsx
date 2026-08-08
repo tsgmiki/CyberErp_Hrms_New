@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { ShieldPlus } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MedicalPlanForm = memo(lazy(() => import("./form")));
 const MedicalPlanList = memo(lazy(() => import("./list")));
 
 function MedicalPlan() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/medicalPlan");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Shield } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RoleForm = memo(lazy(() => import("./roleForm")));
 const RoleList = memo(lazy(() => import("./roleList")));
 
 function Role() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/role");
 
   return (
     <EntityModuleShell

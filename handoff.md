@@ -8,11 +8,12 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-2`** (branched off `main` at `fb9210e`, 2026-08-05).
-  Everything up to that point was merged into `main` via **PR #2**, and the old
-  `feature/hrms-buildout` branch was then **deleted** (local + remote) — historical references to it
-  below are accurate for their date but the branch no longer exists. `main` is the integration
-  branch; open a PR from the current branch when a batch is ready.
+- **CURRENT BRANCH: `feature/hrms-buildout-3`** (branched off `main` at `706b65f`, 2026-08-05).
+  `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
+  rotate to a fresh `feature/hrms-buildout-N`. Completed so far: **PR #2** merged the buildout
+  (18 commits) and **PR #3** merged the doc sync; the `feature/hrms-buildout` and
+  `feature/hrms-buildout-2` branches were deleted after merging. Historical references to them below
+  are accurate for their date, but those branches no longer exist.
 - Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
   Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
@@ -64,6 +65,93 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DJ. **Salary revision "by step" — fractional step increments interpolated against the salary scale
+    (2026-08-08, backend + frontend, MIGRATION `SalaryStepOrdinalAndStepBasis`, first unit tests).**
+    `SalaryAdjustmentBasis` gains `Step = 2` alongside `Percentage`/`FixedAmount`. `Rate` is then a
+    step increment (1.5, 2.5), not a percent or an amount.
+    - **Blocker found first: `Step` had no numeric ordinal.** Only `Name`/`Code`, and codes are
+      inconsistent per tenant — `01`(Base), `1`–`8`, `11`(Celling) in one; `S1` in another; `ST1` in a
+      third. Parsing the code would rank the *ceiling* as step 11 and collide Base with step 1. Added
+      `Step.Ordinal` (int ≥ 1) as the ONLY key for step arithmetic; `Step.Create/Update` and the Step
+      slice/DTOs take it, list ordering switched to `Ordinal`.
+    - **Backfill is an inference — review it.** The migration ranks per tenant by the number embedded
+      in the code (first digit onwards), falling back to code then name, and numbers 1..N. For the
+      rich tenant that produced Base=1, steps 1–8 → 2–9, Celling=10, which is right — but it is a
+      reading of what those NAMES mean. Verify once per tenant:
+      `SELECT Name, Code, Ordinal FROM Core.lupStep ORDER BY TenantId, Ordinal;`
+      Consequence: an employee on code "3" now has ordinal **4**.
+    - **Interpolation** (`SalaryStepCalculator.cs`): target = current ordinal + increment, clamped to
+      the grade's [base, ceiling] (never extrapolates past the top). A fractional landing is bracketed
+      by the two nearest **defined** rungs via binary search and linearly interpolated, rounded to 2dp.
+      Live ladders are GAPPED (grade `01` has ordinals 2,4,5; grade `13` has 1,2,3,10), so a naive
+      floor/ceil would have been wrong on real data.
+    - **Performance:** the ladder is loaded ONCE per revision run, not per employee — a per-employee
+      bracket query is an N+1 (10k employees → 10k+ round trips). The scale is grades × steps (19 rows
+      here, low hundreds at enterprise size), so one projected read serves every lookup; each employee
+      then resolves in O(log steps) in memory. Migration also rebuilds
+      `IX_coreSalaryScale_TenantId_JobGradeId_StepId` with `INCLUDE (Salary)` so that read is index-only.
+    - **Policy decision — a step revision NEVER cuts pay.** Live data has employees paid above their
+      rung (one at 52 000 where the rung pays 45 000); "+1 step" computed 48 000, a 4 000 cut, in bulk.
+      `SalaryRevisionShared.HoldPay` floors the result at current pay and annotates the line. Reversible
+      in one method if red-circled staff should instead be re-based downward.
+    - Simulation/line DTOs expose `CurrentStep`/`ProposedStep`/`Interpolated`/`Note` plus
+      `UnresolvedCount`/`InterpolatedCount`, so a revision that legitimately moves nobody is visible
+      before applying rather than after.
+    - **Frontend:** basis dropdown gains "By step (salary scale)"; the `rate` field relabels per basis
+      (Percent / Amount / **Step increment**) with per-basis help text; simulation panel shows the
+      interpolated / not-moved counts. `InputField` already emits `step="0.0001"` for numeric inputs,
+      so fractions needed no new control.
+    - **First test project in the solution:** `CyberErp.Hrms.Tests` (xUnit, CPM, `/Tests/` folder in
+      `.slnx`), 35 tests over the interpolation and the no-cut policy. App exposes internals via
+      `InternalsVisibleTo` rather than widening its public surface. Mutation-checked: snapping
+      interpolation to the lower rung fails 10 tests; allowing pay cuts fails 3.
+
+00DI. **Global search goes straight to the record, for every entity (2026-08-08, HRMS frontend only,
+    no backend change).** `globalSearch.select()` now calls `buildRecordRoute(item.route, item.id)`
+    (exported from `routes/entityRoutes.tsx`), which returns `/{route}/{id}` when the module is in the
+    registry and the plain list route otherwise. Providers already return the base route + record id,
+    so every category — current and future — inherits direct-to-edit with no per-provider work and no
+    `ISearchProvider` change. Verified: Employees → `/employee/{guid}`, Departments →
+    `/organizationUnit/{guid}`. Leave Requests goes through identical code but this tenant has no data
+    to exercise it.
+
+00DH. **URL-driven `:id` routing across the whole SPA (2026-08-08, HRMS frontend only, no migration).**
+    Records were React state, so nothing was linkable, Back left the app, and refresh dropped the open
+    record. Now `/entity` = list · `/entity/new` = create · `/entity/{guid}` = edit, for **88 modules**
+    generated from a registry.
+    - `template/useEntityRouteModule(basePath)` returns the IDENTICAL shape to `useEntityCrudModule`,
+      so migrating a module is one import + one hook line; `list.tsx`/`form.tsx` untouched. All 88 call
+      sites were identical (`useEntityCrudModule()`, no args, barrel import), so this was a codemod.
+      `useEntityCrudModule` is KEPT — `employee/{leaveRequest,otherLeave}Section.tsx` are embedded
+      sections with no route of their own.
+    - `routes/entityRoutes.tsx` = registry + factory; `routes/index.tsx` went 320 → ~161 lines and
+      keeps 40 flat routes for screens with no single-record concept (dashboards, read-only lists,
+      wizards, modal-detail screens). Added the missing `*` catch-all → `pages/home/notFound.tsx`.
+    - **Route shape gotcha:** `new` rides the SAME `:id` slot rather than getting a static sibling —
+      a static `path="new"` leaves `useParams().id` undefined on `/x/new`, indistinguishable from the
+      list (this bit: `/branch/new` rendered the list until fixed). `EntityRecordGuard` admits `"new"`
+      and rejects non-GUIDs before any API call.
+    - **Employee + Organization Structure** (`employee`, `organizationUnit`, `position`) are included:
+      the record goes in the URL, the org-tree selection stays local. `employee` swaps list↔profile;
+      the other two open a modal over the tree. `position`'s owning unit is a hidden field fed only by
+      the tree preset, so a cold `/position/new` shows the "select an organization unit" hint instead
+      of saving an unparented position.
+    - **Security fix shipped with it:** `PermissionGate` matched the path EXACTLY, so `/branch/{guid}`
+      was not recognised as an operation and fell through UNGATED. Proved empirically by restoring the
+      old matcher: a role without Branch access could open `/branch/new` and reach `/branch/{guid}`.
+      Five call sites now share `utils/routeMatch.ts` (longest segment match); two of them
+      (`useListPermissions`, `gridAction`) used raw `String.includes`, so `/loanType` was inheriting
+      `/loan`'s grants — pre-existing bug fixed as a side effect.
+    - **Data-integrity fix:** `createEntityGetById` swallows 404s → `formData` stays empty → the hidden
+      `id` renders blank → `createSaveService` reads that as "no id" → **POST, creating a duplicate**
+      instead of failing the update. Unreachable before; a pasted stale link makes it reachable.
+      Closed centrally in `createSaveService` (recovers the id from the route, but ONLY when the
+      route's base segment names that same resource, so a child form on a parent record URL is
+      untouched) + 27 hand-written forms given a route-id fallback. **Watch the `|| undefined`:** an
+      early pass wrote `id: meta.id || id`, which puts `id: ""` into payloads where the key was
+      previously absent — 13 services keep the id in the body on create and would have sent `""` to a
+      .NET Guid binder, breaking creates.
 
 00DG. **HRMS login page now uses the SAME UI as the Home portal's (2026-08-05, HRMS frontend only,
     no migration, no auth/behaviour change).** Purely visual: both apps keep their OWN login pages,

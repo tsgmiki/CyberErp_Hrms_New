@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Shield } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const OperationForm = memo(lazy(() => import("./operationForm")));
 const OperationList = memo(lazy(() => import("./operationList")));
 
 function Operation() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/operation");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarRange } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RecognitionProgramForm = memo(lazy(() => import("./form")));
 const RecognitionProgramList = memo(lazy(() => import("./list")));
 
 function RecognitionProgram() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/recognitionProgram");
 
   return (
     <EntityModuleShell

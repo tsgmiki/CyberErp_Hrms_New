@@ -79,6 +79,33 @@ migration + frontend, verified end-to-end against the live DB before moving on.
 
 ## 4. Current application state (as of this doc's last update)
 
+**Routing (2026-08-08): entity records live in the URL.** 88 modules are generated from the registry
+in `routes/entityRoutes.tsx` as `/entity` (list) · `/entity/new` · `/entity/{guid}` (edit) — including
+`employee`, `organizationUnit` and `position`, where the record is in the URL but the org-tree
+selection stays local state. A module is migrated by swapping `useEntityCrudModule()` →
+`useEntityRouteModule("/x")` (identical return shape), adding one registry line, and deleting its flat
+route. 40 flat routes remain for screens with no single-record concept (dashboards, read-only lists,
+wizards, modal-detail screens) — that split is deliberate, not unfinished work. `useEntityCrudModule`
+is still required by embedded sections that have no route of their own.
+Three rules that are easy to break:
+- `new` must ride the SAME `:id` slot as the guid. A static `path="new"` sibling leaves
+  `useParams().id` undefined there, so the module cannot tell `/x/new` from the list.
+- Anything matching a URL to a `coreOperation.Link` must use `utils/routeMatch.ts` (longest **segment**
+  match). Exact matching ungates nested record URLs; `String.includes` makes `/loanType` inherit
+  `/loan`'s grants.
+- `createEntityGetById` swallows 404s, so a stale deep link can leave the id empty and turn an update
+  into a **duplicate-creating POST**. Guarded centrally in `createSaveService` + per-form fallbacks;
+  those fallbacks must yield `undefined`, never `""`, or .NET Guid binding breaks creates.
+
+**Salary revisions support `Step` basis (2026-08-08)** — fractional step increments interpolated
+against the salary scale; see `logic.md` §9. `lupStep.Ordinal` is the only valid key for step
+arithmetic (codes are free text and differ per tenant); its backfill is an inference worth verifying
+per tenant. A step revision never reduces pay.
+
+**Tests:** `CyberErp.Hrms.Tests` (xUnit) is the solution's first and currently only test project —
+35 tests covering the salary-step interpolation and the no-cut policy. Everything else in this repo is
+still verified by live API/browser runs, not automated tests.
+
 **Environment:** DB **`CERP`** on `CLOUDX-SICS2\SQLEXPRESS` (SQL Server). API runs at
 `http://localhost:5241` (or IIS Express 44363 in Visual Studio). Login: **`hoadmin` / `Passw0rd!`**,
 tenant `aadb4e82-2075-48ca-a93c-5cdac93a59b2` ("Head Office", head-office = global visibility).

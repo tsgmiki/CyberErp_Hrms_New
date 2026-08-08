@@ -16,7 +16,14 @@ public enum SalaryAdjustmentBasis
     /// <summary>A percentage uplift of the current salary.</summary>
     Percentage = 0,
     /// <summary>A flat amount added to the current salary.</summary>
-    FixedAmount = 1
+    FixedAmount = 1,
+    /// <summary>
+    /// Advance the employee along their job grade's pay ladder by a (possibly fractional) number of
+    /// steps, reading the new salary from the salary scale. A fractional landing point is linearly
+    /// interpolated between the two nearest defined steps of that SAME grade.
+    /// Here <c>Rate</c> is a step increment (e.g. 1.5), not a percentage or an amount.
+    /// </summary>
+    Step = 2
 }
 
 /// <summary>Lifecycle of a salary revision plan.</summary>
