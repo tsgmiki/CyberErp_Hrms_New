@@ -131,7 +131,7 @@ function UserRoleForm(props: {
 
             {
               name: "id",
-              value: formData.id,
+              value: formData.id || id,
               type: "hidden",
             },
           ],

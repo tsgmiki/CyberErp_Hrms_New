@@ -42,7 +42,7 @@ function TrainingCertificateForm({ id, setId }: { id: string; setId: (id: string
   const submit = async () => {
     setIsSaving(true);
     const result = await saveCertificate({
-      id: meta.id,
+      id: meta.id || id || undefined,
       employeeId: meta.employeeId,
       trainingCourseId: meta.trainingCourseId || undefined,
       certificateNo: meta.certificateNo || undefined,

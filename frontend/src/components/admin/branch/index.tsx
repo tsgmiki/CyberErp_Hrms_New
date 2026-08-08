@@ -1,13 +1,15 @@
 import { lazy, memo } from "react";
 import { Building } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const BranchForm = memo(lazy(() => import("./form")));
 const BranchList = memo(lazy(() => import("./list")));
 
 function Branch() {
+  // URL-backed: /branch (list) · /branch/new · /branch/{guid}. Same return shape as
+  // useEntityCrudModule, so list.tsx and form.tsx are unchanged.
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/branch");
 
   return (
     <EntityModuleShell

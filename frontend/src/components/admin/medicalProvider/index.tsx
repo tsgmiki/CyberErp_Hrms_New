@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { Stethoscope } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MedicalProviderForm = memo(lazy(() => import("./form")));
 const MedicalProviderList = memo(lazy(() => import("./list")));
 
 function MedicalProvider() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/medicalProvider");
 
   return (
     <EntityModuleShell

@@ -1,6 +1,6 @@
 import { lazy, memo, useState } from "react";
 import { TrendingUp } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const SalaryRevisionList = memo(lazy(() => import("./list")));
 const SalaryRevisionForm = memo(lazy(() => import("./form")));
@@ -8,7 +8,7 @@ const SalaryRevisionDetailModal = memo(lazy(() => import("./detailModal")));
 
 /** HC228 — salary revision planning + scenario simulation. */
 function SalaryRevision() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/salaryRevision");
   const [selId, setSelId] = useState<string | null>(null);
 
   return (

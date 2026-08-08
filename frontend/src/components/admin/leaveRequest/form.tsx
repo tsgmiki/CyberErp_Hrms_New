@@ -103,6 +103,8 @@ function LeaveRequestForm({
     setIsSaving(true);
     const payload: LeaveRequestModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       lines: lines.map(({ _key, ...l }) => ({
         leaveTypeId: l.leaveTypeId,
         startDate: l.startDate,

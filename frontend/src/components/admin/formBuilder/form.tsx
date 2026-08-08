@@ -79,6 +79,8 @@ function FormBuilderForm({ id, setId }: { id: string; setId: (id: string) => voi
     setIsSaving(true);
     const payload: DynamicFormModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       module: meta.module || "Employee",
       fields: fields.map(({ _key, ...f }, i) => ({ ...f, sortOrder: i })),
     };

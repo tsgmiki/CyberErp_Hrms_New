@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarCog } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const WorkWeekConfigurationForm = memo(lazy(() => import("./form")));
 const WorkWeekConfigurationList = memo(lazy(() => import("./list")));
 
 function WorkWeekConfiguration() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/workWeekConfiguration");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { TrendingUp } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const ImprovementPlanForm = memo(lazy(() => import("./form")));
 const ImprovementPlanList = memo(lazy(() => import("./list")));
 
 function ImprovementPlan() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/improvementPlan");
 
   return (
     <EntityModuleShell

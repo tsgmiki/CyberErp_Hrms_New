@@ -74,6 +74,8 @@ function RatingScaleForm({ id, setId }: { id: string; setId: (id: string) => voi
     setIsSaving(true);
     const payload: RatingScaleModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       sortOrder: num(meta.sortOrder) ?? 0,
       levels: levels.map(({ _key, ...l }, i) => ({
         ...l,

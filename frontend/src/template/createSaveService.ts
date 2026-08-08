@@ -4,6 +4,22 @@ import type { ZodType } from "zod";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+/**
+ * Reads the record id out of the current URL when it is `/{base}/{guid}` and `base` names the same
+ * resource this service saves. Returns "" in every other case — including `/x/new`, a nested child
+ * route, or a resource mismatch — so the caller's own id is used untouched.
+ *
+ * This is a plain module (not a hook), so it reads `location` directly rather than `useParams`.
+ */
+function recoverIdFromRoute(resource: string): string {
+  if (typeof window === "undefined") return "";
+  const segments = window.location.pathname.split("/").filter(Boolean);
+  if (segments.length !== 2) return "";
+  const [base, candidate] = segments;
+  if (base.toLowerCase() !== resource.toLowerCase()) return "";
+  return /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(candidate) ? candidate : "";
+}
+
 export interface SaveResult {
   status: "success" | "error";
   message: string;
@@ -44,13 +60,28 @@ export function createSaveService(
       };
     }
 
+    // Last-resort id recovery. `createEntityGetById` swallows a failed fetch and resolves to
+    // undefined, so a form opened at /{resource}/{guid} whose record didn't load renders with an
+    // empty id — and an empty id here means POST, silently CREATING A DUPLICATE instead of failing
+    // the update. Recover the id from the URL so the request stays a PUT and the server answers
+    // honestly (404/409) rather than inserting a second row.
+    //
+    // Deliberately narrow: it fires ONLY when the route's own base segment names THIS resource.
+    // That is what stops it misfiring on a child form hosted inside a parent's record URL (an
+    // address form on /employee/{guid} has resource "EmployeeAddress" ≠ base "employee", so it is
+    // left alone and still POSTs correctly).
+    const routeId = recoverIdFromRoute(path);
+    const effectiveId =
+      formDataObj.id === undefined || formDataObj.id === "" || formDataObj.id === null
+        ? routeId
+        : formDataObj.id;
+
     const isUpdate =
-      typeof formDataObj.id !== "undefined" &&
-      formDataObj.id !== "" &&
-      formDataObj.id !== null;
+      typeof effectiveId !== "undefined" && effectiveId !== "" && effectiveId !== null;
 
     const body: Record<string, unknown> = { ...formDataObj };
     if (!isUpdate) delete body.id;
+    else body.id = effectiveId;
 
     // Gather dynamic custom fields (HC021) into a nested dict BEFORE the empty-drop below, so blank
     // values survive as "" for the backend's required-field validation. `cf_bloodType` → customFields.bloodType.

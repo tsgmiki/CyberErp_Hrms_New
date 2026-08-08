@@ -1,6 +1,6 @@
 import { lazy, memo, useState } from "react";
 import { HeartPulse } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MyMedicalClaimForm = memo(lazy(() => import("./form")));
 const MyMedicalClaimList = memo(lazy(() => import("./list")));
@@ -8,7 +8,7 @@ const MyMedicalClaimDetailModal = memo(lazy(() => import("./detailModal")));
 
 /** HC240 — the signed-in employee submits and tracks their own medical expense claims. */
 function MyMedicalClaims() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/myMedicalClaims");
   const [selId, setSelId] = useState<string | null>(null);
 
   return (

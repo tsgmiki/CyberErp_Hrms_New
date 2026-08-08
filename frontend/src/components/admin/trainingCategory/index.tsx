@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Tags } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const TrainingCategoryForm = memo(lazy(() => import("./form")));
 const TrainingCategoryList = memo(lazy(() => import("./list")));
 
 function TrainingCategory() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/trainingCategory");
 
   return (
     <EntityModuleShell

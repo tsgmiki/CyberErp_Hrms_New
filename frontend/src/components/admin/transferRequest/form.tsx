@@ -63,7 +63,7 @@ function TransferRequestForm({ id, setId }: { id: string; setId: (id: string) =>
   const submit = async () => {
     setIsSaving(true);
     const result = await saveTransferRequest({
-      id: meta.id,
+      id: meta.id || id || undefined,
       employeeId: meta.employeeId,
       movementType: "Transfer",
       transferKind: meta.transferKind || undefined,

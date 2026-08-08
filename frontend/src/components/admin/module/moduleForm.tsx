@@ -137,7 +137,7 @@ function ModuleForm(props: { id: string; setModuleId: (id: string) => void }) {
             },
             {
               name: "id",
-              value: formData.id,
+              value: formData.id || id,
               type: "hidden",
             },
           ],

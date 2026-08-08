@@ -1,13 +1,13 @@
 import { lazy, memo, useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import ScheduleModal from "./scheduleModal";
 
 const InsurancePolicyForm = memo(lazy(() => import("./form")));
 const InsurancePolicyList = memo(lazy(() => import("./list")));
 
 function InsurancePolicy() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/insurancePolicy");
   const [scheduleId, setScheduleId] = useState<string | null>(null);
 
   return (

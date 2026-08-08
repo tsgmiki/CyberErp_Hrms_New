@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Route } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const LearningPathForm = memo(lazy(() => import("./form")));
 const LearningPathList = memo(lazy(() => import("./list")));
 
 function LearningPath() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/learningPath");
 
   return (
     <EntityModuleShell

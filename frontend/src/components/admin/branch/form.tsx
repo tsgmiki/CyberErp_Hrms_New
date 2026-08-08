@@ -11,6 +11,8 @@ import getAllBranch from "@/services/admin/branch/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
+import { useEntityRecord } from "@/template";
+import RecordNotFound from "../../common/recordNotFound";
 
 const FormProvider = memo(FormProviders);
 const yesNo = [
@@ -34,11 +36,14 @@ function BranchForm(props: { id: string; setId: (id: string) => void }) {
   const formRef = React.createRef<HTMLFormElement>();
   const queryClient = useQueryClient();
 
-  const { data: record, isLoading: pending } = useQuery({
-    queryKey: ["branch", id],
-    queryFn: () => getBranch(id),
-    enabled: typeof id != "undefined" && id != "",
-  });
+  // Shared by-id fetch (same ["branch", id] key as before, so the cache is unchanged).
+  // `notFound` is the part that matters now that ids arrive from the URL: getBranch swallows a
+  // 404 and resolves to undefined, which would otherwise render as an innocuous blank form.
+  const { data: record, isLoading: pending, notFound } = useEntityRecord<BranchModel>(
+    "branch",
+    getBranch,
+    { id },
+  );
 
   const [parentParam, setParentParam] = useState({ ...parameterInitialData, take: 100 });
   const { data: parents, isLoading: parentsLoading } = useQuery({
@@ -80,6 +85,9 @@ function BranchForm(props: { id: string; setId: (id: string) => void }) {
     .filter((b) => b.id !== formData.id)
     .map((b) => ({ id: b.id, name: b.name }));
 
+  // A stale/deleted id must not fall through to the form — see RecordNotFound for why.
+  if (notFound) return <RecordNotFound onBack={() => setId("")} />;
+
   return (
     <div className="text-white">
       {pending && <Loading />}
@@ -113,7 +121,9 @@ function BranchForm(props: { id: string; setId: (id: string) => void }) {
             },
             { name: "address", label: "Address", placeholder: "Address", value: formData.address, onChange: changeHandler, type: "text" },
             { name: "description", label: "Description", value: formData.description, onChange: changeHandler, type: "textarea", colSpan: "full" },
-            { name: "id", value: formData.id, type: "hidden" },
+            // Fall back to the route id: createSaveService picks PUT vs POST purely from whether
+            // this is non-empty, so an unloaded record must NOT silently degrade into a create.
+            { name: "id", value: formData.id ?? id, type: "hidden" },
           ],
         }}
       />

@@ -73,7 +73,8 @@ function DocumentTemplateForm(props: { id: string; setId: (id: string) => void }
   const submitHandler = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
-    const result = await saveDocumentTemplate(formData);
+    // `id: formData.id || id || undefined` — route id fallback so an unloaded record can't POST a duplicate.
+    const result = await saveDocumentTemplate({ ...formData, id: formData.id || id || undefined });
     setFormState(result);
     setIsLoading(false);
   };

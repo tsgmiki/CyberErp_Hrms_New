@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { ListPlus } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const EmployeeFieldForm = memo(lazy(() => import("./form")));
 const EmployeeFieldList = memo(lazy(() => import("./list")));
 
 function EmployeeField() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/employeeField");
 
   return (
     <EntityModuleShell

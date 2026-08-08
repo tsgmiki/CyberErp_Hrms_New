@@ -65,7 +65,7 @@ function RewardNominationForm({ id, setId }: { id: string; setId: (id: string) =
   const submit = async () => {
     setIsSaving(true);
     const result = await saveNomination({
-      id: meta.id,
+      id: meta.id || id || undefined,
       nomineeEmployeeId: meta.nomineeEmployeeId,
       recognitionBadgeId: meta.recognitionBadgeId,
       recognitionProgramId: meta.recognitionProgramId || undefined,

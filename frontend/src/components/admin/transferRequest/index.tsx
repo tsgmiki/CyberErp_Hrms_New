@@ -1,6 +1,6 @@
 import { lazy, memo } from "react";
 import { ArrowLeftRight } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const TransferRequestForm = memo(lazy(() => import("./form")));
 const TransferRequestList = memo(lazy(() => import("./list")));
@@ -11,7 +11,7 @@ const TransferRequestList = memo(lazy(() => import("./list")));
  */
 function TransferRequest() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/transferRequest");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Gavel } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const AppraisalAppealForm = memo(lazy(() => import("./form")));
 const AppraisalAppealList = memo(lazy(() => import("./list")));
 
 function AppraisalAppeal() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/appraisalAppeal");
 
   return (
     <EntityModuleShell

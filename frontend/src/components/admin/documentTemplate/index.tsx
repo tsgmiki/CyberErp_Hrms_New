@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { FileText } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const DocumentTemplateForm = memo(lazy(() => import("./form")));
 const DocumentTemplateList = memo(lazy(() => import("./list")));
 
 function DocumentTemplate() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/documentTemplate");
 
   return (
     <EntityModuleShell

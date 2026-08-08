@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { CalendarCog } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const OtherLeaveSettingForm = memo(lazy(() => import("./form")));
 const OtherLeaveSettingList = memo(lazy(() => import("./list")));
 
 /** Static per-fiscal-year policies for the NON-annual leave types (maternity, paternity, mourning…). */
 function OtherLeaveSetting() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/otherLeaveSetting");
   return (
     <EntityModuleShell
       title="Other Leave Settings"

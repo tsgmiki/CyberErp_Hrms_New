@@ -182,7 +182,8 @@ function WorkforcePlanForm(props: { id: string; setId: (id: string) => void }) {
   const submitHandler = async (e: any) => {
     e.preventDefault();
     setIsLoading(true);
-    const result = await saveWorkforcePlan({ ...formData, lines });
+    /* route-id fallback: an unloaded record must not degrade this update into a create */
+    const result = await saveWorkforcePlan({ ...formData, id: formData.id || id || undefined, lines });
     setFormState(result);
     setIsLoading(false);
   };

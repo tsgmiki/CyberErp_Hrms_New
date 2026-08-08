@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { ThumbsUp } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RewardNominationForm = memo(lazy(() => import("./form")));
 const RewardNominationList = memo(lazy(() => import("./list")));
 
 function RewardNomination() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/rewardNomination");
 
   return (
     <EntityModuleShell

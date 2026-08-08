@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { Handshake } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const MentorshipForm = memo(lazy(() => import("./form")));
 const MentorshipList = memo(lazy(() => import("./list")));
 
 function Mentorship() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/mentorship");
   return (
     <EntityModuleShell
       title="Mentorships"

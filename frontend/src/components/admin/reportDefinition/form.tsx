@@ -206,6 +206,8 @@ function ReportDefinitionForm({ id, setId }: { id: string; setId: (id: string) =
       : undefined;
     const payload: ReportDefinitionModel = {
       ...meta,
+      /* route-id fallback: an unloaded record must not degrade this update into a create */
+      id: meta.id || id || undefined,
       gridConfig,
       fields: fields.map(({ _key, ...f }, i) => ({ ...f, fieldOrder: i + 1 })),
       fieldOutputs: outputs.map((o, i) => ({ field: o.field, label: o.label, fieldOrder: i + 1 })),

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Gauge } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RatingScaleForm = memo(lazy(() => import("./form")));
 const RatingScaleList = memo(lazy(() => import("./list")));
 
 function RatingScale() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/ratingScale");
 
   return (
     <EntityModuleShell

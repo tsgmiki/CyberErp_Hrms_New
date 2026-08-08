@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Award } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const RecognitionBadgeForm = memo(lazy(() => import("./form")));
 const RecognitionBadgeList = memo(lazy(() => import("./list")));
 
 function RecognitionBadge() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/recognitionBadge");
 
   return (
     <EntityModuleShell

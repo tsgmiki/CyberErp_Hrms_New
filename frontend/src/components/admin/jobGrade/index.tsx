@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Layers } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const JobGradeForm = memo(lazy(() => import("./form")));
 const JobGradeList = memo(lazy(() => import("./list")));
 
 function JobGrade() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/jobGrade");
 
   return (
     <EntityModuleShell

@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { UserRoundCog } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const EmployeeCareerPathForm = memo(lazy(() => import("./form")));
 const EmployeeCareerPathList = memo(lazy(() => import("./list")));
 
 function EmployeeCareerPath() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/employeeCareerPath");
   return (
     <EntityModuleShell
       title="Employee Career Paths"

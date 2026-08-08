@@ -1,7 +1,7 @@
 import { lazy, memo, useMemo, useState } from "react";
 import { Wallet } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 import getAllEmployee from "@/services/admin/employee/getAll";
 import getLeaveBalances from "@/services/admin/leaveBalance/getByEmployee";
 import { parameterInitialData } from "@/constants/initialization";
@@ -11,7 +11,7 @@ const LeaveBalanceForm = memo(lazy(() => import("./form")));
 const num = (v?: number) => (v ?? 0).toLocaleString(undefined, { minimumFractionDigits: 1 });
 
 function LeaveBalances() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/leaveBalance");
   const [employeeId, setEmployeeId] = useState("");
   const queryClient = useQueryClient();
 

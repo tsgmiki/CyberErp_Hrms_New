@@ -18,11 +18,11 @@ import { searchGlobal, type SearchResultItem } from "@/services/search/globalSea
 import { useMenuModules } from "@/components/menu/hooks/useMenuModules";
 import getAllOperation from "@/services/admin/operation/getAll";
 import { parameterInitialData } from "@/constants/initialization";
+import { normalizeRoutePath as norm, resolveRouteKey } from "@/utils/routeMatch";
+import { buildRecordRoute } from "@/routes/entityRoutes";
 
 const MIN_LEN = 2;
 const DEBOUNCE_MS = 250;
-
-const norm = (s?: string) => (s ?? "").replace(/^\/+/, "").toLowerCase();
 
 /** Maps the backend's lucide icon name → the component (falls back to Search). */
 const ICONS: Record<string, LucideIcon> = {
@@ -100,8 +100,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   const gatesReady = !menuLoading && !catLoading && !catError;
   const reachable = (route: string) => {
     if (!gatesReady) return true; // optimistic while gates load / on error
-    const p = norm(route);
-    return !catalogSet.has(p) || grantedSet.has(p); // non-menu pages pass; gated pages need a grant
+    // Resolve to the owning operation so a record-bearing result ("/branch/{guid}") is gated by
+    // its list operation instead of passing as an unrecognised non-menu page.
+    const key = resolveRouteKey(route, catalogSet);
+    return key === undefined || grantedSet.has(key); // non-menu pages pass; gated pages need a grant
   };
 
   const groups = (enabled ? data?.groups ?? [] : []).filter((g) => reachable(g.items[0]?.route ?? ""));
@@ -119,7 +121,12 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   const select = (item?: SearchResultItem) => {
     if (!item) return;
     onClose();
-    navigate(item.route);
+    // Go straight to the record, not to its list. Providers return the module's base route
+    // ("/employee") plus the record id, and buildRecordRoute turns that into "/employee/{guid}"
+    // for every module that has a record URL — so this is uniform across all search categories and
+    // needs no backend change when a new provider is added. Modules still on a flat route fall
+    // back to their list, exactly as before.
+    navigate(buildRecordRoute(item.route, item.id));
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {

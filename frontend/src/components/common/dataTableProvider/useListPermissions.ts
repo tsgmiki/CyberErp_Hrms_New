@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { useSignals } from "@preact/signals-react/runtime";
 import store from "@/store";
+import { findBestRouteMatch } from "@/utils/routeMatch";
 
 /** Route-scoped permissions for list toolbar (export, column picker). */
 export function useListPermissions() {
@@ -13,8 +14,11 @@ export function useListPermissions() {
     // No permission backend loaded → don't hide toolbar tools (export, column picker).
     // Once permissions are configured, honour the per-route canView flag.
     const hasPermissions = Array.isArray(permissions) && permissions.length > 0;
-    const match = permissions?.find(
-      (entry) => entry.link && pathName.includes(String(entry.link)),
+    // Segment match, not `includes`: a raw substring made "/loanType" pick up the "/loan" row
+    // (likewise "/trip" ⊂ "/tripBudget"), so the wrong operation decided the toolbar. Still
+    // resolves nested record URLs ("/loan/{guid}") to their owning operation.
+    const match = findBestRouteMatch(pathName, permissions, (entry) =>
+      entry.link ? String(entry.link) : undefined,
     );
     const canView = !hasPermissions || match?.canView === true;
 

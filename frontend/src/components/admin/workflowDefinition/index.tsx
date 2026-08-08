@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { GitBranch } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const WorkflowDefinitionForm = memo(lazy(() => import("./form")));
 const WorkflowDefinitionList = memo(lazy(() => import("./list")));
 
 function WorkflowDefinition() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/workflowDefinition");
 
   return (
     <EntityModuleShell

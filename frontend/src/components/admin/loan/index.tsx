@@ -1,13 +1,13 @@
 import { lazy, memo, useState } from "react";
 import { HandCoins } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const LoanList = memo(lazy(() => import("./list")));
 const LoanDetailModal = memo(lazy(() => import("./detailModal")));
 
 /** HC252–259 — HR loan register: endorse, disburse and track staff-loan repayment. */
 function Loan() {
-  const { showForm, backHandler, addHandler } = useEntityCrudModule();
+  const { showForm, backHandler, addHandler } = useEntityRouteModule("/loan");
   const [selId, setSelId] = useState<string | null>(null);
 
   return (

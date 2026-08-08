@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { GitBranchPlus } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const SuccessionPlanForm = memo(lazy(() => import("./form")));
 const SuccessionPlanList = memo(lazy(() => import("./list")));
 
 function SuccessionPlan() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/successionPlan");
   return (
     <EntityModuleShell
       title="Succession Plans"

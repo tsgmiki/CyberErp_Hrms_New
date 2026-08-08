@@ -181,7 +181,7 @@ function GuaranteeForm({
               name: "remarks", label: "Remarks", type: "textarea", colSpan: "full",
               value: formData.remarks, onChange: changeHandler,
             },
-            { name: "id", value: formData.id, type: "hidden" },
+            { name: "id", value: formData.id || id, type: "hidden" },
           ],
         }}
       />

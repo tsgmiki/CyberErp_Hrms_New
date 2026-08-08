@@ -1,12 +1,12 @@
 import { lazy, memo } from "react";
 import { Plane } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const PerDiemRateForm = memo(lazy(() => import("./form")));
 const PerDiemRateList = memo(lazy(() => import("./list")));
 
 function PerDiemRate() {
-  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityCrudModule();
+  const { id, setId, showForm, backHandler, addHandler, editHandler } = useEntityRouteModule("/perDiemRate");
 
   return (
     <EntityModuleShell

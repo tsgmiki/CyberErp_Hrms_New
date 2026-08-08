@@ -1,13 +1,14 @@
 import { lazy, memo } from "react";
 import { Tags } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const JobCategoryForm = memo(lazy(() => import("./form")));
 const JobCategoryList = memo(lazy(() => import("./list")));
 
 function JobCategory() {
+  // URL-backed: /jobCategory (list) · /jobCategory/new · /jobCategory/{guid}.
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/jobCategory");
 
   return (
     <EntityModuleShell

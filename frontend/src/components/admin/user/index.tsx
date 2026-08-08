@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Users } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const UserForm = memo(lazy(() => import("./userForm")));
 const UserList = memo(lazy(() => import("./userList")));
 
 function User() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/user");
 
   return (
     <EntityModuleShell

@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { FileBarChart } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const ReportDefinitionForm = memo(lazy(() => import("./form")));
 const ReportDefinitionList = memo(lazy(() => import("./list")));
 
 function ReportDefinition() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/reportDefinition");
 
   return (
     <EntityModuleShell

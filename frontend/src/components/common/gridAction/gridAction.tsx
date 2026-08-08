@@ -4,6 +4,7 @@ import { FileX, Pencil, Plus, TableCellsSplit, Trash } from "lucide-react";
 import DialogModal from "../dialog";
 import { type ReactNode, useState } from "react";
 import store from "@/store";
+import { findBestRouteMatch } from "@/utils/routeMatch";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -103,15 +104,16 @@ function GridAction(props: Props) {
   // actions — otherwise every Edit/Delete would be disabled. Real gating still applies
   // once PermissionData is populated.
   const hasPermissions = Array.isArray(permissions) && permissions.length > 0;
-  const canAdd = permissions?.find(
-    (b) => pathName.includes(b.link as string) && b.canAdd == true,
+  // Resolve the ONE operation this URL belongs to, then read its flags — rather than accepting any
+  // permission row whose link is a substring of the path. The old `includes` let "/loanType" be
+  // satisfied by the "/loan" row, so row actions were decided by a sibling module's grants.
+  // Segment matching also keeps nested record URLs ("/loan/{guid}") on the right operation.
+  const routePermission = findBestRouteMatch(pathName, permissions, (b) =>
+    b.link ? String(b.link) : undefined,
   );
-  const canEdit = permissions?.find(
-    (b) => pathName.includes(b.link as string) && b.canEdit == true,
-  );
-  const canDelete = permissions?.find(
-    (b) => pathName.includes(b.link as string) && b.canDelete == true,
-  );
+  const canAdd = routePermission?.canAdd == true;
+  const canEdit = routePermission?.canEdit == true;
+  const canDelete = routePermission?.canDelete == true;
 
   const disableAdd = hasPermissions && !canAdd;
   const disableEdit = hasPermissions && !canEdit;

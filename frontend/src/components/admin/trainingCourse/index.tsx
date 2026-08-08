@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { BookOpenCheck } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const TrainingCourseForm = memo(lazy(() => import("./form")));
 const TrainingCourseList = memo(lazy(() => import("./list")));
 
 function TrainingCourse() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/trainingCourse");
 
   return (
     <EntityModuleShell

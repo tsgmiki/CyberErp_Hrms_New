@@ -4,8 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMenuModules } from "@/components/menu/hooks/useMenuModules";
 import getAllOperation from "@/services/admin/operation/getAll";
 import { parameterInitialData } from "@/constants/initialization";
-
-const norm = (s?: string) => (s ?? "").replace(/^\/+/, "").toLowerCase();
+import { normalizeRoutePath as norm, resolveRouteKey } from "@/utils/routeMatch";
 
 /**
  * Route-level permission guard. Blocks direct navigation (e.g. typing the URL) to a menu
@@ -43,14 +42,22 @@ function PermissionGate() {
     return s;
   }, [catalog]);
 
+  // Resolve the OPERATION this URL belongs to, rather than requiring the URL to be an operation
+  // link verbatim. Without this, a nested record URL ("/branch/{guid}") is absent from the catalog,
+  // reads as a non-menu page, and falls through the gate entirely. Longest-match so
+  // "/loanType/{guid}" resolves to `loanType` and never to its prefix `loan`.
+  const operationKey = useMemo(
+    () => resolveRouteKey(pathname, catalogSet),
+    [pathname, catalogSet],
+  );
+
   // PERFORMANCE: never block navigation on the catalog/menu fetches (both are cached per
   // session). While they load we render optimistically; as soon as they resolve, an
   // unauthorized path redirects. The backend remains the real enforcement layer.
   if (menuLoading || catalogLoading) return <Outlet />;
 
-  const path = norm(pathname);
-  const isGatedOperation = !isError && catalogSet.has(path);
-  if (isGatedOperation && !grantedSet.has(path)) {
+  const isGatedOperation = !isError && operationKey !== undefined;
+  if (isGatedOperation && !grantedSet.has(operationKey)) {
     return <Navigate to="/unauthorized" replace />;
   }
   return <Outlet />;

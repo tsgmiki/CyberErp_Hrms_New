@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { ClipboardCheck } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const AppraisalForm = memo(lazy(() => import("./form")));
 const AppraisalList = memo(lazy(() => import("./list")));
 
 function Appraisal() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/appraisal");
 
   return (
     <EntityModuleShell

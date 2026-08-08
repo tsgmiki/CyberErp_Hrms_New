@@ -1,13 +1,13 @@
 import { lazy, memo } from "react";
 import { Boxes } from "lucide-react";
-import { EntityModuleShell, useEntityCrudModule } from "@/template";
+import { EntityModuleShell, useEntityRouteModule } from "@/template";
 
 const SubsystemForm = memo(lazy(() => import("./subsystemForm")));
 const SubsystemList = memo(lazy(() => import("./subsystemList")));
 
 function Subsystem() {
   const { id, setId, showForm, backHandler, addHandler, editHandler } =
-    useEntityCrudModule();
+    useEntityRouteModule("/subsystem");
 
   return (
     <EntityModuleShell

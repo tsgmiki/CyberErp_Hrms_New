@@ -84,7 +84,8 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
       name: s.name.trim(),
       approvers: s.approvers,
     }));
-    const result = await saveWorkflowDefinition({ ...formData, steps: payload });
+    // `id: formData.id || id || undefined` — route id fallback so an unloaded record can't POST a duplicate.
+    const result = await saveWorkflowDefinition({ ...formData, id: formData.id || id || undefined, steps: payload });
     setFormState(result);
     setIsLoading(false);
   };
