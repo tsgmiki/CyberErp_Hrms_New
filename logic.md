@@ -96,7 +96,7 @@ chain ships as open steps. That is why open-step behaviour (below) is the norm, 
 
 ### Portal alerts + the open-step audience (2026-08-05)
 
-The engine raises alerts into the Home portal's `dbo.coreNotification` via `IPortalNotifier`
+The engine raises alerts into the Home portal's `dbo.Core.Notification` via `IPortalNotifier`
 (`Inf/Common/PortalNotifier.cs`), correlated by `SourceEntityType = "WorkflowInstance"` +
 `SourceEntityId = instance.Id`:
 
@@ -128,12 +128,12 @@ automatically. Note `EnsureCanDecideAsync` still lets ANYONE decide an open step
 rule bounds who is *told*, not who *may act*.
 
 ### Dynamic clearance configuration (offboarding — mirrors the workflow approver pattern)
-`hrms_ClearanceDepartment` (Name, Description = checklist requirement text, SortOrder, IsActive) +
-child `hrms_ClearanceDepartmentApprover` (ApproverType User|Role — reuses `WorkflowApproverType` —,
+`Hrms.ClearanceDepartment` (Name, Description = checklist requirement text, SortOrder, IsActive) +
+child `Hrms.ClearanceDepartmentApprover` (ApproverType User|Role — reuses `WorkflowApproverType` —,
 ApproverId, server-resolved DisplayName). Admin UI `/clearanceDepartment` (System group), controller
 `ClearanceDepartmentController`, slices in `Features/Core/ClearanceDepartments/`.
 - **Checklist build:** `TerminationShared.BeginClearanceAsync` reads *active* departments (ordered
-  SortOrder, Name) and stamps each `hrms_TerminationClearance` row with `DepartmentId`; when **none**
+  SortOrder, Name) and stamps each `Hrms.TerminationClearance` row with `DepartmentId`; when **none**
   are configured it falls back to the built-in IT/Store/Finance defaults (DepartmentId null).
   Deleting a department SET NULLs existing checklist rows (they revert to open).
 - **Authorization:** `TerminationShared.EvaluateClearanceApproverAsync` — no approvers = open
@@ -288,8 +288,8 @@ balance); then **close** the source fiscal year.
 
 ## 4. Employee employment terms + conditional form logic
 
-The employment record (`hrms_Employee`) carries terms that belong strictly to employment (not the
-shared `CorePerson`): `EmploymentNature` (Permanent | Contract, string-stored enum), `ContractPeriod`
+The employment record (`Hrms.Employee`) carries terms that belong strictly to employment (not the
+shared `Core.Person`): `EmploymentNature` (Permanent | Contract, string-stored enum), `ContractPeriod`
 (int, months), `IsProbation` (bool), `ProbationEndDate` (date), and a denormalized `IsTerminated`
 (bool, default false — set true by `Employee.Terminate()`, which the termination final-settlement
 handler already calls; also clears `IsProbation`). Existing `Terminated`-status rows were backfilled
@@ -307,9 +307,9 @@ to `IsTerminated = 1` in the migration.
   `.When(x => x.IsProbation)`; the entity also guards the invariants in `ValidateEmploymentTerms`.
 
 ### Salary scale (pay point) — grade is now DERIVED from the scale
-The employee links to a **salary scale** (`coreSalaryScale`) via nullable `Employee.SalaryScaleId`
+The employee links to a **salary scale** (`Core.SalaryScale`) via nullable `Employee.SalaryScaleId`
 — the specific grade+step+amount pay point. **`Employee.JobGradeId` was dropped** (migration
-`RemoveEmployeeJobGradeId`: DropForeignKey/DropIndex/DropColumn on `hrms_Employee`): the grade is
+`RemoveEmployeeJobGradeId`: DropForeignKey/DropIndex/DropColumn on `Hrms.Employee`): the grade is
 redundant on the employee because it is reachable through `SalaryScale.JobGradeId`. The employee's grade
 is therefore **derived**, never stored.
 - **Form logic (`masterForm`):** the Job Grade dropdown is a **client-side filter only** (label
@@ -365,7 +365,7 @@ lean projection (tenant/branch-scoped via `IRepository.GetAll()`):
 
 ## 6. Workforce Planning (HC053–HC076)
 
-Two tables: `hrms_WorkforcePlan` (aggregate) 1─< `hrms_WorkforcePlanLine`. Slices in
+Two tables: `Hrms.WorkforcePlan` (aggregate) 1─< `Hrms.WorkforcePlanLine`. Slices in
 `Features/Core/WorkforcePlans/`; controller `WorkforcePlanController`; UI `/workforcePlan` (plan
 designer: header + editable lines grid + live cost tiles) and `/establishmentOverview` under the
 new **Planning** sidebar group.
@@ -422,13 +422,13 @@ Six tables (slices in `Features/Core/Recruitment/`, controllers in `RecruitmentC
 Recruitment sidebar group → `/hiringRequest` `/jobRequisition` `/candidate` `/jobApplication`).
 Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
 
-- **`hrms_HiringRequest`** (HC077–HC083): directorate + role + headcount + planning-level employment
+- **`Hrms.HiringRequest`** (HC077–HC083): directorate + role + headcount + planning-level employment
   type + justification/requirements/timeline + `EstimatedBudget` + optional `WorkforcePlanId` link
   snapshot (no FK, HC081). Status Draft→Submitted→Approved/Rejected→Closed. **Submit gate (HC082):
   requested positions ≤ currently vacant seats** for the unit × role (a Position row = one seat);
   then workflow `HiringRequest` (seeded Directorate Head → HR → Finance, HC078); no definition →
   direct approval. `GET HiringRequest/budget-monitor` = per-unit approved/submitted totals (HC083).
-- **`hrms_JobRequisition`** (HC084–HC088, HC091, HC095) 1─< `hrms_RequisitionScreeningCriterion`:
+- **`Hrms.JobRequisition`** (HC084–HC088, HC091, HC095) 1─< `Hrms.RequisitionScreeningCriterion`:
   **creatable only from an APPROVED hiring request (HC080)**; role details (Title/Description/
   Qualifications/Experience/Skills/SalaryScale) default from the request's PositionClass, editable;
   Σ requisitioned positions per request ≤ the request's approved count. Status Draft→PendingApproval
@@ -436,7 +436,7 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   Approving Authority, HC085). Posting: channel Internal/External/Both (HC088), `GET
   {id}/generate-posting` builds the standard advertisement from the details (HC091, stored text
   editable), `PUT posting` + `POST {id}/post` (requires text) / close / cancel.
-- **`hrms_Candidate`** (HC089–HC090, HC092–HC097): centralized applicant master; Source
+- **`Hrms.Candidate`** (HC089–HC090, HC092–HC097): centralized applicant master; Source
   External/Internal/JobBoard/SocialMedia/Referral/WalkIn (HC092); internal candidates link an
   employee (FK SET NULL); structured Education/Experience/Skills summaries + YearsOfExperience
   (resume *parsing* is the HC094 integration hook on top of these fields); resume file upload
@@ -446,7 +446,7 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   keeps anonymous history; talent-pool flag + notes (HC089). `GET Candidate/match?requisitionId=` —
   ranked matching (HC090): 60% skills-token overlap + 25 experience-met + 10 talent-pool + 5
   internal; list filter via ?status= Archived|TalentPool|{Source}.
-- **`hrms_JobApplication`** (HC098–HC099) 1─< `hrms_JobApplicationStageLog`: unique candidate ×
+- **`Hrms.JobApplication`** (HC098–HC099) 1─< `Hrms.JobApplicationStageLog`: unique candidate ×
   requisition; applications accepted only on Approved/Posted requisitions; stage machine Received→
   Screening→Shortlisted→Interview→Selected (+OfferPending/Hired reserved for the offer stage;
   Rejected/Withdrawn/Hired terminal-immutable); **the interview stage is not forced — transitions
@@ -456,12 +456,12 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
 - **Evaluator scoring & ranking** (migration `AddRecruitmentCandidateLifecycle`): each screening
   criterion can be assigned an evaluator — **internal Employee (FK SET NULL, name snapshotted
   server-side), ExternalPerson, or Organization** (`CriterionEvaluatorType` + name). Evaluators score
-  applicants per criterion 0–100 (`hrms_ApplicationCriterionScore`, unique per application×criterion,
+  applicants per criterion 0–100 (`Hrms.ApplicationCriterionScore`, unique per application×criterion,
   weight snapshot); the application's total **auto-recomputes as Σ(score×weight)/Σ(weight)**.
   `PUT JobApplication/scores` (upsert sheet), `GET JobApplication/ranking?requisitionId=` — ordered
   ranking with per-criterion breakdown + a FailsMandatory flag (mandatory criterion < 50). UI: score
   sheet modal (live total preview) + Ranking modal on the requisition.
-- **CorePerson integration & hire conversion:** `Candidate.PersonId` — a CorePerson row is created
+- **Core.Person integration & hire conversion:** `Candidate.PersonId` — a Core.Person row is created
   (or, for Internal candidates, **reused from the employee**) at candidate save (grandfather name +
   gender therefore required); saving keeps it in sync; legacy candidates backfill on next save.
   **`POST Candidate/{id}/hire`** converts to an employee **on the SAME person — zero re-entry**:
@@ -477,7 +477,7 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   (External/JobBoard/SocialMedia/Referral/WalkIn) with editable identity. The stored `CandidateSource` enum
   is unchanged; the UI derives type = (source===`Internal`).
 - **Structured background (education & experience) — the person IS the hand-off:** the candidate's
-  education/work history is captured in the **same `hrms_EmployeeEducation` / `hrms_EmployeeExperience`
+  education/work history is captured in the **same `Hrms.EmployeeEducation` / `Hrms.EmployeeExperience`
   tables the employee profile uses** — those rows are keyed on **`PersonId`, not `EmployeeId`**. New
   candidate-scoped handlers (`CandidateBackgroundHandlers.cs`) resolve `personId` from `Candidate.PersonId`
   and read/write those aggregates via their existing domain `Create`/`Update`. Because hire creates the
@@ -488,16 +488,16 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   guard 400s on create/update/delete, GET still works). The free-text `EducationSummary`/`ExperienceSummary`
   columns remain (dropping = destructive) but are **removed from the form**; `SkillsSummary` stays (drives
   matching). No schema migration in this increment. **Row attachments:** education/experience rows take
-  file attachments in the SAME `hrms_EmployeeDocument` table the employee profile reads (OwnerType +
+  file attachments in the SAME `Hrms.EmployeeDocument` table the employee profile reads (OwnerType +
   OwnerId = row id) via `Candidate/{id}/background-documents` (+ download/delete by document id) — so
   they are on the employee's profile at hire automatically. `EmployeeDocument.EmployeeId` (no FK) anchors
   to the CANDIDATE id until hire; `HireCandidate` re-anchors those rows to the new employee via
   `EmployeeDocument.AssignEmployee()`. Deleting a row cascades its attachments. The candidate form is a
   **tabbed profile** like the employee's (Applicant Details | Education | Experience, tab bar above the
   persistent header) with an applicant-type **switch** (unchecked = External, checked = Internal).
-- **Candidate documents & automated migration:** `hrms_CandidateDocument` (typed, binary inline like
+- **Candidate documents & automated migration:** `Hrms.CandidateDocument` (typed, binary inline like
   EmployeeDocument, ≤5MB) — upload/list/download/delete under `Candidate/{id}/documents`. **At hire,
-  every document (plus the disk-stored resume) migrates automatically** to `hrms_EmployeeDocument`
+  every document (plus the disk-stored resume) migrates automatically** to `Hrms.EmployeeDocument`
   with the new owner `EmployeeDocumentOwner.Recruitment` (OwnerId = the employee id; string-stored
   enum → no migration on that table) — retrievable via the existing
   `GET EmployeeDocument?ownerType=Recruitment&ownerId={employeeId}`.
@@ -511,10 +511,10 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   (`GET JobApplication?categoryId={candidateId}`), hired badge, and one-click **Apply to Vacancy**
   onto any open requisition.
 - **Interviews & panels (Phase 2, HC101–HC109)** — migration `AddRecruitmentInterviewsOffers`,
-  entity shapes adopted from the §7.1 review: `hrms_Interview` (round ordinal — multiple rounds are
+  entity shapes adopted from the §7.1 review: `Hrms.Interview` (round ordinal — multiple rounds are
   first-class, NO unique stage-gate; window CHECK end>start; Scheduled→Completed/Cancelled/NoShow)
-  1─< `hrms_InterviewPanelist` (EmployeeId? SET NULL + name snapshot, or free-text external
-  panelist; lead flag; attendance Pending→Confirmed/Attended/Missed) 1─< `hrms_InterviewFeedback`
+  1─< `Hrms.InterviewPanelist` (EmployeeId? SET NULL + name snapshot, or free-text external
+  panelist; lead flag; attendance Pending→Confirmed/Attended/Missed) 1─< `Hrms.InterviewFeedback`
   (0–100 CHECK, per-criterion loose FK + name snapshot like ApplicationCriterionScore; null
   criterion = overall entry). **Interviews are the Interview LEVEL's activity**: scheduling (and
   rescheduling) requires the application to sit AT the Interview stage — moving it there is a
@@ -528,8 +528,8 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   (per-criterion averages across rounds, per-panelist totals, overall + weighted averages;
   cancelled rounds excluded). Scheduled rounds can be rescheduled/re-panelled/deleted at the
   Interview level; held ones are record (cancel only).
-- **Offers (Phase 2, HC111–HC114)** — `hrms_JobOffer`: tenant-scoped `OFR-####` numbering from the
-  NEW race-safe `hrms_NumberSequence` counter (§7.1 adoption #5: atomic UPDATE…OUTPUT via
+- **Offers (Phase 2, HC111–HC114)** — `Hrms.JobOffer`: tenant-scoped `OFR-####` numbering from the
+  NEW race-safe `Hrms.NumberSequence` counter (§7.1 adoption #5: atomic UPDATE…OUTPUT via
   `INumberSequenceService`, replaces count+1 for new numbers); lifecycle Draft → Submit →
   PendingApproval (generic workflow `JobOffer`, seeded HR → Approving Authority; auto-approves when
   no definition) → Approved → Sent → Accepted | Declined | Expired, Withdrawn from any pre-final
@@ -705,7 +705,7 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   domain message; it is also no longer classified transient/retryable. Handler-level
   `ValidationException` pre-checks stay 400.
 - **All recruitment numbering is race-safe:** HRQ/REQ/CND joined OFR on the per-tenant atomic
-  counter (`hrms_NumberSequence`); existing tenants' counters were seeded from their current max
+  counter (`Hrms.NumberSequence`); existing tenants' counters were seeded from their current max
   (data migration `SeedRecruitmentNumberSequences`).
 - **Notifications** (HC079/HC087/HC099/HC100): in-app via status chips + the Dashboard approvals
   inbox. **E-mail infrastructure now exists**: `IEmailService` (App) / `SmtpEmailService` (Inf),
@@ -755,7 +755,7 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
   (Σ criterionAvg × weight / Σ weight) alongside the plain average. The interview feedback sheet
   shows only Interview-level + global criteria.
 - **Multiple evaluators per criterion (migration `AddCriterionEvaluators`):** a criterion carries
-  ANY number of evaluators via the child table **`hrms_CriterionEvaluator`** (criterion 1─<
+  ANY number of evaluators via the child table **`Hrms.CriterionEvaluator`** (criterion 1─<
   evaluator; `EmployeeId?` SET NULL + server-resolved name snapshot for internal evaluators;
   free-text name for `ExternalPerson` / `Organization`). The migration was **hand-reordered** to
   copy the old single-evaluator columns into child rows BEFORE dropping them (scaffolded order
@@ -791,8 +791,8 @@ Sequential document numbers (HRQ-/REQ-/CND-####, tenant-scoped, unique-indexed).
      docs, latest offers) — `Repository.GetAll()` tracks by default; read-only lists must opt out.
   4. **Hire-queue N+1 removed** — compliance documents now load in ONE batched query per vacancy
      pool instead of one query per candidate row.
-  5. **Indexes:** `hrms_JobApplication (TenantId, AppliedAt)` (the list's tenant-filtered
-     `ORDER BY AppliedAt DESC`) and `hrms_JobOffer (ApplicationId, CreatedAt)` (latest-offer
+  5. **Indexes:** `Hrms.JobApplication (TenantId, AppliedAt)` (the list's tenant-filtered
+     `ORDER BY AppliedAt DESC`) and `Hrms.JobOffer (ApplicationId, CreatedAt)` (latest-offer
      lookups scan all statuses; the existing ApplicationId index is filtered to active only).
   6. **Response compression** (Brotli/gzip, Fastest): ranking payload 1.28 MB → 248 KB on the wire.
   7. **Frontend React Query defaults** (`staleTime: 30 s`, `refetchOnWindowFocus: false`,
@@ -840,8 +840,8 @@ BIGINT identity keys, INSTEAD-OF-INSERT numbering triggers, bespoke approval + p
 was reviewed and **rejected as-is**; selected ideas were adopted. Rationale (binding for Phase 2+):
 
 **Rejected — and why:**
-1. **Separate database**: SQL Server FKs cannot cross databases → every link to `CorePerson`/
-   `hrms_Employee` becomes a comment, not a constraint (and its `PersonID BIGINT` cannot even
+1. **Separate database**: SQL Server FKs cannot cross databases → every link to `Core.Person`/
+   `Hrms.Employee` becomes a comment, not a constraint (and its `PersonID BIGINT` cannot even
    type-match our `uniqueidentifier` PKs). One DB, one EF migration pipeline stays the rule.
 2. **No TenantId**: the design is single-tenant; CERP is Finbuckle multi-tenant in a shared DB.
    Every recruitment table keeps `TenantId` — non-negotiable.
@@ -850,7 +850,7 @@ was reviewed and **rejected as-is**; selected ideas were adopted. Rationale (bin
    mechanism (its `UNIQUE(RequisitionID, ApprovalLevel)` would also break resubmission loops).
 5. **`PipelineStep`/`ApplicationProgress` stage-gate**: `UNIQUE(ApplicationID, StepID)` forbids
    re-entering a stage (second interview round, re-screening) — our stage machine + append-only
-   `hrms_JobApplicationStageLog` already satisfy HC098–HC102 without that defect.
+   `Hrms.JobApplicationStageLog` already satisfy HC098–HC102 without that defect.
 6. **Numbering triggers**: EF Core 7+ `OUTPUT`-clause conflicts (`.HasTrigger()` burden), and the
    INSTEAD-OF trigger silently drops any column not re-listed in it. Also the script's
    `GenerateRequisitionNumber()` UDF is invalid SQL — `NEXT VALUE FOR` is illegal in scalar UDFs
@@ -858,13 +858,13 @@ was reviewed and **rejected as-is**; selected ideas were adopted. Rationale (bin
 7. **Soft-delete + ON DELETE CASCADE together**: contradictory; we keep RESTRICT + archival status
    semantics (and respect SQL Server's multiple-cascade-path limits — cf. `HiredEmployeeId` no-FK).
 8. **`UNIQUE(PersonID, PostingID)`**: one pipeline per person per VACANCY is the rule — uniqueness
-   stays requisition-scoped (`hrms_JobApplication` unique (CandidateId, RequisitionId)).
+   stays requisition-scoped (`Hrms.JobApplication` unique (CandidateId, RequisitionId)).
 
 **Adopted (into our conventions, Phase 2 targets):**
-1. **Interview trio shape** — `hrms_Interview` (schedule/format/status) 1─< `hrms_InterviewPanelist`
-   (lead flag, attendance) 1─< `hrms_InterviewFeedback` (per-criterion score+comments, FK'ing
-   `hrms_RequisitionScreeningCriterion` — NOT a free-text criterion name) for HC101–HC109.
-2. **Offer entity shape** — `hrms_JobOffer` (tenant-scoped number, Draft→Sent→Accepted/Declined/
+1. **Interview trio shape** — `Hrms.Interview` (schedule/format/status) 1─< `Hrms.InterviewPanelist`
+   (lead flag, attendance) 1─< `Hrms.InterviewFeedback` (per-criterion score+comments, FK'ing
+   `Hrms.RequisitionScreeningCriterion` — NOT a free-text criterion name) for HC101–HC109.
+2. **Offer entity shape** — `Hrms.JobOffer` (tenant-scoped number, Draft→Sent→Accepted/Declined/
    Withdrawn/Expired, expiry + response tracking, hiring manager, `HiredEmployeeId?` handoff feeding
    the existing person-based `HireCandidate`); salary validated against the salary scale (HC113).
 3. **DB-level range CHECK constraints** as defense-in-depth on new Phase 2 tables (interview
@@ -872,7 +872,7 @@ was reviewed and **rejected as-is**; selected ideas were adopted. Rationale (bin
    path. (An expiry-vs-start CHECK was considered and dropped: the response deadline legitimately
    precedes the employment start date.)
 4. **`(TenantId, Status)`-leading composite indexes** on hot recruitment tables
-   (`hrms_JobRequisition`, `hrms_JobApplication` + (RequisitionId, Stage), `hrms_Candidate`) in the
+   (`Hrms.JobRequisition`, `Hrms.JobApplication` + (RequisitionId, Stage), `Hrms.Candidate`) in the
    Phase 2 migration — the tenant filter leads every query, so EF's per-FK indexes alone don't cover.
 5. **Numbering race fix before the public portal (HC093)**: `count+1` numbering is race-prone under
    concurrent creates (unique index turns the race into an error today). Replace with a per-tenant
@@ -885,47 +885,47 @@ HC088's Internal/External/Both posting on the requisition satisfies requirements
 ## 8. Database entity relationships (key foreign keys)
 
 ```
-CorePerson 1─┐
-             └─< hrms_Employee >── PositionId → hrms_Position ── PositionClassId → hrms_PositionClass
-                    │  SalaryScaleId → coreSalaryScale (pay point; grade DERIVED via scale, not stored)
-                    │                                       hrms_PositionClass ── SalaryScaleId → coreSalaryScale
-                    │  BranchId   → hrms_Branch             coreSalaryScale ── JobGradeId → hrms_JobGrade
-                    │                                                        └─ StepId     → lupStep
-                    ├─< hrms_EmployeeEducation / Experience / Dependent / Document  (→ CorePerson)
-                    ├─< hrms_EmployeeMovement / DisciplinaryMeasure / EmployeeTermination
-                    └─< hrms_LeaveRequest / hrms_LeaveBalance / hrms_LeaveBalanceTransaction
+Core.Person 1─┐
+             └─< Hrms.Employee >── PositionId → Hrms.Position ── PositionClassId → Hrms.PositionClass
+                    │  SalaryScaleId → Core.SalaryScale (pay point; grade DERIVED via scale, not stored)
+                    │                                       Hrms.PositionClass ── SalaryScaleId → Core.SalaryScale
+                    │  BranchId   → Hrms.Branch             Core.SalaryScale ── JobGradeId → Hrms.JobGrade
+                    │                                                        └─ StepId     → Core.Step
+                    ├─< Hrms.EmployeeEducation / Experience / Dependent / Document  (→ Core.Person)
+                    ├─< Hrms.EmployeeMovement / DisciplinaryMeasure / EmployeeTermination
+                    └─< Hrms.LeaveRequest / Hrms.LeaveBalance / Hrms.LeaveBalanceTransaction
 
-Leave:  hrms_LeaveRequest ── EmployeeId → hrms_Employee, LeaveTypeId → hrms_LeaveType, FiscalYearId → Core.FiscalYear
-        hrms_LeaveBalance ── (Employee, LeaveType, FiscalYear) UNIQUE
-        hrms_AnnualLeaveSetting ── (FiscalYear, LeaveType) UNIQUE  [accrual policy]
-        hrms_Holiday (standalone; feeds IWorkingCalendar)
+Leave:  Hrms.LeaveRequest ── EmployeeId → Hrms.Employee, LeaveTypeId → Hrms.LeaveType, FiscalYearId → Core.FiscalYear
+        Hrms.LeaveBalance ── (Employee, LeaveType, FiscalYear) UNIQUE
+        Hrms.AnnualLeaveSetting ── (FiscalYear, LeaveType) UNIQUE  [accrual policy]
+        Hrms.Holiday (standalone; feeds IWorkingCalendar)
 
 Workflow: WorkflowDefinition 1─< WorkflowStep 1─< WorkflowStepApprover
           WorkflowInstance (EntityType+EntityId → any governed record) 1─< WorkflowActionLog
 
-Clearance: hrms_ClearanceDepartment 1─< hrms_ClearanceDepartmentApprover (User|Role)
-           hrms_EmployeeTermination 1─< hrms_TerminationClearance ── DepartmentId? → hrms_ClearanceDepartment (SET NULL)
-           hrms_EmployeeTermination.VacatedPositionId? (snapshot, no FK) + ReinstatedAt? (reinstatement)
+Clearance: Hrms.ClearanceDepartment 1─< Hrms.ClearanceDepartmentApprover (User|Role)
+           Hrms.EmployeeTermination 1─< Hrms.TerminationClearance ── DepartmentId? → Hrms.ClearanceDepartment (SET NULL)
+           Hrms.EmployeeTermination.VacatedPositionId? (snapshot, no FK) + ReinstatedAt? (reinstatement)
 
-Planning:  hrms_WorkforcePlan ── StartFiscalYearId → Core.FiscalYear, OrganizationUnitId? → hrms_OrganizationUnit
-           hrms_WorkforcePlan 1─< hrms_WorkforcePlanLine ── OrganizationUnitId → hrms_OrganizationUnit,
-                                                            PositionClassId → hrms_PositionClass
-           hrms_WorkforcePlan.RootPlanId? (version-chain key, no FK)
+Planning:  Hrms.WorkforcePlan ── StartFiscalYearId → Core.FiscalYear, OrganizationUnitId? → Hrms.OrganizationUnit
+           Hrms.WorkforcePlan 1─< Hrms.WorkforcePlanLine ── OrganizationUnitId → Hrms.OrganizationUnit,
+                                                            PositionClassId → Hrms.PositionClass
+           Hrms.WorkforcePlan.RootPlanId? (version-chain key, no FK)
 
-Recruit:   hrms_HiringRequest ── OrganizationUnitId, PositionClassId (Restrict); WorkforcePlanId? (no FK)
-           hrms_JobRequisition ── HiringRequestId (Restrict), OrganizationUnitId, PositionClassId,
-                                  WorkLocationId?, SalaryScaleId? ── 1─< hrms_RequisitionScreeningCriterion
-                                  ── 1─< hrms_CriterionEvaluator (EmployeeId? → hrms_Employee SET NULL)
-           hrms_Candidate ── InternalEmployeeId? → hrms_Employee (SET NULL), PersonId? → CorePerson (Restrict),
-                             HiredEmployeeId? (no FK — cascade-path limit) ── 1─< hrms_CandidateDocument (Cascade)
-           hrms_JobApplication ── CandidateId, RequisitionId (Restrict; unique pair)
-                                  1─< hrms_JobApplicationStageLog, 1─< hrms_ApplicationCriterionScore
-           hrms_Interview ── ApplicationId (Cascade) ── 1─< hrms_InterviewPanelist (EmployeeId? SET NULL)
-                                                        ── 1─< hrms_InterviewFeedback (criterion loose)
-           hrms_JobOffer ── ApplicationId (Restrict), HiringManagerEmployeeId? (SET NULL),
+Recruit:   Hrms.HiringRequest ── OrganizationUnitId, PositionClassId (Restrict); WorkforcePlanId? (no FK)
+           Hrms.JobRequisition ── HiringRequestId (Restrict), OrganizationUnitId, PositionClassId,
+                                  WorkLocationId?, SalaryScaleId? ── 1─< Hrms.RequisitionScreeningCriterion
+                                  ── 1─< Hrms.CriterionEvaluator (EmployeeId? → Hrms.Employee SET NULL)
+           Hrms.Candidate ── InternalEmployeeId? → Hrms.Employee (SET NULL), PersonId? → Core.Person (Restrict),
+                             HiredEmployeeId? (no FK — cascade-path limit) ── 1─< Hrms.CandidateDocument (Cascade)
+           Hrms.JobApplication ── CandidateId, RequisitionId (Restrict; unique pair)
+                                  1─< Hrms.JobApplicationStageLog, 1─< Hrms.ApplicationCriterionScore
+           Hrms.Interview ── ApplicationId (Cascade) ── 1─< Hrms.InterviewPanelist (EmployeeId? SET NULL)
+                                                        ── 1─< Hrms.InterviewFeedback (criterion loose)
+           Hrms.JobOffer ── ApplicationId (Restrict), HiringManagerEmployeeId? (SET NULL),
                             SalaryScaleId? (Restrict), HiredEmployeeId? (no FK);
                             unique ACTIVE offer per application (filtered index)
-           hrms_NumberSequence ── PK (TenantId, Key) — atomic per-tenant counters (no BaseEntity)
+           Hrms.NumberSequence ── PK (TenantId, Key) — atomic per-tenant counters (no BaseEntity)
 
 Auth/tenancy: Tenant 1─< User 1─< UserRole >── Role 1─< RolePermission >── Operation >── Module
               Every hrms_/Core entity carries TenantId (Finbuckle [MultiTenant] filter).
@@ -953,8 +953,8 @@ A fourth **type**, `Performance`, overrides where `Rate` comes from: see below.
 
 ### Step basis — how the salary is derived
 
-1. Employee's grade + rung come from `Employee.SalaryScaleId → coreSalaryScale (JobGradeId, StepId)`,
-   with the rung number being **`lupStep.Ordinal`** — never `Code`/`Name`, which are free text and
+1. Employee's grade + rung come from `Employee.SalaryScaleId → Core.SalaryScale (JobGradeId, StepId)`,
+   with the rung number being **`Core.Step.Ordinal`** — never `Code`/`Name`, which are free text and
    differ per tenant (`01`/`1`–`8`/`11` vs `S1` vs `ST1`, with "Base" coded `01` and "Celling" `11`).
 2. `target = currentOrdinal + increment`.
 3. **Clamp** to that grade's ladder: at/above the top rung pays the ceiling (`Capped`), at/below the

@@ -7,7 +7,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
     /// schedule always covers the intended moving window (this month, last 7 days, …).
     ///
     /// The <see cref="Catalog"/> here is the C# side of the pair — it MUST stay in sync with the
-    /// '@DynamicDate' branch of <c>Core.hrms_ReportFieldValues</c>, which structures the same tokens as
+    /// '@DynamicDate' branch of <c>Hrms.ReportFieldValues</c>, which structures the same tokens as
     /// selectable options for the schedule form.
     /// </summary>
     public static class DynamicDate

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace CyberErp.Hrms.App.Features.Core.Modules;
 
 /// <summary>
-/// Seeds the dynamic navigation tables (dbo.coreSubsystem / dbo.coreModule / dbo.coreOperation) for the
+/// Seeds the dynamic navigation tables (Core.Subsystem / Core.Module / Core.Operation) for the
 /// CURRENT tenant with the HRMS menu that was previously hardcoded in the frontend sidebar.
 /// Idempotent: subsystems match by name, modules by (subsystem, name), operations by (module, link) —
 /// existing rows are left untouched so tenant-specific menu customizations survive re-seeding.

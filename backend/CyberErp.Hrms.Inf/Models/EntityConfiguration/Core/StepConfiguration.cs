@@ -9,7 +9,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Step> builder)
         {
-            builder.ToTable("lupStep", "Core");
+            builder.ToTable("Step", "Core");
 
             builder.HasKey(s => s.Id);
 

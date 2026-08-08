@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalProvider> builder)
         {
-            builder.ToTable("hrmsMedicalProvider", "dbo");
+            builder.ToTable("MedicalProvider", "Hrms");
             builder.HasKey(p => p.Id);
 
             builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
@@ -27,7 +27,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalPlan> builder)
         {
-            builder.ToTable("hrmsMedicalPlan", "dbo");
+            builder.ToTable("MedicalPlan", "Hrms");
             builder.HasKey(p => p.Id);
 
             builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
@@ -46,7 +46,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalClaim> builder)
         {
-            builder.ToTable("hrmsMedicalClaim", "dbo");
+            builder.ToTable("MedicalClaim", "Hrms");
             builder.HasKey(c => c.Id);
 
             builder.Property(c => c.ClaimNumber).IsRequired().HasMaxLength(30);
@@ -76,7 +76,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalClaimAttachment> builder)
         {
-            builder.ToTable("hrmsMedicalClaimAttachment", "dbo");
+            builder.ToTable("MedicalClaimAttachment", "Hrms");
             builder.HasKey(a => a.Id);
 
             builder.Property(a => a.FileName).IsRequired().HasMaxLength(300);
@@ -95,7 +95,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalEnrollment> builder)
         {
-            builder.ToTable("hrmsMedicalEnrollment", "dbo");
+            builder.ToTable("MedicalEnrollment", "Hrms");
             builder.HasKey(e => e.Id);
 
             builder.Property(e => e.Status).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -114,7 +114,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalBeneficiary> builder)
         {
-            builder.ToTable("hrmsMedicalBeneficiary", "dbo");
+            builder.ToTable("MedicalBeneficiary", "Hrms");
             builder.HasKey(b => b.Id);
 
             builder.Property(b => b.Category).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -134,7 +134,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<MedicalServiceContract> builder)
         {
-            builder.ToTable("hrmsMedicalServiceContract", "dbo");
+            builder.ToTable("MedicalServiceContract", "Hrms");
             builder.HasKey(c => c.Id);
 
             builder.Property(c => c.ContractNumber).HasMaxLength(50);

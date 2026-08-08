@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<PerDiemRate> builder)
         {
-            builder.ToTable("hrmsPerDiemRate", "dbo");
+            builder.ToTable("PerDiemRate", "Hrms");
             builder.HasKey(r => r.Id);
 
             builder.Property(r => r.TripType).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -26,7 +26,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TripBudget> builder)
         {
-            builder.ToTable("hrmsTripBudget", "dbo");
+            builder.ToTable("TripBudget", "Hrms");
             builder.HasKey(b => b.Id);
 
             builder.Property(b => b.Amount).HasColumnType("decimal(18,2)");
@@ -42,7 +42,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TripRequest> builder)
         {
-            builder.ToTable("hrmsTripRequest", "dbo");
+            builder.ToTable("TripRequest", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.TripNumber).IsRequired().HasMaxLength(30);
@@ -74,7 +74,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TripExpense> builder)
         {
-            builder.ToTable("hrmsTripExpense", "dbo");
+            builder.ToTable("TripExpense", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Category).IsRequired().HasMaxLength(100);

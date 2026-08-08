@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<DisciplinaryMeasure> builder)
         {
-            builder.ToTable("hrmsDisciplinaryMeasure", "dbo");
+            builder.ToTable("DisciplinaryMeasure", "Hrms");
 
             builder.HasKey(d => d.Id);
 

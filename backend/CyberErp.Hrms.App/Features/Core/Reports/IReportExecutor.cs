@@ -18,7 +18,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
     /// Infrastructure port for the generic report engine (ported from the reference APSmart module).
     /// Implementations execute the report's OWN stored procedure via parameterized ADO (Dapper) —
     /// result set 1 = column metadata, result set 2 = data rows — and the master lookup procedure
-    /// (Core.hrms_ReportFieldValues) for dropdown options. Ambient scope (@TenantId, @BranchId,
+    /// (Hrms.ReportFieldValues) for dropdown options. Ambient scope (@TenantId, @BranchId,
     /// @UserId) is injected server-side on every call; user filter values travel as ONE bound
     /// @Criteria JSON parameter parsed inside the procedure, so no SQL is built from user input.
     /// </summary>

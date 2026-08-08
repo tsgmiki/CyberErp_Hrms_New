@@ -240,7 +240,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<Operation> Operation { get; set; }
     public DbSet<Subsystem> Subsystem { get; set; }
     public DbSet<RolePermission> RolePermission { get; set; }
-    /// <summary>dbo.coreNotification — Home-owned portal alerts; HRMS only writes (ExcludeFromMigrations).</summary>
+    /// <summary>Core.Notification — Home-owned portal alerts; HRMS only writes (ExcludeFromMigrations).</summary>
     public DbSet<CoreNotification> CoreNotification { get; set; }
     public DbSet<WorkflowDefinition> WorkflowDefinition { get; set; }
     public DbSet<WorkflowStep> WorkflowStep { get; set; }

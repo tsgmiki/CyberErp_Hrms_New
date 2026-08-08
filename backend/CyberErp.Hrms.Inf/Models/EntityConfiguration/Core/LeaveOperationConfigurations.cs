@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LeaveRequest> builder)
         {
-            builder.ToTable("hrmsLeaveRequest", "dbo");
+            builder.ToTable("LeaveRequest", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
@@ -33,7 +33,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LeaveRequestLine> builder)
         {
-            builder.ToTable("hrmsLeaveRequestLine", "dbo");
+            builder.ToTable("LeaveRequestLine", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.DayPart).HasConversion<string>().HasMaxLength(20);
@@ -51,7 +51,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<WorkWeekConfiguration> builder)
         {
-            builder.ToTable("hrmsWorkWeekConfiguration", "dbo");
+            builder.ToTable("WorkWeekConfiguration", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -70,7 +70,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AnnualLeaveHeader> builder)
         {
-            builder.ToTable("hrmsAnnualLeaveHeader", "dbo");
+            builder.ToTable("AnnualLeaveHeader", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.RequestDate).HasColumnType("date");
@@ -96,7 +96,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AnnualLeaveDetail> builder)
         {
-            builder.ToTable("hrmsAnnualLeaveDetail", "dbo");
+            builder.ToTable("AnnualLeaveDetail", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.LeaveUsage).HasConversion<string>().HasMaxLength(20);
@@ -114,7 +114,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LeaveBalance> builder)
         {
-            builder.ToTable("hrmsLeaveBalance", "dbo");
+            builder.ToTable("LeaveBalance", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Entitled).HasPrecision(8, 2);
@@ -138,7 +138,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LeaveBalanceTransaction> builder)
         {
-            builder.ToTable("hrmsLeaveBalanceTransaction", "dbo");
+            builder.ToTable("LeaveBalanceTransaction", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.TransactionType).HasConversion<string>().HasMaxLength(20);

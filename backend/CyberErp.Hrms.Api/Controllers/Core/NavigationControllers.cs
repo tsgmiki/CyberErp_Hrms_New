@@ -24,7 +24,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Dynamic navigation — the sidebar menu is read from coreSubsystem / Module / Operation
     // instead of a hardcoded frontend array. RolePermission rows drive per-role visibility.
 
-    /// <summary>Master list of ERP subsystems (dbo.coreSubsystem); modules reference one by name.</summary>
+    /// <summary>Master list of ERP subsystems (Core.Subsystem); modules reference one by name.</summary>
     public class SubsystemController(
         ISaveSubsystem saveHandler,
         IGetAllSubsystems getAllHandler,

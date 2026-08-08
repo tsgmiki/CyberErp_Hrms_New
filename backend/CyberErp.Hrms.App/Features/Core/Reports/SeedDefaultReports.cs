@@ -25,7 +25,7 @@ public class SeedDefaultReports(
         new() { Field = field, Label = label, FieldOrder = order };
 
     // Phase 1 — Workforce standard reports. DataType names must match ReportFieldDataType;
-    // Select/MultiSelect field keys must have a branch in Core.hrms_ReportFieldValues.
+    // Select/MultiSelect field keys must have a branch in Hrms.ReportFieldValues.
     private static List<SaveReportDto> Catalog() =>
     [
         new()
@@ -33,7 +33,7 @@ public class SeedDefaultReports(
             ReportKey = "HeadcountByUnit",
             ReportName = "Headcount by Unit",
             ReportGrouping = "Workforce",
-            StoredProc = "Core.hrms_Report_HeadcountByUnit",
+            StoredProc = "Hrms.Report_HeadcountByUnit",
             SortOrder = 10,
             Description = "Active workforce headcount, groupable by unit, branch, status, nature or gender, with per-group counts.",
             GridConfig = "{\"groupBy\":[\"UnitName\"],\"allowUserCustomize\":true,\"maxGroupLevels\":3,\"showGroupSummary\":true}",
@@ -56,7 +56,7 @@ public class SeedDefaultReports(
             ReportKey = "EmployeeDemographics",
             ReportName = "Employee Demographics",
             ReportGrouping = "Workforce",
-            StoredProc = "Core.hrms_Report_EmployeeDemographics",
+            StoredProc = "Hrms.Report_EmployeeDemographics",
             SortOrder = 20,
             Description = "Workforce composition by gender and age band, with per-group counts.",
             GridConfig = "{\"groupBy\":[\"Gender\"],\"allowUserCustomize\":true,\"maxGroupLevels\":3,\"showGroupSummary\":true}",
@@ -77,7 +77,7 @@ public class SeedDefaultReports(
             ReportKey = "NewHires",
             ReportName = "New Hires",
             ReportGrouping = "Workforce",
-            StoredProc = "Core.hrms_Report_NewHires",
+            StoredProc = "Hrms.Report_NewHires",
             SortOrder = 30,
             Description = "Employees hired within a period, newest first.",
             Fields =
@@ -100,7 +100,7 @@ public class SeedDefaultReports(
             ReportKey = "ProbationTracking",
             ReportName = "Probation Tracking",
             ReportGrouping = "Workforce",
-            StoredProc = "Core.hrms_Report_ProbationTracking",
+            StoredProc = "Hrms.Report_ProbationTracking",
             SortOrder = 40,
             Description = "Employees currently on probation with days remaining (negative = overdue confirmation).",
             Fields =
@@ -121,7 +121,7 @@ public class SeedDefaultReports(
             ReportKey = "Terminations",
             ReportName = "Terminations & Attrition",
             ReportGrouping = "Turnover",
-            StoredProc = "Core.hrms_Report_Terminations",
+            StoredProc = "Hrms.Report_Terminations",
             SortOrder = 50,
             Description = "Termination cases with tenure at exit, groupable by type, case status, unit or branch.",
             GridConfig = "{\"groupBy\":[\"TerminationType\"],\"allowUserCustomize\":true,\"maxGroupLevels\":3,\"showGroupSummary\":true}",
@@ -145,7 +145,7 @@ public class SeedDefaultReports(
             ReportKey = "EmployeeMovements",
             ReportName = "Employee Movements",
             ReportGrouping = "Turnover",
-            StoredProc = "Core.hrms_Report_EmployeeMovements",
+            StoredProc = "Hrms.Report_EmployeeMovements",
             SortOrder = 60,
             Description = "Transfers, promotions and demotions in a period, with from/to placement and salary.",
             Fields =
@@ -171,7 +171,7 @@ public class SeedDefaultReports(
             ReportKey = "LeaveBalances",
             ReportName = "Leave Balances",
             ReportGrouping = "Leave",
-            StoredProc = "Core.hrms_Report_LeaveBalances",
+            StoredProc = "Hrms.Report_LeaveBalances",
             SortOrder = 80,
             Description = "Per-employee leave balances for a fiscal year: entitled, carried forward, adjusted, taken and remaining days.",
             Fields =
@@ -193,7 +193,7 @@ public class SeedDefaultReports(
             ReportKey = "LeaveTaken",
             ReportName = "Leave Taken",
             ReportGrouping = "Leave",
-            StoredProc = "Core.hrms_Report_LeaveTaken",
+            StoredProc = "Hrms.Report_LeaveTaken",
             SortOrder = 90,
             Description = "Leave periods taken (one row per request line), filterable by period, type and request status.",
             Fields =
@@ -217,7 +217,7 @@ public class SeedDefaultReports(
             ReportKey = "SalaryRegister",
             ReportName = "Salary Register",
             ReportGrouping = "Compensation",
-            StoredProc = "Core.hrms_Report_SalaryRegister",
+            StoredProc = "Hrms.Report_SalaryRegister",
             SortOrder = 100,
             Description = "Base salary register with grade and step, groupable by unit, branch, grade or status, with per-group headcount and salary totals.",
             GridConfig = "{\"groupBy\":[\"UnitName\"],\"allowUserCustomize\":true,\"maxGroupLevels\":3,\"showGroupSummary\":true}",
@@ -241,7 +241,7 @@ public class SeedDefaultReports(
             ReportKey = "DisciplinaryCases",
             ReportName = "Disciplinary Cases",
             ReportGrouping = "Cases",
-            StoredProc = "Core.hrms_Report_DisciplinaryCases",
+            StoredProc = "Hrms.Report_DisciplinaryCases",
             SortOrder = 110,
             Description = "Disciplinary case history: violation, measure taken, case status and reward/promotion blocks.",
             Fields =
@@ -265,7 +265,7 @@ public class SeedDefaultReports(
             ReportKey = "TrainingCompletion",
             ReportName = "Training Completion",
             ReportGrouping = "Training",
-            StoredProc = "Core.hrms_Report_TrainingCompletion",
+            StoredProc = "Hrms.Report_TrainingCompletion",
             SortOrder = 120,
             Description = "Training enrollments with attendance, assessment score, completion and feedback per session.",
             Fields =
@@ -289,7 +289,7 @@ public class SeedDefaultReports(
             ReportKey = "RecruitmentPipeline",
             ReportName = "Recruitment Pipeline",
             ReportGrouping = "Recruitment",
-            StoredProc = "Core.hrms_Report_RecruitmentPipeline",
+            StoredProc = "Hrms.Report_RecruitmentPipeline",
             SortOrder = 130,
             Description = "Applications across the hiring pipeline, groupable by stage, vacancy or unit, with per-group counts.",
             GridConfig = "{\"groupBy\":[\"ApplicationStage\"],\"allowUserCustomize\":true,\"maxGroupLevels\":3,\"showGroupSummary\":true}",
@@ -313,7 +313,7 @@ public class SeedDefaultReports(
             ReportKey = "VacantPositions",
             ReportName = "Vacant Positions",
             ReportGrouping = "Workforce",
-            StoredProc = "Core.hrms_Report_VacantPositions",
+            StoredProc = "Hrms.Report_VacantPositions",
             SortOrder = 70,
             Description = "Open (vacant) positions of the establishment with their requirements.",
             Fields =

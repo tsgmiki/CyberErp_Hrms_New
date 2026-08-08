@@ -5,7 +5,7 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
 
 public class Module : BaseEntity
 {
-    /// <summary>FK to the subsystem master list (dbo.coreSubsystem).</summary>
+    /// <summary>FK to the subsystem master list (Core.Subsystem).</summary>
     public Guid SubsystemId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string? Icon { get; private set; }

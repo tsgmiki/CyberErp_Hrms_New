@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeEducation> builder)
         {
-            builder.ToTable("hrmsEmployeeEducation", "dbo");
+            builder.ToTable("EmployeeEducation", "Hrms");
 
             builder.HasKey(x => x.Id);
 
@@ -32,7 +32,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeExperience> builder)
         {
-            builder.ToTable("hrmsEmployeeExperience", "dbo");
+            builder.ToTable("EmployeeExperience", "Hrms");
 
             builder.HasKey(x => x.Id);
 
@@ -55,7 +55,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeDependent> builder)
         {
-            builder.ToTable("hrmsEmployeeDependent", "dbo");
+            builder.ToTable("EmployeeDependent", "Hrms");
 
             builder.HasKey(x => x.Id);
 
@@ -85,7 +85,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeFieldDefinition> builder)
         {
-            builder.ToTable("hrmsEmployeeFieldDefinition", "dbo");
+            builder.ToTable("EmployeeFieldDefinition", "Hrms");
 
             builder.HasKey(x => x.Id);
 
@@ -104,7 +104,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeFieldValue> builder)
         {
-            builder.ToTable("hrmsEmployeeFieldValue", "dbo");
+            builder.ToTable("EmployeeFieldValue", "Hrms");
 
             builder.HasKey(x => x.Id);
 

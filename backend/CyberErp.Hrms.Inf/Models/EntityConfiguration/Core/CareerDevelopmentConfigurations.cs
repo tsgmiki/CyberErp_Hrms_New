@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CriticalPosition> builder)
         {
-            builder.ToTable("hrmsCriticalPosition", "dbo");
+            builder.ToTable("CriticalPosition", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.RiskLevel).HasConversion<string>().HasMaxLength(20).IsRequired();
             // Default keeps pre-workflow rows (and direct-mode saves) operational without a backfill.
@@ -31,7 +31,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TalentReview> builder)
         {
-            builder.ToTable("hrmsTalentReview", "dbo");
+            builder.ToTable("TalentReview", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Cycle).HasMaxLength(60);
@@ -48,7 +48,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TalentAssessment> builder)
         {
-            builder.ToTable("hrmsTalentAssessment", "dbo");
+            builder.ToTable("TalentAssessment", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Readiness).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Notes).HasMaxLength(2000);
@@ -71,7 +71,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TalentRating> builder)
         {
-            builder.ToTable("hrmsTalentRating", "dbo");
+            builder.ToTable("TalentRating", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.RaterRole).HasMaxLength(100);
             builder.Property(x => x.PerformanceScore).HasPrecision(6, 2);
@@ -88,7 +88,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SuccessionPlan> builder)
         {
-            builder.ToTable("hrmsSuccessionPlan", "dbo");
+            builder.ToTable("SuccessionPlan", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Horizon).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -107,7 +107,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SuccessionCandidate> builder)
         {
-            builder.ToTable("hrmsSuccessionCandidate", "dbo");
+            builder.ToTable("SuccessionCandidate", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Readiness).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.ReadinessScore).HasPrecision(5, 2);
@@ -133,7 +133,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SuccessionDevelopmentAction> builder)
         {
-            builder.ToTable("hrmsSuccessionDevelopmentAction", "dbo");
+            builder.ToTable("SuccessionDevelopmentAction", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Type).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -149,7 +149,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<KnowledgeTransfer> builder)
         {
-            builder.ToTable("hrmsKnowledgeTransfer", "dbo");
+            builder.ToTable("KnowledgeTransfer", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Topic).IsRequired().HasMaxLength(300);
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();

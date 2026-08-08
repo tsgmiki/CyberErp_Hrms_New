@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeTermination> builder)
         {
-            builder.ToTable("hrmsEmployeeTermination", "dbo");
+            builder.ToTable("EmployeeTermination", "Hrms");
 
             builder.HasKey(t => t.Id);
 
@@ -38,7 +38,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TerminationClearance> builder)
         {
-            builder.ToTable("hrmsTerminationClearance", "dbo");
+            builder.ToTable("TerminationClearance", "Hrms");
 
             builder.HasKey(c => c.Id);
 
@@ -64,7 +64,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ClearanceDepartment> builder)
         {
-            builder.ToTable("hrmsClearanceDepartment", "dbo");
+            builder.ToTable("ClearanceDepartment", "Hrms");
 
             builder.HasKey(d => d.Id);
 
@@ -86,7 +86,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ClearanceDepartmentApprover> builder)
         {
-            builder.ToTable("hrmsClearanceDepartmentApprover", "dbo");
+            builder.ToTable("ClearanceDepartmentApprover", "Hrms");
 
             builder.HasKey(a => a.Id);
 

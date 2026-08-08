@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AuditLog> builder)
         {
-            builder.ToTable("hrmsAuditLog", "dbo");
+            builder.ToTable("AuditLog", "Hrms");
 
             builder.HasKey(a => a.Id);
 

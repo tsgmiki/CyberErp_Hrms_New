@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LeaveType> builder)
         {
-            builder.ToTable("hrmsLeaveType", "dbo");
+            builder.ToTable("LeaveType", "Hrms");
 
             builder.HasKey(x => x.Id);
 

@@ -11,7 +11,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AwardCategory> builder)
         {
-            builder.ToTable("hrmsAwardCategory", "dbo");
+            builder.ToTable("AwardCategory", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -26,7 +26,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RecognitionProgram> builder)
         {
-            builder.ToTable("hrmsRecognitionProgram", "dbo");
+            builder.ToTable("RecognitionProgram", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -46,7 +46,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RewardNomination> builder)
         {
-            builder.ToTable("hrmsRewardNomination", "dbo");
+            builder.ToTable("RewardNomination", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Reason).IsRequired().HasMaxLength(1000);
@@ -74,7 +74,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RewardPointsTransaction> builder)
         {
-            builder.ToTable("hrmsRewardPointsTransaction", "dbo");
+            builder.ToTable("RewardPointsTransaction", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Source).IsRequired().HasConversion<string>().HasMaxLength(30);
@@ -94,7 +94,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RewardDisbursement> builder)
         {
-            builder.ToTable("hrmsRewardDisbursement", "dbo");
+            builder.ToTable("RewardDisbursement", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Amount).HasPrecision(18, 2);

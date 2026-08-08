@@ -72,6 +72,41 @@
 
 ## 1. Most recent changes (latest first)
 
+00DN. **Module-schema rename — every table moved to its module's schema (2026-08-08, both apps,
+    MIGRATIONS `ModuleSchemaRename` + `NotificationModuleSchema`, APPLIED TO CERP).**
+    `dbo.hrmsAchievement` → `Hrms.Achievement`, `dbo.coreModule` → `Core.Module`,
+    `Core.lupStep` → `Core.Step`, `Core.CorePerson` → `Core.Person`,
+    `Core.coreSalaryScale` → `Core.SalaryScale`, `dbo.coreNotification` → `Core.Notification`,
+    and the 28 procedures `Core.hrms_Report_X` → `Hrms.Report_X`.
+    - **181 tables renamed** (174 hrms + 4 dbo.core + 3 Core-internal). The 10 unprefixed `Core.*`
+      tables (User, Role, Tenant, RolePermission, …) are UNCHANGED, as are HangFire (11) and both
+      `__EFMigrationsHistory` tables. Verified: 204 tables before and after, 239 FKs before and after.
+    - Ownership split: HRMS renames everything except `coreNotification`, which **Home** owns
+      (`ExcludeFromMigrations` in HRMS). Run `01-hrms…` then `02-home…`.
+    - **Four traps, all found by testing against a restored copy — none by review:**
+      1. `CREATE PROCEDURE must be the first statement in a query batch`. EF writes `Sql()` verbatim
+         into a generated script and inserts **no GO**, so all 28 procedures shared one batch. Fixed
+         with a `-- ===BATCH===` sentinel that `build-scripts.ps1` converts to `GO`; via
+         `dotnet ef database update` it stays a harmless comment. **`--idempotent` is therefore
+         impossible for the HRMS script** — its `IF NOT EXISTS … BEGIN … END` wrapper cannot contain a
+         GO. A precondition guard (`SET NOEXEC ON`) replaces it.
+      2. The report registry stores proc names in TWO shapes — bare (`Core.hrms_Report_NewHires`) and
+         bracketed (`[Core].[hrms_Report_EmployeeDirectory]`). The first UPDATE only matched the bare
+         form.
+      3. `ReportScheduleStore` builds names by CONCATENATION (`SchemaPrefix + "hrms_X"`), so no search
+         for `Core.hrms_X` can find those 12 call sites. Only running the app surfaced it.
+      4. **Hand-written SQL outside the EF mappings** — `DashboardSummaryService` (7 statements) and
+         `NumberSequenceService` (`[dbo].[hrmsNumberSequence]`, **bracketed**, so an unbracketed
+         pattern missed it). The second is on the write path: every document number would have failed.
+    - **Lesson for the next rename:** grep for the bracketed form `[schema].[table]` as well as the
+      bare one, and sweep the WHOLE solution, not just `Repositories/`. Then exercise the endpoints
+      backed by raw SQL (the dashboard), because EF-mapped endpoints prove nothing about them.
+    - Found en route: CERP was **missing Home migration `AddNotificationUserFeedIndex`**; script 02 is
+      generated idempotently so it applies that too.
+    - Scripts live in `backend/scripts/schema-rename/` in each repo; `build-scripts.ps1` regenerates
+      both. A pre-change restore point was taken:
+      `CERP_before-schema-rename-20260808-192711.bak`.
+
 00DM. **Salary Revision detail is a full grid, not a popup (2026-08-08, HRMS frontend only).**
     `detailModal.tsx` DELETED. Selecting a row now navigates to `/salaryRevision/{guid}` and swaps the
     page to the per-employee increment grid; the shell's standard Back arrow returns. Three URL-backed

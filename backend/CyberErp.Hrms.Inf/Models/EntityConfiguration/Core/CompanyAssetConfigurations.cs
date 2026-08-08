@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CompanyAsset> builder)
         {
-            builder.ToTable("hrmsCompanyAsset", "dbo");
+            builder.ToTable("CompanyAsset", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -34,7 +34,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ExitQuestionnaire> builder)
         {
-            builder.ToTable("hrmsExitQuestionnaire", "dbo");
+            builder.ToTable("ExitQuestionnaire", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.QuestionsJson).IsRequired();
         }
@@ -44,7 +44,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ExitInterview> builder)
         {
-            builder.ToTable("hrmsExitInterview", "dbo");
+            builder.ToTable("ExitInterview", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.QuestionsJson).IsRequired();
@@ -64,7 +64,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TerminationSettlement> builder)
         {
-            builder.ToTable("hrmsTerminationSettlement", "dbo");
+            builder.ToTable("TerminationSettlement", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Status).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -85,7 +85,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SettlementLine> builder)
         {
-            builder.ToTable("hrmsSettlementLine", "dbo");
+            builder.ToTable("SettlementLine", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Kind).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -105,7 +105,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TerminationAssetRecovery> builder)
         {
-            builder.ToTable("hrmsTerminationAssetRecovery", "dbo");
+            builder.ToTable("TerminationAssetRecovery", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.AssetName).IsRequired().HasMaxLength(200);

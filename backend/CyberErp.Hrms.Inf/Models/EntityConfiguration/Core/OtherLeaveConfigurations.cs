@@ -11,7 +11,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<OtherLeaveSetting> builder)
         {
-            builder.ToTable("hrmsOtherLeaveSetting", "dbo");
+            builder.ToTable("OtherLeaveSetting", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Gender).HasConversion<string>().HasMaxLength(10).IsRequired();
@@ -36,7 +36,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<OtherLeaveHeader> builder)
         {
-            builder.ToTable("hrmsOtherLeave", "dbo");
+            builder.ToTable("OtherLeave", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.RequestDate).HasColumnType("date");
@@ -62,7 +62,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<OtherLeaveDetail> builder)
         {
-            builder.ToTable("hrmsOtherLeaveDetail", "dbo");
+            builder.ToTable("OtherLeaveDetail", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.LeaveDays).HasPrecision(6, 2);

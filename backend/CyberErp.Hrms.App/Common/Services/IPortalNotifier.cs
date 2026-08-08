@@ -1,7 +1,7 @@
 namespace CyberErp.Hrms.App.Common.Services
 {
     /// <summary>
-    /// Raises portal alerts into <c>dbo.coreNotification</c> — the table the Home portal reads for
+    /// Raises portal alerts into <c>Core.Notification</c> — the table the Home portal reads for
     /// its notification bell / dashboard. HRMS uses this to tell approvers (in Home) that a record
     /// is awaiting their decision, and to clear those alerts once the step is decided. Best-effort:
     /// a portal-notification failure must never break the governing operation, so callers wrap

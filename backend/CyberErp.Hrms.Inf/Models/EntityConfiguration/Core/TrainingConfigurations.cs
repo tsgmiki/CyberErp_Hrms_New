@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingCategory> builder)
         {
-            builder.ToTable("hrmsTrainingCategory", "dbo");
+            builder.ToTable("TrainingCategory", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -24,7 +24,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingCourse> builder)
         {
-            builder.ToTable("hrmsTrainingCourse", "dbo");
+            builder.ToTable("TrainingCourse", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -53,7 +53,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingSession> builder)
         {
-            builder.ToTable("hrmsTrainingSession", "dbo");
+            builder.ToTable("TrainingSession", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Venue).HasMaxLength(300);
@@ -84,7 +84,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingEnrollment> builder)
         {
-            builder.ToTable("hrmsTrainingEnrollment", "dbo");
+            builder.ToTable("TrainingEnrollment", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Status).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -115,7 +115,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingBudget> builder)
         {
-            builder.ToTable("hrmsTrainingBudget", "dbo");
+            builder.ToTable("TrainingBudget", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Amount).HasPrecision(18, 2);
@@ -134,7 +134,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LearningPath> builder)
         {
-            builder.ToTable("hrmsLearningPath", "dbo");
+            builder.ToTable("LearningPath", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -159,7 +159,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LearningPathStep> builder)
         {
-            builder.ToTable("hrmsLearningPathStep", "dbo");
+            builder.ToTable("LearningPathStep", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.HasOne<TrainingCourse>()
@@ -175,7 +175,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeTrainingCertificate> builder)
         {
-            builder.ToTable("hrmsEmployeeTrainingCertificate", "dbo");
+            builder.ToTable("EmployeeTrainingCertificate", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.CertificateNo).IsRequired().HasMaxLength(50);
@@ -206,7 +206,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingProviderPayment> builder)
         {
-            builder.ToTable("hrmsTrainingProviderPayment", "dbo");
+            builder.ToTable("TrainingProviderPayment", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.ProviderName).IsRequired().HasMaxLength(200);
@@ -229,7 +229,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LearningCommunity> builder)
         {
-            builder.ToTable("hrmsLearningCommunity", "dbo");
+            builder.ToTable("LearningCommunity", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -250,7 +250,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CommunityPostReaction> builder)
         {
-            builder.ToTable("hrmsCommunityPostReaction", "dbo");
+            builder.ToTable("CommunityPostReaction", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.HasOne<LearningCommunityPost>()
@@ -271,7 +271,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LearningCommunityMember> builder)
         {
-            builder.ToTable("hrmsLearningCommunityMember", "dbo");
+            builder.ToTable("LearningCommunityMember", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.HasOne<LearningCommunity>()
@@ -291,7 +291,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LearningCommunityPost> builder)
         {
-            builder.ToTable("hrmsLearningCommunityPost", "dbo");
+            builder.ToTable("LearningCommunityPost", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Content).IsRequired().HasMaxLength(4000);
@@ -315,7 +315,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TrainingNeed> builder)
         {
-            builder.ToTable("hrmsTrainingNeed", "dbo");
+            builder.ToTable("TrainingNeed", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Topic).IsRequired().HasMaxLength(300);

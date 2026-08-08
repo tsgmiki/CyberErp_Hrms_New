@@ -42,7 +42,7 @@ public enum EmploymentNature
 /// </summary>
 public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
 {
-    // Personal identity lives on the shared person record (Core.CorePerson).
+    // Personal identity lives on the shared person record (Core.Person).
     public Guid PersonId { get; private set; }
     private Person? _person;
     public Person? Person => _person;

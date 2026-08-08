@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CareerPath> builder)
         {
-            builder.ToTable("hrmsCareerPath", "dbo");
+            builder.ToTable("CareerPath", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Code).IsRequired().HasMaxLength(50);
@@ -23,7 +23,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CareerPathStep> builder)
         {
-            builder.ToTable("hrmsCareerPathStep", "dbo");
+            builder.ToTable("CareerPathStep", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.Certifications).HasMaxLength(1000);
@@ -45,7 +45,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CareerPathStepCompetency> builder)
         {
-            builder.ToTable("hrmsCareerPathStepCompetency", "dbo");
+            builder.ToTable("CareerPathStepCompetency", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Weight).HasPrecision(5, 2);
 
@@ -59,7 +59,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeCareerPath> builder)
         {
-            builder.ToTable("hrmsEmployeeCareerPath", "dbo");
+            builder.ToTable("EmployeeCareerPath", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.ProgressPercent).HasPrecision(5, 2);
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -85,7 +85,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeCareerPathStepProgress> builder)
         {
-            builder.ToTable("hrmsEmployeeCareerPathStepProgress", "dbo");
+            builder.ToTable("EmployeeCareerPathStepProgress", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Notes).HasMaxLength(1000);
@@ -98,7 +98,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Mentorship> builder)
         {
-            builder.ToTable("hrmsMentorship", "dbo");
+            builder.ToTable("Mentorship", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Context).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -118,7 +118,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CareerPathChangeRequest> builder)
         {
-            builder.ToTable("hrmsCareerPathChangeRequest", "dbo");
+            builder.ToTable("CareerPathChangeRequest", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
             builder.Property(x => x.Reason).HasMaxLength(2000);

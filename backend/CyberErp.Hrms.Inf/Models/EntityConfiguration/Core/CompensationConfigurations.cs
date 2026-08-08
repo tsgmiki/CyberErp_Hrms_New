@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AllowanceType> builder)
         {
-            builder.ToTable("hrmsAllowanceType", "dbo");
+            builder.ToTable("AllowanceType", "Hrms");
 
             builder.HasKey(a => a.Id);
 
@@ -27,7 +27,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CompensationRequest> builder)
         {
-            builder.ToTable("hrmsCompensationRequest", "dbo");
+            builder.ToTable("CompensationRequest", "Hrms");
             builder.HasKey(r => r.Id);
 
             builder.Property(r => r.RequestType).IsRequired().HasConversion<string>().HasMaxLength(30);
@@ -49,7 +49,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<BenefitPlan> builder)
         {
-            builder.ToTable("hrmsBenefitPlan", "dbo");
+            builder.ToTable("BenefitPlan", "Hrms");
             builder.HasKey(b => b.Id);
 
             builder.Property(b => b.Name).IsRequired().HasMaxLength(200);
@@ -69,7 +69,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeBenefitEnrollment> builder)
         {
-            builder.ToTable("hrmsEmployeeBenefitEnrollment", "dbo");
+            builder.ToTable("EmployeeBenefitEnrollment", "Hrms");
             builder.HasKey(e => e.Id);
 
             builder.Property(e => e.Status).IsRequired().HasConversion<string>().HasMaxLength(20);
@@ -88,7 +88,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<TaxBracket> builder)
         {
-            builder.ToTable("hrmsTaxBracket", "dbo");
+            builder.ToTable("TaxBracket", "Hrms");
             builder.HasKey(t => t.Id);
 
             builder.Property(t => t.LowerBound).HasColumnType("decimal(18,2)");
@@ -101,7 +101,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SalaryRevision> builder)
         {
-            builder.ToTable("hrmsSalaryRevision", "dbo");
+            builder.ToTable("SalaryRevision", "Hrms");
 
             builder.HasKey(r => r.Id);
 
@@ -122,7 +122,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SalaryRevisionBand> builder)
         {
-            builder.ToTable("hrmsSalaryRevisionBand", "dbo");
+            builder.ToTable("SalaryRevisionBand", "Hrms");
 
             builder.HasKey(b => b.Id);
 
@@ -146,7 +146,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SalaryRevisionLine> builder)
         {
-            builder.ToTable("hrmsSalaryRevisionLine", "dbo");
+            builder.ToTable("SalaryRevisionLine", "Hrms");
 
             builder.HasKey(l => l.Id);
 
@@ -171,7 +171,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeAllowance> builder)
         {
-            builder.ToTable("hrmsEmployeeAllowance", "dbo");
+            builder.ToTable("EmployeeAllowance", "Hrms");
 
             builder.HasKey(e => e.Id);
 

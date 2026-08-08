@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeGuarantee> builder)
         {
-            builder.ToTable("hrmsEmployeeGuarantee", "dbo");
+            builder.ToTable("EmployeeGuarantee", "Hrms");
             builder.HasKey(x => x.Id);
 
             // Lookup-driven (global "GuaranteeType" category value, stored by name).

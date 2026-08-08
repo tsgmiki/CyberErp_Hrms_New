@@ -9,7 +9,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Generic, stored-procedure-driven report engine (ported from the reference APSmart module).
     /// A report is a registry row naming its own SP; the SP returns its own column schema (result
     /// set 1) + rows (result set 2). Parameters are metadata rows; lookups come from the master
-    /// procedure Core.hrms_ReportFieldValues. @TenantId/@BranchId/@UserId are injected server-side.
+    /// procedure Hrms.ReportFieldValues. @TenantId/@BranchId/@UserId are injected server-side.
     /// </summary>
     public class ReportController(
         IGetReportCatalog catalogHandler,

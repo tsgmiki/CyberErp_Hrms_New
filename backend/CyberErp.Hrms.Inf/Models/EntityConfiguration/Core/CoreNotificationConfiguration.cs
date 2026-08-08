@@ -5,7 +5,7 @@ using CyberErp.Hrms.Dom.Entities.Core;
 namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 {
     /// <summary>
-    /// Maps <c>dbo.coreNotification</c> — the portal alert table OWNED by the Home portal.
+    /// Maps <c>Core.Notification</c> — the portal alert table OWNED by the Home portal.
     /// HRMS only WRITES to it (raising approval alerts), so the table is EXCLUDED from HRMS
     /// migrations: Home's migrations create and evolve its schema. Column shapes mirror
     /// Home's config so inserts stay compatible.
@@ -14,7 +14,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CoreNotification> builder)
         {
-            builder.ToTable("coreNotification", "dbo", t => t.ExcludeFromMigrations());
+            builder.ToTable("Notification", "Core", t => t.ExcludeFromMigrations());
             builder.HasKey(x => x.Id);
             builder.Property(x => x.TenantId).IsRequired().HasMaxLength(450);
             builder.Property(x => x.SourceSubsystem).IsRequired().HasMaxLength(50);
