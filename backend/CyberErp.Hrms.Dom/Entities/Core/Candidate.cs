@@ -33,7 +33,7 @@ public class Candidate : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>The employee record of an internal candidate (HC090).</summary>
     public Guid? InternalEmployeeId { get; private set; }
     /// <summary>
-    /// The shared person record (Core.CorePerson) backing this candidate — established at capture so
+    /// The shared person record (Core.Person) backing this candidate — established at capture so
     /// hiring converts the candidate into an employee on the SAME person, with no data re-entry.
     /// </summary>
     public Guid? PersonId { get; private set; }

@@ -23,7 +23,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AnnualLeaveSetting> builder)
         {
-            builder.ToTable("hrmsAnnualLeaveSetting", "dbo");
+            builder.ToTable("AnnualLeaveSetting", "Hrms");
 
             builder.HasKey(x => x.Id);
 

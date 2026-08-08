@@ -36,7 +36,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             Id = e.Id,
             PersonId = e.PersonId,
             EmployeeNumber = e.EmployeeNumber,
-            // Personal identity comes from the shared person record (Core.CorePerson).
+            // Personal identity comes from the shared person record (Core.Person).
             FirstName = e.Person != null ? e.Person.FirstName : string.Empty,
             FirstNameA = e.Person != null ? e.Person.FirstNameA : null,
             FatherName = e.Person != null ? e.Person.FatherName : null,

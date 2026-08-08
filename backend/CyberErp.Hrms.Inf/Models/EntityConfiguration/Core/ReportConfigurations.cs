@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Report> builder)
         {
-            builder.ToTable("hrmsReport", "dbo");
+            builder.ToTable("Report", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.ReportKey).IsRequired().HasMaxLength(100);
@@ -34,7 +34,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportFieldOutput> builder)
         {
-            builder.ToTable("hrmsReportFieldOutput", "dbo");
+            builder.ToTable("ReportFieldOutput", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Field).IsRequired().HasMaxLength(100);
             builder.Property(x => x.Label).IsRequired().HasMaxLength(200);
@@ -46,7 +46,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SavedReportFilter> builder)
         {
-            builder.ToTable("hrmsReportSavedFilter", "dbo");
+            builder.ToTable("ReportSavedFilter", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.CriteriaJson).IsRequired();
@@ -59,7 +59,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportRestriction> builder)
         {
-            builder.ToTable("hrmsReportRestriction", "dbo");
+            builder.ToTable("ReportRestriction", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.RoleName).IsRequired().HasMaxLength(200);
             builder.HasIndex(x => x.ReportId);
@@ -71,7 +71,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportSchedule> builder)
         {
-            builder.ToTable("hrmsReportSchedule", "dbo");
+            builder.ToTable("ReportSchedule", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
             builder.Property(x => x.CronExpression).IsRequired().HasMaxLength(100);
@@ -86,7 +86,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportScheduleRecipient> builder)
         {
-            builder.ToTable("hrmsReportScheduleRecipient", "dbo");
+            builder.ToTable("ReportScheduleRecipient", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Email).HasMaxLength(300);
             builder.HasOne<ReportSchedule>().WithMany().HasForeignKey(x => x.ReportScheduleId).OnDelete(DeleteBehavior.Cascade);
@@ -98,7 +98,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportScheduleFieldValue> builder)
         {
-            builder.ToTable("hrmsReportScheduleFieldValue", "dbo");
+            builder.ToTable("ReportScheduleFieldValue", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.ReportKey).IsRequired().HasMaxLength(100);
             builder.Property(x => x.Field).IsRequired().HasMaxLength(100);
@@ -111,7 +111,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportScheduleFieldOutput> builder)
         {
-            builder.ToTable("hrmsReportScheduleFieldOutput", "dbo");
+            builder.ToTable("ReportScheduleFieldOutput", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.ReportKey).IsRequired().HasMaxLength(100);
             builder.Property(x => x.Field).IsRequired().HasMaxLength(100);
@@ -125,7 +125,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportRun> builder)
         {
-            builder.ToTable("hrmsReportRun", "dbo");
+            builder.ToTable("ReportRun", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.ReportKey).IsRequired().HasMaxLength(100);
             builder.Property(x => x.CriteriaJson).IsRequired();
@@ -138,7 +138,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportRunRecipient> builder)
         {
-            builder.ToTable("hrmsReportRunRecipient", "dbo");
+            builder.ToTable("ReportRunRecipient", "Hrms");
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Email).IsRequired().HasMaxLength(300);
             builder.HasOne<ReportRun>().WithMany().HasForeignKey(x => x.ReportRunId).OnDelete(DeleteBehavior.Cascade);
@@ -150,7 +150,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReportField> builder)
         {
-            builder.ToTable("hrmsReportField", "dbo");
+            builder.ToTable("ReportField", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Field).IsRequired().HasMaxLength(100);

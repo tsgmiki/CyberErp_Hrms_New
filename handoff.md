@@ -8,12 +8,18 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-3`** (branched off `main` at `706b65f`, 2026-08-05).
+- **CURRENT BRANCH: `feature/hrms-buildout-4`** (branched off `main` at `0be2c1f`, 2026-08-08) —
+  empty so far; the next batch of work starts here.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
-  rotate to a fresh `feature/hrms-buildout-N`. Completed so far: **PR #2** merged the buildout
-  (18 commits) and **PR #3** merged the doc sync; the `feature/hrms-buildout` and
-  `feature/hrms-buildout-2` branches were deleted after merging. Historical references to them below
-  are accurate for their date, but those branches no longer exist.
+  rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
+  **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, and
+  **PR #5** performance score bands, detail-as-grid, and the route state-loss fix. The
+  `feature/hrms-buildout`, `-2` and `-3` branches were deleted after merging — historical references
+  to them below are accurate for their date, but those branches no longer exist.
+- **Two migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
+  `SalaryRevisionPerformanceBands`). Any other environment needs `dotnet ef database update`, and the
+  `lupStep.Ordinal` backfill is an inference that should be eyeballed per tenant before production:
+  `SELECT Name, Code, Ordinal FROM Core.lupStep ORDER BY TenantId, Ordinal;`
 - Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
   Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
@@ -65,6 +71,41 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DN. **Module-schema rename — every table moved to its module's schema (2026-08-08, both apps,
+    MIGRATIONS `ModuleSchemaRename` + `NotificationModuleSchema`, APPLIED TO CERP).**
+    `dbo.hrmsAchievement` → `Hrms.Achievement`, `dbo.coreModule` → `Core.Module`,
+    `Core.lupStep` → `Core.Step`, `Core.CorePerson` → `Core.Person`,
+    `Core.coreSalaryScale` → `Core.SalaryScale`, `dbo.coreNotification` → `Core.Notification`,
+    and the 28 procedures `Core.hrms_Report_X` → `Hrms.Report_X`.
+    - **181 tables renamed** (174 hrms + 4 dbo.core + 3 Core-internal). The 10 unprefixed `Core.*`
+      tables (User, Role, Tenant, RolePermission, …) are UNCHANGED, as are HangFire (11) and both
+      `__EFMigrationsHistory` tables. Verified: 204 tables before and after, 239 FKs before and after.
+    - Ownership split: HRMS renames everything except `coreNotification`, which **Home** owns
+      (`ExcludeFromMigrations` in HRMS). Run `01-hrms…` then `02-home…`.
+    - **Four traps, all found by testing against a restored copy — none by review:**
+      1. `CREATE PROCEDURE must be the first statement in a query batch`. EF writes `Sql()` verbatim
+         into a generated script and inserts **no GO**, so all 28 procedures shared one batch. Fixed
+         with a `-- ===BATCH===` sentinel that `build-scripts.ps1` converts to `GO`; via
+         `dotnet ef database update` it stays a harmless comment. **`--idempotent` is therefore
+         impossible for the HRMS script** — its `IF NOT EXISTS … BEGIN … END` wrapper cannot contain a
+         GO. A precondition guard (`SET NOEXEC ON`) replaces it.
+      2. The report registry stores proc names in TWO shapes — bare (`Core.hrms_Report_NewHires`) and
+         bracketed (`[Core].[hrms_Report_EmployeeDirectory]`). The first UPDATE only matched the bare
+         form.
+      3. `ReportScheduleStore` builds names by CONCATENATION (`SchemaPrefix + "hrms_X"`), so no search
+         for `Core.hrms_X` can find those 12 call sites. Only running the app surfaced it.
+      4. **Hand-written SQL outside the EF mappings** — `DashboardSummaryService` (7 statements) and
+         `NumberSequenceService` (`[dbo].[hrmsNumberSequence]`, **bracketed**, so an unbracketed
+         pattern missed it). The second is on the write path: every document number would have failed.
+    - **Lesson for the next rename:** grep for the bracketed form `[schema].[table]` as well as the
+      bare one, and sweep the WHOLE solution, not just `Repositories/`. Then exercise the endpoints
+      backed by raw SQL (the dashboard), because EF-mapped endpoints prove nothing about them.
+    - Found en route: CERP was **missing Home migration `AddNotificationUserFeedIndex`**; script 02 is
+      generated idempotently so it applies that too.
+    - Scripts live in `backend/scripts/schema-rename/` in each repo; `build-scripts.ps1` regenerates
+      both. A pre-change restore point was taken:
+      `CERP_before-schema-rename-20260808-192711.bak`.
 
 00DM. **Salary Revision detail is a full grid, not a popup (2026-08-08, HRMS frontend only).**
     `detailModal.tsx` DELETED. Selecting a row now navigates to `/salaryRevision/{guid}` and swaps the

@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LoanType> builder)
         {
-            builder.ToTable("hrmsLoanType", "dbo");
+            builder.ToTable("LoanType", "Hrms");
             builder.HasKey(t => t.Id);
 
             builder.Property(t => t.Name).IsRequired().HasMaxLength(150);
@@ -26,7 +26,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Loan> builder)
         {
-            builder.ToTable("hrmsLoan", "dbo");
+            builder.ToTable("Loan", "Hrms");
             builder.HasKey(l => l.Id);
 
             builder.Property(l => l.LoanNumber).IsRequired().HasMaxLength(30);
@@ -55,7 +55,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LoanGuarantor> builder)
         {
-            builder.ToTable("hrmsLoanGuarantor", "dbo");
+            builder.ToTable("LoanGuarantor", "Hrms");
             builder.HasKey(g => g.Id);
 
             builder.Property(g => g.FullName).IsRequired().HasMaxLength(200);
@@ -73,7 +73,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<LoanRepaymentScheduleLine> builder)
         {
-            builder.ToTable("hrmsLoanRepaymentSchedule", "dbo");
+            builder.ToTable("LoanRepaymentSchedule", "Hrms");
             builder.HasKey(s => s.Id);
 
             builder.Property(s => s.PrincipalPortion).HasColumnType("decimal(18,2)");

@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RatingScale> builder)
         {
-            builder.ToTable("hrmsRatingScale", "dbo");
+            builder.ToTable("RatingScale", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -30,7 +30,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RatingScaleLevel> builder)
         {
-            builder.ToTable("hrmsRatingScaleLevel", "dbo");
+            builder.ToTable("RatingScaleLevel", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Label).IsRequired().HasMaxLength(100);
@@ -46,7 +46,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CompetencyCategory> builder)
         {
-            builder.ToTable("hrmsCompetencyCategory", "dbo");
+            builder.ToTable("CompetencyCategory", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -60,7 +60,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Competency> builder)
         {
-            builder.ToTable("hrmsCompetency", "dbo");
+            builder.ToTable("Competency", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -80,7 +80,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<PositionCompetency> builder)
         {
-            builder.ToTable("hrmsPositionCompetency", "dbo");
+            builder.ToTable("PositionCompetency", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Weight).HasPrecision(5, 2);
@@ -104,7 +104,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ReviewCycle> builder)
         {
-            builder.ToTable("hrmsReviewCycle", "dbo");
+            builder.ToTable("ReviewCycle", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -129,7 +129,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AppraisalTemplate> builder)
         {
-            builder.ToTable("hrmsAppraisalTemplate", "dbo");
+            builder.ToTable("AppraisalTemplate", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -147,7 +147,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<OrganizationalObjective> builder)
         {
-            builder.ToTable("hrmsOrganizationalObjective", "dbo");
+            builder.ToTable("OrganizationalObjective", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -180,7 +180,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeGoal> builder)
         {
-            builder.ToTable("hrmsEmployeeGoal", "dbo");
+            builder.ToTable("EmployeeGoal", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -218,7 +218,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<GoalActionItem> builder)
         {
-            builder.ToTable("hrmsGoalActionItem", "dbo");
+            builder.ToTable("GoalActionItem", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Description).IsRequired().HasMaxLength(500);
@@ -233,7 +233,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Appraisal> builder)
         {
-            builder.ToTable("hrmsAppraisal", "dbo");
+            builder.ToTable("Appraisal", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Stage).HasConversion<string>().HasMaxLength(30).IsRequired();
@@ -277,7 +277,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AppraisalGoal> builder)
         {
-            builder.ToTable("hrmsAppraisalGoal", "dbo");
+            builder.ToTable("AppraisalGoal", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -295,7 +295,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AppraisalCompetency> builder)
         {
-            builder.ToTable("hrmsAppraisalCompetency", "dbo");
+            builder.ToTable("AppraisalCompetency", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.CompetencyName).IsRequired().HasMaxLength(200);
@@ -315,7 +315,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AppraisalPeerReview> builder)
         {
-            builder.ToTable("hrmsAppraisalPeerReview", "dbo");
+            builder.ToTable("AppraisalPeerReview", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
@@ -339,7 +339,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CalibrationSession> builder)
         {
-            builder.ToTable("hrmsCalibrationSession", "dbo");
+            builder.ToTable("CalibrationSession", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
@@ -368,7 +368,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<CalibrationItem> builder)
         {
-            builder.ToTable("hrmsCalibrationItem", "dbo");
+            builder.ToTable("CalibrationItem", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.OriginalScore).HasPrecision(6, 2);
@@ -390,7 +390,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<PerformanceHistory> builder)
         {
-            builder.ToTable("hrmsPerformanceHistory", "dbo");
+            builder.ToTable("PerformanceHistory", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.EntityType).IsRequired().HasMaxLength(50);
@@ -409,7 +409,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<IndividualDevelopmentPlan> builder)
         {
-            builder.ToTable("hrmsDevelopmentPlan", "dbo");
+            builder.ToTable("DevelopmentPlan", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -438,7 +438,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<DevelopmentAction> builder)
         {
-            builder.ToTable("hrmsDevelopmentAction", "dbo");
+            builder.ToTable("DevelopmentAction", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Description).IsRequired().HasMaxLength(500);
@@ -459,7 +459,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<PerformanceImprovementPlan> builder)
         {
-            builder.ToTable("hrmsImprovementPlan", "dbo");
+            builder.ToTable("ImprovementPlan", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -490,7 +490,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<PipObjective> builder)
         {
-            builder.ToTable("hrmsPipObjective", "dbo");
+            builder.ToTable("PipObjective", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Description).IsRequired().HasMaxLength(500);
@@ -506,7 +506,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Achievement> builder)
         {
-            builder.ToTable("hrmsAchievement", "dbo");
+            builder.ToTable("Achievement", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -530,7 +530,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<RecognitionBadge> builder)
         {
-            builder.ToTable("hrmsRecognitionBadge", "dbo");
+            builder.ToTable("RecognitionBadge", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(150);
@@ -555,7 +555,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<AppraisalAppeal> builder)
         {
-            builder.ToTable("hrmsAppraisalAppeal", "dbo");
+            builder.ToTable("AppraisalAppeal", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Comments).IsRequired().HasMaxLength(2000);
@@ -580,7 +580,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<EmployeeRecognition> builder)
         {
-            builder.ToTable("hrmsEmployeeRecognition", "dbo");
+            builder.ToTable("EmployeeRecognition", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Citation).IsRequired().HasMaxLength(1000);

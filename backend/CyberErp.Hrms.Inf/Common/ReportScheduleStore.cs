@@ -14,7 +14,9 @@ namespace CyberErp.Hrms.Inf.Common
     /// </summary>
     public class ReportScheduleStore(HrmsDbContext dbContext, ITenantService tenantService) : IReportScheduleStore
     {
-        private const string SchemaPrefix = "Core.";
+        // Report procedures live in the Hrms schema (module-schema rename). The name is built by
+        // concatenation, so a search for the full "Core.hrms_X" string will not find these call sites.
+        private const string SchemaPrefix = "Hrms.";
 
         /// <summary>Empty ⇒ the ambient (request) tenant; a non-empty value ⇒ an explicit tenant, used by
         /// background Hangfire runs that have no ambient context.</summary>
@@ -47,14 +49,14 @@ namespace CyberErp.Hrms.Inf.Common
             p.Add("ScheduleStartDate", h.ScheduleStartDate is { } d ? d.ToDateTime(TimeOnly.MinValue) : (DateTime?)null);
             p.Add("OutputFormat", h.OutputFormat);
             p.Add("CronExpression", h.CronExpression);
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientSchedule", p, commandType: CommandType.StoredProcedure);
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientSchedule", p, commandType: CommandType.StoredProcedure);
             return p.Get<Guid>("ReportScheduleId");
         }
 
         public async Task DeleteAsync(Guid scheduleId, bool modifyOnly)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientScheduleDelete",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientScheduleDelete",
                 new { ReportScheduleId = scheduleId, IsModifyOnly = modifyOnly ? 1 : 0 },
                 commandType: CommandType.StoredProcedure);
         }
@@ -62,7 +64,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task EnableAsync(Guid scheduleId, bool enabled)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientScheduleEnable",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientScheduleEnable",
                 new { ReportScheduleId = scheduleId, Enabled = enabled ? 1 : 0 },
                 commandType: CommandType.StoredProcedure);
         }
@@ -70,7 +72,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task AddFieldValueAsync(Guid scheduleId, string reportKey, string field, string? value)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientScheduleFieldValue",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientScheduleFieldValue",
                 new { ReportScheduleId = scheduleId, ReportKey = reportKey, Field = field, Value = value },
                 commandType: CommandType.StoredProcedure);
         }
@@ -78,7 +80,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task AddFieldOutputAsync(Guid scheduleId, string reportKey, string field, string label, int fieldOrder, int sortOrder)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientScheduleFieldOutput",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientScheduleFieldOutput",
                 new { ReportScheduleId = scheduleId, ReportKey = reportKey, Field = field, Label = label, FieldOrder = fieldOrder, SortOrder = sortOrder },
                 commandType: CommandType.StoredProcedure);
         }
@@ -86,7 +88,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task AddRecipientAsync(Guid scheduleId, Guid? userId, Guid? roleId, string? email, string tenantId)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportClientScheduleRecipient",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportClientScheduleRecipient",
                 new { Type = "Add", ReportScheduleId = scheduleId, UserId = userId, RoleId = roleId, Email = email, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
         }
@@ -94,7 +96,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<List<ScheduleRow>> ListAsync(Guid reportId, string tenantId)
         {
             var conn = await ConnAsync();
-            var rows = await conn.QueryAsync<ScheduleRow>(SchemaPrefix + "hrms_ReportClientScheduleRead",
+            var rows = await conn.QueryAsync<ScheduleRow>(SchemaPrefix + "ReportClientScheduleRead",
                 new { Type = "List", Id = reportId, TenantId = Resolve(tenantId) }, commandType: CommandType.StoredProcedure);
             return rows.ToList();
         }
@@ -102,7 +104,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<ScheduleRow?> ReadAsync(Guid scheduleId, string tenantId)
         {
             var conn = await ConnAsync();
-            var rows = await conn.QueryAsync<ScheduleRow>(SchemaPrefix + "hrms_ReportClientScheduleRead",
+            var rows = await conn.QueryAsync<ScheduleRow>(SchemaPrefix + "ReportClientScheduleRead",
                 new { Type = "Read", Id = scheduleId, TenantId = Resolve(tenantId) }, commandType: CommandType.StoredProcedure);
             return rows.FirstOrDefault();
         }
@@ -110,7 +112,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<List<RecipientUserRow>> ListRecipientUsersAsync(Guid scheduleId, string tenantId)
         {
             var conn = await ConnAsync();
-            var rows = await conn.QueryAsync<RecipientUserRow>(SchemaPrefix + "hrms_ReportClientScheduleRecipient",
+            var rows = await conn.QueryAsync<RecipientUserRow>(SchemaPrefix + "ReportClientScheduleRecipient",
                 new { Type = "ListUsers", ReportScheduleId = scheduleId, UserId = (Guid?)null, RoleId = (Guid?)null, Email = (string?)null, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
             return rows.ToList();
@@ -119,7 +121,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<List<RecipientRoleRow>> ListRecipientRolesAsync(Guid scheduleId, string tenantId)
         {
             var conn = await ConnAsync();
-            var rows = await conn.QueryAsync<RecipientRoleRow>(SchemaPrefix + "hrms_ReportClientScheduleRecipient",
+            var rows = await conn.QueryAsync<RecipientRoleRow>(SchemaPrefix + "ReportClientScheduleRecipient",
                 new { Type = "ListRoles", ReportScheduleId = scheduleId, UserId = (Guid?)null, RoleId = (Guid?)null, Email = (string?)null, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
             return rows.ToList();
@@ -128,7 +130,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<List<FieldOutputRow>> FieldOutputReadAsync(string reportKey, Guid? scheduleId, string tenantId)
         {
             var conn = await ConnAsync();
-            var rows = await conn.QueryAsync<FieldOutputRow>(SchemaPrefix + "hrms_ReportFieldOutputRead",
+            var rows = await conn.QueryAsync<FieldOutputRow>(SchemaPrefix + "ReportFieldOutputRead",
                 new { ReportKey = reportKey, ReportScheduleId = scheduleId, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
             return rows.ToList();
@@ -137,7 +139,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task<ScheduleInfo?> GetScheduleInfoAsync(Guid scheduleId, string tenantId)
         {
             var conn = await ConnAsync();
-            using var multi = await conn.QueryMultipleAsync(SchemaPrefix + "hrms_ReportGenerateGetScheduleInfo",
+            using var multi = await conn.QueryMultipleAsync(SchemaPrefix + "ReportGenerateGetScheduleInfo",
                 new { TenantId = Resolve(tenantId), ReportScheduleId = scheduleId }, commandType: CommandType.StoredProcedure);
 
             var header = (await multi.ReadAsync<ScheduleRow>()).FirstOrDefault();
@@ -158,7 +160,7 @@ namespace CyberErp.Hrms.Inf.Common
             string? fieldOutput, int totalRecords, int runSeconds, string? ranBy, string? recipients)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportGenerateSendToHistory", new
+            await conn.ExecuteAsync(SchemaPrefix + "ReportGenerateSendToHistory", new
             {
                 TenantId = Resolve(tenantId), ReportKey = reportKey, IsScheduled = isScheduled, Criteria = criteria,
                 FieldOutput = fieldOutput, TotalRecords = totalRecords, RunSeconds = runSeconds,
@@ -169,7 +171,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task ActivateReportAsync(Guid reportId, bool isActive, string tenantId)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportActivate",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportActivate",
                 new { ReportId = reportId, IsActive = isActive, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
         }
@@ -177,7 +179,7 @@ namespace CyberErp.Hrms.Inf.Common
         public async Task DeleteReportAsync(Guid reportId, string tenantId)
         {
             var conn = await ConnAsync();
-            await conn.ExecuteAsync(SchemaPrefix + "hrms_ReportDelete",
+            await conn.ExecuteAsync(SchemaPrefix + "ReportDelete",
                 new { ReportId = reportId, TenantId = Resolve(tenantId) },
                 commandType: CommandType.StoredProcedure);
         }

@@ -9,7 +9,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SalaryScale> builder)
         {
-            builder.ToTable("coreSalaryScale", "Core");
+            builder.ToTable("SalaryScale", "Core");
 
             builder.HasKey(s => s.Id);
 

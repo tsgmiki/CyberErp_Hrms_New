@@ -35,32 +35,32 @@ namespace CyberErp.Hrms.Inf.Common
         // One statement per line, semicolon-separated — Dapper reads them back as ordered result
         // sets via QueryMultipleAsync. @BranchScopeId is NULL for Head Office / branch-unassigned
         // users (no filter, matches Repository's "unrestricted" fallback); otherwise it narrows every
-        // branch-scoped table to that one branch. hrmsBranch is filtered by Id (a branch admin sees
+        // branch-scoped table to that one branch. Hrms.Branch is filtered by Id (a branch admin sees
         // only THEIR OWN branch row — Repository's special case for the Branch entity itself);
-        // hrmsWorkflowInstance carries no BranchId at all (WorkflowInstance is not IBranchScoped), so
+        // Hrms.WorkflowInstance carries no BranchId at all (WorkflowInstance is not IBranchScoped), so
         // it is tenant-only, matching the repository's no-op branch filter for that entity.
         private const string Sql = """
-            SELECT COUNT(*) FROM dbo.hrmsBranch
+            SELECT COUNT(*) FROM Hrms.Branch
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR Id = @BranchScopeId);
 
-            SELECT COUNT(*) FROM dbo.hrmsOrganizationUnit
+            SELECT COUNT(*) FROM Hrms.OrganizationUnit
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId);
 
-            SELECT COUNT(*) FROM dbo.hrmsPosition
+            SELECT COUNT(*) FROM Hrms.Position
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId);
 
-            SELECT COUNT(*) FROM dbo.hrmsEmployee
+            SELECT COUNT(*) FROM Hrms.Employee
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId);
 
-            SELECT Status, COUNT(*) AS Cnt FROM dbo.hrmsWorkflowInstance
+            SELECT Status, COUNT(*) AS Cnt FROM Hrms.WorkflowInstance
               WHERE TenantId = @TenantId
               GROUP BY Status;
 
-            SELECT COUNT(*) FROM dbo.hrmsEmployee
+            SELECT COUNT(*) FROM Hrms.Employee
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId)
                 AND EmploymentStatus = 'Active' AND IsProbation = 1;
 
-            SELECT COUNT(*) FROM dbo.hrmsEmployee
+            SELECT COUNT(*) FROM Hrms.Employee
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId)
                 AND EmploymentStatus = 'Active' AND DateOfBirth IS NOT NULL AND DateOfBirth < @RetirementThreshold;
             """;

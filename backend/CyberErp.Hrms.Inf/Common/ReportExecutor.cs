@@ -19,14 +19,14 @@ namespace CyberErp.Hrms.Inf.Common
     ///   → result set 2 = the data rows (arbitrary columns)
     /// Ambient scope is injected here from the authenticated context — never from the client — and
     /// the user's filters travel as ONE bound @Criteria JSON string parsed inside the procedure.
-    /// The master lookup SP (Core.hrms_ReportFieldValues) feeds dropdown/radio options.
+    /// The master lookup SP (Hrms.ReportFieldValues) feeds dropdown/radio options.
     /// </summary>
     public partial class ReportExecutor(
         HrmsDbContext dbContext,
         ITenantService tenantService,
         ICurrentUserService currentUser) : IReportExecutor
     {
-        private const string LookupProc = "Core.hrms_ReportFieldValues";
+        private const string LookupProc = "Hrms.ReportFieldValues";
 
         // Plain (optionally schema-qualified / bracketed) identifier — defense in depth on top of
         // the fact that the proc name only ever comes from the tenant-scoped registry row.

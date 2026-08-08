@@ -1,7 +1,7 @@
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
 /// <summary>
-/// A portal alert row in <c>dbo.coreNotification</c> — the table the Home portal OWNS and reads
+/// A portal alert row in <c>Core.Notification</c> — the table the Home portal OWNS and reads
 /// (its bell / dashboard). HRMS is a WRITER of this cross-subsystem contract: it raises an alert
 /// by inserting a row. This is deliberately NOT a <see cref="BaseEntity"/> — the shared table has
 /// its own shape (plain <see cref="DateTime"/> timestamps, no RowVersion / UpdatedAt), so it is

@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<DynamicForm> builder)
         {
-            builder.ToTable("hrmsDynamicForm", "dbo");
+            builder.ToTable("DynamicForm", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Module).IsRequired().HasMaxLength(50);
@@ -31,7 +31,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<DynamicFormField> builder)
         {
-            builder.ToTable("hrmsDynamicFormField", "dbo");
+            builder.ToTable("DynamicFormField", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Name).IsRequired().HasMaxLength(100);
@@ -48,7 +48,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<DynamicFormRecord> builder)
         {
-            builder.ToTable("hrmsDynamicFormRecord", "dbo");
+            builder.ToTable("DynamicFormRecord", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.OwnerType).IsRequired().HasMaxLength(30);

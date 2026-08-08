@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<ProfileChangeRequest> builder)
         {
-            builder.ToTable("hrmsProfileChangeRequest", "dbo");
+            builder.ToTable("ProfileChangeRequest", "Hrms");
             builder.HasKey(r => r.Id);
 
             builder.Property(r => r.FieldKey).IsRequired().HasMaxLength(60);

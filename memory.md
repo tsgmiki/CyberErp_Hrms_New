@@ -79,6 +79,21 @@ migration + frontend, verified end-to-end against the live DB before moving on.
 
 ## 4. Current application state (as of this doc's last update)
 
+**Table naming (2026-08-08, APPLIED to CERP): every table lives in its MODULE schema.**
+`Hrms.Achievement`, `Core.Module`, `Core.Step`, `Core.Person`, `Core.SalaryScale`, `Core.Notification`
+— the `dbo.hrmsX` / `coreX` / `lupX` prefixes are gone. The 10 unprefixed `Core.*` tables (User, Role,
+Tenant, RolePermission, …), HangFire, and both `__EFMigrationsHistory` tables are untouched. The 28
+report procedures are now `Hrms.Report_X` (was `Core.hrms_Report_X`).
+**Renaming tables again? Four things bite, in this order:**
+1. EF emits no `GO` between `Sql()` operations, so every `CREATE PROCEDURE` collides in one batch —
+   and that also makes `--idempotent` unusable, because a GO cannot sit inside its `BEGIN…END`.
+2. Procedure names are also stored as DATA (the report registry), in bare AND `[bracketed]` form.
+3. Some names are built by CONCATENATION (`SchemaPrefix + "hrms_X"`), so no search for the full
+   string can find them — only running the app does.
+4. Hand-written SQL exists outside the EF mappings. Grep the WHOLE solution for BOTH `dbo.hrmsX` and
+   `[dbo].[hrmsX]`, then exercise the raw-SQL endpoints (the dashboard) — EF-mapped endpoints passing
+   proves nothing about them.
+
 **Routing (2026-08-08): entity records live in the URL.** 88 modules are generated from the registry
 in `routes/entityRoutes.tsx` as `/entity` (list) · `/entity/new` · `/entity/{guid}` (edit) — including
 `employee`, `organizationUnit` and `position`, where the record is in the URL but the org-tree

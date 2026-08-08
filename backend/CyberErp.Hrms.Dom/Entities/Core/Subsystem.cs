@@ -1,7 +1,7 @@
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
 /// <summary>
-/// Master list of ERP subsystems (dbo.coreSubsystem). HRMS is one subsystem of the wider ERP;
+/// Master list of ERP subsystems (Core.Subsystem). HRMS is one subsystem of the wider ERP;
 /// modules reference a subsystem by <see cref="Name"/> (Module.SubSystem is a string key,
 /// preserved from the template's permission model — no FK).
 /// </summary>

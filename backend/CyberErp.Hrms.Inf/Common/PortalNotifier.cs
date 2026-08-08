@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace CyberErp.Hrms.Inf.Common
 {
     /// <summary>
-    /// Writes portal alerts into the Home-owned <c>dbo.coreNotification</c> table. Lives in Inf
+    /// Writes portal alerts into the Home-owned <c>Core.Notification</c> table. Lives in Inf
     /// because it needs the DbContext + tenant context directly (the row is not a
     /// <see cref="Dom.Entities.BaseEntity"/>, so it bypasses the generic repository); TenantId is
     /// stamped from the current tenant so Home's per-tenant query filter surfaces it to the user.
@@ -17,7 +17,7 @@ namespace CyberErp.Hrms.Inf.Common
         ITenantService tenantService,
         ILogger<PortalNotifier> logger) : IPortalNotifier
     {
-        /// <summary>The subsystem code this app raises alerts as (matches dbo.coreSubsystem.Code).</summary>
+        /// <summary>The subsystem code this app raises alerts as (matches Core.Subsystem.Code).</summary>
         private const string SourceSubsystemCode = "HRMS";
 
         public async Task NotifyUsersAsync(

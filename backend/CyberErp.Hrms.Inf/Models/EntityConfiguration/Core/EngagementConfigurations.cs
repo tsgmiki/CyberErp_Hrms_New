@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Suggestion> builder)
         {
-            builder.ToTable("hrmsSuggestion", "dbo");
+            builder.ToTable("Suggestion", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -28,7 +28,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Grievance> builder)
         {
-            builder.ToTable("hrmsGrievance", "dbo");
+            builder.ToTable("Grievance", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Category).IsRequired().HasMaxLength(100);
@@ -59,7 +59,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<GrievanceNote> builder)
         {
-            builder.ToTable("hrmsGrievanceNote", "dbo");
+            builder.ToTable("GrievanceNote", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Note).IsRequired().HasMaxLength(2000);
@@ -72,7 +72,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Survey> builder)
         {
-            builder.ToTable("hrmsSurvey", "dbo");
+            builder.ToTable("Survey", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
@@ -88,7 +88,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SurveyResponse> builder)
         {
-            builder.ToTable("hrmsSurveyResponse", "dbo");
+            builder.ToTable("SurveyResponse", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.AnswersJson).IsRequired();
@@ -107,7 +107,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<SurveyCompletion> builder)
         {
-            builder.ToTable("hrmsSurveyCompletion", "dbo");
+            builder.ToTable("SurveyCompletion", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.HasOne<Survey>()
@@ -128,7 +128,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Announcement> builder)
         {
-            builder.ToTable("hrmsAnnouncement", "dbo");
+            builder.ToTable("Announcement", "Hrms");
             builder.HasKey(x => x.Id);
 
             builder.Property(x => x.Title).IsRequired().HasMaxLength(300);

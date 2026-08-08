@@ -3,7 +3,7 @@ using CyberErp.Hrms.Dom.Entities;
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
 /// <summary>
-/// Person master record (table <c>Core.CorePerson</c>) — personal identity separated from the
+/// Person master record (table <c>Core.Person</c>) — personal identity separated from the
 /// employment record. Ethiopian naming (first / father / grandfather) with Amharic variants.
 /// An <see cref="Employee"/> references a person via PersonId; person-owned collections
 /// (education, experience, family) hang off the person so identity data survives and can be

@@ -8,7 +8,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InsurancePolicy> builder)
         {
-            builder.ToTable("hrmsInsurancePolicy", "dbo");
+            builder.ToTable("InsurancePolicy", "Hrms");
             builder.HasKey(p => p.Id);
 
             builder.Property(p => p.PolicyNumber).IsRequired().HasMaxLength(50);
@@ -33,7 +33,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InsurancePremiumSchedule> builder)
         {
-            builder.ToTable("hrmsInsurancePremiumSchedule", "dbo");
+            builder.ToTable("InsurancePremiumSchedule", "Hrms");
             builder.HasKey(s => s.Id);
 
             builder.Property(s => s.Amount).HasColumnType("decimal(18,2)");
@@ -54,7 +54,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InsuranceClaim> builder)
         {
-            builder.ToTable("hrmsInsuranceClaim", "dbo");
+            builder.ToTable("InsuranceClaim", "Hrms");
             builder.HasKey(c => c.Id);
 
             builder.Property(c => c.ClaimNumber).IsRequired().HasMaxLength(30);
@@ -82,7 +82,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<InsuranceClaimAttachment> builder)
         {
-            builder.ToTable("hrmsInsuranceClaimAttachment", "dbo");
+            builder.ToTable("InsuranceClaimAttachment", "Hrms");
             builder.HasKey(a => a.Id);
 
             builder.Property(a => a.FileName).IsRequired().HasMaxLength(300);

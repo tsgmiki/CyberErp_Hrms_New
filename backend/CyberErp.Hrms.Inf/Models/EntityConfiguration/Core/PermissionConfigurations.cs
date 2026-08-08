@@ -14,7 +14,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Module> builder)
         {
-            builder.ToTable("coreModule", "dbo");
+            builder.ToTable("Module", "Core");
 
             builder.HasKey(m => m.Id);
 
@@ -34,14 +34,14 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     }
 
     /// <summary>
-    /// Master subsystem list (dbo.coreSubsystem) — the ERP-wide table the HRMS now maps.
+    /// Master subsystem list (Core.Subsystem) — the ERP-wide table the HRMS now maps.
     /// Modules reference a subsystem via the SubsystemId FK.
     /// </summary>
     public class SubsystemConfiguration : IEntityTypeConfiguration<Subsystem>
     {
         public void Configure(EntityTypeBuilder<Subsystem> builder)
         {
-            builder.ToTable("coreSubsystem", "dbo");
+            builder.ToTable("Subsystem", "Core");
 
             builder.HasKey(s => s.Id);
 
@@ -59,7 +59,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Operation> builder)
         {
-            builder.ToTable("coreOperation", "dbo");
+            builder.ToTable("Operation", "Core");
 
             builder.HasKey(o => o.Id);
 

@@ -9,7 +9,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees.DTOs
         public Guid PersonId { get; set; }
         public string EmployeeNumber { get; set; } = string.Empty;
 
-        // Person (Core.CorePerson) — Ethiopian naming with Amharic variants
+        // Person (Core.Person) — Ethiopian naming with Amharic variants
         public string FirstName { get; set; } = string.Empty;
         public string? FirstNameA { get; set; }
         public string? FatherName { get; set; }
