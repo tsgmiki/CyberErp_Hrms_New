@@ -8,12 +8,18 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-3`** (branched off `main` at `706b65f`, 2026-08-05).
+- **CURRENT BRANCH: `feature/hrms-buildout-4`** (branched off `main` at `0be2c1f`, 2026-08-08) —
+  empty so far; the next batch of work starts here.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
-  rotate to a fresh `feature/hrms-buildout-N`. Completed so far: **PR #2** merged the buildout
-  (18 commits) and **PR #3** merged the doc sync; the `feature/hrms-buildout` and
-  `feature/hrms-buildout-2` branches were deleted after merging. Historical references to them below
-  are accurate for their date, but those branches no longer exist.
+  rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
+  **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, and
+  **PR #5** performance score bands, detail-as-grid, and the route state-loss fix. The
+  `feature/hrms-buildout`, `-2` and `-3` branches were deleted after merging — historical references
+  to them below are accurate for their date, but those branches no longer exist.
+- **Two migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
+  `SalaryRevisionPerformanceBands`). Any other environment needs `dotnet ef database update`, and the
+  `lupStep.Ordinal` backfill is an inference that should be eyeballed per tenant before production:
+  `SELECT Name, Code, Ordinal FROM Core.lupStep ORDER BY TenantId, Ordinal;`
 - Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
   Commits: `6779d11 Initial commit` →
   `c4aabc2` (the big build-out: Salary Scale, PositionClass→SalaryScale, User CRUD, the whole
