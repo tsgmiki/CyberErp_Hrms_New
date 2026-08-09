@@ -190,9 +190,40 @@ public class SalaryRevisionLine : BaseEntity
     public decimal CurrentSalary { get; private set; }
     public decimal ProposedSalary { get; private set; }
 
+    /// <summary>Completed months of service at the effective date; null when no hire date was known.</summary>
+    public int? MonthsOfService { get; private set; }
+
+    /// <summary>
+    /// Share of the increment this employee earned: 1 = the full amount, &lt;1 = reduced because they
+    /// are inside their first year. Excluded employees are never written as a line at all.
+    /// </summary>
+    public decimal ProrationFactor { get; private set; } = 1m;
+
+    /// <summary>
+    /// Why the proposal is what it is — "prorated to 4/12 months of service", "already at the grade
+    /// ceiling", "no completed appraisal". Stored rather than recomputed because it explains a figure
+    /// that has already been approved: re-deriving it later against today's policy, scale or appraisal
+    /// data would describe a decision nobody actually made.
+    /// </summary>
+    public string? Note { get; private set; }
+
+    /// <summary>
+    /// The SalaryScale row to move the employee onto when the revision is applied, set when a step
+    /// increment cleared their grade ceiling and the policy promotes on it. Null means the grade is
+    /// unchanged and only pay moves.
+    /// </summary>
+    public Guid? PromotedToSalaryScaleId { get; private set; }
+
+    /// <summary>Code of the grade being promoted into — kept for display and for the audit trail, so a
+    /// past decision still reads correctly after the grade is renamed or its scale is revised.</summary>
+    public string? PromotedToGradeCode { get; private set; }
+
     private SalaryRevisionLine() : base() { }
 
-    public static SalaryRevisionLine Create(Guid salaryRevisionId, Guid employeeId, decimal currentSalary, decimal proposedSalary)
+    public static SalaryRevisionLine Create(
+        Guid salaryRevisionId, Guid employeeId, decimal currentSalary, decimal proposedSalary,
+        int? monthsOfService = null, decimal prorationFactor = 1m, string? note = null,
+        Guid? promotedToSalaryScaleId = null, string? promotedToGradeCode = null)
     {
         if (salaryRevisionId == Guid.Empty)
             throw new ArgumentException("Revision is required.", nameof(salaryRevisionId));
@@ -203,7 +234,12 @@ public class SalaryRevisionLine : BaseEntity
             SalaryRevisionId = salaryRevisionId,
             EmployeeId = employeeId,
             CurrentSalary = currentSalary,
-            ProposedSalary = proposedSalary
+            ProposedSalary = proposedSalary,
+            MonthsOfService = monthsOfService,
+            ProrationFactor = prorationFactor,
+            Note = note,
+            PromotedToSalaryScaleId = promotedToSalaryScaleId,
+            PromotedToGradeCode = promotedToGradeCode
         };
     }
 
@@ -213,6 +249,15 @@ public class SalaryRevisionLine : BaseEntity
         if (proposedSalary < 0)
             throw new ArgumentException("Proposed salary cannot be negative.", nameof(proposedSalary));
         ProposedSalary = proposedSalary;
+        // The stored note explained the COMPUTED figure, so it now describes a number that is no
+        // longer on the line. Replace it rather than leaving "prorated to 4/12" beside a hand-keyed
+        // amount, which would read as the system's reasoning for someone else's decision.
+        Note = "Manually set by HR.";
+        ProrationFactor = 1m;
+        // The grade move was the engine's conclusion from a figure that has just been overwritten, so
+        // it no longer follows. Keeping it would apply a promotion nobody chose.
+        PromotedToSalaryScaleId = null;
+        PromotedToGradeCode = null;
         base.Update();
     }
 }

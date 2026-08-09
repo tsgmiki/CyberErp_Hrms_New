@@ -9,7 +9,9 @@
 ## 0. ⚠️ Repository state — READ FIRST
 
 - **CURRENT BRANCH: `feature/hrms-buildout-5`** (branched off `main` at `2243cc0`, 2026-08-08) —
-  empty so far; the next batch of work starts here.
+  carries the salary-increment work (00DR–00DW): eligibility rules, the Increment Rules screen,
+  the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
+  Approve/Apply button fixes. **PR #7 is open against `main`.**
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
@@ -23,8 +25,15 @@
   environment needs `dotnet ef database update` in both repos, or the two scripts under
   `backend/scripts/schema-rename/` run in order (01 HRMS, then 02 Home).
   Pre-change restore point: `CERP_before-schema-rename-20260808-192711.bak`.
-- **Three migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
-  `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`). The `Step.Ordinal` backfill is an inference
+- **Six migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
+  `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`, and from this session
+  `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`).
+  The three new ones are additive (one table + five nullable/defaulted columns) and need
+  `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
+  needs seeding per tenant** (`POST /Module/seed-defaults`) **and then granting** — seeding creates the
+  operation but no `RolePermission`, so the screen 403s until an admin grants it (verified). Note the
+  seeder is per-CURRENT-tenant: tenant `aadb4e82` still needs its own run.
+  The `Step.Ordinal` backfill is an inference
   that should be eyeballed per tenant before production — note the table is now `Core.Step`:
   `SELECT Name, Code, Ordinal FROM Core.Step ORDER BY TenantId, Ordinal;`
 - Historical branch note (pre-PR #2): on branch `feature/hrms-buildout` (branched off `main`).
@@ -78,6 +87,98 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DW. **Approve button survived submission; Apply navigated away instead of refreshing (2026-08-09,
+    HRMS full stack).** Two reported grid problems, one of which hid a dead button.
+    - **Approve after Submit.** `SubmitSalaryRevision` starts a workflow when a definition exists, and
+      `ApproveSalaryRevision` then calls `EnsureNoRunningAsync` → **HTTP 400 "This record is awaiting
+      workflow approval."** The button rendered purely on `status === "PendingApproval"` and knew
+      nothing about the workflow, so it could only fail. Tenant `aadb4e82` has an active
+      **"Salary Revision Approval"** definition, which is why they saw it.
+    - Fixed by adding `AwaitingWorkflow` to `SalaryRevisionDto` (`status == PendingApproval &&
+      HasRunningAsync`) — the SAME pattern hiring requests / job offers / requisitions / terminations
+      already use — and gating the button on it, plus the standard "Awaiting workflow approval" chip so
+      the absence reads as *someone else's turn*, not a missing permission.
+    - **Kept conditional, not removed:** with no definition, direct approval IS the intended path.
+      Verified both ways.
+    - **Apply** was calling `run(…, backAfter = true)`, navigating back to the list so the result was
+      never seen. Now stays and refetches; `Applied` status already hides Apply (needs `Approved`) and
+      Delete (hidden when `Applied`), so no button logic changed.
+    - Verified live in both configurations (15 browser + 12 API assertions). To exercise the workflow
+      path a `SalaryRevision` definition was cloned into the demo tenant and removed afterwards —
+      **the real definition in `aadb4e82` was never touched**.
+
+00DV. **Terminated employees were being offered salary increments (2026-08-09, HRMS backend only).**
+    `TargetsAsync` had **no employment filter at all** — a leaver keeps their last salary on the
+    record, so they arrived with a positive base like anyone else. Live data: 4 terminated employees,
+    2 with a salary.
+    - Fixed with `SalaryRevisionShared.StillEmployed` (`!IsTerminated && EmploymentStatus !=
+      Terminated` — both, because they are set independently), matching every other feature here.
+    - **Also closed the apply-time window:** a revision is planned, approved and applied over days or
+      weeks, so `ApplySalaryRevision` re-checks employment and skips leavers, logging
+      `"… N skipped as gone or terminated"`. Verified by staging exactly that: line created while
+      employed, employee terminated, apply → pay untouched.
+    - `Retired` is still INCLUDED — a separate enum value, zero live rows, and not what was asked.
+      One word to change if it should be excluded too.
+    - 4 tests pin the COMPILED predicate (`StillEmployed.Compile()`), not a restatement of it.
+
+00DU. **Grade ceilings now promote instead of dead-ending (2026-08-09, HRMS full stack).**
+    "Capped at the grade ceiling" became a configurable promotion — `PromoteOnGradeCeiling`,
+    default OFF. Full rules in `logic.md` §9.3.
+    - ⚠️ **"Next grade" is resolved BY PAY, not by grade code — a product decision the user confirmed.**
+      `JobGrade` has no level field, and their codes do not track pay (`001` = 10,000–12,000, `002` =
+      2,501–5,529), so code order would promote people into a pay CUT and into `003`/`004`/`005`, which
+      have no scale rows at all. **If `JobGrade` ever gains an explicit level, revisit this.**
+    - Guards: one grade per revision; a promotion that would not raise pay is refused; a prorated
+      increment cannot buy a grade (it would leave the employee below their new grade's base).
+    - **`Apply` must move the SCALE, not just the pay** (`ApplyMovement(..., salaryScaleId)`) —
+      otherwise the grade never changes and the same employee is "promoted" again every revision.
+      Verified against the DB: ZLOW step 2 → AHIGH step 1.
+    - `SalaryScaleLadderFactory` now loads EVERY grade (promotion must see the grade above);
+      `TargetsAsync` already narrows the population, so the targeted-grade filter was redundant.
+    - Test fixture runs codes OPPOSITE to pay on purpose, so a code-ordered implementation cannot pass.
+      Mutation-checked: code ordering fails 7 tests, letting proration promote fails 1.
+
+00DT. **"Hired Date" column added; the reported Service bug did not reproduce (2026-08-09, HRMS
+    full stack).** Reported: an employee hired 2026-07-09 showing `31 mo`.
+    - **The arithmetic was correct for every row in the live plan.** Checked against
+      `Hrms.Employee.HireDate` at the plan's 2026-08-31 effective date: the three rows showing 31 are
+      all hired **2024-01-01**; the only 2026-07-09 hire (`KI001`) has no line on either revision (no
+      `SalaryScaleId`, no `PositionId`). All seven live hire dates are now pinned as test cases.
+    - Also ruled out stale lines after a draft edit (the update path deletes and regenerates) and the
+      effective date not reaching the calculation (it does, on both paths).
+    - Most likely a row misattribution: the grid showed Service with no hire date beside it, and
+      `KI001` / `KY--001` / `M001` are easy to conflate. The new column closes that gap — it reads
+      **live** from `Employee.HireDate`, so a corrected hire date shows the correction.
+
+00DS. **Increment-rules UI: config screen + per-line columns (2026-08-09, HRMS full stack).**
+    - New singleton screen `/salaryIncrementPolicy` ("Increment Rules", Compensation group) — no list,
+      no Add/Back. Its own controller + permission, because deciding who qualifies for a raise should
+      be grantable separately from planning a revision; reading is also allowed to revision planners.
+    - `204 No Content` is the honest answer for "never configured"; `api.get` returns `""` for it, so
+      the service normalizes to `null` rather than making every caller know a falsy STRING means
+      unconfigured. The form then shows the DEFAULTS ALREADY IN FORCE, not a blank slate.
+    - Grid: Service column (`4 mo (4/12)`), prorated badge on the changed amount, counters in the
+      header and in the simulation, link to the rules screen.
+    - **Two real bugs this surfaced:** (a) saved lines were discarding the reasoning — the entity held
+      only 4 columns, so a plan labelled "10%" showed 3.33% with nothing to explain it; (b) the
+      simulation never sent `effectiveDate`, so a revision dated next quarter measured tenure as of
+      today. Both fixed.
+    - `EntityModuleShellProps.onList/onAdd` are now optional so a singleton module can omit them.
+
+00DR. **Three salary-increment eligibility rules (2026-08-09, HRMS backend).**
+    Minimum service, active-disciplinary exclusion, first-year proration — per-tenant configuration
+    (`Hrms.SalaryIncrementPolicy`). Full semantics in `logic.md` §9.2.
+    - **The disciplinary rule is ANY active case**, deliberately broader than
+      `IDisciplinaryEligibilityService`, whose promotion/reward block is opt-in per measure. Proved
+      with a test case whose `AffectsPromotion`/`AffectsReward` were both false — it still excluded.
+      *If HR should control this per measure, add an `AffectsSalaryIncrement` flag.*
+    - Its query is also batched (one `Distinct()` for the population), not the per-employee call that
+      service makes — right for a profile screen, an N+1 for a bulk revision.
+    - Proration scales the **increase**, not the salary, so it means the same on every basis and can
+      never cut pay.
+    - **Excluded employees get no line at all** — `Apply` walks the lines, so a zero line would have
+      paid them.
 
 00DQ. **Performance revisions could not be SAVED on the Step basis (2026-08-09, HRMS backend only).**
     Saving type=Performance with basis=Step failed with "A step revision needs a step increment greater
@@ -1625,6 +1726,16 @@
 
 ## 2. Outstanding tasks / backlog
 
+- **Salary increment — open questions raised to the user (2026-08-09):**
+  - **`Retired` employees are still included** in a revision (only `Terminated` is excluded, as asked).
+    One word in `SalaryRevisionShared.StillEmployed` if they should go too.
+  - **`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`** — today ANY active case blocks an
+    increment; a per-measure opt-in (like `AffectsPromotion`/`AffectsReward`) would give HR control.
+  - **If `JobGrade` ever gains an explicit level/sort field**, revisit ceiling promotion: it currently
+    orders grades by PAY because no such field exists (see 00DU).
+  - `InventoryLayout` renders a **Settings gear on every module** wired to `onSetting?.()`, which no
+    module passes — a no-op button on ~87 screens. One-word fix (`onSetting &&`), left alone because
+    it changes every screen's header and was not asked for.
 - **Recruitment review — incomplete/accepted items (2026-07-10):**
   - Offers stuck at **PendingApproval when their vacancy closes**: the disposition helper leaves
     them to the running workflow (approve/reject from the workflow screen, then withdraw) — a

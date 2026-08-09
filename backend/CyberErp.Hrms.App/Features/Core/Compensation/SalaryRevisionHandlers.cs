@@ -38,6 +38,25 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public string? BandLabel { get; set; }
         /// <summary>Award the band supplied, in the basis units.</summary>
         public decimal? BandValue { get; set; }
+        // ---- eligibility ----
+        /// <summary>
+        /// The employee's hire date, read LIVE from <c>Hrms.Employee.HireDate</c> rather than copied
+        /// onto the line. It is the input the tenure rules are judged on, so showing it next to
+        /// <see cref="MonthsOfService"/> is what makes the service figure checkable — and if a wrong
+        /// hire date is later corrected, the grid shows the correction instead of preserving the bad
+        /// value that produced the number.
+        /// </summary>
+        public DateTime? HireDate { get; set; }
+        /// <summary>Completed months of service at the effective date.</summary>
+        public int? MonthsOfService { get; set; }
+        /// <summary>Share of the increment earned: 1 = full, &lt;1 = prorated first year, 0 = excluded.</summary>
+        public decimal ProrationFactor { get; set; } = 1m;
+        /// <summary>True when a rule removed this employee from the revision (see Note for which).</summary>
+        public bool IsExcluded { get; set; }
+        /// <summary>Grade code the employee moves up into, when a step increment cleared their ceiling.</summary>
+        public string? PromotedToGradeCode { get; set; }
+        /// <summary>True when this line changes the employee's GRADE, not only their pay.</summary>
+        public bool Promoted => !string.IsNullOrEmpty(PromotedToGradeCode);
     }
 
     public class SalaryRevisionBandDto
@@ -64,6 +83,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public string Status { get; set; } = string.Empty;
         public DateTime? AppliedOn { get; set; }
         public string? Notes { get; set; }
+        /// <summary>
+        /// A workflow is running against this revision, so approval belongs to the workflow and the
+        /// direct Approve action would be rejected (<c>EnsureNoRunningAsync</c>). The UI hides its
+        /// Approve button on this, rather than offering one that can only fail.
+        /// </summary>
+        public bool AwaitingWorkflow { get; set; }
         // Aggregate (the scenario summary)
         public int EmployeeCount { get; set; }
         public decimal TotalCurrent { get; set; }
@@ -138,6 +163,8 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         public Guid? TargetOrganizationUnitId { get; set; }
         public Guid? TargetReviewCycleId { get; set; }
         public List<SalaryRevisionBandDto> Bands { get; set; } = [];
+        /// <summary>Service and disciplinary rules are measured at this date; defaults to today.</summary>
+        public DateTime? EffectiveDate { get; set; }
     }
 
     public class SalarySimulationDto
@@ -162,6 +189,15 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// the wrong scale — e.g. a "&gt; 90" tier against scores that top out at 5.</summary>
         public decimal? MinObservedScore { get; set; }
         public decimal? MaxObservedScore { get; set; }
+        // ---- eligibility rules ----
+        /// <summary>Employees removed by the tenure gate or an active disciplinary case.</summary>
+        public int ExcludedCount { get; set; }
+        /// <summary>Employees receiving a reduced increment because they are inside their first year.</summary>
+        public int ProratedCount { get; set; }
+        /// <summary>The minimum-service gate in force, so the UI can explain the exclusions.</summary>
+        public int MinimumServiceMonths { get; set; }
+        /// <summary>Employees moved onto the next grade because a step increment cleared their ceiling.</summary>
+        public int PromotedCount { get; set; }
     }
 
     // ---- Interfaces ---------------------------------------------------------
@@ -187,10 +223,23 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// <summary>Grade + rung the employee currently sits on — the origin for a Step revision.</summary>
         public Guid? JobGradeId { get; set; }
         public int? StepOrdinal { get; set; }
+        /// <summary>Drives the tenure gate and first-year proration.</summary>
+        public DateTime? HireDate { get; set; }
     }
 
     internal static class SalaryRevisionShared
     {
+        /// <summary>
+        /// Still on the payroll, so still due a pay revision.
+        ///
+        /// <para>Both fields are checked because they are set independently and can disagree — the same
+        /// pair every other feature tests (employee list, options, workforce analytics). Held as an
+        /// expression so EF translates it into the SQL rather than filtering after the fact, and so it
+        /// can be exercised directly by tests.</para>
+        /// </summary>
+        internal static readonly System.Linq.Expressions.Expression<Func<Employee, bool>> StillEmployed =
+            e => !e.IsTerminated && e.EmploymentStatus != EmploymentStatus.Terminated;
+
         /// <summary>
         /// Resolves the targeted employees (with a positive base salary), filtered by grade/unit.
         /// PERF: one projected query over the filtered set; bounded by the target filter (a whole-org
@@ -199,7 +248,9 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         internal static async Task<List<EmployeeCompRow>> TargetsAsync(
             IRepository<Employee> employees, Guid? gradeId, Guid? unitId)
         {
-            var q = employees.GetAll().AsNoTracking();
+            // Leavers keep their last salary on the record, so without this they arrive with a positive
+            // base like anyone else and are proposed for a raise.
+            var q = employees.GetAll().AsNoTracking().Where(StillEmployed);
             if (gradeId.HasValue)
                 q = q.Where(e => e.SalaryScale != null && e.SalaryScale.JobGradeId == gradeId.Value);
             if (unitId.HasValue)
@@ -213,7 +264,8 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 Salary = e.Salary,
                 ScaleSalary = e.SalaryScale != null ? (decimal?)e.SalaryScale.Salary : null,
                 JobGradeId = e.SalaryScale != null ? (Guid?)e.SalaryScale.JobGradeId : null,
-                StepOrdinal = e.SalaryScale != null ? (int?)e.SalaryScale.Step.Ordinal : null
+                StepOrdinal = e.SalaryScale != null ? (int?)e.SalaryScale.Step.Ordinal : null,
+                HireDate = e.HireDate
             }).ToListAsync();
 
             return rows.Where(r => r.Base > 0).ToList();
@@ -231,12 +283,61 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// on it. Employees with no completed appraisal are left untouched rather than being awarded
         /// the bottom band, since missing data is not the same as a low score.
         /// </summary>
+        /// <summary>
+        /// Applies the three eligibility rules on top of whatever the basis/type computed:
+        /// an active disciplinary case or too little service excludes the employee outright, and
+        /// inside the first year the increment is earned pro rata.
+        ///
+        /// <para>Proration scales the INCREASE, not the salary — so it means the same thing for every
+        /// basis (half a year of service earns half the raise, whether that raise came from a percent,
+        /// a flat amount, or a step on the ladder) and can never push pay below its current value.</para>
+        /// </summary>
+        internal static StepResolution ProposeWithEligibility(
+            SalaryRevisionType type, SalaryAdjustmentBasis basis, decimal rate,
+            EmployeeCompRow row, ISalaryScaleLadder? ladder, IPerformanceAwardResolver? awards,
+            ISalaryIncrementEligibility? eligibility, DateTime effectiveDate)
+        {
+            if (eligibility is null)
+                return ProposeFor(type, basis, rate, row, ladder, awards);
+
+            var verdict = eligibility.Evaluate(row.EmployeeId, row.HireDate, effectiveDate);
+            if (!verdict.IsEligible)
+                return StepResolution.Unchanged(row.Base, verdict.Reason) with
+                {
+                    MonthsOfService = verdict.MonthsOfService,
+                    ProrationFactor = 0m
+                };
+
+            var factor = verdict.ProrationFactor;
+
+            // A PARTIAL increment must not buy a full grade move. Promoting here and then scaling the
+            // money down would place the employee on a rung of their new grade while paying them less
+            // than that grade's base — under-scale from day one. Someone inside their first year stays
+            // capped at the ceiling instead, and earns the promotion at the next revision.
+            var promote = eligibility.PromoteOnGradeCeiling && factor >= 1m;
+            var proposed = ProposeFor(type, basis, rate, row, ladder, awards, promote);
+
+            if (factor >= 1m || proposed.Salary <= row.Base)
+                return proposed with { MonthsOfService = verdict.MonthsOfService, ProrationFactor = 1m };
+
+            var prorated = row.Base + Math.Round((proposed.Salary - row.Base) * factor, 2);
+            return proposed with
+            {
+                Salary = prorated,
+                MonthsOfService = verdict.MonthsOfService,
+                ProrationFactor = factor,
+                Reason = proposed.Reason
+                    ?? $"Prorated to {verdict.MonthsOfService}/12 months of service."
+            };
+        }
+
         internal static StepResolution ProposeFor(
             SalaryRevisionType type, SalaryAdjustmentBasis basis, decimal rate,
-            EmployeeCompRow row, ISalaryScaleLadder? ladder, IPerformanceAwardResolver? awards)
+            EmployeeCompRow row, ISalaryScaleLadder? ladder, IPerformanceAwardResolver? awards,
+            bool promoteOnCeiling = false)
         {
             if (type != SalaryRevisionType.Performance)
-                return Propose(basis, rate, row, ladder);
+                return Propose(basis, rate, row, ladder, promoteOnCeiling);
 
             if (awards is null)
                 return StepResolution.Unchanged(row.Base, "No performance bands loaded.");
@@ -249,11 +350,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             if (award.Value == 0m)
                 return new StepResolution(row.Base, 0m, false, false, null);
 
-            return Propose(basis, award.Value, row, ladder);
+            return Propose(basis, award.Value, row, ladder, promoteOnCeiling);
         }
 
         internal static StepResolution Propose(
-            SalaryAdjustmentBasis basis, decimal rate, EmployeeCompRow row, ISalaryScaleLadder? ladder)
+            SalaryAdjustmentBasis basis, decimal rate, EmployeeCompRow row, ISalaryScaleLadder? ladder,
+            bool promoteOnCeiling = false)
         {
             var current = row.Base;
             return basis switch
@@ -265,7 +367,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 SalaryAdjustmentBasis.Step =>
                     ladder is null
                         ? StepResolution.Unchanged(current, "No salary scale loaded.")
-                        : HoldPay(ladder.Resolve(row.JobGradeId, row.StepOrdinal, rate, current), current),
+                        : HoldPay(ladder.Resolve(row.JobGradeId, row.StepOrdinal, rate, current, promoteOnCeiling), current),
                 _ => StepResolution.Unchanged(current, "Unsupported basis.")
             };
         }
@@ -357,6 +459,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IRepository<Employee> employeeRepository,
         ISalaryScaleLadderFactory ladderFactory,
         IPerformanceAwardResolverFactory awardFactory,
+        ISalaryIncrementEligibilityFactory eligibilityFactory,
         IPerformanceVisibilityService visibility) : ISimulateSalaryRevision
     {
         private const int PreviewCap = 200;
@@ -374,10 +477,14 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             var rows = await SalaryRevisionShared.TargetsAsync(employeeRepository, dto.TargetJobGradeId, dto.TargetOrganizationUnitId);
             var ladder = await SalaryRevisionShared.LadderIfNeededAsync(basis, ladderFactory, dto.TargetJobGradeId);
             var awards = await SalaryRevisionShared.AwardsIfNeededAsync(type, awardFactory, rows, dto.Bands, dto.TargetReviewCycleId);
+            var effectiveDate = (dto.EffectiveDate ?? DateTime.UtcNow).Date;
+            var eligibility = await eligibilityFactory.BuildAsync(
+                rows.Select(r => r.EmployeeId).ToList(), effectiveDate);
 
             var lines = rows.Select(r =>
             {
-                var res = SalaryRevisionShared.ProposeFor(type, basis, dto.Rate, r, ladder, awards);
+                var res = SalaryRevisionShared.ProposeWithEligibility(
+                    type, basis, dto.Rate, r, ladder, awards, eligibility, effectiveDate);
                 var award = awards?.Resolve(r.EmployeeId);
                 return new SalaryRevisionLineDto
                 {
@@ -392,7 +499,12 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                     Note = res.Reason,
                     PerformanceScore = award?.Score,
                     BandLabel = award?.BandLabel,
-                    BandValue = award is null || award.Value.Reason is not null ? null : award.Value.Value
+                    BandValue = award is null || award.Value.Reason is not null ? null : award.Value.Value,
+                    HireDate = r.HireDate,
+                    PromotedToGradeCode = res.PromotedToGradeCode,
+                    MonthsOfService = res.MonthsOfService,
+                    ProrationFactor = res.ProrationFactor,
+                    IsExcluded = res.ProrationFactor == 0m
                 };
             }).ToList();
 
@@ -415,7 +527,11 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 NoScoreCount = type == SalaryRevisionType.Performance
                     ? lines.Count(l => l.PerformanceScore == null) : 0,
                 MinObservedScore = awards?.ObservedScoreRange.Min,
-                MaxObservedScore = awards?.ObservedScoreRange.Max
+                MaxObservedScore = awards?.ObservedScoreRange.Max,
+                ExcludedCount = lines.Count(l => l.IsExcluded),
+                ProratedCount = lines.Count(l => !l.IsExcluded && l.ProrationFactor < 1m),
+                MinimumServiceMonths = eligibility.MinimumServiceMonths,
+                PromotedCount = lines.Count(l => l.Promoted)
             };
         }
     }
@@ -426,6 +542,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IRepository<Employee> employeeRepository,
         ISalaryScaleLadderFactory ladderFactory,
         IPerformanceAwardResolverFactory awardFactory,
+        ISalaryIncrementEligibilityFactory eligibilityFactory,
         IPerformanceVisibilityService visibility,
         IValidator<SaveSalaryRevisionDto> validator,
         ILogger<SaveSalaryRevision> logger) : ISaveSalaryRevision
@@ -470,12 +587,29 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 planId = created.Id;
             }
 
+            var eligibility = await eligibilityFactory.BuildAsync(
+                rows.Select(r => r.EmployeeId).ToList(), dto.EffectiveDate.Date);
+
+            var included = 0;
             foreach (var r in rows)
-                await lineRepository.AddAsync(SalaryRevisionLine.Create(planId, r.EmployeeId, r.Base,
-                    SalaryRevisionShared.ProposeFor(type, basis, dto.Rate, r, ladder, awards).Salary));
+            {
+                var res = SalaryRevisionShared.ProposeWithEligibility(
+                    type, basis, dto.Rate, r, ladder, awards, eligibility, dto.EffectiveDate.Date);
+                // An excluded employee gets no line: the plan should list who is actually being revised,
+                // and Apply walks the lines, so a line here would pay them.
+                if (res.ProrationFactor == 0m) continue;
+                // Carry the reasoning onto the line, not just the number. A prorated 3.33% on a plan
+                // labelled "10%" is indistinguishable from a bug once the simulation is gone.
+                await lineRepository.AddAsync(SalaryRevisionLine.Create(
+                    planId, r.EmployeeId, r.Base, res.Salary,
+                    res.MonthsOfService, res.ProrationFactor, res.Reason,
+                    res.PromotedToScaleId, res.PromotedToGradeCode));
+                included++;
+            }
 
             await repository.SaveChangesAsync();
-            logger.LogInformation("Saved SalaryRevision {Id} with {Count} lines", planId, rows.Count);
+            logger.LogInformation("Saved SalaryRevision {Id}: {Included} of {Targeted} employees included",
+                planId, included, rows.Count);
             return planId;
         }
     }
@@ -483,7 +617,8 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
     public class GetSalaryRevisionById(
         IRepository<SalaryRevision> repository,
         IRepository<SalaryRevisionLine> lineRepository,
-        IRepository<Employee> employeeRepository) : IGetSalaryRevisionById
+        IRepository<Employee> employeeRepository,
+        IWorkflowGate workflowGate) : IGetSalaryRevisionById
     {
         public async Task<SalaryRevisionDto> GetAsync(Guid id)
         {
@@ -517,11 +652,21 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                     Id = l.Id,
                     EmployeeId = l.EmployeeId,
                     EmployeeName = employees.Where(e => e.Id == l.EmployeeId && e.Person != null)
-                        .Select(e => e.Person!.FirstName + " " + e.Person!.GrandFatherName).FirstOrDefault(),
+                        .Select(e => e.Person!.FirstName + " " + e.Person!.FatherName).FirstOrDefault(),
                     EmployeeNumber = employees.Where(e => e.Id == l.EmployeeId).Select(e => e.EmployeeNumber).FirstOrDefault(),
                     CurrentSalary = l.CurrentSalary,
-                    ProposedSalary = l.ProposedSalary
+                    ProposedSalary = l.ProposedSalary,
+                    HireDate = employees.Where(e => e.Id == l.EmployeeId).Select(e => e.HireDate).FirstOrDefault(),
+                    PromotedToGradeCode = l.PromotedToGradeCode,
+                    MonthsOfService = l.MonthsOfService,
+                    ProrationFactor = l.ProrationFactor,
+                    Note = l.Note
                 }).ToListAsync();
+
+            // Only meaningful while approval is still pending; once approved or applied the workflow is
+            // over and the flag would just be stale noise on the screen.
+            dto.AwaitingWorkflow = dto.Status == nameof(SalaryRevisionStatus.PendingApproval)
+                && await workflowGate.HasRunningAsync(WorkflowEntityTypes.SalaryRevision, dto.Id);
 
             SalaryRevisionShared.FillAggregate(dto);
             return dto;
@@ -653,25 +798,40 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
             var lines = await lineRepository.GetAll().AsNoTracking()
                 .Where(l => l.SalaryRevisionId == id)
-                .Select(l => new { l.EmployeeId, l.ProposedSalary }).ToListAsync();
+                .Select(l => new { l.EmployeeId, l.ProposedSalary, l.PromotedToSalaryScaleId }).ToListAsync();
 
             var empIds = lines.Select(l => l.EmployeeId).ToList();
-            var employees = await employeeRepository.GetAll().Where(e => empIds.Contains(e.Id)).ToListAsync();
+            // Re-check employment HERE, not just at planning time. A revision is planned, approved and
+            // applied over days or weeks, and anyone who leaves inside that window would otherwise be
+            // paid a raise on their way out — the lines were computed while they were still employed.
+            var employees = await employeeRepository.GetAll()
+                .Where(e => empIds.Contains(e.Id))
+                .Where(SalaryRevisionShared.StillEmployed)
+                .ToListAsync();
             var byId = employees.ToDictionary(e => e.Id);
 
             var applied = 0;
+            var promoted = 0;
+            var skipped = 0;
             foreach (var l in lines)
             {
-                if (!byId.TryGetValue(l.EmployeeId, out var emp)) continue;   // employee gone since planning
-                emp.ApplyMovement(false, null, null, l.ProposedSalary);
+                // Gone or terminated since planning — either way, not someone to pay today.
+                if (!byId.TryGetValue(l.EmployeeId, out var emp)) { skipped++; continue; }
+                // A ceiling promotion has to move the employee's SCALE, not just their pay. Without the
+                // scale id the grade would stay put and the next revision would find them at the same
+                // ceiling again, so the promotion would be cosmetic and would silently repeat.
+                emp.ApplyMovement(false, null, null, l.ProposedSalary, l.PromotedToSalaryScaleId);
                 employeeRepository.UpdateAsync(emp);
                 applied++;
+                if (l.PromotedToSalaryScaleId.HasValue) promoted++;
             }
 
             entity.MarkApplied(DateTime.UtcNow.Date);
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Applied SalaryRevision {Id} to {Count} employees", id, applied);
+            logger.LogInformation(
+                "Applied SalaryRevision {Id} to {Count} employees ({Promoted} promoted a grade, {Skipped} skipped as gone or terminated)",
+                id, applied, promoted, skipped);
         }
     }
 

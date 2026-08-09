@@ -4,7 +4,8 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Plus, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { FlaskConical, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import InputField from "@/components/ui/inputField";
 import type { SalaryRevisionModel, SalarySimulationModel, SalaryRevisionBandModel } from "@/models";
 import { simulateSalaryRevision, saveSalaryRevision } from "@/services/admin/compensation";
@@ -133,6 +134,10 @@ function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
         rate: Number(formData.rate ?? 0),
         targetJobGradeId: formData.targetJobGradeId || undefined,
         targetOrganizationUnitId: formData.targetOrganizationUnitId || undefined,
+        // The eligibility rules are measured AT the effective date — months of service, and whether
+        // a disciplinary case has expired by then. Omitting it made the API fall back to today, so a
+        // revision dated next quarter simulated against the wrong tenure for everyone.
+        effectiveDate: formData.effectiveDate || undefined,
       }));
     } catch {
       setSim(null);
@@ -265,6 +270,45 @@ function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
                 <div><p className="text-[11px] uppercase text-muted">{t("Increase")}</p><p className="font-semibold tabular-nums text-primary">+{money(sim.totalIncrease)} ({sim.averagePercent}%)</p></div>
               </div>
             )}
+            {/* Eligibility is the one thing that REMOVES people from a revision, so a headcount that
+                looks wrong is explained here rather than leaving the planner to guess. Shown for
+                every basis, since the rules are not basis-specific. */}
+            {sim && ((sim.excludedCount ?? 0) > 0 || (sim.proratedCount ?? 0) > 0) && (
+              <div className="flex flex-wrap items-center gap-4 rounded-md border border-border bg-secondary/20 px-3 py-2 text-xs">
+                <span className="text-muted">
+                  {t("Excluded by the rules")}:{" "}
+                  <span className={`font-semibold tabular-nums ${(sim.excludedCount ?? 0) > 0 ? "text-warning" : "text-foreground"}`}>
+                    {sim.excludedCount ?? 0}
+                  </span>
+                </span>
+                <span className="text-muted">
+                  {t("Prorated (first year)")}:{" "}
+                  <span className="font-semibold tabular-nums text-foreground">{sim.proratedCount ?? 0}</span>
+                </span>
+                {(sim.minimumServiceMonths ?? 0) > 0 && (
+                  <span className="text-muted">
+                    {t("Minimum service")}:{" "}
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {sim.minimumServiceMonths} {t("months")}
+                    </span>
+                  </span>
+                )}
+                <Link
+                  to="/salaryIncrementPolicy"
+                  className="ml-auto inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                >
+                  <SlidersHorizontal size={12} />
+                  {t("Increment rules")}
+                </Link>
+              </div>
+            )}
+            {/* Excluded employees are dropped when the plan is saved, so the cost above is what will
+                actually be paid — worth stating before anyone reconciles the totals by hand. */}
+            {sim && (sim.excludedCount ?? 0) > 0 && (
+              <p className="px-1 text-xs text-muted">
+                {t("Excluded employees keep their current salary and are left out of the saved revision entirely.")}
+              </p>
+            )}
             {/* A step revision can legitimately move nobody (everyone at the ceiling, or off-scale).
                 Without this the aggregate would just read 0 and look like a broken simulation. */}
             {/* Score scales are configured per tenant, so thresholds meant for 0-100 silently match
@@ -303,8 +347,20 @@ function SalaryRevisionForm({ onDone }: { onDone: () => void }) {
                     {sim.unresolvedCount ?? 0}
                   </span>
                 </span>
+                {/* Only meaningful on a step revision — a ceiling is a property of the ladder. */}
+                <span className="text-muted">
+                  {t("Promoted a grade")}:{" "}
+                  <span className={`font-semibold tabular-nums ${(sim.promotedCount ?? 0) > 0 ? "text-primary" : "text-foreground"}`}>
+                    {sim.promotedCount ?? 0}
+                  </span>
+                </span>
                 {(sim.unresolvedCount ?? 0) > 0 && (
                   <span className="text-muted">{t("Off-scale employees, grades without scale rows, or already at the ceiling.")}</span>
+                )}
+                {(sim.promotedCount ?? 0) > 0 && (
+                  <span className="w-full text-warning">
+                    {t("Applying this revision will change these employees' job grade, not only their salary.")}
+                  </span>
                 )}
               </div>
             )}

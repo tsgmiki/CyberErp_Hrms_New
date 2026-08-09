@@ -37,8 +37,10 @@ export interface EntityModuleShellProps {
   headerDescription?: string;
   headerIcon?: ReactNode;
   showForm: boolean;
-  onList: () => void;
-  onAdd: () => void;
+  /** Both optional so a SINGLETON config module (no list, nothing to add) can omit them along with
+   *  `hideAdd`/`hideBack`, rather than passing no-ops for buttons it never renders. */
+  onList?: () => void;
+  onAdd?: () => void;
   list?: ReactNode;
   form?: ReactNode;
   hideAdd?: boolean;

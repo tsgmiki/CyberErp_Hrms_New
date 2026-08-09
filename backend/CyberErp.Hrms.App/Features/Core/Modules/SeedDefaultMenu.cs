@@ -131,6 +131,7 @@ public class SeedDefaultMenu(
             new("My Compensation", "/myCompensation", "Wallet"),
             new("Employee Compensation", "/employeeCompensation", "Coins"),
             new("Salary Revisions", "/salaryRevision", "TrendingUp"),
+            new("Increment Rules", "/salaryIncrementPolicy", "SlidersHorizontal"),
             new("Benefit Plans", "/benefitPlan", "HeartPulse"),
             new("Allowance Types", "/allowanceType", "Coins"),
             new("Income Tax & Deductions", "/taxBracket", "Landmark"),

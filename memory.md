@@ -125,6 +125,17 @@ Performance **bands are data, not constants** — appraisal scores are scored ag
 rating scale (live ones run 1-5, 1-3 and 0-130), so 90/70 thresholds silently match nobody on a 1-5
 scale; the simulation reports the observed score range so that is visible before applying.
 
+**Salary increments are governed by a per-tenant policy (2026-08-09)** — `Hrms.SalaryIncrementPolicy`,
+one active row, edited on **Compensation → Increment Rules** (`/salaryIncrementPolicy`, its own
+permission). Four rules: minimum service months, active-disciplinary exclusion, first-year proration,
+and grade-ceiling promotion. See `logic.md` §9.1–9.4. Three things worth carrying forward:
+- **Excluded employees get no LINE, not a zero line** — `Apply` walks the lines, so a line pays.
+- **Proration scales the increase, never the salary**, so it means the same on every basis.
+- **Promotion sequences grades BY PAY**, because `JobGrade` has no level field and grade codes do not
+  track pay in live data — code order would promote people into a pay cut. Revisit if a level is added.
+Terminated employees are excluded both when the population is built AND again at apply time, since a
+revision spans days or weeks. `Retired` is deliberately still included.
+
 **Detail views are pages, not popups.** Salary Revision set the pattern: selecting a row navigates to
 `/x/{guid}` and swaps the page to a full `EntityListShell` grid with the shell's standard Back arrow.
 Two traps found building it: a double-submit guard must live in a `useRef` (state is captured per
@@ -132,8 +143,11 @@ render, so two clicks in one frame both fire), and a detail view must handle its
 or it spins on `<Loading/>` forever.
 
 **Tests:** `CyberErp.Hrms.Tests` (xUnit) is the solution's first and currently only test project —
-35 tests covering the salary-step interpolation and the no-cut policy. Everything else in this repo is
-still verified by live API/browser runs, not automated tests.
+**128 tests**, all under `Compensation/`: salary-step interpolation and the no-cut policy, performance
+bands, the DTO validator, the three eligibility rules, proration, grade-ceiling promotion, line
+persistence, and the still-employed predicate. Everything else in this repo is still verified by live
+API/browser runs. New test files here are mutation-checked (break the rule, confirm a test fails)
+before being trusted.
 
 **Environment:** DB **`CERP`** on `CLOUDX-SICS2\SQLEXPRESS` (SQL Server). API runs at
 `http://localhost:5241` (or IIS Express 44363 in Visual Studio). Login: **`hoadmin` / `Passw0rd!`**,

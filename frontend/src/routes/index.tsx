@@ -22,6 +22,7 @@ const ReportResultPage = memo(lazy(() => import("@/pages/admin/reportResult")));
 const AuditLogPage = memo(lazy(() => import("@/pages/admin/auditLog")));
 // Compensation & Benefit (HRMS §3.10.1)
 const TaxBracketPage = memo(lazy(() => import("@/pages/admin/taxBracket")));
+const SalaryIncrementPolicyPage = memo(lazy(() => import("@/pages/admin/salaryIncrementPolicy")));
 const EmployeeCompensationPage = memo(lazy(() => import("@/pages/admin/employeeCompensation")));
 const MyCompensationPage = memo(lazy(() => import("@/pages/admin/myCompensation")));
 const CompensationRequestPage = memo(lazy(() => import("@/pages/admin/compensationRequest")));
@@ -106,6 +107,8 @@ export default function AppRoutes() {
         <Route path="auditLog" element={<AuditLogPage />} />
         {/* Compensation & Benefit (HRMS §3.10.1) */}
         <Route path="taxBracket" element={<TaxBracketPage />} />
+        {/* A singleton config, so it stays a flat route — there is no record id to put in the URL. */}
+        <Route path="salaryIncrementPolicy" element={<SalaryIncrementPolicyPage />} />
         <Route path="employeeCompensation" element={<EmployeeCompensationPage />} />
         <Route path="myCompensation" element={<MyCompensationPage />} />
         <Route path="compensationRequest" element={<CompensationRequestPage />} />

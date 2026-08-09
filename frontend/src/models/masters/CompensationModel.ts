@@ -65,6 +65,18 @@ export interface SalaryRevisionLineModel {
   performanceScore?: number | null;
   bandLabel?: string | null;
   bandValue?: number | null;
+  /** The employee's hire date (Hrms.Employee.HireDate) — the input behind `monthsOfService`. */
+  hireDate?: string | null;
+  /** Completed months of service at the effective date. */
+  monthsOfService?: number | null;
+  /** Share of the increment earned: 1 = full, <1 = prorated first year, 0 = excluded. */
+  prorationFactor?: number;
+  /** True when an eligibility rule removed this employee; `note` says which. */
+  isExcluded?: boolean;
+  /** Grade code the employee moves up into when a step increment clears their ceiling. */
+  promotedToGradeCode?: string | null;
+  /** True when this line changes the employee's GRADE, not only their pay. */
+  promoted?: boolean;
 }
 
 /** Salary revision plan (HC228). */
@@ -81,6 +93,8 @@ export interface SalaryRevisionModel extends AbstractModel {
   /** Performance type: the score bands. Ignored by the flat-rate types. */
   bands?: SalaryRevisionBandModel[];
   status?: string; // Draft | PendingApproval | Approved | Applied | Cancelled
+  /** A workflow owns the approval, so the direct Approve action is not available. */
+  awaitingWorkflow?: boolean;
   appliedOn?: string;
   notes?: string;
   employeeCount?: number;
@@ -109,6 +123,31 @@ export interface SalarySimulationModel {
   /** Performance type only: the score range actually seen — reveals bands set for the wrong scale. */
   minObservedScore?: number | null;
   maxObservedScore?: number | null;
+  /** Employees removed by the tenure gate or an active disciplinary case. */
+  excludedCount?: number;
+  /** Employees on a reduced increment because they are inside their first year. */
+  proratedCount?: number;
+  /** The minimum-service gate in force, so the UI can explain the exclusions. */
+  minimumServiceMonths?: number;
+  /** Employees moved onto the next grade because a step increment cleared their ceiling. */
+  promotedCount?: number;
+}
+
+/**
+ * Increment eligibility rules — one active policy per tenant, so this is a singleton screen rather
+ * than a list. Every field is a rule the salary revision applies when it builds its lines.
+ */
+export interface SalaryIncrementPolicyModel extends AbstractModel {
+  name?: string;
+  /** Completed months of service required to qualify. 0 = no tenure gate. */
+  minimumServiceMonths?: number;
+  /** Scale the increment by months worked / 12 for anyone inside their first year. */
+  prorateFirstYear?: boolean;
+  /** Exclude anyone with an unexpired disciplinary case. */
+  excludeActiveDisciplinary?: boolean;
+  /** Move an employee onto the next grade up when a step increment clears their ceiling. */
+  promoteOnGradeCeiling?: boolean;
+  isActive?: boolean;
 }
 
 /** One score band of a performance-based revision. */
