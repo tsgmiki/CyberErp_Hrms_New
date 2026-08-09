@@ -92,6 +92,17 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
     public class SaveSalaryRevisionDtoValidator : AbstractValidator<SaveSalaryRevisionDto>
     {
+        /// <summary>
+        /// A Performance revision derives every award from its bands, so the flat <c>Rate</c> is unused
+        /// and the form hides it — meaning `Rate` arrives as 0. Any rule that constrains the rate must
+        /// therefore exempt this type, or it rejects a perfectly valid revision.
+        /// </summary>
+        private static bool IsPerformance(SaveSalaryRevisionDto x) =>
+            string.Equals(x.RevisionType, nameof(SalaryRevisionType.Performance), StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsStepBasis(SaveSalaryRevisionDto x) =>
+            string.Equals(x.Basis, nameof(SalaryAdjustmentBasis.Step), StringComparison.OrdinalIgnoreCase);
+
         public SaveSalaryRevisionDtoValidator()
         {
             RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
@@ -103,15 +114,16 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             // silently award nothing to everyone.
             RuleFor(x => x.Bands)
                 .NotEmpty()
-                .When(x => string.Equals(x.RevisionType, nameof(SalaryRevisionType.Performance), StringComparison.OrdinalIgnoreCase))
+                .When(IsPerformance)
                 .WithMessage("A performance revision needs at least one score band.");
             RuleFor(x => x.Basis).Must(v => Enum.TryParse<SalaryAdjustmentBasis>(v, true, out _))
                 .WithMessage("Basis must be Percentage, FixedAmount or Step.");
             // A step increment is a ladder distance, so fractions are expected (1.5, 2.5) but it must
-            // still be a real move on a real ladder.
+            // still be a real move on a real ladder — UNLESS the type is Performance, where the bands
+            // carry the step counts and Rate is legitimately 0.
             RuleFor(x => x.Rate)
                 .GreaterThan(0)
-                .When(x => string.Equals(x.Basis, nameof(SalaryAdjustmentBasis.Step), StringComparison.OrdinalIgnoreCase))
+                .When(x => IsStepBasis(x) && !IsPerformance(x))
                 .WithMessage("A step revision needs a step increment greater than zero.");
         }
     }

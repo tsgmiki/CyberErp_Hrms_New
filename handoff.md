@@ -79,6 +79,19 @@
 
 ## 1. Most recent changes (latest first)
 
+00DQ. **Performance revisions could not be SAVED on the Step basis (2026-08-09, HRMS backend only).**
+    Saving type=Performance with basis=Step failed with "A step revision needs a step increment greater
+    than zero." The FluentValidation rule keyed only on `Basis == Step` and ignored `RevisionType`.
+    - A Performance revision takes every award from its BANDS, so `Rate` is unused and the form hides
+      the field — it therefore arrives as 0 and the rule rejected a perfectly valid revision.
+    - Introduced when Performance was added (00DK): the new bands rule was written, but this
+      pre-existing rate rule was never revisited. **Adding a dimension means re-checking every rule
+      that assumed the old ones.**
+    - Fixed with `IsStepBasis(x) && !IsPerformance(x)`; the rule still fires for Merit/Market/COLA.
+    - Added `SaveSalaryRevisionValidatorTests` (8 cases) — the suite covered the handler guards but
+      never the DTO validator, which runs FIRST and can reject before those guards see the request.
+      Mutation-checked: reverting the fix fails exactly the reported case.
+
 00DP. **Post-delete 404 fixed — never invalidate OR remove a query for a record you just deleted
     (2026-08-09, HRMS frontend only).** Deleting a salary revision succeeded and then immediately
     showed "Resource of type 'SalaryRevision' with id … was not found" for that same id.
