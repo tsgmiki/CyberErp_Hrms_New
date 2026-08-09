@@ -34,6 +34,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public string? Remark { get; set; }
         public decimal TotalLeaveDays { get; set; }
         public string Status { get; set; } = nameof(AnnualLeaveStatus.Pending);
+        /// <summary>Days actually taken; null until the return is settled.</summary>
+        public decimal? ActualLeaveDays { get; set; }
+        /// <summary>The employee may confirm their return — drives the action on the row.</summary>
+        public bool CanConfirmReturn { get; set; }
+        /// <summary>Last approved day, so the return form can default to it.</summary>
+        public DateTime? PlannedEndDate { get; set; }
         public List<AnnualLeaveDetailDto> Details { get; set; } = [];
     }
 
@@ -518,6 +524,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             Remark = r.Remark,
             TotalLeaveDays = r.TotalLeaveDays,
             Status = r.Status.ToString(),
+            ActualLeaveDays = r.ActualLeaveDays,
+            CanConfirmReturn = r.Status == AnnualLeaveStatus.Approved,
+            PlannedEndDate = r.Details.Max(d => (DateTime?)d.EndDate),
             Details = r.Details.OrderBy(d => d.StartDate).Select(d => new AnnualLeaveDetailDto
             {
                 Id = d.Id,

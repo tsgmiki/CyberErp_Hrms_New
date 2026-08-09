@@ -87,6 +87,9 @@ export const leaveStatusOptions = [
   { id: "Approved", name: "Approved" },
   { id: "Rejected", name: "Rejected" },
   { id: "Cancelled", name: "Cancelled" },
+  // Return-from-leave states: the adjustment is with an approver, or the leave is settled and closed.
+  { id: "ReturnPending", name: "Return pending approval" },
+  { id: "Closed", name: "Closed (returned)" },
 ];
 
 export const leaveStatusTone: Record<string, string> = {
@@ -94,6 +97,8 @@ export const leaveStatusTone: Record<string, string> = {
   Approved: "bg-emerald-500/15 text-emerald-600",
   Rejected: "bg-rose-500/15 text-rose-600",
   Cancelled: "bg-slate-500/15 text-slate-500",
+  ReturnPending: "bg-sky-500/15 text-sky-600",
+  Closed: "bg-slate-500/15 text-slate-600",
 };
 
 /** Bool → the "true"/"false" id used by FormProvider dropDowns + createSaveService booleanFields. */

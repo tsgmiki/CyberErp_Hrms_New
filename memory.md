@@ -143,6 +143,14 @@ Terminated **and retired** employees are excluded both when the population is bu
 time, since a revision spans days or weeks. `Retired` needs its own check — there is no `IsRetired`
 flag, only the status. Active/Probation/OnLeave/Suspended stay in: none of those stop pay.
 
+**Annual leave has a return-confirmation stage (2026-08-09).** An approved request is not done when
+the dates pass: the employee confirms their return, and an early or late return routes back through a
+SEPARATE workflow (`AnnualLeave.Return`) before the ledger moves. Three rules to preserve — the ledger
+only ever moves on an APPROVED decision (so a rejected adjustment needs no reversal); days taken are
+recomputed through `IWorkingCalendar`, never by arithmetic, and a late return's overrun sits OUTSIDE
+the approved detail rows so it must be counted separately; and a late return is an extension on the
+same request, keeping one history thread. See `logic.md` §3.4.1.
+
 **Detail views are pages, not popups.** Salary Revision set the pattern: selecting a row navigates to
 `/x/{guid}` and swaps the page to a full `EntityListShell` grid with the shell's standard Back arrow.
 Two traps found building it: a double-submit guard must live in a `useRef` (state is captured per

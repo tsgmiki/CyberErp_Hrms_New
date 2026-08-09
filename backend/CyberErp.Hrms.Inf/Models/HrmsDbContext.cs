@@ -78,6 +78,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<ReportRestriction> ReportRestriction { get; set; }
     public DbSet<AnnualLeaveHeader> AnnualLeaveHeader { get; set; }
     public DbSet<AnnualLeaveDetail> AnnualLeaveDetail { get; set; }
+    public DbSet<AnnualLeaveReturn> AnnualLeaveReturn { get; set; }
     public DbSet<LeaveBalance> LeaveBalance { get; set; }
     public DbSet<LeaveBalanceTransaction> LeaveBalanceTransaction { get; set; }
     public DbSet<JobCategory> JobCategory { get; set; }
@@ -344,6 +345,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new ReportRestrictionConfiguration());
         modelBuilder.ApplyConfiguration(new AnnualLeaveHeaderConfiguration());
         modelBuilder.ApplyConfiguration(new AnnualLeaveDetailConfiguration());
+        modelBuilder.ApplyConfiguration(new AnnualLeaveReturnConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveBalanceConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveBalanceTransactionConfiguration());
         modelBuilder.ApplyConfiguration(new JobCategoryConfiguration());

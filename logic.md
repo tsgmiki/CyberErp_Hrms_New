@@ -275,6 +275,47 @@ validate → leave type active → resolve fiscal year (start date) → FY-bound
 - **Cancel** (`CancelLeaveRequest`): gated (can't cancel mid-approval — reject via workflow instead);
   if it was Approved → `ReverseAsync` (posts a `Reversal`, credits the balance back).
 
+### 3.4.1 Return from leave (2026-08-09)
+
+An approved request is not finished when the dates pass — the employee confirms they are back, and
+what they confirm decides whether anything moves.
+
+| Return | Header | Ledger | Approval |
+|---|---|---|---|
+| **On time** | → `Closed` | untouched — it already holds exactly these days | none |
+| **Early** | → `ReturnPending` → `Closed` | credited the unused days **on approval** | required, comment required |
+| **Late** | → `ReturnPending` → `Closed` | debited the extra days **on approval** | required, comment required |
+
+**The ledger only ever moves on an approved decision.** Confirming an early return credits nothing;
+`AnnualLeaveReturnWorkflowHandler` is the only place a return touches the balance, so the balance is
+always the sum of decisions somebody actually made. A rejected adjustment therefore needs no reversal
+— it simply returns the header to `Approved` so the employee can confirm again with a corrected date.
+
+**A late return is an EXTENSION on the same request**, not a second request: one record, one history
+thread. The extra days are balance-checked at confirmation, so an approver is never asked to
+rubber-stamp an extension the entitlement cannot fund.
+
+**Days actually taken are recomputed through `IWorkingCalendar`, never derived by arithmetic.**
+Returning two days early over a weekend costs nothing; the same two days midweek costs two — only the
+calendar knows which. ⚠️ A late return runs PAST every approved detail row, so the overrun has to be
+counted separately (`plannedEnd+1 .. actualEnd`); the first implementation looped over the detail rows
+only and silently reported the approved total for every late return. A half-day row the return lands
+inside keeps its 0.5 — a half day is atomic, and the calendar would re-count it as a whole day.
+
+`TotalLeaveDays` stays the APPROVED figure forever; `ActualLeaveDays` records what was taken. Keeping
+both is what lets the grid show `5 → 3` and the history compare them.
+
+**Adjustments need their own workflow definition** (`WorkflowEntityTypes.AnnualLeaveReturn` =
+`"AnnualLeave.Return"`). Confirming an early/late return without one fails with a message naming the
+process to configure, rather than stranding the request in `ReturnPending` with nothing able to
+approve it — the same stance `SubmitAnnualLeave` takes. On-time returns need no workflow.
+
+**History (`GET /AnnualLeave/{id}/history`)** merges three sources into one ordered timeline: the
+request, the workflow action log for BOTH chains (the original approval and the adjustment), and every
+return confirmation. Assembled server-side because an approver judging an adjustment needs all of it
+at once, and stitching it client-side would mean four round trips and four chances to show a partial
+story. Rendered as a popup in both apps (`annualLeave/historyModal.tsx`).
+
 ### 3.5 Year-end rollover (`RolloverAsync(fromFiscalYearId)`)
 For each source balance with remaining days: **expire** days that were already carried in once
 (`min(remaining, CarriedForward)` — the 2-year law) plus any excess over `LeaveType.CarryForwardMaxDays`

@@ -25,9 +25,10 @@
   environment needs `dotnet ef database update` in both repos, or the two scripts under
   `backend/scripts/schema-rename/` run in order (01 HRMS, then 02 Home).
   Pre-change restore point: `CERP_before-schema-rename-20260808-192711.bak`.
-- **Six migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
+- **Eight migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
   `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`, and from this session
-  `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`).
+  `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`,
+  `AddAffectsSalaryIncrement`, `AddAnnualLeaveReturn`).
   The three new ones are additive (one table + five nullable/defaulted columns) and need
   `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
   needs seeding per tenant** (`POST /Module/seed-defaults`, per-CURRENT-tenant) **and then granting** —
@@ -93,6 +94,28 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DZ. **Return-from-leave confirmation workflow (2026-08-09, HRMS + Home, full stack).**
+    An approved annual leave request is no longer finished when the dates pass: the employee confirms
+    they are back, and early/late returns route back through approval. Full rules in `logic.md` §3.4.1.
+    - New `Hrms.AnnualLeaveReturn` child + statuses `ReturnPending` / `Closed` + `ActualLeaveDays`
+      on the header. `TotalLeaveDays` stays the APPROVED figure so the two can always be compared.
+    - **Two product decisions confirmed by the user:** (a) an early return credits the ledger ONLY on
+      approval, never on confirmation; (b) a late return is an EXTENSION on the same request, not a
+      new one, so the history stays one thread.
+    - ⚠️ **Bug the live test caught:** the day counter looped over the approved detail rows only, so a
+      LATE return could never exceed the approved total and every overrun cost nothing. The overrun is
+      now counted separately through the calendar. Pinned by a regression test, along with "a weekend
+      inside an overrun is free" and "a half-day row the return lands inside keeps its 0.5".
+    - **Adjustments need a NEW workflow definition** — `AnnualLeave.Return`. Without one, confirming an
+      early/late return fails with a message naming the process to configure; on-time returns work
+      with no workflow at all. No tenant has this definition yet, so it must be added before the
+      early/late paths can be used.
+    - UI in BOTH apps (Home keeps its own copy of these screens): a Confirm-return modal whose day
+      count is previewed server-side as the date changes, and a lifecycle History popup on every row.
+    - Verified live: early return → approval → ledger `Taken` 5→3, Available 15→17, header `Closed`
+      (5 approved / 3 actual), with a `Reversal` transaction written. 18/18 browser assertions in each
+      app, 10/10 on the settled history, 24 API assertions. Tests 135 → 158, mutation-checked.
 
 00DY. **`AffectsSalaryIncrement` flag on disciplinary measures (2026-08-09, HRMS full stack).**
     Per-case control over the increment block, which until now was all-or-nothing per tenant.

@@ -76,7 +76,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.RequestDate).HasColumnType("date");
             builder.Property(x => x.Remark).HasMaxLength(1000);
             builder.Property(x => x.TotalLeaveDays).HasPrecision(6, 2);
-            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            builder.Property(x => x.ActualLeaveDays).HasPrecision(6, 2);
+            // 20 was already tight; "ReturnPending" fits but leave headroom for later states.
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30);
 
             builder.HasOne(x => x.Employee).WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
             // AnnualLeaveLedgerId targets the annual-leave entitlement row (hrms_LeaveBalance).
@@ -107,6 +109,33 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasIndex(x => x.AnnualLeaveHeaderId);
             builder.HasIndex(x => new { x.AnnualLeaveHeaderId, x.StartDate, x.EndDate });
+        }
+    }
+
+    public class AnnualLeaveReturnConfiguration : IEntityTypeConfiguration<AnnualLeaveReturn>
+    {
+        public void Configure(EntityTypeBuilder<AnnualLeaveReturn> builder)
+        {
+            builder.ToTable("AnnualLeaveReturn", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.PlannedEndDate).HasColumnType("date");
+            builder.Property(x => x.ActualEndDate).HasColumnType("date");
+            builder.Property(x => x.ApprovedDays).HasPrecision(6, 2);
+            builder.Property(x => x.ActualDays).HasPrecision(6, 2);
+            // Signed: negative for an early return, positive for a late one.
+            builder.Property(x => x.AdjustmentDays).HasPrecision(6, 2);
+            builder.Property(x => x.ReturnType).HasConversion<string>().HasMaxLength(20);
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            builder.Property(x => x.Comment).HasMaxLength(1000);
+
+            builder.HasOne<AnnualLeaveHeader>()
+                .WithMany()
+                .HasForeignKey(x => x.AnnualLeaveHeaderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // The history view reads every attempt for one request, newest last.
+            builder.HasIndex(x => new { x.AnnualLeaveHeaderId, x.ConfirmedAt });
         }
     }
 

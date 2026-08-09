@@ -41,6 +41,10 @@ export type { default as WorkWeekConfigurationModel } from "./masters/WorkWeekCo
 export type {
   default as AnnualLeaveModel,
   AnnualLeaveDetailModel,
+  AnnualLeaveReturnPreviewModel,
+  AnnualLeaveReturnResultModel,
+  AnnualLeaveHistoryModel,
+  AnnualLeaveHistoryEntryModel,
 } from "./masters/AnnualLeaveModel";
 export type {
   default as ReportDefinitionModel,

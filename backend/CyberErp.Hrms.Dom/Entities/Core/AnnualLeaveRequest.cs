@@ -16,7 +16,32 @@ public enum AnnualLeaveStatus
     Pending = 0,
     Approved = 1,
     Rejected = 2,
-    Cancelled = 3
+    Cancelled = 3,
+    /// <summary>The employee returned on a different date than approved; the adjustment is awaiting approval.</summary>
+    ReturnPending = 4,
+    /// <summary>Return confirmed and settled — the ledger now reflects the days actually taken.</summary>
+    Closed = 5
+}
+
+/// <summary>How the actual return compared with the approved end date.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AnnualLeaveReturnType
+{
+    /// <summary>Returned as approved — the original days stand, no approval needed.</summary>
+    OnTime = 0,
+    /// <summary>Came back early: fewer days taken, so the balance is due a credit.</summary>
+    Early = 1,
+    /// <summary>Came back late: extra days taken, which must be requested and approved.</summary>
+    Late = 2
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum AnnualLeaveReturnStatus
+{
+    /// <summary>Early/late adjustment routed back through the approval workflow.</summary>
+    PendingApproval = 0,
+    Approved = 1,
+    Rejected = 2
 }
 
 /// <summary>Which half of the day a <see cref="AnnualLeaveUsage.HalfDay"/> row covers.</summary>
@@ -47,6 +72,13 @@ public class AnnualLeaveHeader : BaseEntity, IAggregateRoot, IAuditable
     public decimal TotalLeaveDays { get; private set; }
 
     public AnnualLeaveStatus Status { get; private set; } = AnnualLeaveStatus.Pending;
+
+    /// <summary>
+    /// Days actually taken, set when the return is settled. Null until then — <see cref="TotalLeaveDays"/>
+    /// stays the APPROVED figure so the two can always be compared, which is what the history view and
+    /// the ledger reconciliation need.
+    /// </summary>
+    public decimal? ActualLeaveDays { get; private set; }
 
     private readonly List<AnnualLeaveDetail> _details = [];
     public IReadOnlyCollection<AnnualLeaveDetail> Details => _details;
@@ -104,14 +136,166 @@ public class AnnualLeaveHeader : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
+    // ---- Return confirmation -------------------------------------------------
+
+    /// <summary>
+    /// The employee came back exactly as approved: nothing to approve and nothing to adjust, because
+    /// the ledger was already debited for these days when the request was approved.
+    /// </summary>
+    public void CloseOnTimeReturn(decimal actualDays)
+    {
+        RequireStatus(AnnualLeaveStatus.Approved);
+        ActualLeaveDays = actualDays;
+        Status = AnnualLeaveStatus.Closed;
+        base.Update();
+    }
+
+    /// <summary>An early or late return is parked here while its adjustment goes for approval.</summary>
+    public void BeginReturnAdjustment()
+    {
+        RequireStatus(AnnualLeaveStatus.Approved);
+        Status = AnnualLeaveStatus.ReturnPending;
+        base.Update();
+    }
+
+    /// <summary>
+    /// The adjustment was approved. <paramref name="actualDays"/> becomes the days actually taken; the
+    /// caller has already moved the ledger by the difference.
+    /// </summary>
+    public void SettleReturn(decimal actualDays)
+    {
+        RequireStatus(AnnualLeaveStatus.ReturnPending);
+        ActualLeaveDays = actualDays;
+        Status = AnnualLeaveStatus.Closed;
+        base.Update();
+    }
+
+    /// <summary>
+    /// The adjustment was rejected, so the request goes back to Approved and the employee can confirm
+    /// again. The ledger is untouched throughout — it only ever moves on an approved decision.
+    /// </summary>
+    public void RejectReturn()
+    {
+        RequireStatus(AnnualLeaveStatus.ReturnPending);
+        Status = AnnualLeaveStatus.Approved;
+        base.Update();
+    }
+
     private void RequireStatus(AnnualLeaveStatus expected)
     {
         if (Status != expected)
             throw new InvalidOperationException($"Expected status {expected} but was {Status}.");
     }
 
-    /// <summary>True while the request still holds a ledger debit a cancellation must reverse.</summary>
-    public bool HoldsBalance => Status == AnnualLeaveStatus.Approved;
+    /// <summary>
+    /// True while the request still holds a ledger debit a cancellation must reverse. A closed request
+    /// still holds one — the days were taken — but cancelling is no longer offered for it.
+    /// </summary>
+    public bool HoldsBalance => Status is AnnualLeaveStatus.Approved or AnnualLeaveStatus.ReturnPending
+        or AnnualLeaveStatus.Closed;
+
+    /// <summary>The employee can confirm their return only once the request is approved and still open.</summary>
+    public bool CanConfirmReturn => Status == AnnualLeaveStatus.Approved;
+}
+
+/// <summary>
+/// The employee's confirmation that they are back, and the record of any difference from what was
+/// approved. One row per confirmation attempt, so a rejected adjustment leaves its history behind
+/// rather than being overwritten by the next attempt.
+/// </summary>
+public class AnnualLeaveReturn : BaseEntity, IAuditable
+{
+    public Guid AnnualLeaveHeaderId { get; private set; }
+
+    /// <summary>Last day of leave as APPROVED — kept so the comparison survives later edits.</summary>
+    public DateTime PlannedEndDate { get; private set; }
+
+    /// <summary>Last day the employee was actually on leave (the day before they resumed work).</summary>
+    public DateTime ActualEndDate { get; private set; }
+
+    /// <summary>Working days originally approved.</summary>
+    public decimal ApprovedDays { get; private set; }
+
+    /// <summary>Working days actually taken, recomputed over the real range by the working calendar.</summary>
+    public decimal ActualDays { get; private set; }
+
+    /// <summary>
+    /// <c>ActualDays - ApprovedDays</c>: negative for an early return (days to credit back), positive
+    /// for a late one (extra days to debit), zero on time. Stored rather than derived because it is the
+    /// figure an approver signed off on.
+    /// </summary>
+    public decimal AdjustmentDays { get; private set; }
+
+    public AnnualLeaveReturnType ReturnType { get; private set; }
+    public AnnualLeaveReturnStatus Status { get; private set; }
+
+    /// <summary>Why the return differs from what was approved. Required for Early and Late.</summary>
+    public string? Comment { get; private set; }
+
+    public DateTime ConfirmedAt { get; private set; }
+
+    private AnnualLeaveReturn() : base() { }
+
+    public static AnnualLeaveReturn Create(
+        Guid annualLeaveHeaderId, DateTime plannedEndDate, DateTime actualEndDate,
+        decimal approvedDays, decimal actualDays, string? comment)
+    {
+        if (annualLeaveHeaderId == Guid.Empty)
+            throw new ArgumentException("Annual leave request is required.", nameof(annualLeaveHeaderId));
+        if (actualDays < 0)
+            throw new ArgumentException("Actual days cannot be negative.", nameof(actualDays));
+
+        var adjustment = actualDays - approvedDays;
+        var type = adjustment switch
+        {
+            < 0 => AnnualLeaveReturnType.Early,
+            > 0 => AnnualLeaveReturnType.Late,
+            _ => AnnualLeaveReturnType.OnTime
+        };
+
+        // The comment is what an approver reads to judge the adjustment, so an unexplained one is not
+        // acceptable. An on-time return needs no justification — nothing changed.
+        if (type != AnnualLeaveReturnType.OnTime && string.IsNullOrWhiteSpace(comment))
+            throw new ArgumentException(
+                "Explain the difference between the approved and actual return.", nameof(comment));
+
+        return new AnnualLeaveReturn
+        {
+            AnnualLeaveHeaderId = annualLeaveHeaderId,
+            PlannedEndDate = plannedEndDate.Date,
+            ActualEndDate = actualEndDate.Date,
+            ApprovedDays = approvedDays,
+            ActualDays = actualDays,
+            AdjustmentDays = adjustment,
+            ReturnType = type,
+            // On time needs no approval: the ledger already holds exactly these days.
+            Status = type == AnnualLeaveReturnType.OnTime
+                ? AnnualLeaveReturnStatus.Approved
+                : AnnualLeaveReturnStatus.PendingApproval,
+            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
+            ConfirmedAt = DateTime.UtcNow
+        };
+    }
+
+    public void Approve()
+    {
+        RequirePending();
+        Status = AnnualLeaveReturnStatus.Approved;
+        base.Update();
+    }
+
+    public void Reject()
+    {
+        RequirePending();
+        Status = AnnualLeaveReturnStatus.Rejected;
+        base.Update();
+    }
+
+    private void RequirePending()
+    {
+        if (Status != AnnualLeaveReturnStatus.PendingApproval)
+            throw new InvalidOperationException($"The return is already {Status}.");
+    }
 }
 
 /// <summary>DETAIL row of an <see cref="AnnualLeaveHeader"/> — one date range (or single half-day).</summary>
