@@ -50,10 +50,25 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
     retry: false,
   });
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["salaryRevisions"] });
-    queryClient.invalidateQueries({ queryKey: ["salaryRevision", id] });
-  };
+  const refreshList = () => queryClient.invalidateQueries({ queryKey: ["salaryRevisions"] });
+
+  /** Stay on the detail: refetch it so the new status shows. */
+  const refreshDetail = () => queryClient.invalidateQueries({ queryKey: ["salaryRevision", id] });
+
+  /*
+   * When the record is GONE, the detail query must simply be left alone.
+   *
+   * This component is still mounted at that moment — the navigation happens on the next line — so its
+   * `useQuery` observer is still active, and BOTH cache operations force a request for an id that no
+   * longer exists:
+   *   invalidateQueries -> marks stale and refetches active queries  -> GET 404
+   *   removeQueries     -> drops the entry, so the active observer refetches to repopulate -> GET 404
+   * That 404 is what surfaced "Resource of type 'SalaryRevision' with id ... was not found" straight
+   * after a delete that had in fact succeeded.
+   * Doing nothing is correct: on unmount the query goes inactive and is garbage-collected, and
+   * re-opening the same id later refetches and lands on the "no longer available" panel, which is the
+   * right outcome.
+   */
 
   const run = async (fn: () => Promise<{ ok: boolean; message: string }>, backAfter = false) => {
     // Re-entrancy guard held in a REF, not state. Both `disabled={busy}` and a `if (busy) return`
@@ -69,10 +84,14 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
     busyRef.current = false;
     setBusy(false);
 
-    if (r.ok) { invalidate(); if (backAfter) onBack(); return; }
+    if (r.ok) {
+      refreshList();
+      if (backAfter) onBack(); else refreshDetail();
+      return;
+    }
     // Already gone (deleted in another tab, or a duplicate submit that succeeded): resync and leave,
     // rather than showing a backend exception for work that is in fact done.
-    if (/not found/i.test(r.message)) { invalidate(); onBack(); return; }
+    if (/not found/i.test(r.message)) { refreshList(); onBack(); return; }
     setError(r.message);
   };
 
@@ -167,7 +186,8 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
         <p className="max-w-md text-sm text-muted">
           {t("It has been deleted, or you no longer have access to it.")}
         </p>
-        <ButtonField value="Back to list" variant="outline" onClick={() => { invalidate(); onBack(); }} />
+        {/* The record is already gone here, so drop its query rather than invalidating it. */}
+        <ButtonField value="Back to list" variant="outline" onClick={() => { refreshList(); onBack(); }} />
       </div>
     );
   }

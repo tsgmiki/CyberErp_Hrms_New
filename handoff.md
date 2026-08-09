@@ -79,6 +79,23 @@
 
 ## 1. Most recent changes (latest first)
 
+00DP. **Post-delete 404 fixed — never invalidate OR remove a query for a record you just deleted
+    (2026-08-09, HRMS frontend only).** Deleting a salary revision succeeded and then immediately
+    showed "Resource of type 'SalaryRevision' with id … was not found" for that same id.
+    - Cause: on success the handler called `invalidateQueries(["salaryRevision", id])` and then
+      navigated. The component is still MOUNTED at that instant, so its `useQuery` observer is still
+      active and React Query refetched the id that had just been deleted → GET 404.
+    - **`removeQueries` is NOT the fix and was tried first** — dropping the entry makes the still-active
+      observer refetch to repopulate it, producing the same 404. The test caught that too.
+    - The fix is to touch nothing: refresh the LIST key only, then navigate. On unmount the query goes
+      inactive and is garbage-collected; re-opening that id later refetches and correctly lands on the
+      "no longer available" panel.
+    - Actions that STAY on the detail (Submit/Approve) still invalidate the detail key — required for
+      the status badge to refresh, and covered by its own test.
+    - Third distinct bug behind the same user-visible message: the earlier two were a double-submit
+      (fixed with a `useRef` guard, since `disabled={busy}` is captured per render) and a stale list
+      row. **When that message appears again, check what fires a GET for the id, not just the DELETE.**
+
 00DO. **Lookup tables moved to the Hrms schema (2026-08-08, HRMS only, MIGRATION
     `MoveLookupTablesToHrmsSchema`, APPLIED TO CERP).** `Core.LookUpCategory` → `Hrms.LookUpCategory`
     and `Core.LookUpCategoryList` → `Hrms.LookUpCategoryList` — names unchanged, schema only, so EF
