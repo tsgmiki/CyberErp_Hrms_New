@@ -130,11 +130,26 @@ one active row, edited on **Compensation → Increment Rules** (`/salaryIncremen
 permission). Four rules: minimum service months, active-disciplinary exclusion, first-year proration,
 and grade-ceiling promotion. See `logic.md` §9.1–9.4. Three things worth carrying forward:
 - **Excluded employees get no LINE, not a zero line** — `Apply` walks the lines, so a line pays.
+- **The Home portal keeps its OWN copy of the disciplinary/leave screens** that post to the HRMS API
+  (`Home/frontend/src/components/admin/...`). A change to one of those HRMS screens is only half done
+  until the Home mirror is updated — that is how `AffectsSalaryIncrement` shipped incomplete.
+- **`DisciplinaryMeasure.AffectsSalaryIncrement` defaults TRUE** (opt-OUT), unlike the opt-in
+  `AffectsPromotion`/`AffectsReward` — the increment block predates the flag, so defaulting it off
+  would have silently started paying people mid-discipline. All three flags are independent.
 - **Proration scales the increase, never the salary**, so it means the same on every basis.
 - **Promotion sequences grades BY PAY**, because `JobGrade` has no level field and grade codes do not
   track pay in live data — code order would promote people into a pay cut. Revisit if a level is added.
-Terminated employees are excluded both when the population is built AND again at apply time, since a
-revision spans days or weeks. `Retired` is deliberately still included.
+Terminated **and retired** employees are excluded both when the population is built AND again at apply
+time, since a revision spans days or weeks. `Retired` needs its own check — there is no `IsRetired`
+flag, only the status. Active/Probation/OnLeave/Suspended stay in: none of those stop pay.
+
+**Annual leave has a return-confirmation stage (2026-08-09).** An approved request is not done when
+the dates pass: the employee confirms their return, and an early or late return routes back through a
+SEPARATE workflow (`AnnualLeave.Return`) before the ledger moves. Three rules to preserve — the ledger
+only ever moves on an APPROVED decision (so a rejected adjustment needs no reversal); days taken are
+recomputed through `IWorkingCalendar`, never by arithmetic, and a late return's overrun sits OUTSIDE
+the approved detail rows so it must be counted separately; and a late return is an extension on the
+same request, keeping one history thread. See `logic.md` §3.4.1.
 
 **Detail views are pages, not popups.** Salary Revision set the pattern: selecting a row navigates to
 `/x/{guid}` and swaps the page to a full `EntityListShell` grid with the shell's standard Back arrow.

@@ -8,31 +8,38 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-5`** (branched off `main` at `2243cc0`, 2026-08-08) —
-  carries the salary-increment work (00DR–00DW): eligibility rules, the Increment Rules screen,
-  the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
-  Approve/Apply button fixes. **PR #7 is open against `main`.**
+- **CURRENT BRANCH: `feature/hrms-buildout-6`** (branched off `main` at `6150894`, 2026-08-09) —
+  empty so far; the next batch of work starts here.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
-  performance score bands, detail-as-grid, and the route state-loss fix, and **PR #6** the
-  module-schema rename. The `feature/hrms-buildout`, `-2`, `-3` and `-4` branches were deleted after
-  merging — historical references to them below are accurate for their date, but those branches no
-  longer exist.
+  performance score bands, detail-as-grid, and the route state-loss fix, **PR #6** the module-schema
+  rename, and **PR #7** the salary-increment work (00DR–00DW: eligibility rules, the Increment Rules
+  screen, the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
+  Approve/Apply button fixes). The `feature/hrms-buildout`, `-2`, `-3`, `-4` and `-5` branches were
+  deleted after merging — historical references to them below are accurate for their date, but those
+  branches no longer exist.
 - ⚠️ **The module-schema rename IS APPLIED to CERP** (PR #6 + Home `8ee69da`). Tables are
   `Hrms.X` / `Core.X` with no prefixes; procedures are `Hrms.Report_X`. **Both apps must be deployed
   together** — a stale binary on either side throws `Invalid object name 'dbo.hrmsX'`. Any OTHER
   environment needs `dotnet ef database update` in both repos, or the two scripts under
   `backend/scripts/schema-rename/` run in order (01 HRMS, then 02 Home).
   Pre-change restore point: `CERP_before-schema-rename-20260808-192711.bak`.
-- **Six migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
+- **Eight migrations are applied LOCALLY ONLY** (`SalaryStepOrdinalAndStepBasis`,
   `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`, and from this session
-  `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`).
+  `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`,
+  `AddAffectsSalaryIncrement`, `AddAnnualLeaveReturn`).
   The three new ones are additive (one table + five nullable/defaulted columns) and need
   `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
-  needs seeding per tenant** (`POST /Module/seed-defaults`) **and then granting** — seeding creates the
-  operation but no `RolePermission`, so the screen 403s until an admin grants it (verified). Note the
-  seeder is per-CURRENT-tenant: tenant `aadb4e82` still needs its own run.
+  needs seeding per tenant** (`POST /Module/seed-defaults`, per-CURRENT-tenant) **and then granting** —
+  seeding creates the operation but no `RolePermission`, so the screen 403s until an admin grants it
+  (verified). **Both tenants in CERP are already done** and need nothing: `aadb4e82` was set up by hand
+  on 2026-08-09 (operation named **"Salary Increment Policy"**, icon `BadgeDollarSign`, granted to
+  Administrator — which is also where the `lucideIconMap` `BadgeDollarSign` entry came from), and
+  re-running the seeder there returns `{"created":0,"message":"Menu already seeded"}` with all 122
+  seeder links present. The seeder matches operations by `(module, link)` and leaves existing rows
+  untouched, so that hand-made name/icon survives any future re-seed — it differs from the seeder's
+  "Increment Rules" / `SlidersHorizontal` in appearance only.
   The `Step.Ordinal` backfill is an inference
   that should be eyeballed per tenant before production — note the table is now `Core.Step`:
   `SELECT Name, Code, Ordinal FROM Core.Step ORDER BY TenantId, Ordinal;`
@@ -87,6 +94,64 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00DZ. **Return-from-leave confirmation workflow (2026-08-09, HRMS + Home, full stack).**
+    An approved annual leave request is no longer finished when the dates pass: the employee confirms
+    they are back, and early/late returns route back through approval. Full rules in `logic.md` §3.4.1.
+    - New `Hrms.AnnualLeaveReturn` child + statuses `ReturnPending` / `Closed` + `ActualLeaveDays`
+      on the header. `TotalLeaveDays` stays the APPROVED figure so the two can always be compared.
+    - **Two product decisions confirmed by the user:** (a) an early return credits the ledger ONLY on
+      approval, never on confirmation; (b) a late return is an EXTENSION on the same request, not a
+      new one, so the history stays one thread.
+    - ⚠️ **Bug the live test caught:** the day counter looped over the approved detail rows only, so a
+      LATE return could never exceed the approved total and every overrun cost nothing. The overrun is
+      now counted separately through the calendar. Pinned by a regression test, along with "a weekend
+      inside an overrun is free" and "a half-day row the return lands inside keeps its 0.5".
+    - **Adjustments need a NEW workflow definition** — `AnnualLeave.Return`. Without one, confirming an
+      early/late return fails with a message naming the process to configure; on-time returns work
+      with no workflow at all. No tenant has this definition yet, so it must be added before the
+      early/late paths can be used.
+    - UI in BOTH apps (Home keeps its own copy of these screens): a Confirm-return modal whose day
+      count is previewed server-side as the date changes, and a lifecycle History popup on every row.
+    - Verified live: early return → approval → ledger `Taken` 5→3, Available 15→17, header `Closed`
+      (5 approved / 3 actual), with a `Reversal` transaction written. 18/18 browser assertions in each
+      app, 10/10 on the settled history, 24 API assertions. Tests 135 → 158, mutation-checked.
+
+00DY. **`AffectsSalaryIncrement` flag on disciplinary measures (2026-08-09, HRMS full stack).**
+    Per-case control over the increment block, which until now was all-or-nothing per tenant.
+    - ⚠️ **Defaults to TRUE, unlike `AffectsPromotion` / `AffectsReward`.** Those are opt-in because
+      blocking a promotion is an extra sanction; withholding an increment was already what EVERY
+      active case did, so defaulting it off would have quietly started paying people mid-discipline
+      the moment the column shipped. It is an opt-OUT, and the migration backfills existing rows to
+      `true` (verified: all 3 live cases still block).
+    - The three flags are independent — proved live: one case blocking promotion + reward while the
+      increment is paid in full.
+    - **Frontend trap worth remembering:** the employee-profile Discipline tab submits via
+      `new FormData(form)`, where an **unchecked checkbox is omitted entirely**, and
+      `createSaveService`'s `booleanFields` only converts keys that are PRESENT — so an absent key
+      falls through to the DTO default. Harmless for the opt-in flags, but it would have made this one
+      impossible to untick. Fixed with an explicit `fd.set(...)`; verified by unticking in the tab and
+      confirming `false` reached the database.
+    - Rendered `!== false` everywhere, so a record saved before the column existed still reads as
+      blocking.
+    - Mutation-checked: flipping the default to match the siblings fails a test.
+    - **FOLLOW-UP (same day): the Home portal has its OWN copy of this form** and was missed —
+      `Home/frontend/src/components/admin/disciplinaryCase/{form,list}.tsx` posts to the HRMS API, so
+      cases raised there still blocked (the DTO default) but could not be exempted, and the list showed
+      no impact. Mirrored there in Home `1f6bcc0`. **Any future change to a disciplinary/leave/workflow
+      screen must check the Home mirror** — the portal reuses these HRMS-facing modules wholesale.
+      Note Home keeps this module on a FLAT route (no `:id`), so its form is reached via the list.
+      Verified end-to-end: unticked in the portal → persisted false → HRMS paid the increment in full.
+
+00DX. **`Retired` employees excluded from salary revisions too (2026-08-09, HRMS backend only).**
+    Follow-up to 00DV, which excluded only `Terminated` because that is what was asked.
+    - `Retired` needs its OWN check: unlike termination it has no `IsRetired` flag behind it, only the
+      status. `StillEmployed` is now
+      `!IsTerminated && status != Terminated && status != Retired`.
+    - Still included: **Active, Probation, OnLeave, Suspended** — none of those stop pay.
+    - Verified live with `IsTerminated` left FALSE, so only the new status check could exclude:
+      simulation 0 employees, saved plan 0 lines, and apply-after-retirement left pay untouched
+      (`"… 1 skipped as gone or terminated"`). Mutation-checked: dropping the clause fails one test.
 
 00DW. **Approve button survived submission; Apply navigated away instead of refreshing (2026-08-09,
     HRMS full stack).** Two reported grid problems, one of which hid a dead button.
@@ -1727,10 +1792,8 @@
 ## 2. Outstanding tasks / backlog
 
 - **Salary increment — open questions raised to the user (2026-08-09):**
-  - **`Retired` employees are still included** in a revision (only `Terminated` is excluded, as asked).
-    One word in `SalaryRevisionShared.StillEmployed` if they should go too.
-  - **`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`** — today ANY active case blocks an
-    increment; a per-measure opt-in (like `AffectsPromotion`/`AffectsReward`) would give HR control.
+  - ~~`Retired` employees are still included~~ — **DONE**, they are excluded too (00DX).
+  - ~~`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`~~ — **DONE** (00DY), as an opt-OUT.
   - **If `JobGrade` ever gains an explicit level/sort field**, revisit ceiling promotion: it currently
     orders grades by PAY because no such field exists (see 00DU).
   - `InventoryLayout` renders a **Settings gear on every module** wired to `onSetting?.()`, which no

@@ -28,6 +28,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime? ValidUntil { get; set; }
         public bool AffectsPromotion { get; set; }
         public bool AffectsReward { get; set; }
+        /// <summary>While active, excludes the employee from a salary increment. Defaults TRUE (opt-out).</summary>
+        public bool AffectsSalaryIncrement { get; set; } = true;
         /// <summary>HC222 — who raised the case (null = HR/system).</summary>
         public Guid? RaisedByEmployeeId { get; set; }
         public string? RaisedByName { get; set; }
@@ -52,6 +54,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public bool AffectsPromotion { get; set; }
         /// <summary>HC223/HC225 — while active, this measure blocks reward/bonus.</summary>
         public bool AffectsReward { get; set; }
+        /// <summary>While active, excludes the employee from a salary increment. Defaults TRUE (opt-out).</summary>
+        public bool AffectsSalaryIncrement { get; set; } = true;
         /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
         public Dictionary<string, string?>? CustomFields { get; set; }
     }
@@ -71,6 +75,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public DateTime? ValidUntil { get; set; }
         public bool AffectsPromotion { get; set; }
         public bool AffectsReward { get; set; }
+        /// <summary>While active, excludes the employee from a salary increment. Defaults TRUE (opt-out).</summary>
+        public bool AffectsSalaryIncrement { get; set; } = true;
         public Guid? RaisedByEmployeeId { get; set; }
         public string? RaisedByName { get; set; }
     }
@@ -141,7 +147,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ?? throw new NotFoundException(nameof(DisciplinaryMeasure), dto.Id.Value.ToString());
                 entity.Update(dto.ViolationDate, dto.ViolationType, measureType, status,
                     dto.Description, dto.EffectiveDate, dto.Resolution,
-                    dto.ValidUntil, dto.AffectsPromotion, dto.AffectsReward);
+                    dto.ValidUntil, dto.AffectsPromotion, dto.AffectsReward, dto.AffectsSalaryIncrement);
                 repository.UpdateAsync(entity);
                 await customFields.ApplyAsync(EmployeeFieldOwnerType.Discipline, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
@@ -151,7 +157,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             var created = DisciplinaryMeasure.Create(dto.EmployeeId, dto.ViolationDate, dto.ViolationType,
                 measureType, status, dto.Description, dto.EffectiveDate, dto.Resolution,
-                dto.ValidUntil, dto.AffectsPromotion, dto.AffectsReward, scope.EmployeeId);
+                dto.ValidUntil, dto.AffectsPromotion, dto.AffectsReward, scope.EmployeeId, dto.AffectsSalaryIncrement);
             await repository.AddAsync(created);
             await customFields.ApplyAsync(EmployeeFieldOwnerType.Discipline, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
@@ -204,6 +210,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ValidUntil = x.ValidUntil,
                     AffectsPromotion = x.AffectsPromotion,
                     AffectsReward = x.AffectsReward,
+                    AffectsSalaryIncrement = x.AffectsSalaryIncrement,
                     RaisedByEmployeeId = x.RaisedByEmployeeId,
                     RaisedByName = employees.Where(e => e.Id == x.RaisedByEmployeeId && e.Person != null)
                         .Select(e => e.Person!.FirstName + " " + e.Person!.GrandFatherName).FirstOrDefault()
@@ -284,6 +291,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ValidUntil = x.ValidUntil,
                     AffectsPromotion = x.AffectsPromotion,
                     AffectsReward = x.AffectsReward,
+                    AffectsSalaryIncrement = x.AffectsSalaryIncrement,
                     RaisedByEmployeeId = x.RaisedByEmployeeId,
                     RaisedByName = employees.Where(e => e.Id == x.RaisedByEmployeeId && e.Person != null)
                         .Select(e => e.Person!.FirstName + " " + e.Person!.GrandFatherName).FirstOrDefault()
@@ -323,6 +331,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     ValidUntil = x.ValidUntil,
                     AffectsPromotion = x.AffectsPromotion,
                     AffectsReward = x.AffectsReward,
+                    AffectsSalaryIncrement = x.AffectsSalaryIncrement,
                     RaisedByEmployeeId = x.RaisedByEmployeeId,
                     RaisedByName = employees.Where(e => e.Id == x.RaisedByEmployeeId && e.Person != null)
                         .Select(e => e.Person!.FirstName + " " + e.Person!.GrandFatherName).FirstOrDefault()

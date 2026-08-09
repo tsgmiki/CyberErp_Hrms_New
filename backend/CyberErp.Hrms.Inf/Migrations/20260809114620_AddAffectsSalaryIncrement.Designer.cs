@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260809114620_AddAffectsSalaryIncrement")]
+    partial class AddAffectsSalaryIncrement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -284,10 +287,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal?>("ActualLeaveDays")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
                     b.Property<Guid>("AnnualLeaveLedgerId")
                         .HasColumnType("uniqueidentifier");
 
@@ -314,8 +313,8 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
@@ -340,78 +339,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasIndex("EmployeeId", "Status");
 
                     b.ToTable("AnnualLeaveHeader", "Hrms");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AnnualLeaveReturn", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("ActualDays")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<DateTime>("ActualEndDate")
-                        .HasColumnType("date");
-
-                    b.Property<decimal>("AdjustmentDays")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<Guid>("AnnualLeaveHeaderId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("ApprovedDays")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<string>("Comment")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTime>("ConfirmedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("PlannedEndDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("ReturnType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AnnualLeaveHeaderId", "ConfirmedAt");
-
-                    b.ToTable("AnnualLeaveReturn", "Hrms");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AnnualLeaveSetting", b =>
@@ -12685,15 +12612,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("Employee");
 
                     b.Navigation("Ledger");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AnnualLeaveReturn", b =>
-                {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.AnnualLeaveHeader", null)
-                        .WithMany()
-                        .HasForeignKey("AnnualLeaveHeaderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AnnualLeaveSetting", b =>

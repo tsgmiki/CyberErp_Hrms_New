@@ -106,12 +106,15 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 // revision would issue 10k queries. Same batching rule as the pay ladder and the
                 // performance-band resolver.
                 //
-                // "Active" here is broader than that service's promotion/reward test: ANY non-cancelled
-                // measure still inside its lifetime counts, because the requirement is to exclude
-                // anyone with an active case, not only cases HR flagged for a specific area.
+                // "Active" = non-cancelled and still inside its lifetime, AND flagged
+                // AffectsSalaryIncrement. That flag defaults to TRUE (unlike AffectsPromotion /
+                // AffectsReward, which are opt-in), so the default behaviour is unchanged — every
+                // active case still blocks — but HR can now exempt an individual case without
+                // turning the rule off for the whole tenant.
                 var day = effectiveDate.Date;
                 var ids = await disciplinary.GetAll().AsNoTracking()
                     .Where(d => employeeIds.Contains(d.EmployeeId)
+                                && d.AffectsSalaryIncrement
                                 && d.Status != DisciplinaryStatus.Cancelled
                                 && (d.ValidUntil == null || d.ValidUntil >= day))
                     .Select(d => d.EmployeeId)

@@ -59,6 +59,20 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>HC223/HC225 — while active (within lifetime), this measure blocks reward/bonus.</summary>
     public bool AffectsReward { get; private set; }
 
+    /// <summary>
+    /// While active, this measure excludes the employee from a salary increment.
+    ///
+    /// <para><b>Defaults to TRUE, unlike its two siblings.</b> They are opt-in because blocking a
+    /// promotion or a reward is an extra sanction someone must choose to apply. Withholding an
+    /// increment was already the behaviour of every active case before this flag existed, so
+    /// defaulting it off would have quietly started paying people mid-discipline the moment the column
+    /// shipped. It is therefore an opt-OUT: HR unticks it to exempt a case.</para>
+    ///
+    /// <para>The tenant's <c>SalaryIncrementPolicy.ExcludeActiveDisciplinary</c> remains the master
+    /// switch — this flag only decides which cases count once that is on.</para>
+    /// </summary>
+    public bool AffectsSalaryIncrement { get; private set; } = true;
+
     private DisciplinaryMeasure() : base() { }
 
     public static DisciplinaryMeasure Create(
@@ -73,7 +87,8 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         DateTime? validUntil = null,
         bool affectsPromotion = false,
         bool affectsReward = false,
-        Guid? raisedByEmployeeId = null)
+        Guid? raisedByEmployeeId = null,
+        bool affectsSalaryIncrement = true)
     {
         if (employeeId == Guid.Empty)
             throw new ArgumentException("Employee is required.", nameof(employeeId));
@@ -93,6 +108,7 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
             ValidUntil = validUntil,
             AffectsPromotion = affectsPromotion,
             AffectsReward = affectsReward,
+            AffectsSalaryIncrement = affectsSalaryIncrement,
             RaisedByEmployeeId = raisedByEmployeeId
         };
     }
@@ -114,7 +130,8 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         string? resolution,
         DateTime? validUntil,
         bool affectsPromotion,
-        bool affectsReward)
+        bool affectsReward,
+        bool affectsSalaryIncrement = true)
     {
         if (string.IsNullOrWhiteSpace(violationType))
             throw new ArgumentException("Violation type cannot be empty.", nameof(violationType));
@@ -129,6 +146,7 @@ public class DisciplinaryMeasure : BaseEntity, IAggregateRoot, IAuditable
         ValidUntil = validUntil;
         AffectsPromotion = affectsPromotion;
         AffectsReward = affectsReward;
+        AffectsSalaryIncrement = affectsSalaryIncrement;
         // RaisedByEmployeeId is immutable — the original submitter never changes.
         base.Update();
     }

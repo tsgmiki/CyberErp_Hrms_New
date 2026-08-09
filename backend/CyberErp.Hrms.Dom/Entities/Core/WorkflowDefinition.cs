@@ -15,6 +15,8 @@ public static class WorkflowEntityTypes
     public const string Termination = "EmployeeTermination";
     public const string LeaveRequest = "LeaveRequest";
     public const string AnnualLeave = "AnnualLeave";
+    /// <summary>Approval of an EARLY or LATE return against an already-approved annual leave request.</summary>
+    public const string AnnualLeaveReturn = "AnnualLeave.Return";
     public const string OtherLeave = "OtherLeave";
     public const string WorkforcePlan = "WorkforcePlan";
     public const string HiringRequest = "HiringRequest";

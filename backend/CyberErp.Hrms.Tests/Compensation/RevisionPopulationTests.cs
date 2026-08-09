@@ -48,6 +48,14 @@ public class RevisionPopulationTests
     }
 
     [Fact]
+    public void A_retired_employee_is_excluded()
+    {
+        // Retired is its own status with no IsTerminated flag behind it, so it needs its own check —
+        // and a retiree has left just as surely as a leaver.
+        Assert.False(StillEmployed(Employee(EmploymentStatus.Retired)));
+    }
+
+    [Fact]
     public void A_reinstated_employee_is_included_again()
     {
         var employee = Employee();

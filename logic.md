@@ -275,6 +275,47 @@ validate → leave type active → resolve fiscal year (start date) → FY-bound
 - **Cancel** (`CancelLeaveRequest`): gated (can't cancel mid-approval — reject via workflow instead);
   if it was Approved → `ReverseAsync` (posts a `Reversal`, credits the balance back).
 
+### 3.4.1 Return from leave (2026-08-09)
+
+An approved request is not finished when the dates pass — the employee confirms they are back, and
+what they confirm decides whether anything moves.
+
+| Return | Header | Ledger | Approval |
+|---|---|---|---|
+| **On time** | → `Closed` | untouched — it already holds exactly these days | none |
+| **Early** | → `ReturnPending` → `Closed` | credited the unused days **on approval** | required, comment required |
+| **Late** | → `ReturnPending` → `Closed` | debited the extra days **on approval** | required, comment required |
+
+**The ledger only ever moves on an approved decision.** Confirming an early return credits nothing;
+`AnnualLeaveReturnWorkflowHandler` is the only place a return touches the balance, so the balance is
+always the sum of decisions somebody actually made. A rejected adjustment therefore needs no reversal
+— it simply returns the header to `Approved` so the employee can confirm again with a corrected date.
+
+**A late return is an EXTENSION on the same request**, not a second request: one record, one history
+thread. The extra days are balance-checked at confirmation, so an approver is never asked to
+rubber-stamp an extension the entitlement cannot fund.
+
+**Days actually taken are recomputed through `IWorkingCalendar`, never derived by arithmetic.**
+Returning two days early over a weekend costs nothing; the same two days midweek costs two — only the
+calendar knows which. ⚠️ A late return runs PAST every approved detail row, so the overrun has to be
+counted separately (`plannedEnd+1 .. actualEnd`); the first implementation looped over the detail rows
+only and silently reported the approved total for every late return. A half-day row the return lands
+inside keeps its 0.5 — a half day is atomic, and the calendar would re-count it as a whole day.
+
+`TotalLeaveDays` stays the APPROVED figure forever; `ActualLeaveDays` records what was taken. Keeping
+both is what lets the grid show `5 → 3` and the history compare them.
+
+**Adjustments need their own workflow definition** (`WorkflowEntityTypes.AnnualLeaveReturn` =
+`"AnnualLeave.Return"`). Confirming an early/late return without one fails with a message naming the
+process to configure, rather than stranding the request in `ReturnPending` with nothing able to
+approve it — the same stance `SubmitAnnualLeave` takes. On-time returns need no workflow.
+
+**History (`GET /AnnualLeave/{id}/history`)** merges three sources into one ordered timeline: the
+request, the workflow action log for BOTH chains (the original approval and the adjustment), and every
+return confirmation. Assembled server-side because an approver judging an adjustment needs all of it
+at once, and stitching it client-side would mean four round trips and four chances to show a partial
+story. Rendered as a popup in both apps (`annualLeave/historyModal.tsx`).
+
 ### 3.5 Year-end rollover (`RolloverAsync(fromFiscalYearId)`)
 For each source balance with remaining days: **expire** days that were already carried in once
 (`min(remaining, CarriedForward)` — the 2-year law) plus any excess over `LeaveType.CarryForwardMaxDays`
@@ -1021,18 +1062,21 @@ Two filters run BEFORE any amount is computed, and both matter because a leaver 
 salary on the record — nothing in the pay data marks them as gone.
 
 1. **Still employed.** `SalaryRevisionShared.StillEmployed` =
-   `!IsTerminated && EmploymentStatus != Terminated`, checking BOTH fields because they are set
-   independently and can disagree (the same pair the employee list, options and workforce analytics
-   test). Applied in `TargetsAsync` **and again in `ApplySalaryRevision`** — a revision is planned,
+   `!IsTerminated && EmploymentStatus != Terminated && EmploymentStatus != Retired`.
+   `IsTerminated` and the status are both checked because they are set independently and can disagree
+   (the same pair the employee list, options and workforce analytics test); **`Retired` needs its own
+   check** because there is no `IsRetired` flag behind it, and a retiree has left just as surely as a
+   leaver. Applied in `TargetsAsync` **and again in `ApplySalaryRevision`** — a revision is planned,
    approved and applied over days or weeks, so anyone who leaves inside that window would otherwise be
-   paid a raise on their way out. `Retired` is deliberately NOT excluded (a separate status, no live
-   rows, never asked for).
+   paid a raise on their way out.
 2. **Positive base salary** (`Salary ?? ScaleSalary`), unchanged.
 
 ### 9.2 Increment eligibility policy (`Hrms.SalaryIncrementPolicy`, 2026-08-09)
 
 One active row per tenant (same shape as `WorkWeekConfiguration`); the save endpoint UPSERTS rather
-than stacking competing policies. Screen: **Compensation → Increment Rules** (`/salaryIncrementPolicy`,
+than stacking competing policies. Screen: **Compensation → Increment Rules** (`/salaryIncrementPolicy`
+— menu NAMES are per-tenant data, so the live CERP tenant shows it as "Salary Increment Policy";
+the ROUTE is what identifies it),
 its own menu operation and permission, since deciding who qualifies for a raise is grantable
 separately from planning a revision). Absent a policy the defaults are gate 0, proration ON,
 disciplinary exclusion ON, promotion OFF.
@@ -1040,7 +1084,7 @@ disciplinary exclusion ON, promotion OFF.
 | Rule | Field | Behaviour |
 |---|---|---|
 | Minimum service | `MinimumServiceMonths` (0–60) | Excluded below the gate. **Completed months**, so a 3-month gate means the same regardless of month lengths. No hire date ⇒ excluded, not assumed eligible. |
-| Active disciplinary | `ExcludeActiveDisciplinary` | Excluded when a non-cancelled, unexpired `DisciplinaryMeasure` exists. **ANY active case** — deliberately broader than `IDisciplinaryEligibilityService`, whose promotion/reward block is opt-in per measure. |
+| Active disciplinary | `ExcludeActiveDisciplinary` | Excluded when a non-cancelled, unexpired `DisciplinaryMeasure` **flagged `AffectsSalaryIncrement`** exists. Two levels: the policy decides whether cases count at all, the flag decides which ones. |
 | First-year proration | `ProrateFirstYear` | Under 12 months earns `monthsWorked/12` of the **increase**, not of the salary — so it means the same on every basis and can never cut pay. |
 | Ceiling promotion | `PromoteOnGradeCeiling` | See 9.3. Defaults OFF: it changes an employee's GRADE, not just their pay. |
 
@@ -1054,6 +1098,26 @@ decision nobody made. An HR override (`SetProposed`) clears those, plus any prom
 
 The policy + the disciplinary block set are loaded **once per run** (`ISalaryIncrementEligibilityFactory`),
 one `Distinct()` query for the whole population — same batching contract as the ladder and the awards.
+
+**`DisciplinaryMeasure.AffectsSalaryIncrement` defaults to TRUE**, unlike its siblings
+`AffectsPromotion` / `AffectsReward`, which are opt-in. Blocking a promotion or a reward is an extra
+sanction someone chooses to apply; withholding an increment was already the behaviour of every active
+case before the flag existed, so defaulting it off would have quietly started paying people
+mid-discipline the moment the column shipped. It is therefore an **opt-OUT** — HR unticks it to exempt
+a case — and the migration backfills every existing row to `true`. The three flags are independent: a
+case can block promotion and reward while still allowing an increment, and vice versa.
+
+**Three places edit this flag, in two repos.** HRMS: the standalone Disciplinary Cases screen (JSON
+save) and the employee-profile Discipline tab (FormData — see the trap below). **Home portal:
+`Home/frontend/src/components/admin/disciplinaryCase/` posts to the HRMS API** with its own copy of
+the form and list, so a change here needs the mirror updated or the portal silently sends the DTO
+default. Home keeps this module on a FLAT route (no `:id`), unlike HRMS — reach its form via the list.
+
+⚠️ **Frontend trap.** The employee-profile Discipline tab submits with `new FormData(form)`, and an
+**unchecked checkbox is omitted from FormData entirely**; `createSaveService`'s `booleanFields` only
+converts keys that are PRESENT, so an absent key falls through to the DTO default. That is harmless
+for the two opt-in flags (absent = false = their default) but would make `AffectsSalaryIncrement`
+impossible to untick. The handler therefore sets it explicitly (`fd.set(...)`) before saving.
 
 ### 9.3 Grade-ceiling promotion (2026-08-09)
 

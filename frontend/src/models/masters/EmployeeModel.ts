@@ -224,6 +224,12 @@ export interface DisciplinaryMeasureModel extends AbstractModel {
   affectsPromotion?: boolean;
   /** HC223/HC225 — while active, blocks reward/bonus. */
   affectsReward?: boolean;
+  /**
+   * While active, excludes the employee from a salary increment. Unlike the two flags above this
+   * defaults to TRUE — withholding an increment was the behaviour of every active case before the
+   * flag existed, so it is an opt-OUT: untick to exempt this case.
+   */
+  affectsSalaryIncrement?: boolean;
   /** HC222 — who raised the case (null = HR/system). */
   raisedByEmployeeId?: string;
   raisedByName?: string;

@@ -118,6 +118,11 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.IGetAllAnnualLeaves, Features.Core.Leaves.GetAllAnnualLeaves>();
             services.AddScoped<Features.Core.Leaves.IGetMyAnnualLeaveBalance, Features.Core.Leaves.GetMyAnnualLeaveBalance>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.AnnualLeaveWorkflowHandler>();
+            // Return-from-leave confirmation: on-time settles directly, early/late route back for approval.
+            services.AddScoped<Features.Core.Leaves.IConfirmAnnualLeaveReturn, Features.Core.Leaves.ConfirmAnnualLeaveReturn>();
+            services.AddScoped<Features.Core.Leaves.IPreviewAnnualLeaveReturn, Features.Core.Leaves.PreviewAnnualLeaveReturn>();
+            services.AddScoped<Features.Core.Leaves.IGetAnnualLeaveHistory, Features.Core.Leaves.GetAnnualLeaveHistory>();
+            services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.AnnualLeaveReturnWorkflowHandler>();
             // Other (non-annual) leave: static position-based, gender-aware entitlements per fiscal year
             services.AddScoped<Features.Core.Leaves.ISaveOtherLeaveSetting, Features.Core.Leaves.SaveOtherLeaveSetting>();
             services.AddScoped<Features.Core.Leaves.IDeleteOtherLeaveSetting, Features.Core.Leaves.DeleteOtherLeaveSetting>();

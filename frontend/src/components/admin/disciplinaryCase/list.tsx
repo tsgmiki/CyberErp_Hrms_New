@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Trash2, Ban, Award } from "lucide-react";
+import { Pencil, Trash2, Ban, Award, TrendingUp } from "lucide-react";
 import { getAllDisciplinaryCases } from "@/services/admin/disciplinaryCase";
 import { deleteDisciplinaryMeasure } from "@/services/admin/employee/personnelActions";
 import type { DisciplinaryMeasureModel } from "@/models";
@@ -67,6 +67,13 @@ function DisciplinaryCaseList({ editHandler }: Props) {
               {r.affectsReward && (
                 <span title={t("Blocks reward") ?? ""} className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">
                   <Award size={10} className="inline" /> {t("Reward")}
+                </span>
+              )}
+              {/* `!== false`, since this one defaults to blocking — a record from before the flag
+                  existed has no value and still blocks. */}
+              {r.affectsSalaryIncrement !== false && (
+                <span title={t("Blocks salary increment") ?? ""} className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">
+                  <TrendingUp size={10} className="inline" /> {t("Increment")}
                 </span>
               )}
             </span>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Printer } from "lucide-react";
+import { Printer, History, Undo2 } from "lucide-react";
 import getAllAnnualLeave from "@/services/admin/annualLeave/getAll";
 import cancelAnnualLeave from "@/services/admin/annualLeave/cancel";
 import type { AnnualLeaveModel } from "@/models";
@@ -11,6 +11,8 @@ import { EntityListShell, useEntityList } from "@/template";
 import { leaveStatusOptions, leaveStatusTone } from "@/constants/leave";
 import { confirm } from "@/components/common/dialog";
 import GenerateAnnualLeaveModal from "./generateAnnualLeaveModal";
+import AnnualLeaveHistoryModal from "./historyModal";
+import ConfirmReturnModal from "./confirmReturnModal";
 
 interface Props {
   editHandler: (id: string) => void;
@@ -36,6 +38,8 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState("");
   const [printFor, setPrintFor] = useState<AnnualLeaveModel | null>(null);
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [returnFor, setReturnFor] = useState<AnnualLeaveModel | null>(null);
   const scoped = !!employeeId;
 
   // Same base key for global and per-employee lists; the employeeId in `param` differentiates the
@@ -96,7 +100,21 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
               { name: "fiscalYearName", label: "Fiscal Year", render: (_t: unknown, r: AnnualLeaveModel) => r.fiscalYearName || "—" },
             ]),
         { name: "period", label: "Period", render: (_t: unknown, r: AnnualLeaveModel) => periodSummary(r) },
-        { name: "totalLeaveDays", label: "Days", render: (_t: unknown, r: AnnualLeaveModel) => String(r.totalLeaveDays ?? "") },
+        {
+          name: "totalLeaveDays",
+          label: "Days",
+          // Once a return is settled the approved and actual figures differ, and the difference is the
+          // whole point — showing only one of them hides what the adjustment did.
+          render: (_t: unknown, r: AnnualLeaveModel) =>
+            r.actualLeaveDays != null && r.actualLeaveDays !== r.totalLeaveDays ? (
+              <span className="tabular-nums">
+                <span className="text-muted line-through">{r.totalLeaveDays}</span>{" "}
+                <span className="font-semibold">{r.actualLeaveDays}</span>
+              </span>
+            ) : (
+              <span className="tabular-nums">{r.totalLeaveDays ?? ""}</span>
+            ),
+        },
         {
           name: "status",
           label: "Status",
@@ -111,6 +129,26 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
           label: "Action",
           render: (_t: unknown, r: AnnualLeaveModel) => (
             <div className="flex items-center gap-1.5">
+              {/* Available on every row and every status: an approver deciding on an adjustment needs
+                  the whole lifecycle, and an employee wants to see where their request got to. */}
+              <button
+                type="button"
+                onClick={() => r.id && setHistoryFor(r.id)}
+                title="Full request history"
+                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+              >
+                <History size={13} /> History
+              </button>
+              {r.canConfirmReturn && (
+                <button
+                  type="button"
+                  onClick={() => setReturnFor(r)}
+                  title="Confirm your return from this leave"
+                  className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+                >
+                  <Undo2 size={13} /> Confirm return
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setPrintFor(r)}
@@ -150,6 +188,14 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
         </select>
       </div>
       <EntityListShell listKey="annualLeaves" listLabel="Annual Leave Requests" columns={columns} {...list} />
+
+      {historyFor && (
+        <AnnualLeaveHistoryModal annualLeaveId={historyFor} onClose={() => setHistoryFor(null)} />
+      )}
+
+      {returnFor && (
+        <ConfirmReturnModal request={returnFor} onClose={() => setReturnFor(null)} />
+      )}
 
       {printFor?.id && (
         <GenerateAnnualLeaveModal

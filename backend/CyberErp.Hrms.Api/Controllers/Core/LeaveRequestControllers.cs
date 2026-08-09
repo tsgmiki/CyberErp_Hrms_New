@@ -36,7 +36,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ICancelAnnualLeave cancelHandler,
         IGetAnnualLeaveById getByIdHandler,
         IGetAllAnnualLeaves getAllHandler,
-        IGetMyAnnualLeaveBalance myBalanceHandler) : BaseController
+        IGetMyAnnualLeaveBalance myBalanceHandler,
+        IConfirmAnnualLeaveReturn confirmReturnHandler,
+        IPreviewAnnualLeaveReturn previewReturnHandler,
+        IGetAnnualLeaveHistory historyHandler) : BaseController
     {
         /// <summary>The signed-in employee's annual-leave balances across ALL active fiscal years (dashboard widget).</summary>
         [HttpGet("my-balance")]
@@ -53,6 +56,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         [HttpGet("{id:guid}")]
         public Task<AnnualLeaveHeaderDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
+
+        /// <summary>The full lifecycle — request, approvals, return, adjustment — for the history popup.</summary>
+        [HttpGet("{id:guid}/history")]
+        public Task<AnnualLeaveHistoryDto> History(Guid id) => historyHandler.GetAsync(id);
+
+        /// <summary>What confirming this return date would do, without committing to it.</summary>
+        [HttpGet("{id:guid}/return-preview")]
+        public Task<AnnualLeaveReturnPreviewDto> PreviewReturn(Guid id, [FromQuery] DateTime actualEndDate)
+            => previewReturnHandler.PreviewAsync(id, actualEndDate);
+
+        /// <summary>Employee confirms they are back. On time settles; early/late go for approval.</summary>
+        [HttpPost("confirm-return")]
+        public Task<AnnualLeaveReturnResultDto> ConfirmReturn([FromBody] ConfirmAnnualLeaveReturnDto dto)
+            => confirmReturnHandler.ConfirmAsync(dto);
 
         [HttpPost]
         public Task<Guid> Create([FromBody] SaveAnnualLeaveDto dto) => submitHandler.SubmitAsync(dto);
