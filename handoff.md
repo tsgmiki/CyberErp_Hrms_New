@@ -8,17 +8,17 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-5`** (branched off `main` at `2243cc0`, 2026-08-08) —
-  carries the salary-increment work (00DR–00DW): eligibility rules, the Increment Rules screen,
-  the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
-  Approve/Apply button fixes. **PR #7 is open against `main`.**
+- **CURRENT BRANCH: `feature/hrms-buildout-6`** (branched off `main` at `6150894`, 2026-08-09) —
+  empty so far; the next batch of work starts here.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
-  performance score bands, detail-as-grid, and the route state-loss fix, and **PR #6** the
-  module-schema rename. The `feature/hrms-buildout`, `-2`, `-3` and `-4` branches were deleted after
-  merging — historical references to them below are accurate for their date, but those branches no
-  longer exist.
+  performance score bands, detail-as-grid, and the route state-loss fix, **PR #6** the module-schema
+  rename, and **PR #7** the salary-increment work (00DR–00DW: eligibility rules, the Increment Rules
+  screen, the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
+  Approve/Apply button fixes). The `feature/hrms-buildout`, `-2`, `-3`, `-4` and `-5` branches were
+  deleted after merging — historical references to them below are accurate for their date, but those
+  branches no longer exist.
 - ⚠️ **The module-schema rename IS APPLIED to CERP** (PR #6 + Home `8ee69da`). Tables are
   `Hrms.X` / `Core.X` with no prefixes; procedures are `Hrms.Report_X`. **Both apps must be deployed
   together** — a stale binary on either side throws `Invalid object name 'dbo.hrmsX'`. Any OTHER
