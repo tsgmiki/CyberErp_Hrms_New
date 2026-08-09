@@ -94,6 +94,25 @@
 
 ## 1. Most recent changes (latest first)
 
+00DY. **`AffectsSalaryIncrement` flag on disciplinary measures (2026-08-09, HRMS full stack).**
+    Per-case control over the increment block, which until now was all-or-nothing per tenant.
+    - ⚠️ **Defaults to TRUE, unlike `AffectsPromotion` / `AffectsReward`.** Those are opt-in because
+      blocking a promotion is an extra sanction; withholding an increment was already what EVERY
+      active case did, so defaulting it off would have quietly started paying people mid-discipline
+      the moment the column shipped. It is an opt-OUT, and the migration backfills existing rows to
+      `true` (verified: all 3 live cases still block).
+    - The three flags are independent — proved live: one case blocking promotion + reward while the
+      increment is paid in full.
+    - **Frontend trap worth remembering:** the employee-profile Discipline tab submits via
+      `new FormData(form)`, where an **unchecked checkbox is omitted entirely**, and
+      `createSaveService`'s `booleanFields` only converts keys that are PRESENT — so an absent key
+      falls through to the DTO default. Harmless for the opt-in flags, but it would have made this one
+      impossible to untick. Fixed with an explicit `fd.set(...)`; verified by unticking in the tab and
+      confirming `false` reached the database.
+    - Rendered `!== false` everywhere, so a record saved before the column existed still reads as
+      blocking.
+    - Mutation-checked: flipping the default to match the siblings fails a test.
+
 00DX. **`Retired` employees excluded from salary revisions too (2026-08-09, HRMS backend only).**
     Follow-up to 00DV, which excluded only `Terminated` because that is what was asked.
     - `Retired` needs its OWN check: unlike termination it has no `IsRetired` flag behind it, only the
@@ -1744,8 +1763,7 @@
 
 - **Salary increment — open questions raised to the user (2026-08-09):**
   - ~~`Retired` employees are still included~~ — **DONE**, they are excluded too (00DX).
-  - **`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`** — today ANY active case blocks an
-    increment; a per-measure opt-in (like `AffectsPromotion`/`AffectsReward`) would give HR control.
+  - ~~`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`~~ — **DONE** (00DY), as an opt-OUT.
   - **If `JobGrade` ever gains an explicit level/sort field**, revisit ceiling promotion: it currently
     orders grades by PAY because no such field exists (see 00DU).
   - `InventoryLayout` renders a **Settings gear on every module** wired to `onSetting?.()`, which no

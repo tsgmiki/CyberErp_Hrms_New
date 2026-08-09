@@ -2,7 +2,7 @@
 import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save, ShieldAlert, Ban, Award } from "lucide-react";
+import { Save, ShieldAlert, Ban, Award, TrendingUp } from "lucide-react";
 import type { DisciplinaryMeasureModel } from "@/models";
 import { getDisciplinaryCase, saveDisciplinaryCase } from "@/services/admin/disciplinaryCase";
 import EmployeePicker from "@/components/common/employeePicker";
@@ -13,7 +13,11 @@ import { measureTypeOptions, disciplinaryStatusOptions } from "@/constants/orgSt
 const INPUT = "w-full rounded-md border border-border bg-card px-2.5 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none disabled:opacity-60";
 const LABEL = "block text-xs font-medium text-muted mb-1";
 
-const NEW_DEFAULTS: DisciplinaryMeasureModel = { measureType: "VerbalWarning", status: "Open" };
+// affectsSalaryIncrement starts TRUE: it is an opt-OUT (see the model), so a new case blocks an
+// increment unless HR unticks it.
+const NEW_DEFAULTS: DisciplinaryMeasureModel = {
+  measureType: "VerbalWarning", status: "Open", affectsSalaryIncrement: true,
+};
 
 function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) => void }) {
   const { t } = useTranslation();
@@ -66,6 +70,8 @@ function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) =
       validUntil: meta.validUntil || undefined,
       affectsPromotion: !!meta.affectsPromotion,
       affectsReward: !!meta.affectsReward,
+      // `!== false`, not `!!`: a record loaded before this field existed must still count as blocking.
+      affectsSalaryIncrement: meta.affectsSalaryIncrement !== false,
     });
     setFormState(result);
     setIsSaving(false);
@@ -166,6 +172,13 @@ function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) =
               <input type="checkbox" disabled={!editable} checked={!!meta.affectsReward}
                 onChange={(e) => set("affectsReward", e.target.checked)} className="h-4 w-4 rounded border-border" />
               <span className="inline-flex items-center gap-1"><Award size={13} className="text-error" /> {t("Blocks reward")}</span>
+            </label>
+            {/* Opt-OUT, so it renders checked unless explicitly false — including for records saved
+                before the field existed. */}
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input type="checkbox" disabled={!editable} checked={meta.affectsSalaryIncrement !== false}
+                onChange={(e) => set("affectsSalaryIncrement", e.target.checked)} className="h-4 w-4 rounded border-border" />
+              <span className="inline-flex items-center gap-1"><TrendingUp size={13} className="text-error" /> {t("Blocks salary increment")}</span>
             </label>
           </div>
         </div>

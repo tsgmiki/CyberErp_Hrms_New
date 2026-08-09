@@ -49,6 +49,7 @@ const COLUMNS: ChildColumn<DisciplinaryMeasureModel>[] = [
         <span className="text-xs text-muted">{v ? `until ${fmtDate(v)}` : "open-ended"}</span>
         {r.affectsPromotion && <span className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">Promo</span>}
         {r.affectsReward && <span className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">Reward</span>}
+        {r.affectsSalaryIncrement !== false && <span className="rounded bg-error/10 px-1 py-0.5 text-[10px] font-semibold text-error">Increment</span>}
       </span>
     ),
   },
@@ -89,7 +90,7 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
             effectiveDate: fmtDate(record.effectiveDate),
             validUntil: fmtDate(record.validUntil),
           }
-        : { measureType: "VerbalWarning", status: "Open" },
+        : { measureType: "VerbalWarning", status: "Open", affectsSalaryIncrement: true },
     );
     customFields.hydrate(record?.customFields);
     setFormState({});
@@ -111,6 +112,11 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
   const submitHandler = async (e: any) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    // An UNCHECKED checkbox is omitted from FormData entirely, and `booleanFields` only converts keys
+    // that are present — so an absent key falls through to the DTO default. That is fine for the two
+    // opt-in flags (absent = false = their default), but affectsSalaryIncrement defaults to TRUE, so
+    // unticking it would silently save as still-blocking. Send it explicitly.
+    fd.set("affectsSalaryIncrement", formData.affectsSalaryIncrement !== false ? "true" : "false");
     setIsSaving(true);
     const result = await saveDisciplinaryMeasure(fd);
     setFormState(result);
@@ -178,6 +184,10 @@ function DisciplineSection({ employeeId }: { employeeId: string }) {
               {
                 name: "affectsPromotion", label: "Blocks promotion", type: "checkbox",
                 value: formData.affectsPromotion ? "true" : "", onChange: checkHandler,
+              },
+              {
+                name: "affectsSalaryIncrement", label: "Blocks salary increment", type: "checkbox",
+                value: formData.affectsSalaryIncrement !== false ? "true" : "", onChange: checkHandler,
               },
               {
                 name: "affectsReward", label: "Blocks reward", type: "checkbox",

@@ -117,6 +117,17 @@ public class IncrementEligibilityTests
     }
 
     [Fact]
+    public void A_case_flagged_not_to_affect_increments_never_reaches_the_evaluator()
+    {
+        // AffectsSalaryIncrement is applied in the FACTORY's query, not here: an exempted case simply
+        // does not put the employee in the blocked set. This pins that contract — the evaluator's job
+        // is only to honour the set it is given.
+        var e = Build(0);                                   // nobody blocked
+
+        Assert.True(e.Evaluate(Alice, Effective.AddYears(-5), Effective).IsEligible);
+    }
+
+    [Fact]
     public void The_disciplinary_rule_can_be_switched_off_by_policy()
     {
         var v = Build(0, excludeDisciplinary: false, blocked: Alice)

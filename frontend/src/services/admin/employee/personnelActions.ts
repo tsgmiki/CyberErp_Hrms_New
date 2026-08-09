@@ -43,6 +43,6 @@ export const getDisciplinaryMeasures = (employeeId: string) =>
   api.get<DisciplinaryMeasureModel[]>(`DisciplinaryMeasure?employeeId=${employeeId}`);
 export const saveDisciplinaryMeasure = createSaveService("DisciplinaryMeasure", DisciplinaryMeasureSchema, {
   customFields: true,
-  booleanFields: ["affectsPromotion", "affectsReward"],
+  booleanFields: ["affectsPromotion", "affectsReward", "affectsSalaryIncrement"],
 });
 export const deleteDisciplinaryMeasure = createDeleteService("DisciplinaryMeasure");

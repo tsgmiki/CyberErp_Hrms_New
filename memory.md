@@ -130,6 +130,9 @@ one active row, edited on **Compensation → Increment Rules** (`/salaryIncremen
 permission). Four rules: minimum service months, active-disciplinary exclusion, first-year proration,
 and grade-ceiling promotion. See `logic.md` §9.1–9.4. Three things worth carrying forward:
 - **Excluded employees get no LINE, not a zero line** — `Apply` walks the lines, so a line pays.
+- **`DisciplinaryMeasure.AffectsSalaryIncrement` defaults TRUE** (opt-OUT), unlike the opt-in
+  `AffectsPromotion`/`AffectsReward` — the increment block predates the flag, so defaulting it off
+  would have silently started paying people mid-discipline. All three flags are independent.
 - **Proration scales the increase, never the salary**, so it means the same on every basis.
 - **Promotion sequences grades BY PAY**, because `JobGrade` has no level field and grade codes do not
   track pay in live data — code order would promote people into a pay cut. Revisit if a level is added.

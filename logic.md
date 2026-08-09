@@ -1043,7 +1043,7 @@ disciplinary exclusion ON, promotion OFF.
 | Rule | Field | Behaviour |
 |---|---|---|
 | Minimum service | `MinimumServiceMonths` (0–60) | Excluded below the gate. **Completed months**, so a 3-month gate means the same regardless of month lengths. No hire date ⇒ excluded, not assumed eligible. |
-| Active disciplinary | `ExcludeActiveDisciplinary` | Excluded when a non-cancelled, unexpired `DisciplinaryMeasure` exists. **ANY active case** — deliberately broader than `IDisciplinaryEligibilityService`, whose promotion/reward block is opt-in per measure. |
+| Active disciplinary | `ExcludeActiveDisciplinary` | Excluded when a non-cancelled, unexpired `DisciplinaryMeasure` **flagged `AffectsSalaryIncrement`** exists. Two levels: the policy decides whether cases count at all, the flag decides which ones. |
 | First-year proration | `ProrateFirstYear` | Under 12 months earns `monthsWorked/12` of the **increase**, not of the salary — so it means the same on every basis and can never cut pay. |
 | Ceiling promotion | `PromoteOnGradeCeiling` | See 9.3. Defaults OFF: it changes an employee's GRADE, not just their pay. |
 
@@ -1057,6 +1057,20 @@ decision nobody made. An HR override (`SetProposed`) clears those, plus any prom
 
 The policy + the disciplinary block set are loaded **once per run** (`ISalaryIncrementEligibilityFactory`),
 one `Distinct()` query for the whole population — same batching contract as the ladder and the awards.
+
+**`DisciplinaryMeasure.AffectsSalaryIncrement` defaults to TRUE**, unlike its siblings
+`AffectsPromotion` / `AffectsReward`, which are opt-in. Blocking a promotion or a reward is an extra
+sanction someone chooses to apply; withholding an increment was already the behaviour of every active
+case before the flag existed, so defaulting it off would have quietly started paying people
+mid-discipline the moment the column shipped. It is therefore an **opt-OUT** — HR unticks it to exempt
+a case — and the migration backfills every existing row to `true`. The three flags are independent: a
+case can block promotion and reward while still allowing an increment, and vice versa.
+
+⚠️ **Frontend trap.** The employee-profile Discipline tab submits with `new FormData(form)`, and an
+**unchecked checkbox is omitted from FormData entirely**; `createSaveService`'s `booleanFields` only
+converts keys that are PRESENT, so an absent key falls through to the DTO default. That is harmless
+for the two opt-in flags (absent = false = their default) but would make `AffectsSalaryIncrement`
+impossible to untick. The handler therefore sets it explicitly (`fd.set(...)`) before saving.
 
 ### 9.3 Grade-ceiling promotion (2026-08-09)
 

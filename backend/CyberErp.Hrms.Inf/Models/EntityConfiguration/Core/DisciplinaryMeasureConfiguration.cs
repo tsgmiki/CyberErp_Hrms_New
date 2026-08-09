@@ -19,6 +19,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(d => d.Resolution).HasMaxLength(2000);
             builder.Property(d => d.AffectsPromotion).HasDefaultValue(false);
             builder.Property(d => d.AffectsReward).HasDefaultValue(false);
+            // TRUE, so the migration backfills every existing case to "still blocks an increment" —
+            // that was the behaviour before this column existed, and defaulting it false would have
+            // silently started paying people mid-discipline on deploy. See the entity for why this
+            // one is opt-OUT while its two siblings are opt-in.
+            builder.Property(d => d.AffectsSalaryIncrement).HasDefaultValue(true);
 
             builder.HasOne<Employee>()
                 .WithMany()
