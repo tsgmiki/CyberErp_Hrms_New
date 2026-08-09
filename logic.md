@@ -1021,12 +1021,13 @@ Two filters run BEFORE any amount is computed, and both matter because a leaver 
 salary on the record — nothing in the pay data marks them as gone.
 
 1. **Still employed.** `SalaryRevisionShared.StillEmployed` =
-   `!IsTerminated && EmploymentStatus != Terminated`, checking BOTH fields because they are set
-   independently and can disagree (the same pair the employee list, options and workforce analytics
-   test). Applied in `TargetsAsync` **and again in `ApplySalaryRevision`** — a revision is planned,
+   `!IsTerminated && EmploymentStatus != Terminated && EmploymentStatus != Retired`.
+   `IsTerminated` and the status are both checked because they are set independently and can disagree
+   (the same pair the employee list, options and workforce analytics test); **`Retired` needs its own
+   check** because there is no `IsRetired` flag behind it, and a retiree has left just as surely as a
+   leaver. Applied in `TargetsAsync` **and again in `ApplySalaryRevision`** — a revision is planned,
    approved and applied over days or weeks, so anyone who leaves inside that window would otherwise be
-   paid a raise on their way out. `Retired` is deliberately NOT excluded (a separate status, no live
-   rows, never asked for).
+   paid a raise on their way out.
 2. **Positive base salary** (`Salary ?? ScaleSalary`), unchanged.
 
 ### 9.2 Increment eligibility policy (`Hrms.SalaryIncrementPolicy`, 2026-08-09)

@@ -94,6 +94,16 @@
 
 ## 1. Most recent changes (latest first)
 
+00DX. **`Retired` employees excluded from salary revisions too (2026-08-09, HRMS backend only).**
+    Follow-up to 00DV, which excluded only `Terminated` because that is what was asked.
+    - `Retired` needs its OWN check: unlike termination it has no `IsRetired` flag behind it, only the
+      status. `StillEmployed` is now
+      `!IsTerminated && status != Terminated && status != Retired`.
+    - Still included: **Active, Probation, OnLeave, Suspended** — none of those stop pay.
+    - Verified live with `IsTerminated` left FALSE, so only the new status check could exclude:
+      simulation 0 employees, saved plan 0 lines, and apply-after-retirement left pay untouched
+      (`"… 1 skipped as gone or terminated"`). Mutation-checked: dropping the clause fails one test.
+
 00DW. **Approve button survived submission; Apply navigated away instead of refreshing (2026-08-09,
     HRMS full stack).** Two reported grid problems, one of which hid a dead button.
     - **Approve after Submit.** `SubmitSalaryRevision` starts a workflow when a definition exists, and
@@ -1733,8 +1743,7 @@
 ## 2. Outstanding tasks / backlog
 
 - **Salary increment — open questions raised to the user (2026-08-09):**
-  - **`Retired` employees are still included** in a revision (only `Terminated` is excluded, as asked).
-    One word in `SalaryRevisionShared.StillEmployed` if they should go too.
+  - ~~`Retired` employees are still included~~ — **DONE**, they are excluded too (00DX).
   - **`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`** — today ANY active case blocks an
     increment; a per-measure opt-in (like `AffectsPromotion`/`AffectsReward`) would give HR control.
   - **If `JobGrade` ever gains an explicit level/sort field**, revisit ceiling promotion: it currently

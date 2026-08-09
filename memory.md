@@ -133,8 +133,9 @@ and grade-ceiling promotion. See `logic.md` §9.1–9.4. Three things worth carr
 - **Proration scales the increase, never the salary**, so it means the same on every basis.
 - **Promotion sequences grades BY PAY**, because `JobGrade` has no level field and grade codes do not
   track pay in live data — code order would promote people into a pay cut. Revisit if a level is added.
-Terminated employees are excluded both when the population is built AND again at apply time, since a
-revision spans days or weeks. `Retired` is deliberately still included.
+Terminated **and retired** employees are excluded both when the population is built AND again at apply
+time, since a revision spans days or weeks. `Retired` needs its own check — there is no `IsRetired`
+flag, only the status. Active/Probation/OnLeave/Suspended stay in: none of those stop pay.
 
 **Detail views are pages, not popups.** Salary Revision set the pattern: selecting a row navigates to
 `/x/{guid}` and swaps the page to a full `EntityListShell` grid with the shell's standard Back arrow.

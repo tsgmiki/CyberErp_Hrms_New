@@ -232,13 +232,19 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         /// <summary>
         /// Still on the payroll, so still due a pay revision.
         ///
-        /// <para>Both fields are checked because they are set independently and can disagree — the same
-        /// pair every other feature tests (employee list, options, workforce analytics). Held as an
-        /// expression so EF translates it into the SQL rather than filtering after the fact, and so it
-        /// can be exercised directly by tests.</para>
+        /// <para><c>IsTerminated</c> AND the status are both checked because they are set independently
+        /// and can disagree — the same pair every other feature tests (employee list, options,
+        /// workforce analytics). <c>Retired</c> is excluded on top of that: it is a separate status
+        /// with no <c>IsRetired</c> flag behind it, and a retiree has left just as surely as a leaver,
+        /// so an automatic increment would be wrong for the same reason.</para>
+        ///
+        /// <para>Held as an expression so EF translates it into the SQL rather than filtering after the
+        /// fact, and so it can be exercised directly by tests.</para>
         /// </summary>
         internal static readonly System.Linq.Expressions.Expression<Func<Employee, bool>> StillEmployed =
-            e => !e.IsTerminated && e.EmploymentStatus != EmploymentStatus.Terminated;
+            e => !e.IsTerminated
+                 && e.EmploymentStatus != EmploymentStatus.Terminated
+                 && e.EmploymentStatus != EmploymentStatus.Retired;
 
         /// <summary>
         /// Resolves the targeted employees (with a positive base salary), filtered by grade/unit.
