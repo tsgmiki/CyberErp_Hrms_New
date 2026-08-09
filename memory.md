@@ -130,6 +130,9 @@ one active row, edited on **Compensation → Increment Rules** (`/salaryIncremen
 permission). Four rules: minimum service months, active-disciplinary exclusion, first-year proration,
 and grade-ceiling promotion. See `logic.md` §9.1–9.4. Three things worth carrying forward:
 - **Excluded employees get no LINE, not a zero line** — `Apply` walks the lines, so a line pays.
+- **The Home portal keeps its OWN copy of the disciplinary/leave screens** that post to the HRMS API
+  (`Home/frontend/src/components/admin/...`). A change to one of those HRMS screens is only half done
+  until the Home mirror is updated — that is how `AffectsSalaryIncrement` shipped incomplete.
 - **`DisciplinaryMeasure.AffectsSalaryIncrement` defaults TRUE** (opt-OUT), unlike the opt-in
   `AffectsPromotion`/`AffectsReward` — the increment block predates the flag, so defaulting it off
   would have silently started paying people mid-discipline. All three flags are independent.

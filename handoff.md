@@ -112,6 +112,13 @@
     - Rendered `!== false` everywhere, so a record saved before the column existed still reads as
       blocking.
     - Mutation-checked: flipping the default to match the siblings fails a test.
+    - **FOLLOW-UP (same day): the Home portal has its OWN copy of this form** and was missed —
+      `Home/frontend/src/components/admin/disciplinaryCase/{form,list}.tsx` posts to the HRMS API, so
+      cases raised there still blocked (the DTO default) but could not be exempted, and the list showed
+      no impact. Mirrored there in Home `1f6bcc0`. **Any future change to a disciplinary/leave/workflow
+      screen must check the Home mirror** — the portal reuses these HRMS-facing modules wholesale.
+      Note Home keeps this module on a FLAT route (no `:id`), so its form is reached via the list.
+      Verified end-to-end: unticked in the portal → persisted false → HRMS paid the increment in full.
 
 00DX. **`Retired` employees excluded from salary revisions too (2026-08-09, HRMS backend only).**
     Follow-up to 00DV, which excluded only `Terminated` because that is what was asked.

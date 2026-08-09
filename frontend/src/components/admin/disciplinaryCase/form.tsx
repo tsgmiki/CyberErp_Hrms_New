@@ -148,13 +148,15 @@ function DisciplinaryCaseForm({ id, setId }: { id: string; setId: (id: string) =
         </div>
       </div>
 
-      {/* HC223/HC225 — lifetime + opt-in eligibility impact */}
+      {/* HC223/HC225 — lifetime + eligibility impact. Promotion and reward are opt-IN; the salary
+          increment is opt-OUT (ticked by default), because every active case blocked an increment
+          before that flag existed. */}
       <div className="rounded-lg border border-border bg-card p-4">
         <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold">
           <Ban size={16} className="text-primary" /> {t("Lifetime & Eligibility Impact")}
         </h3>
         <p className="mb-3 text-xs text-muted">
-          {t("While active (until the lifetime date), a flagged measure blocks the chosen actions. Leave the date blank for an open-ended measure.")}
+          {t("While active (until the lifetime date), a ticked measure blocks the chosen actions. Salary increment is ticked by default — untick it to let this case keep its increment. Leave the date blank for an open-ended measure.")}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>

@@ -1066,6 +1066,12 @@ mid-discipline the moment the column shipped. It is therefore an **opt-OUT** —
 a case — and the migration backfills every existing row to `true`. The three flags are independent: a
 case can block promotion and reward while still allowing an increment, and vice versa.
 
+**Three places edit this flag, in two repos.** HRMS: the standalone Disciplinary Cases screen (JSON
+save) and the employee-profile Discipline tab (FormData — see the trap below). **Home portal:
+`Home/frontend/src/components/admin/disciplinaryCase/` posts to the HRMS API** with its own copy of
+the form and list, so a change here needs the mirror updated or the portal silently sends the DTO
+default. Home keeps this module on a FLAT route (no `:id`), unlike HRMS — reach its form via the list.
+
 ⚠️ **Frontend trap.** The employee-profile Discipline tab submits with `new FormData(form)`, and an
 **unchecked checkbox is omitted from FormData entirely**; `createSaveService`'s `booleanFields` only
 converts keys that are PRESENT, so an absent key falls through to the DTO default. That is harmless
