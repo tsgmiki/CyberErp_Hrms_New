@@ -309,6 +309,9 @@ both is what lets the grid show `5 → 3` and the history compare them.
 `"AnnualLeave.Return"`). Confirming an early/late return without one fails with a message naming the
 process to configure, rather than stranding the request in `ReturnPending` with nothing able to
 approve it — the same stance `SubmitAnnualLeave` takes. On-time returns need no workflow.
+The recommended shape is to MIRROR that tenant's `AnnualLeave` chain (whoever approves the leave
+approves a change to it); where there is no chain to mirror, pick approvers that actually resolve —
+`ImmediateManager` is useless in a tenant whose employees have no manager set.
 
 **History (`GET /AnnualLeave/{id}/history`)** merges three sources into one ordered timeline: the
 request, the workflow action log for BOTH chains (the original approval and the adjustment), and every

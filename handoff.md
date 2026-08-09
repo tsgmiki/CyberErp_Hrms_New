@@ -31,8 +31,15 @@
   `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`, and from this session
   `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`,
   `AddAffectsSalaryIncrement`, `AddAnnualLeaveReturn`).
-  The three new ones are additive (one table + five nullable/defaulted columns) and need
-  `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
+  The five newest are additive (two tables + six nullable/defaulted columns; `AddAnnualLeaveReturn`
+  also widens `AnnualLeaveHeader.Status` 20→30, `Up` widens only so no data loss) and need
+  `dotnet ef database update` anywhere else.
+- **CERP tenant configuration is DONE and is not reproducible from the repo** (see 00EA): all three
+  tenants have an active `AnnualLeave.Return` chain, and Demo Corp now has a full annual-leave setup
+  (leave type + generated 16-day ledger + `AnnualLeave` chain). **A new tenant or a fresh database
+  needs all of that configured by hand** — early/late returns fail with a message naming the process
+  until `AnnualLeave.Return` exists.
+- **A new menu operation `/salaryIncrementPolicy` also
   needs seeding per tenant** (`POST /Module/seed-defaults`, per-CURRENT-tenant) **and then granting** —
   seeding creates the operation but no `RolePermission`, so the screen 403s until an admin grants it
   (verified). **Both tenants in CERP are already done** and need nothing: `aadb4e82` was set up by hand
@@ -97,6 +104,39 @@
 
 ## 1. Most recent changes (latest first)
 
+00EA. **Tenant configuration for return-from-leave, and Demo Corp made usable (2026-08-09,
+    CERP DATA ONLY — no code, nothing to deploy).** All of this is configuration in the live CERP
+    database; recorded here because it is not reproducible from the repo.
+    - **`AnnualLeave.Return` definitions created for all three tenants.** Head Office and WF wf01
+      **mirror their existing `AnnualLeave` chain exactly** (2 and 4 steps respectively) — the user's
+      choice, on the basis that whoever approves the leave approves a change to it. Copied by
+      INSERT…SELECT so approver types and target ids came across verbatim; verified field-by-field,
+      6 steps in / 6 out, zero mismatches. **A hand-typed DisplayName with a wrong ApproverId looks
+      right in the UI and routes nowhere — always copy, never retype.**
+    - **Demo Corp had no leave chain to mirror**, so it got a single `HR Review → Role: HRMS Access`
+      step. `ImmediateManager` was rejected there: the tenant has ONE employee and nobody managerial,
+      so it would never resolve and every adjustment would jam at step 1.
+    - **Demo Corp set up end to end**: it was missing a leave type, a ledger and the `AnnualLeave`
+      workflow (it already had fiscal years, a work week and an annual-leave setting). All three
+      created **through the app's own endpoints**, not by inserting rows — the accrual engine computed
+      the 16-day entitlement from the tenant's own service-year rules rather than a number I picked.
+      `AccrualMethod: Annual` is what makes the engine treat a leave type as THE annual one.
+    - **E2E leftovers cleaned.** Fiscal years RENAMED (`FY 2026/27 (E2E)` → `FY 2026/27`) because they
+      are load-bearing — the active one carries the annual-leave setting and the ledger. 5 inactive
+      workflow definitions and 3 orphan roles DELETED: every one of those definitions had a **dangling
+      approver** (role ids that no longer exist), so they were inactive *and* unusable, and renaming
+      would have made a broken workflow easier to activate by mistake. The delete refused any
+      definition with workflow instances and re-checked every role reference at delete time.
+    - Verified through the UI: 19/19 on the full lifecycle in Demo Corp (submit → approve → early
+      return → approve → Closed, ledger 3 taken / 13 available), then reset to the pristine setup
+      (16 entitled / 0 taken, no requests, both chains active).
+    - ⚠️ **Two TEST bugs worth remembering, both of which made a broken run look green:**
+      (a) asserting status against whole-page text matches the STATUS FILTER DROPDOWN, so a request
+      that was never created still "passed" — scope row assertions to `table tbody tr`;
+      (b) the workflow Approve/Reject actions are ICON buttons carrying `title=`, so
+      `button:has-text("Approve")` clicks the *"Approved" filter tab* instead. Use
+      `button[title="Approve"]`. Both were caught only by querying the DB, not by reading the run.
+
 00DZ. **Return-from-leave confirmation workflow (2026-08-09, HRMS + Home, full stack).**
     An approved annual leave request is no longer finished when the dates pass: the employee confirms
     they are back, and early/late returns route back through approval. Full rules in `logic.md` §3.4.1.
@@ -111,8 +151,8 @@
       inside an overrun is free" and "a half-day row the return lands inside keeps its 0.5".
     - **Adjustments need a NEW workflow definition** — `AnnualLeave.Return`. Without one, confirming an
       early/late return fails with a message naming the process to configure; on-time returns work
-      with no workflow at all. No tenant has this definition yet, so it must be added before the
-      early/late paths can be used.
+      with no workflow at all. **All three CERP tenants now have one (see 00EA)** — a NEW tenant still
+      needs its own.
     - UI in BOTH apps (Home keeps its own copy of these screens): a Confirm-return modal whose day
       count is previewed server-side as the date changes, and a lifecycle History popup on every row.
     - Verified live: early return → approval → ledger `Taken` 5→3, Available 15→17, header `Closed`
