@@ -30,9 +30,15 @@
   `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`).
   The three new ones are additive (one table + five nullable/defaulted columns) and need
   `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
-  needs seeding per tenant** (`POST /Module/seed-defaults`) **and then granting** — seeding creates the
-  operation but no `RolePermission`, so the screen 403s until an admin grants it (verified). Note the
-  seeder is per-CURRENT-tenant: tenant `aadb4e82` still needs its own run.
+  needs seeding per tenant** (`POST /Module/seed-defaults`, per-CURRENT-tenant) **and then granting** —
+  seeding creates the operation but no `RolePermission`, so the screen 403s until an admin grants it
+  (verified). **Both tenants in CERP are already done** and need nothing: `aadb4e82` was set up by hand
+  on 2026-08-09 (operation named **"Salary Increment Policy"**, icon `BadgeDollarSign`, granted to
+  Administrator — which is also where the `lucideIconMap` `BadgeDollarSign` entry came from), and
+  re-running the seeder there returns `{"created":0,"message":"Menu already seeded"}` with all 122
+  seeder links present. The seeder matches operations by `(module, link)` and leaves existing rows
+  untouched, so that hand-made name/icon survives any future re-seed — it differs from the seeder's
+  "Increment Rules" / `SlidersHorizontal` in appearance only.
   The `Step.Ordinal` backfill is an inference
   that should be eyeballed per tenant before production — note the table is now `Core.Step`:
   `SELECT Name, Code, Ordinal FROM Core.Step ORDER BY TenantId, Ordinal;`

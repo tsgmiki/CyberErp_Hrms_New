@@ -1032,7 +1032,9 @@ salary on the record — nothing in the pay data marks them as gone.
 ### 9.2 Increment eligibility policy (`Hrms.SalaryIncrementPolicy`, 2026-08-09)
 
 One active row per tenant (same shape as `WorkWeekConfiguration`); the save endpoint UPSERTS rather
-than stacking competing policies. Screen: **Compensation → Increment Rules** (`/salaryIncrementPolicy`,
+than stacking competing policies. Screen: **Compensation → Increment Rules** (`/salaryIncrementPolicy`
+— menu NAMES are per-tenant data, so the live CERP tenant shows it as "Salary Increment Policy";
+the ROUTE is what identifies it),
 its own menu operation and permission, since deciding who qualifies for a raise is grantable
 separately from planning a revision). Absent a policy the defaults are gate 0, proration ON,
 disciplinary exclusion ON, promotion OFF.
