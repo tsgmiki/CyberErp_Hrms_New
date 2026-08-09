@@ -118,6 +118,21 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    public class SalaryIncrementPolicyConfiguration : IEntityTypeConfiguration<SalaryIncrementPolicy>
+    {
+        public void Configure(EntityTypeBuilder<SalaryIncrementPolicy> builder)
+        {
+            builder.ToTable("SalaryIncrementPolicy", "Hrms");
+
+            builder.HasKey(p => p.Id);
+
+            builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
+
+            // The revision run reads the single active policy for the tenant.
+            builder.HasIndex(p => p.IsActive);
+        }
+    }
+
     public class SalaryRevisionBandConfiguration : IEntityTypeConfiguration<SalaryRevisionBand>
     {
         public void Configure(EntityTypeBuilder<SalaryRevisionBand> builder)
@@ -152,6 +167,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(l => l.CurrentSalary).HasColumnType("decimal(18,2)");
             builder.Property(l => l.ProposedSalary).HasColumnType("decimal(18,2)");
+            // 6 dp because the factor is months/12: a third of a year is 0.333333, and rounding it to
+            // 2 dp would not reproduce the stored salary if anyone recomputed from it.
+            builder.Property(l => l.ProrationFactor).HasColumnType("decimal(9,6)").HasDefaultValue(1m);
+            builder.Property(l => l.Note).HasMaxLength(300);
+            builder.Property(l => l.PromotedToGradeCode).HasMaxLength(50);
 
             builder.HasOne<SalaryRevision>()
                 .WithMany(r => r.Lines)

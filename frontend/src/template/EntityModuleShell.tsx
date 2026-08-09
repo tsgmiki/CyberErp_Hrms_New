@@ -9,7 +9,7 @@ export function EntityModuleShell({
   headerDescription,
   headerIcon,
   showForm,
-  onList,
+  onList = () => {},
   onAdd,
   list,
   form,

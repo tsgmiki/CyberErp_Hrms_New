@@ -4,7 +4,7 @@ import errorMessageParser from "@/components/util/errorMessageParser";
 import isValidJson from "@/components/util/validateJson";
 import type {
   AllowanceTypeModel, EmployeeAllowanceModel, CompensationSummaryModel,
-  SalaryRevisionModel, SalarySimulationModel, SalaryRevisionBandModel,
+  SalaryRevisionModel, SalarySimulationModel, SalaryRevisionBandModel, SalaryIncrementPolicyModel,
   BenefitPlanModel, BenefitEnrollmentModel,
   TaxBracketModel, PayrollDeductionsModel,
   MyCompensationModel, CompensationRequestModel,
@@ -53,6 +53,8 @@ export const simulateSalaryRevision = (body: {
   targetJobGradeId?: string;
   targetOrganizationUnitId?: string;
   targetReviewCycleId?: string;
+  /** Service and disciplinary rules are measured at this date; the API defaults it to today. */
+  effectiveDate?: string;
 }) =>
   api.post<SalarySimulationModel>("SalaryRevision/simulate", body);
 export const saveSalaryRevision = (m: SalaryRevisionModel) => action(m.id ? "PUT" : "POST", "SalaryRevision", m);
@@ -62,6 +64,18 @@ export const submitSalaryRevision = (id: string) => action("POST", `SalaryRevisi
 export const approveSalaryRevision = (id: string) => action("POST", `SalaryRevision/${id}/approve`);
 export const applySalaryRevision = (id: string) => action("POST", `SalaryRevision/${id}/apply`);
 export const deleteSalaryRevision = (id: string) => action("DELETE", `SalaryRevision/${id}`);
+
+/* ---- Increment eligibility rules — a per-tenant singleton, so there is no list or id ---- */
+/**
+ * A tenant with no policy yet is a real, expected state, and the API says so with `204 No Content`.
+ * `api.get` has no JSON content-type to parse there and hands back the empty body as `""`, so it is
+ * normalized to `null` here — otherwise every caller would have to know that a falsy STRING means
+ * "not configured", and React Query would cache an empty string as if it were a record.
+ */
+export const getSalaryIncrementPolicy = async (): Promise<SalaryIncrementPolicyModel | null> =>
+  (await api.get<SalaryIncrementPolicyModel | "">("SalaryIncrementPolicy")) || null;
+export const saveSalaryIncrementPolicy = (m: SalaryIncrementPolicyModel) =>
+  action("PUT", "SalaryIncrementPolicy", m);
 
 /* ---- Benefit plans + enrollment (HC230) ---- */
 export const getAllBenefitPlans = createPagedQuery<BenefitPlanModel>("BenefitPlan");

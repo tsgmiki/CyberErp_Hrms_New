@@ -1014,3 +1014,78 @@ Two deliberate rules:
   problem, unlike an unresolved line.
 
 Covered by `CyberErp.Hrms.Tests/Compensation/PerformanceBandTests.cs` (24 tests).
+
+### 9.1 Who a revision may touch (2026-08-09)
+
+Two filters run BEFORE any amount is computed, and both matter because a leaver keeps their last
+salary on the record — nothing in the pay data marks them as gone.
+
+1. **Still employed.** `SalaryRevisionShared.StillEmployed` =
+   `!IsTerminated && EmploymentStatus != Terminated`, checking BOTH fields because they are set
+   independently and can disagree (the same pair the employee list, options and workforce analytics
+   test). Applied in `TargetsAsync` **and again in `ApplySalaryRevision`** — a revision is planned,
+   approved and applied over days or weeks, so anyone who leaves inside that window would otherwise be
+   paid a raise on their way out. `Retired` is deliberately NOT excluded (a separate status, no live
+   rows, never asked for).
+2. **Positive base salary** (`Salary ?? ScaleSalary`), unchanged.
+
+### 9.2 Increment eligibility policy (`Hrms.SalaryIncrementPolicy`, 2026-08-09)
+
+One active row per tenant (same shape as `WorkWeekConfiguration`); the save endpoint UPSERTS rather
+than stacking competing policies. Screen: **Compensation → Increment Rules** (`/salaryIncrementPolicy`,
+its own menu operation and permission, since deciding who qualifies for a raise is grantable
+separately from planning a revision). Absent a policy the defaults are gate 0, proration ON,
+disciplinary exclusion ON, promotion OFF.
+
+| Rule | Field | Behaviour |
+|---|---|---|
+| Minimum service | `MinimumServiceMonths` (0–60) | Excluded below the gate. **Completed months**, so a 3-month gate means the same regardless of month lengths. No hire date ⇒ excluded, not assumed eligible. |
+| Active disciplinary | `ExcludeActiveDisciplinary` | Excluded when a non-cancelled, unexpired `DisciplinaryMeasure` exists. **ANY active case** — deliberately broader than `IDisciplinaryEligibilityService`, whose promotion/reward block is opt-in per measure. |
+| First-year proration | `ProrateFirstYear` | Under 12 months earns `monthsWorked/12` of the **increase**, not of the salary — so it means the same on every basis and can never cut pay. |
+| Ceiling promotion | `PromoteOnGradeCeiling` | See 9.3. Defaults OFF: it changes an employee's GRADE, not just their pay. |
+
+Rules are measured **at the revision's effective date** (tenure, and whether a case has expired by
+then) — the simulate DTO must send `EffectiveDate` or the API falls back to today.
+
+Excluded employees get **no line at all**, not a zero line: `Apply` walks the lines, so a line would
+have paid them. Prorated lines persist `MonthsOfService` / `ProrationFactor` / `Note`, because the
+figure has already been approved — re-deriving it later against today's policy would describe a
+decision nobody made. An HR override (`SetProposed`) clears those, plus any promotion.
+
+The policy + the disciplinary block set are loaded **once per run** (`ISalaryIncrementEligibilityFactory`),
+one `Distinct()` query for the whole population — same batching contract as the ladder and the awards.
+
+### 9.3 Grade-ceiling promotion (2026-08-09)
+
+With `PromoteOnGradeCeiling`, a step increment that overshoots the top rung moves the employee to the
+next grade instead of stopping at "Capped at the grade ceiling".
+
+- **"Next grade" is resolved BY PAY** — the cheapest grade whose ceiling exceeds theirs. `JobGrade`
+  has no level/sort field, and grade CODE order does not track pay in live data (a tenant has code
+  `001` paying 10,000–12,000 and `002` paying 2,501–5,529), so following codes would promote people
+  into a pay CUT. Ordering by ceiling also skips grades with no scale rows for free.
+- **One step buys the move; the remainder climbs the new ladder** (index-based, so gapped ladders
+  work). A 1-step overshoot lands on the new grade's base.
+- **One grade per revision** — a large overshoot stops at the new grade's ceiling rather than chaining.
+- **A promotion that would not raise pay is refused.** Bands overlap; the engine climbs to a rung that
+  actually pays more, and if none does it caps as before.
+- **A prorated increment cannot buy a grade.** Promoting then scaling the money down would leave the
+  employee on a rung of the new grade while paid below its base.
+- `Apply` writes `PromotedToSalaryScaleId` onto the employee via `ApplyMovement(..., salaryScaleId)` —
+  without that the grade never moves and the same employee is "promoted" again every revision.
+
+`SalaryScaleLadderFactory` therefore loads **every** grade, not just the targeted one; `TargetsAsync`
+has already narrowed the population, so nothing is lost.
+
+### 9.4 Approve is the workflow's, once a workflow exists
+
+`SubmitSalaryRevision` calls `StartIfDefinedAsync`; `ApproveSalaryRevision` then calls
+`EnsureNoRunningAsync`, which **throws 400** while an instance is running. The detail DTO therefore
+carries `AwaitingWorkflow` (`status == PendingApproval && HasRunningAsync`), and the grid hides its
+Approve button on it — the same `AwaitingWorkflow` pattern hiring requests, job offers, requisitions
+and terminations use. With no definition, direct approval remains the intended path and the button
+stays. `Apply` keeps the user on the grid and refetches; `Applied` status is what removes Apply and
+Delete.
+
+Covered by `IncrementEligibilityTests`, `ProratedProposalTests`, `GradeCeilingPromotionTests`,
+`SalaryRevisionLineTests` and `RevisionPopulationTests` (128 tests in total across the suite).

@@ -677,6 +677,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Compensation.ISalaryScaleLadderFactory, Features.Core.Compensation.SalaryScaleLadderFactory>();
             // Performance revisions: one batched appraisal-score read per run (never per employee).
             services.AddScoped<Features.Core.Compensation.IPerformanceAwardResolverFactory, Features.Core.Compensation.PerformanceAwardResolverFactory>();
+            // Tenure gate + active-disciplinary exclusion, batched once per revision run.
+            services.AddScoped<Features.Core.Compensation.ISalaryIncrementEligibilityFactory, Features.Core.Compensation.SalaryIncrementEligibilityFactory>();
+            services.AddScoped<Features.Core.Compensation.IGetSalaryIncrementPolicy, Features.Core.Compensation.GetSalaryIncrementPolicy>();
+            services.AddScoped<Features.Core.Compensation.ISaveSalaryIncrementPolicy, Features.Core.Compensation.SaveSalaryIncrementPolicy>();
             services.AddScoped<Features.Core.Compensation.ISimulateSalaryRevision, Features.Core.Compensation.SimulateSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.ISaveSalaryRevision, Features.Core.Compensation.SaveSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionById, Features.Core.Compensation.GetSalaryRevisionById>();

@@ -115,6 +115,32 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public decimal ProposedSalary { get; set; }
     }
 
+    /// <summary>
+    /// The tenant's increment eligibility rules: minimum service, first-year proration, and the
+    /// active-disciplinary exclusion.
+    /// <para>
+    /// Its own resource rather than a couple of actions hanging off SalaryRevision, because it is its
+    /// own screen with its own permission: deciding WHO qualifies for a raise is a policy decision,
+    /// and it should be grantable separately from planning a revision. Reading is also allowed to
+    /// anyone who can plan a revision, since the planner needs to see the rules their simulation is
+    /// running under.
+    /// </para>
+    /// </summary>
+    [RequirePermission("salaryIncrementPolicy", "salaryRevision")]
+    public class SalaryIncrementPolicyController(
+        IGetSalaryIncrementPolicy getHandler,
+        ISaveSalaryIncrementPolicy saveHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<SalaryIncrementPolicyDto?> Get() => getHandler.GetAsync();
+
+        /// <summary>Changing the rules is gated on the policy screen alone — see the class remarks.</summary>
+        [HttpPut]
+        [RequirePermission("salaryIncrementPolicy")]
+        public async Task<IActionResult> Save([FromBody] SalaryIncrementPolicyDto dto)
+        { var id = await saveHandler.SaveAsync(dto); return Ok(new { id, message = "Saved successfully" }); }
+    }
+
     // §3.10.1 CB3 — benefit plans, enrollment, tax config, deductions preview.
 
     /// <summary>Benefit plan catalogue (HC230): health, life, pension, etc.</summary>

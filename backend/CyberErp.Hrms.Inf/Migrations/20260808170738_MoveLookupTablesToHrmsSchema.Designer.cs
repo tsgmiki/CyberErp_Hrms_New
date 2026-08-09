@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260808170738_MoveLookupTablesToHrmsSchema")]
+    partial class MoveLookupTablesToHrmsSchema
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -9496,60 +9499,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("RolePermission", "Core");
                 });
 
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.SalaryIncrementPolicy", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("ExcludeActiveDisciplinary")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("MinimumServiceMonths")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<bool>("PromoteOnGradeCeiling")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("ProrateFirstYear")
-                        .HasColumnType("bit");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("IsActive");
-
-                    b.ToTable("SalaryIncrementPolicy", "Hrms");
-                });
-
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.SalaryRevision", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9691,27 +9640,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("EmployeeId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int?>("MonthsOfService")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Note")
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("PromotedToGradeCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<Guid?>("PromotedToSalaryScaleId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<decimal>("ProposedSalary")
                         .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("ProrationFactor")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("decimal(9,6)")
-                        .HasDefaultValue(1m);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
