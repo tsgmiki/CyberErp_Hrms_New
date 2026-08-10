@@ -104,6 +104,23 @@
 
 ## 1. Most recent changes (latest first)
 
+00EC. **The REQUESTER could not see their own approved leave (2026-08-10, Home portal only).**
+    Second visibility bug in the same feature: the person who must confirm a return could not reach
+    the action at all.
+    - **The requester's screen is the Home portal → Annual Leave** (`AnnualLeave/mine`, strictly
+      scoped to the signed-in employee). HRMS `/annualLeave` is the HR/admin view.
+    - That grid defaulted its status filter to **Pending**, written when `Approved` was a terminal
+      state. It is not any more — an approved request is waiting for the employee to confirm their
+      return. So the requester opened the screen and saw **"No data available"**. Measured: 0 rows and
+      0 Confirm-return buttons on the default filter, 1 of each on "All statuses".
+    - Defaults to **All statuses** now. Their own list is scoped to them and small; a default that can
+      hide the one row they must act on buys nothing.
+    - **Pattern behind both 00EB and 00EC: adding a state to a lifecycle invalidates assumptions made
+      when the old final state WAS final.** Anything keyed on "Approved means done" — filters,
+      defaults, dashboards, reports — needs re-checking.
+    - Still open (not done): nothing on the Home DASHBOARD prompts "you have leave to confirm". The
+      employee has to visit the Annual Leave screen to discover it.
+
 00EB. **The Confirm-return action was invisible on a normal laptop (2026-08-10, HRMS + Home, FE only).**
     Reported as "I haven't seen anything on the front end" for the return-from-leave feature. The
     implementation was on `main` and working — the ACTION COLUMN was overflowing.
