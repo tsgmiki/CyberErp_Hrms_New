@@ -11,7 +11,13 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
 public class LeaveBalance : BaseEntity, IAggregateRoot, IAuditable
 {
     public Guid EmployeeId { get; private set; }
-    public Guid LeaveTypeId { get; private set; }
+    /// <summary>
+    /// The leave type this balance belongs to, or <c>null</c> for ANNUAL leave. Annual leave is not
+    /// configured as a <see cref="LeaveType"/> at all — its entitlement comes from the per-fiscal-year
+    /// <see cref="AnnualLeaveSetting"/>, so there is no type row to point at. Every other leave kind
+    /// (which is what <see cref="LeaveType"/> exists for) carries its id here.
+    /// </summary>
+    public Guid? LeaveTypeId { get; private set; }
     /// <summary>Balances are kept per fiscal year, not per calendar year.</summary>
     public Guid FiscalYearId { get; private set; }
 
@@ -29,9 +35,11 @@ public class LeaveBalance : BaseEntity, IAggregateRoot, IAuditable
 
     private LeaveBalance() : base() { }
 
-    public static LeaveBalance Create(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal entitled = 0)
+    /// <summary>Pass <paramref name="leaveTypeId"/> = null to open the ANNUAL leave balance.</summary>
+    public static LeaveBalance Create(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal entitled = 0)
     {
         if (employeeId == Guid.Empty) throw new ArgumentException("Employee is required.", nameof(employeeId));
+        // Guid.Empty is never a valid type id — but null IS, and means annual leave.
         if (leaveTypeId == Guid.Empty) throw new ArgumentException("Leave type is required.", nameof(leaveTypeId));
         if (fiscalYearId == Guid.Empty) throw new ArgumentException("Fiscal year is required.", nameof(fiscalYearId));
         return new LeaveBalance

@@ -9,7 +9,8 @@
 ## 0. ⚠️ Repository state — READ FIRST
 
 - **CURRENT BRANCH: `feature/hrms-buildout-7`** (branched off `main` at `5a2e246`, 2026-08-09) —
-  empty so far; the next batch of work starts here.
+  carries the return-from-leave work (PR #9, open), `PositionClass.TitleA`, and from this session the
+  annual-leave/`LeaveType` decoupling and the ledger pagination fix (00EG–00EI).
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
@@ -34,6 +35,17 @@
   The five newest are additive (two tables + six nullable/defaulted columns; `AddAnnualLeaveReturn`
   also widens `AnnualLeaveHeader.Status` 20→30, `Up` widens only so no data loss) and need
   `dotnet ef database update` anywhere else.
+  **Add from this session (00EH):** `AddPositionClassTitleA`, `DecoupleAnnualLeaveFromLeaveType` and
+  `AnnualLeaveSettingAllowHalfDay` — all applied to CERP, all local-only. The decoupling one is NOT
+  purely additive: it makes `LeaveBalance.LeaveTypeId` / `LeaveBalanceTransaction.LeaveTypeId`
+  **nullable** and repoints existing annual rows to NULL. Its `Down` restores non-null with a
+  `Guid.Empty` default, which would NOT recover the original type ids — restore from backup instead
+  of rolling back.
+- ⚠️ **CERP now contains ONLY migrated NVI production data** (00EG): 490 employees under Head Office
+  `aadb4e82`, 125 other tables emptied, 490 accounts with the default password `password`. All prior
+  demo/test data is gone. Restore point `CERP_before-purge-and-retenant-20260810-154842.bak`.
+  **Every `WorkflowDefinition` was purged**, so annual leave (and every other governed process)
+  rejects submissions until the chains are reconfigured.
 - **CERP tenant configuration is DONE and is not reproducible from the repo** (see 00EA): all three
   tenants have an active `AnnualLeave.Return` chain, and Demo Corp now has a full annual-leave setup
   (leave type + generated 16-day ledger + `AnnualLeave` chain). **A new tenant or a fresh database
@@ -103,6 +115,81 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00EI. **Annual Leave Ledger pagination was inert + a system-wide grid audit (2026-08-10, HRMS frontend).**
+    Selecting a page size of 10 or 15 still rendered the whole dataset. Three things combined:
+    `param` was seeded with `take: 1000`, the component passed **every** row as `rows`, and it set
+    `total={rows.length}`. `EntityListShell`'s contract is `rows` = ONE page and `total` = the full
+    count; nothing ever read `param`, so there was neither a refetch nor a slice.
+    - Same root cause made the **search box inert** — `param.searchText` was never read either.
+    - Fixed client-side (filter → `filtered.slice(param.skip, param.skip + param.take)`,
+      `total={filtered.length}`), matching `reportViewer`, `salaryRevision/detail` and
+      `employee/childManager`. The single bulk fetch stays: entitlement is computed across the whole
+      employee set, Calculate acts on all of it, and the header's generated/total needs the full set.
+      Export still covers the whole filtered ledger, not the visible page; changing setting resets to
+      page 1.
+    - **Audit — this was the ONLY broken grid in either SPA.** 98 of 101 HRMS `EntityListShell` grids
+      (and all 18 in Home) use `useEntityList`, which keys the query on `param` and takes `total` from
+      the server. Of the 3 that hand-roll data, `salaryRevision/detail` and `employee/childManager`
+      slice correctly. Every other `count: rows.length` hit is a `pagination: "None"` sub-table inside
+      a modal/detail pane (loan schedules, beneficiaries, tax brackets, trip lines) — intentional.
+      `operationList.tsx:120` looks similar but is a row count inside a GROUP LABEL, not the total.
+    - Verified against the real 345-row payload: size 15 → 15 rows, size 10 → 10, page 2 differs,
+      last page is a correct partial (5), every row reachable exactly once, search narrows page AND
+      total. ⚠️ **Not confirmed in a browser** — `/annualLeaveLedger` is `CanView=0` for `UserRole`
+      (so `hoadmin` gets `/unauthorized`) and only `admin` / `medhanit` (Administrator) hold it.
+
+00EH. **Annual leave decoupled from `LeaveType` (2026-08-10, HRMS full stack, 2 migrations).**
+    Generating the ledger failed with *"No active leave type uses the Annual accrual method."* The
+    immediate trigger was the purge (00EG) emptying `Hrms.LeaveType`, but the real problem was the
+    coupling: annual leave is driven by `AnnualLeaveSetting`, yet still had to resolve a `LeaveType`
+    row. **See `logic.md` §3.1.1 for the full rule** — annual balances are now `LeaveTypeId IS NULL`.
+    - A second, hidden half: `SubmitAnnualLeave` **hard-required** `ledger.LeaveType` ("The selected
+      ledger has no leave type"). Fixing only the ledger would have left annual leave un-submittable.
+    - `AllowHalfDay` moved onto `AnnualLeaveSetting` (+ form field, + `booleanFields` in the save
+      service — a boolean not listed there posts as a string). Migration backfills per tenant from the
+      old annual type; column defaults **true** (EF generated `false`, which would have silently
+      disabled half-days everywhere).
+    - Migrations: `DecoupleAnnualLeaveFromLeaveType` (nullable columns + repoint existing annual rows
+      to NULL) and `AnnualLeaveSettingAllowHalfDay`. Both applied to CERP.
+    - Verified end-to-end: ledger loads 345 employees, Calculate creates 345 (re-run 0 — idempotent),
+      self-service balance widget returns the annual figure (its old INNER JOIN to `LeaveType` would
+      have silently dropped every annual row), and submit → approve → **18 entitled / 5 taken / 13
+      available** on a single row. The unfiltered unique index genuinely blocks a duplicate annual row
+      (tested with a direct INSERT). Test data removed afterwards.
+    - ⚠️ The purge also removed every `WorkflowDefinition`, so annual leave submission currently fails
+      with "No active approval workflow is configured for Annual Leave" until they are reconfigured.
+
+00EG. **CERPNVI → CERP data migration, full purge, and 490 accounts (2026-08-10, DATA ONLY — no code).**
+    **Not reproducible from this repo** — the scripts lived in a scratchpad. CERP now holds **only NVI
+    production data**, re-tenanted to Head Office `aadb4e82-2075-48ca-a93c-5cdac93a59b2`.
+    - Copied 7 tables from `CERPNVI` (int PKs → Guid PKs via temp map tables): `coreUnit`,
+      `coreJobGrade`, `coreSalaryScale`, `corePositionClass`, `corePosition`, `corePerson`,
+      `hrmsEmployee`. Then emptied **125** other Hrms/Core tables, dropped non-NVI rows from the nine
+      data tables, re-tenanted, and retired the temporary migration tenant.
+    - **Traceability:** every migrated row carries `CreatedBy = 'migrate:CERPNVI:<sourceId>'`; the
+      accounts carry `CreatedBy = 'migrate:CERPNVI'`. That is the only link back to the source.
+    - Final: 490 employees (345 Active + 145 Terminated — the directory API shows 345 because
+      terminated staff live in the Termination List), 1356 persons, 1162 positions, 814 position
+      classes, 121 org units, 38 job grades. Restore point
+      `CERP_before-purge-and-retenant-20260810-154842.bak`.
+    - **Credentials:** username = lowercase `FirstName` + first letter of `FatherName`, non-alphanumerics
+      stripped, numeric suffix on the 17 repeats (`abebed`, `abebed2`). Password for all 490 is
+      `password`.
+    - Two deliberate deviations from the literal instruction: **`Core.Tenant` was preserved** (Finbuckle
+      resolves the tenant per request from it — emptying it locks everyone out), and the 16 kept
+      accounts had `EmployeeId` **set to NULL** where it pointed at a deleted employee, so the FK
+      re-check could pass. The accounts themselves survived.
+    - ⚠️ **Two security findings raised, neither fixed** (see §2):
+      **(a)** `LoginRepository.cs` computes `isHeadOffice = branchId is null || isBranchHeadOffice`.
+      The comment says this is for the "tenant owner / unlinked system account", but it never checks
+      whether the account is linked to an employee — and head office ⇒ `IsAdminAsync` ⇒ HR-admin data
+      scope. Confirmed: signed in as `abaynehh` (a rank-and-file employee with **no role at all**) and
+      `GET /api/v1/Employee` returned all 345 colleagues **including salary, DOB, national ID and
+      pension number**. Per-operation permissions still hold (`/User`, `/Role` → 403); the Employee
+      list is deliberately open for self-service and leans on the visibility scope alone.
+      **(b)** `Encryption.GenerateHash` uses PBKDF2 with an **empty salt**, so all 490 accounts share
+      one identical hash — one cracked hash exposes every account.
 
 00EF. **`Hrms.PositionClass.TitleA` — Amharic title (2026-08-10, HRMS full stack).**
     Follows the existing `*A` convention (`JobGrade.NameA`, `LeaveType.NameA`, `Holiday.NameA`):
@@ -1919,6 +2006,22 @@
 
 ## 2. Outstanding tasks / backlog
 
+- ⚠️ **Security — raised 2026-08-10 (00EG), awaiting a decision. Neither is fixed.**
+  - **A null branch grants head-office (HR-admin) visibility.** `LoginRepository.cs`:
+    `isHeadOffice = branchId is null || isBranchHeadOffice`. Harmless while the only accounts were
+    unlinked staff logins; now 490 employee-linked accounts have no branch (the purge left no
+    branches), so each of them reads the whole employee directory incl. salaries via
+    `GET /api/v1/Employee`. Candidate fix, matching the code's own comment
+    ("tenant owner / unlinked system account"):
+    `branchId is null && user.EmployeeId is null || isBranchHeadOffice` — all 16 kept accounts are
+    `EmployeeId IS NULL`, so they keep head office and only the new accounts change. **Not applied:
+    it changes login behaviour for every tenant.** The alternative is creating branches and assigning
+    employees.
+  - **Empty-salt password hashing.** `Encryption.GenerateHash` =
+    `Rfc2898DeriveBytes(pw, new byte[0], 10000, SHA256)` — deterministic, so all 490 accounts sharing
+    the default password share one hash. Force a change on first login; a per-user salt is the fix.
+  - **The 490 migrated accounts have no role**, so they can sign in but see no menu. Assigning one is
+    an access-control decision that was deliberately left to the user.
 - **Salary increment — open questions raised to the user (2026-08-09):**
   - ~~`Retired` employees are still included~~ — **DONE**, they are excluded too (00DX).
   - ~~`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`~~ — **DONE** (00DY), as an opt-OUT.

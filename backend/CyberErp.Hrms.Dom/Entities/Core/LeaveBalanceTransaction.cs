@@ -24,7 +24,8 @@ public enum LeaveBalanceTransactionType
 public class LeaveBalanceTransaction : BaseEntity, IAggregateRoot
 {
     public Guid EmployeeId { get; private set; }
-    public Guid LeaveTypeId { get; private set; }
+    /// <summary>Null for ANNUAL leave — see <see cref="LeaveBalance.LeaveTypeId"/>.</summary>
+    public Guid? LeaveTypeId { get; private set; }
     public Guid FiscalYearId { get; private set; }
     public LeaveBalanceTransactionType TransactionType { get; private set; }
     /// <summary>Signed change in available days (positive = credit, negative = debit).</summary>
@@ -38,7 +39,7 @@ public class LeaveBalanceTransaction : BaseEntity, IAggregateRoot
     private LeaveBalanceTransaction() : base() { }
 
     public static LeaveBalanceTransaction Create(
-        Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, LeaveBalanceTransactionType type,
+        Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, LeaveBalanceTransactionType type,
         decimal delta, decimal balanceAfter, string? reason, Guid? referenceId)
     {
         return new LeaveBalanceTransaction

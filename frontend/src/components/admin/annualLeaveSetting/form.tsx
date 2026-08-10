@@ -31,6 +31,7 @@ const NEW_DEFAULTS: AnnualLeaveSettingModel = {
   preMilestoneBaseLeaveDays: 14,
   preMilestoneIncrementDays: 1,
   preMilestoneIntervalYears: 1,
+  allowHalfDay: true,
   isActive: true,
 };
 
@@ -131,6 +132,11 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
             num("defaultAnnualEntitlement", "Annual Entitlement (days)"),
             num("carryForwardMaxDays", "Carry-forward Max (days, empty = unlimited)"),
             num("maxConsecutiveDays", "Max Consecutive Days (empty = no cap)"),
+            {
+              name: "allowHalfDay", label: "Allow Half-Day Leave", type: "dropDown", onSelect: selectHandler,
+              value: boolId(formData.allowHalfDay), displayValue: yesNoLabel(formData.allowHalfDay),
+              data: yesNoOptions as never,
+            },
             // Milestone-split (Rule A / B) parameters — only for the service-milestone rule.
             ...(formData.ruleType === "ServiceMilestone"
               ? [

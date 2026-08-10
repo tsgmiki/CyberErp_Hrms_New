@@ -79,6 +79,20 @@ migration + frontend, verified end-to-end against the live DB before moving on.
 
 ## 4. Current application state (as of this doc's last update)
 
+**⚠️ CERP holds ONLY migrated NVI production data (2026-08-10).** The database was reduced to the
+seven tables copied from `CERPNVI` — 490 employees, 1356 persons, 1162 positions, 814 position
+classes, 121 org units, 38 job grades — all re-tenanted to Head Office
+`aadb4e82-2075-48ca-a93c-5cdac93a59b2`. **125 other Hrms/Core tables were emptied**, including every
+`WorkflowDefinition`, so governed processes reject submissions until the chains are reconfigured. All
+490 employees got an account (`FirstName` + father's initial, password `password`). Every migrated row
+carries `CreatedBy = 'migrate:CERPNVI:<sourceId>'` — the only link back to the source. Restore point:
+`CERP_before-purge-and-retenant-20260810-154842.bak`. Full detail + two open security findings in
+`handoff.md` 00EG and §2.
+
+**Annual leave is NOT a `LeaveType` (2026-08-10).** Its policy is the per-fiscal-year
+`AnnualLeaveSetting`; balance rows are identified by `LeaveTypeId IS NULL` and `LeaveType` covers only
+the other leave kinds. See `logic.md` §3.1.1 — that section is the rule, not a summary.
+
 **Table naming (2026-08-08, APPLIED to CERP): every table lives in its MODULE schema.**
 `Hrms.Achievement`, `Core.Module`, `Core.Step`, `Core.Person`, `Core.SalaryScale`, `Core.Notification`
 — the `dbo.hrmsX` / `coreX` / `lupX` prefixes are gone. The 10 unprefixed `Core.*` tables (User, Role,

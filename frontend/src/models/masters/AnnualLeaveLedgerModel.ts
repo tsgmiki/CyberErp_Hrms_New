@@ -21,7 +21,7 @@ export default interface AnnualLeaveLedgerModel {
   fiscalYearName?: string;
   fiscalYearStart: string;
   fiscalYearEnd: string;
-  leaveTypeId: string;
+  /** Fixed label — annual leave is not a configurable leave type. */
   leaveTypeName?: string;
   fiscalYearClosed: boolean;
   totalEmployees: number;

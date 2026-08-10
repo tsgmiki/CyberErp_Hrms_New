@@ -137,22 +137,19 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             // persisted — otherwise a stuck, unapprovable Pending row would be left behind.
             await workflowService.EnsureStartableAsync(WorkflowEntityTypes.AnnualLeave, dto.EmployeeId);
 
-            // The ledger row fixes employee + fiscal year + the annual leave type — that is why the
-            // request carries no LeaveType field.
+            // The ledger row fixes employee + fiscal year — that is why the request carries no
+            // LeaveType field. Annual leave has no leave type at all (see AnnualLeave).
             var ledger = await ledgers.GetAll()
-                .Include(b => b.LeaveType)
                 .Include(b => b.FiscalYear)
                 .FirstOrDefaultAsync(b => b.Id == dto.AnnualLeaveLedgerId)
                 ?? throw new NotFoundException(nameof(LeaveBalance), dto.AnnualLeaveLedgerId.ToString());
 
             if (ledger.EmployeeId != dto.EmployeeId)
                 throw new ValidationException("annualLeaveLedgerId", "The selected ledger does not belong to this employee.");
-            if (ledger.LeaveType is null)
-                throw new ValidationException("annualLeaveLedgerId", "The selected ledger has no leave type.");
-            if (!ledger.LeaveType.IsActive)
-                throw new ValidationException("annualLeaveLedgerId", $"Leave type {ledger.LeaveType.Code} is inactive.");
+            if (ledger.LeaveTypeId is not null)
+                throw new ValidationException("annualLeaveLedgerId",
+                    "The selected ledger is not an annual-leave ledger. Annual leave is charged against the annual balance only.");
 
-            var leaveType = ledger.LeaveType;
             var fyStart = ledger.FiscalYear!.StartDate.ToDateTimeUtc().Date;
             var fyEnd = ledger.FiscalYear.EndDate.ToDateTimeUtc().Date;
 
@@ -184,8 +181,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                         $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} falls outside the ledger's fiscal year ({fyStart:yyyy-MM-dd}–{fyEnd:yyyy-MM-dd}).");
 
                 var halfDay = d.LeaveUsage == AnnualLeaveUsage.HalfDay;
-                if (halfDay && !leaveType.AllowHalfDay)
-                    throw new ValidationException("details", $"Leave type {leaveType.Code} does not allow half-day leave.");
+                // Half-day permission now lives on the fiscal year's annual policy (moved off LeaveType).
+                // No policy row => fall back to allowing it, as the entitlement default does.
+                if (halfDay && setting is { AllowHalfDay: false })
+                    throw new ValidationException("details", "The annual leave policy does not allow half-day leave.");
 
                 decimal leaveDays;
                 try { leaveDays = await calendar.CountWorkingDaysAsync(start, end, halfDay); }
@@ -225,17 +224,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     - (refDate.Day < hire.Day ? 1 : 0));
                 if (serviceMonths < setting.MinExperienceMonths)
                     throw new ValidationException("employeeId",
-                        $"This employee has {serviceMonths} month(s) of service; {setting.MinExperienceMonths} are required for {leaveType.Code}.");
+                        $"This employee has {serviceMonths} month(s) of service; {setting.MinExperienceMonths} are required for annual leave.");
             }
 
-            // Balance check against the ledger.
-            if (leaveType.AccrualMethod != LeaveAccrualMethod.None)
-            {
-                var available = await balanceService.GetAvailableAsync(ledger.EmployeeId, leaveType.Id, ledger.FiscalYearId);
-                if (header.TotalLeaveDays > available)
-                    throw new ValidationException("details",
-                        $"Insufficient {leaveType.Code} balance: requested {header.TotalLeaveDays} day(s) but only {available} available.");
-            }
+            // Balance check against the ledger. Annual leave always accrues, so this is unconditional
+            // (it used to be gated on the leave type's accrual method).
+            var available = await balanceService.GetAvailableAsync(
+                ledger.EmployeeId, ledger.LeaveTypeId, ledger.FiscalYearId);
+            if (header.TotalLeaveDays > available)
+                throw new ValidationException("details",
+                    $"Insufficient annual leave balance: requested {header.TotalLeaveDays} day(s) but only {available} available.");
 
             await repository.AddAsync(header);
             foreach (var d in header.Details)
@@ -372,9 +370,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public Guid FiscalYearId { get; set; }
         public string? FiscalYearName { get; set; }
-        public Guid LeaveTypeId { get; set; }
+        /// <summary>Null on the annual row — annual leave has no leave type.</summary>
+        public Guid? LeaveTypeId { get; set; }
         public string? LeaveTypeName { get; set; }
-        /// <summary>True when the leave type accrues annually — the "annual leave" figure for KPIs.</summary>
+        /// <summary>True for the annual-leave row — the "annual leave" figure for KPIs.</summary>
         public bool IsAnnual { get; set; }
         public decimal Entitled { get; set; }
         public decimal CarriedForward { get; set; }
@@ -434,23 +433,28 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var yearNames = activeYears.ToDictionary(f => f.Id, f => f.Name);
             var yearRank = activeYears.Select((f, i) => (f.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
-            // The employee's balances for all active years in ONE query, joined to the type.
+            // The employee's balances for all active years in ONE query. Deliberately NOT joined to
+            // LeaveType: the annual rows have no type (that is what makes them annual), so an inner
+            // join would drop exactly the figure this widget exists to show.
             var rows = await balances.GetAll()
                 .Where(b => b.EmployeeId == employeeId && yearIds.Contains(b.FiscalYearId))
-                .Join(leaveTypes.GetAll(),
-                    b => b.LeaveTypeId, t => t.Id,
-                    (b, t) => new
-                    {
-                        b.FiscalYearId,
-                        b.LeaveTypeId,
-                        LeaveTypeName = t.Name,
-                        IsAnnual = t.AccrualMethod == LeaveAccrualMethod.Annual,
-                        b.Entitled,
-                        b.CarriedForward,
-                        b.Adjusted,
-                        b.Taken,
-                    })
+                .Select(b => new
+                {
+                    b.FiscalYearId,
+                    b.LeaveTypeId,
+                    b.Entitled,
+                    b.CarriedForward,
+                    b.Adjusted,
+                    b.Taken,
+                })
                 .ToListAsync();
+
+            // Names for the typed (non-annual) rows, resolved in one lookup.
+            var typeIds = rows.Where(r => r.LeaveTypeId.HasValue).Select(r => r.LeaveTypeId!.Value).Distinct().ToList();
+            var typeNames = typeIds.Count == 0
+                ? []
+                : await leaveTypes.GetAll().Where(t => typeIds.Contains(t.Id))
+                    .ToDictionaryAsync(t => t.Id, t => t.Name);
 
             var dto = new MyAnnualLeaveBalancesDto { HasData = true };
             foreach (var r in rows)
@@ -460,8 +464,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     FiscalYearId = r.FiscalYearId,
                     FiscalYearName = yearNames.GetValueOrDefault(r.FiscalYearId),
                     LeaveTypeId = r.LeaveTypeId,
-                    LeaveTypeName = r.LeaveTypeName,
-                    IsAnnual = r.IsAnnual,
+                    LeaveTypeName = r.LeaveTypeId is Guid t ? typeNames.GetValueOrDefault(t) : AnnualLeave.DisplayName,
+                    IsAnnual = r.LeaveTypeId is null,
                     Entitled = r.Entitled,
                     CarriedForward = r.CarriedForward,
                     Adjusted = r.Adjusted,
@@ -470,33 +474,25 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 });
             }
 
-            // Policy-default fallback: an active policy year where the employee has NO annual-type
-            // row yet still shows the implicit opening entitlement.
-            var annualTypes = await leaveTypes.GetAll()
-                .Where(t => t.IsActive && t.AccrualMethod == LeaveAccrualMethod.Annual)
-                .Select(t => new { t.Id, t.Name })
+            // Policy-default fallback: an active policy year where the employee has NO annual row yet
+            // still shows the implicit opening entitlement.
+            var defaultSettings = await settings.GetAll()
+                .Where(s => s.IsActive && yearIds.Contains(s.FiscalYearId) && s.DefaultAnnualEntitlement > 0)
+                .Select(s => new { s.FiscalYearId, s.DefaultAnnualEntitlement })
                 .ToListAsync();
-            if (annualTypes.Count > 0)
+            foreach (var s in defaultSettings.GroupBy(x => x.FiscalYearId).Select(g => g.First()))
             {
-                var defaultSettings = await settings.GetAll()
-                    .Where(s => s.IsActive && yearIds.Contains(s.FiscalYearId) && s.DefaultAnnualEntitlement > 0)
-                    .Select(s => new { s.FiscalYearId, s.DefaultAnnualEntitlement })
-                    .ToListAsync();
-                foreach (var s in defaultSettings.GroupBy(x => x.FiscalYearId).Select(g => g.First()))
+                if (dto.Items.Any(i => i.FiscalYearId == s.FiscalYearId && i.IsAnnual)) continue;
+                dto.Items.Add(new MyAnnualLeaveBalanceItemDto
                 {
-                    if (dto.Items.Any(i => i.FiscalYearId == s.FiscalYearId && i.IsAnnual)) continue;
-                    var annual = annualTypes[0];
-                    dto.Items.Add(new MyAnnualLeaveBalanceItemDto
-                    {
-                        FiscalYearId = s.FiscalYearId,
-                        FiscalYearName = yearNames.GetValueOrDefault(s.FiscalYearId),
-                        LeaveTypeId = annual.Id,
-                        LeaveTypeName = annual.Name,
-                        IsAnnual = true,
-                        Entitled = s.DefaultAnnualEntitlement,
-                        Available = s.DefaultAnnualEntitlement,
-                    });
-                }
+                    FiscalYearId = s.FiscalYearId,
+                    FiscalYearName = yearNames.GetValueOrDefault(s.FiscalYearId),
+                    LeaveTypeId = AnnualLeave.LeaveTypeId,
+                    LeaveTypeName = AnnualLeave.DisplayName,
+                    IsAnnual = true,
+                    Entitled = s.DefaultAnnualEntitlement,
+                    Available = s.DefaultAnnualEntitlement,
+                });
             }
 
             dto.Items = dto.Items

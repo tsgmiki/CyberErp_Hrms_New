@@ -234,8 +234,33 @@ Leave is keyed to **`Core.FiscalYear`** (Ethiopian fiscal calendar), not calenda
 charged to the *open* fiscal year containing its **start date** (`IFiscalYearResolver.ResolveForDateAsync`);
 a request may **not straddle two fiscal years** (submit one per year). Closed years reject new activity.
 
+### 3.1.1 Annual leave has NO `LeaveType` (2026-08-10)
+**Annual leave is not a configurable leave type and never looks one up.** Its entitlement comes
+entirely from the per-fiscal-year `AnnualLeaveSetting`, so there was nothing for a `LeaveType` row to
+contribute — yet the ledger still had to *find* one to stamp on balance rows. It resolved "the single
+active `LeaveType` with `AccrualMethod = Annual`" and threw when there were zero or several, which
+took the whole annual ledger down whenever that one config was missing.
+
+- `LeaveBalance.LeaveTypeId` and `LeaveBalanceTransaction.LeaveTypeId` are **nullable**, and
+  **`NULL` means annual leave**. `LeaveType` now covers only the OTHER leave kinds — what it was for.
+- The convention is stated once in `App/Features/Core/Leaves/AnnualLeave.cs`
+  (`AnnualLeave.LeaveTypeId` = null, `AnnualLeave.DisplayName` = "Annual Leave"); use it instead of
+  bare nulls.
+- `ILeaveAccrualService.ResolveAnnualLeaveTypeIdAsync` is **gone**. Annual rows are selected with
+  `b.LeaveTypeId == null`.
+- The unique index `(TenantId, EmployeeId, LeaveTypeId, FiscalYearId)` is deliberately **unfiltered**
+  (`HasFilter(null)`). EF's default for a nullable column is `WHERE [LeaveTypeId] IS NOT NULL`, which
+  would leave annual rows unconstrained and allow duplicate annual balances; SQL Server treats NULLs
+  as equal in a unique index, so the unfiltered form enforces one annual row per employee per year.
+- `ILeaveBalanceService` takes `Guid? leaveTypeId` throughout. Passing `null` is safe:
+  EF Core's null semantics compile `== leaveTypeId` to `[LeaveTypeId] IS NULL` (verified in the
+  generated SQL) rather than SQL equality, which would never match.
+- `AllowHalfDay` **moved from `LeaveType` to `AnnualLeaveSetting`** — the one policy bit the type was
+  still supplying. It follows `MaxConsecutiveDays` and `CarryForwardMaxDays`, which moved earlier. The
+  migration backfills it from each tenant's old annual type, so no environment changed behaviour.
+
 ### 3.2 Entitlement calculation (`ILeaveAccrualService.CalculateEntitlement`)
-Driven by `Employee.HireDate` + `Employee.IsManagerial` + the `AnnualLeaveSetting` for the FY/leave type:
+Driven by `Employee.HireDate` + `Employee.IsManagerial` + the `AnnualLeaveSetting` for the FY:
 ```
 serviceMonths = whole months from HireDate to FiscalYear.StartDate
 if serviceMonths < 12:                      # under one year

@@ -11,10 +11,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     /// </summary>
     public interface ILeaveBalanceService
     {
-        Task<decimal> GetAvailableAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId);
-        Task DeductAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason);
-        Task ReverseAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason);
-        Task SetOpeningAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal entitled, decimal carriedForward, decimal adjusted, string? reason);
+        Task<decimal> GetAvailableAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId);
+        Task DeductAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason);
+        Task ReverseAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason);
+        Task SetOpeningAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal entitled, decimal carriedForward, decimal adjusted, string? reason);
     }
 
     public class LeaveBalanceService(
@@ -22,10 +22,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<LeaveBalanceTransaction> transactions,
         IRepository<AnnualLeaveSetting> leaveSettings) : ILeaveBalanceService
     {
-        public async Task<decimal> GetAvailableAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId)
+        public async Task<decimal> GetAvailableAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId)
         {
-            var balance = await balances.GetAll()
-                .FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == fiscalYearId);
+            var balance = await FindAsync(employeeId, leaveTypeId, fiscalYearId);
             if (balance != null) return balance.Available;
 
             // Not yet materialized → the implicit opening is the fiscal year's policy default
@@ -33,7 +32,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             return await DefaultEntitlementAsync(fiscalYearId);
         }
 
-        public async Task DeductAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason)
+        public async Task DeductAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason)
         {
             var balance = await GetOrCreateAsync(employeeId, leaveTypeId, fiscalYearId, postInitialEntitlement: true);
             balance.RecordTaken(days);
@@ -43,10 +42,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             await balances.SaveChangesAsync();
         }
 
-        public async Task ReverseAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason)
+        public async Task ReverseAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, decimal days, Guid referenceId, string reason)
         {
-            var balance = await balances.GetAll()
-                .FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == fiscalYearId);
+            var balance = await FindAsync(employeeId, leaveTypeId, fiscalYearId);
             if (balance is null) return; // nothing to reverse
 
             balance.ReverseTaken(days);
@@ -56,7 +54,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             await balances.SaveChangesAsync();
         }
 
-        public async Task SetOpeningAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId,
+        public async Task SetOpeningAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId,
             decimal entitled, decimal carriedForward, decimal adjusted, string? reason)
         {
             var balance = await GetOrCreateAsync(employeeId, leaveTypeId, fiscalYearId, postInitialEntitlement: false);
@@ -68,10 +66,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             await balances.SaveChangesAsync();
         }
 
-        private async Task<LeaveBalance> GetOrCreateAsync(Guid employeeId, Guid leaveTypeId, Guid fiscalYearId, bool postInitialEntitlement)
+        private async Task<LeaveBalance> GetOrCreateAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId, bool postInitialEntitlement)
         {
-            var balance = await balances.GetAll()
-                .FirstOrDefaultAsync(b => b.EmployeeId == employeeId && b.LeaveTypeId == leaveTypeId && b.FiscalYearId == fiscalYearId);
+            var balance = await FindAsync(employeeId, leaveTypeId, fiscalYearId);
             if (balance != null) return balance;
 
             var entitled = await DefaultEntitlementAsync(fiscalYearId);
@@ -86,6 +83,21 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             }
             return balance;
         }
+
+        /// <summary>
+        /// The balance row for an employee/type/year, where a null <paramref name="leaveTypeId"/> means
+        /// ANNUAL leave.
+        ///
+        /// The <c>== leaveTypeId</c> comparison is safe with a null argument: EF Core's null semantics
+        /// compile it to <c>[LeaveTypeId] IS NULL</c> rather than SQL equality (which would never match),
+        /// and it caches the two shapes separately. Verified against the generated SQL — do not "fix" this
+        /// into an equality that bypasses EF's translation.
+        /// </summary>
+        private Task<LeaveBalance?> FindAsync(Guid employeeId, Guid? leaveTypeId, Guid fiscalYearId) =>
+            balances.GetAll()
+                .Where(b => b.EmployeeId == employeeId && b.FiscalYearId == fiscalYearId
+                            && b.LeaveTypeId == leaveTypeId)
+                .FirstOrDefaultAsync();
 
         /// <summary>The active per-FY leave setting's fallback entitlement (0 when no setting exists).</summary>
         private async Task<decimal> DefaultEntitlementAsync(Guid fiscalYearId)

@@ -22,11 +22,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         Task<int> GenerateEntitlementsAsync(Guid settingId);
         /// <summary>Rolls remaining balances of a fiscal year into the next one (carry-forward + expiry), then closes the source year.</summary>
         Task<RolloverResult> RolloverAsync(Guid fromFiscalYearId);
-        /// <summary>
-        /// The single active LeaveType with the Annual accrual method — the type the annual-leave
-        /// ledger posts against now that AnnualLeaveSetting no longer names one.
-        /// </summary>
-        Task<Guid> ResolveAnnualLeaveTypeIdAsync();
     }
 
     public record RolloverResult(int BalancesRolled, decimal TotalCarried, decimal TotalExpired);
@@ -44,7 +39,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<EmployeeExperience> experiences,
         IRepository<LeaveBalance> balances,
         IRepository<LeaveBalanceTransaction> transactions,
-        IRepository<LeaveType> leaveTypes,
         ILogger<LeaveAccrualService> logger) : ILeaveAccrualService
     {
         public decimal CalculateEntitlement(EmployeeAccrualInput input, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd)
@@ -132,12 +126,13 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var fyStart = fy.StartDate.ToDateTimeUtc().Date;
             var fyEnd = fy.EndDate.ToDateTimeUtc().Date;
 
-            // The setting no longer names a leave type — the ledger posts against THE annual type.
-            var annualLeaveTypeId = await ResolveAnnualLeaveTypeIdAsync();
+            // Annual leave has no LeaveType: its entitlement comes from this per-FY setting, and its
+            // balance rows are the ones with a null LeaveTypeId (see AnnualLeave).
+            var annualLeaveTypeId = AnnualLeave.LeaveTypeId;
 
-            // Employees already generated for this FY + type are skipped (idempotency).
+            // Employees already generated for this FY are skipped (idempotency).
             var existing = await balances.GetAll()
-                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == annualLeaveTypeId)
+                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == null)
                 .Select(b => b.EmployeeId)
                 .ToListAsync();
             var existingSet = existing.ToHashSet();
@@ -259,19 +254,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             logger.LogInformation("Rolled over {Count} balance(s) from {From} to {To}: carried {Carried}, expired {Expired}",
                 rolled, from.Name, to.Name, totalCarried, totalExpired);
             return new RolloverResult(rolled, totalCarried, totalExpired);
-        }
-
-        public async Task<Guid> ResolveAnnualLeaveTypeIdAsync()
-        {
-            var annualTypeIds = await leaveTypes.GetAll()
-                .Where(t => t.IsActive && t.AccrualMethod == LeaveAccrualMethod.Annual)
-                .Select(t => t.Id)
-                .ToListAsync();
-            if (annualTypeIds.Count == 0)
-                throw new ValidationException("leaveType", "No active leave type uses the Annual accrual method. Configure one before generating the annual ledger.");
-            if (annualTypeIds.Count > 1)
-                throw new ValidationException("leaveType", "Multiple active leave types use the Annual accrual method — only one may. Deactivate the extras.");
-            return annualTypeIds[0];
         }
 
         /// <summary>Whole months between two dates (0 when to &lt; from).</summary>

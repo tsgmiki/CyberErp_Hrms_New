@@ -152,14 +152,21 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.Taken).HasPrecision(8, 2);
             builder.Ignore(x => x.Available);
 
-            builder.HasOne(x => x.LeaveType).WithMany().HasForeignKey(x => x.LeaveTypeId).OnDelete(DeleteBehavior.Restrict);
+            // Optional: a NULL LeaveTypeId marks the ANNUAL balance, which has no LeaveType by design.
+            builder.HasOne(x => x.LeaveType).WithMany().HasForeignKey(x => x.LeaveTypeId)
+                .IsRequired(false).OnDelete(DeleteBehavior.Restrict);
             builder.HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
             builder.Navigation(x => x.LeaveType).UsePropertyAccessMode(PropertyAccessMode.Field);
             builder.Navigation(x => x.FiscalYear).UsePropertyAccessMode(PropertyAccessMode.Field);
             builder.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
 
             // One balance row per employee / leave type / fiscal year.
-            builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.LeaveTypeId, x.FiscalYearId }).IsUnique();
+            // HasFilter(null) overrides EF's default "[LeaveTypeId] IS NOT NULL" filter for nullable
+            // columns — without it the ANNUAL rows (null type) would sit outside the constraint and an
+            // employee could accumulate duplicate annual balances. SQL Server treats NULLs as equal in
+            // a unique index, so an unfiltered index enforces exactly one annual row per employee/year.
+            builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.LeaveTypeId, x.FiscalYearId })
+                .IsUnique().HasFilter(null);
         }
     }
 

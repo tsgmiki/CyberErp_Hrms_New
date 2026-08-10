@@ -24,5 +24,7 @@ export default interface AnnualLeaveSettingModel extends AbstractModel {
   carryForwardMaxDays?: number;
   /** Cap on one continuous request line; empty = no cap (was on LeaveType). */
   maxConsecutiveDays?: number;
+  /** Allow half-day request lines (was LeaveType.allowHalfDay). */
+  allowHalfDay?: boolean;
   isActive?: boolean;
 }
