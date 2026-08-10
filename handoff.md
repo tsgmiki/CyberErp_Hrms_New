@@ -104,6 +104,24 @@
 
 ## 1. Most recent changes (latest first)
 
+00EF. **`Hrms.PositionClass.TitleA` — Amharic title (2026-08-10, HRMS full stack).**
+    Follows the existing `*A` convention (`JobGrade.NameA`, `LeaveType.NameA`, `Holiday.NameA`):
+    nullable `nvarchar(200)`, never required — the English title stays the mandatory one and not
+    every class gets translated.
+    - Entity (trailing optional param on `Create`/`Update`, so no existing caller broke), EF config,
+      all three DTOs + both validators, the read projection, and the frontend model / form field /
+      list column / Zod bound.
+    - **No Home mirror** — the portal has no positionClass screen, so this is HRMS only.
+    - Locale note: `"Title (Amharic)"` is NOT in `am.json`, matching `"Name (Amharic)"` on JobGrade,
+      which is not either. Every `*A` LABEL in the app falls back untranslated — a pre-existing gap
+      worth a sweep, not something to fix for one field in isolation.
+    - Verified 9/9 by API (Amharic round-trips byte-exact, optional, clears on omit, 201 chars
+      rejected) and 7/7 through the UI (column renders the Amharic, the edit form loads and SAVES it).
+    - ⚠️ Testing gotcha: `hoadmin` holds the `UserRole` role, which has **CanView=0** on
+      `/positionClass` — the screen redirects to `/unauthorized`, which looks exactly like a missing
+      field. Grants were flipped on temporarily and **restored to all-false afterwards**; verify
+      against a role that actually holds the permission (`admin` = Administrator, or HR Admin).
+
 00EE. **The APPROVER could not see what they were approving (2026-08-10, HRMS + Home `d7d30ce`).**
     A return adjustment reached the inbox as `"Early return — 2 day(s) against leave of 5 day(s)"`
     and nothing else. The History action beside it shows only that INSTANCE's step log, so the

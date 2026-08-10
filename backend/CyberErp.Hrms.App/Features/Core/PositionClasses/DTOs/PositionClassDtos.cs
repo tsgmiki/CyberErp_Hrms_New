@@ -7,6 +7,8 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses.DTOs
         public Guid Id { get; set; }
         public string Code { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        /// <summary>Amharic title (optional).</summary>
+        public string? TitleA { get; set; }
         public int AllocatedHeadcount { get; set; }
         public string? MinQualifications { get; set; }
         public int? MinExperienceYears { get; set; }
@@ -37,6 +39,8 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses.DTOs
     {
         public string Code { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        /// <summary>Amharic title (optional).</summary>
+        public string? TitleA { get; set; }
         public int AllocatedHeadcount { get; set; } = 1;
         public string? MinQualifications { get; set; }
         public int? MinExperienceYears { get; set; }
@@ -65,6 +69,7 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses.DTOs
         {
             RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
             RuleFor(x => x.Title).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.TitleA).MaximumLength(200);
             RuleFor(x => x.AllocatedHeadcount).GreaterThanOrEqualTo(0);
             RuleFor(x => x.SalaryScaleId).NotEmpty().WithMessage("Salary scale is required.");
             RuleFor(x => x.JobCategoryId).NotEmpty().WithMessage("Job category is required.");
@@ -94,6 +99,7 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses.DTOs
             RuleFor(x => x.Id).NotEmpty();
             RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
             RuleFor(x => x.Title).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.TitleA).MaximumLength(200);
             RuleFor(x => x.AllocatedHeadcount).GreaterThanOrEqualTo(0);
             RuleFor(x => x.SalaryScaleId).NotEmpty().WithMessage("Salary scale is required.");
             RuleFor(x => x.JobCategoryId).NotEmpty().WithMessage("Job category is required.");

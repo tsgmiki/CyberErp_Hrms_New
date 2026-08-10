@@ -13,6 +13,9 @@ public class PositionClass : BaseEntity, IAggregateRoot, IAuditable
 {
     public string Code { get; private set; } = string.Empty;
     public string Title { get; private set; } = string.Empty;
+    /// <summary>Amharic title. Optional, like every other `*A` field (see <see cref="JobGrade.NameA"/>):
+    /// the English title is the required one, and not every class gets translated.</summary>
+    public string? TitleA { get; private set; }
     public int AllocatedHeadcount { get; private set; }
     public string? MinQualifications { get; private set; }
     public int? MinExperienceYears { get; private set; }
@@ -58,7 +61,8 @@ public class PositionClass : BaseEntity, IAggregateRoot, IAuditable
         bool isActive = true,
         int? minimumAge = null,
         int? maximumAge = null,
-        decimal? weeklyWorkingHours = null)
+        decimal? weeklyWorkingHours = null,
+        string? titleA = null)
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("Position class code cannot be empty.", nameof(code));
@@ -76,6 +80,7 @@ public class PositionClass : BaseEntity, IAggregateRoot, IAuditable
         {
             Code = code,
             Title = title,
+            TitleA = titleA,
             SalaryScaleId = salaryScaleId,
             JobCategoryId = jobCategoryId,
             AllocatedHeadcount = allocatedHeadcount,
@@ -107,7 +112,8 @@ public class PositionClass : BaseEntity, IAggregateRoot, IAuditable
         bool isActive,
         int? minimumAge = null,
         int? maximumAge = null,
-        decimal? weeklyWorkingHours = null)
+        decimal? weeklyWorkingHours = null,
+        string? titleA = null)
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("Position class code cannot be empty.", nameof(code));
@@ -125,6 +131,7 @@ public class PositionClass : BaseEntity, IAggregateRoot, IAuditable
 
         Code = code;
         Title = title;
+        TitleA = titleA;
         SalaryScaleId = salaryScaleId;
         JobCategoryId = jobCategoryId;
         AllocatedHeadcount = allocatedHeadcount;

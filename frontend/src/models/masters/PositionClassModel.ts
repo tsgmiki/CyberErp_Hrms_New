@@ -3,6 +3,8 @@ import type AbstractModel from "../AbstractModel";
 export default interface PositionClassModel extends AbstractModel {
   code?: string;
   title?: string;
+  /** Amharic title (optional). */
+  titleA?: string;
   allocatedHeadcount?: number;
   minQualifications?: string;
   minExperienceYears?: number;
