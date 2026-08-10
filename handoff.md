@@ -118,6 +118,28 @@
 
 ## 1. Most recent changes (latest first)
 
+00EN. **"Only HR can view performance history" after saving an appraisal (2026-08-10, HRMS backend).**
+    Fallout from 00EM, not a regression in it. `GetPerformanceHistory` was gated on `scope.IsAdmin`
+    outright, which was invisible while EVERY session resolved to admin. With scoping restored, an
+    employee opening their own appraisal was refused the history panel **on their own record** — and
+    `scoring.tsx` fetches it unconditionally (`enabled: id !== ""`), so it fired for everyone.
+    - **The save itself always succeeded** — the appraisal and its history row were both written; only
+      the follow-up history fetch failed, which made a working save look broken.
+    - Now the audit trail follows the RECORD it documents: resolve the history row's subject to its
+      owning employee and reuse `CanAccessEmployeeAsync`, so appraisee + their management line + HR can
+      read it. Types mapped: Appraisal, Achievement, DevelopmentPlan (`IndividualDevelopmentPlan`),
+      ImprovementPlan (`PerformanceImprovementPlan`), Recognition (`EmployeeRecognition`).
+    - ⚠️ **`Calibration` is deliberately NOT mapped:** its history rows carry a `CalibrationSession` id
+      and a session spans a COHORT, so there is no individual owner to authorise against. It falls
+      through to the fail-closed default and stays HR-only — as does any entity type added later, so
+      **new types must be added to `ResolveOwnerEmployeeAsync` or they silently become HR-only.**
+    - Verified against the user's REAL appraisal (6/6): appraisee ✅, their unit's manager ✅, unrelated
+      employee ❌, manager of a different unit ❌, HR ✅, unknown/cohort type ❌ for non-admin but ✅ for HR.
+    - **Swept the other `Only HR can view…` gates** (medical expense report, individual peer reviews,
+      calibration sessions, trip budget utilisation, trip aging): all are cross-employee aggregates or
+      deliberately confidential, so HR-only is right for them. Performance history was the only
+      per-record read mis-gated as an aggregate. No Home change — same API.
+
 00EM. **Everyone could see every employee — appraisal + all scoped modules (2026-08-10, HRMS backend).**
     Reported against the appraisal modules, but it was never an appraisal bug: `AppraisalHandlers`,
     `EmployeeOptions`, `EmployeeGoal`, `DevelopmentPlan` etc. ALREADY implement
