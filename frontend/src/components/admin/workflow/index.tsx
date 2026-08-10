@@ -2,9 +2,10 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { GitPullRequestArrow, Check, X, History, ExternalLink } from "lucide-react";
+import { GitPullRequestArrow, Check, X, History, ExternalLink, CalendarDays } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
+import AnnualLeaveHistoryModal from "@/components/admin/annualLeave/historyModal";
 import { EntityListShell, useEntityList } from "@/template";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type { WorkflowInstanceModel } from "@/models";
@@ -93,6 +94,9 @@ function DecisionModal({
   );
 }
 
+/** Annual leave and its return adjustment both resolve to the same leave history. */
+const isAnnualLeave = (t?: string) => (t ?? "").toLowerCase().startsWith("annualleave");
+
 /** Step-decision history of one instance. */
 function HistoryModal({ instance, onClose }: { instance: WorkflowInstanceModel; onClose: () => void }) {
   const { t } = useTranslation();
@@ -134,6 +138,8 @@ function WorkflowTracking() {
   const queryClient = useQueryClient();
   const [decision, setDecision] = useState<{ instance: WorkflowInstanceModel; verb: "approve" | "reject" } | null>(null);
   const [history, setHistory] = useState<WorkflowInstanceModel | null>(null);
+  // The LEAVE behind an annual-leave instance, as opposed to that instance's own step log.
+  const [leaveFor, setLeaveFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const list = useEntityList({
@@ -234,6 +240,16 @@ function WorkflowTracking() {
                     ><X size={16} /></button>
                   </>
                 )}
+                {/* An approver deciding on a leave return needs the LEAVE, not just this
+                    instance's step log: what was approved, what the employee actually took, and the
+                    explanation they gave for the difference. The generic History stays beside it. */}
+                {isAnnualLeave(r.entityType) && (
+                  <button
+                    type="button" title={t("Leave details & full history")}
+                    onClick={() => r.entityId && setLeaveFor(r.entityId)}
+                    className="rounded p-1 text-primary hover:bg-primary/10"
+                  ><CalendarDays size={15} /></button>
+                )}
                 <button
                   type="button" title={t("History")}
                   onClick={() => setHistory(r)}
@@ -300,6 +316,9 @@ function WorkflowTracking() {
         />
       )}
       {history && <HistoryModal instance={history} onClose={() => setHistory(null)} />}
+      {leaveFor && (
+        <AnnualLeaveHistoryModal annualLeaveId={leaveFor} onClose={() => setLeaveFor(null)} />
+      )}
     </div>
   );
 }

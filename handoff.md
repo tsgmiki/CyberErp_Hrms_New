@@ -104,6 +104,24 @@
 
 ## 1. Most recent changes (latest first)
 
+00EE. **The APPROVER could not see what they were approving (2026-08-10, HRMS + Home `d7d30ce`).**
+    A return adjustment reached the inbox as `"Early return — 2 day(s) against leave of 5 day(s)"`
+    and nothing else. The History action beside it shows only that INSTANCE's step log, so the
+    employee's written explanation — the one thing the decision turns on — was nowhere on screen,
+    nor were the original dates or the approved-vs-actual comparison.
+    - The workflow row now offers **Leave details**, opening the full leave history popup (the same
+      one the list uses). The step-log History stays beside it; they answer different questions.
+    - ⚠️ **A return adjustment's workflow instance carries the `AnnualLeaveReturn` id, NOT the header
+      id.** `GET /AnnualLeave/{id}/history` now accepts either and resolves a return to its owning
+      request — the approver holds an id from an inbox row and cannot be expected to know which kind
+      it is. One extra lookup, only on a miss.
+    - **Home needed a data change to carry it:** the portal's normalized `ApprovalItemModel` mapped
+      `entityType` to a display LABEL and dropped `entityId` entirely, so a tracking row could not
+      identify its own record. Both are now optional generic fields — any subsystem can supply them
+      to offer an "open the underlying record" affordance.
+    - Verified 9/9 in each app, including that the employee's explanation and the original approver's
+      comment are both visible before deciding.
+
 00EC. **The REQUESTER could not see their own approved leave (2026-08-10, Home portal only).**
     Second visibility bug in the same feature: the person who must confirm a return could not reach
     the action at all.

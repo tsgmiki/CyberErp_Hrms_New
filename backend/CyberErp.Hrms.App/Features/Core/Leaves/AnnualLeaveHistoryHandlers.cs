@@ -59,13 +59,34 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<WorkflowActionLog> actionLogs,
         Performance.IPerformanceVisibilityService visibility) : IGetAnnualLeaveHistory
     {
-        public async Task<AnnualLeaveHistoryDto> GetAsync(Guid headerId)
+        public async Task<AnnualLeaveHistoryDto> GetAsync(Guid id)
         {
+            // Accept EITHER the request id or a RETURN id.
+            //
+            // An approver reaches this from the workflow inbox, and an adjustment's workflow instance
+            // carries the AnnualLeaveReturn id — the approver has no way to know it is holding a
+            // different kind of id, and should not have to. Resolving it here is one extra lookup on a
+            // miss, versus making every caller learn the difference.
             var header = await headers.GetAll().AsNoTracking()
                 .Include(h => h.Details)
                 .Include(h => h.Employee).ThenInclude(e => e!.Person)
-                .FirstOrDefaultAsync(h => h.Id == headerId)
-                ?? throw new NotFoundException(nameof(AnnualLeaveHeader), headerId.ToString());
+                .FirstOrDefaultAsync(h => h.Id == id);
+
+            if (header is null)
+            {
+                var ownerId = await returns.GetAll().AsNoTracking()
+                    .Where(r => r.Id == id)
+                    .Select(r => (Guid?)r.AnnualLeaveHeaderId)
+                    .FirstOrDefaultAsync();
+                if (ownerId is not null)
+                    header = await headers.GetAll().AsNoTracking()
+                        .Include(h => h.Details)
+                        .Include(h => h.Employee).ThenInclude(e => e!.Person)
+                        .FirstOrDefaultAsync(h => h.Id == ownerId.Value);
+            }
+
+            if (header is null) throw new NotFoundException(nameof(AnnualLeaveHeader), id.ToString());
+            var headerId = header.Id;
 
             // Same visibility rule as the request itself: own records, or those of employees in scope.
             if (!await visibility.CanAccessEmployeeAsync(header.EmployeeId))
