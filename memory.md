@@ -93,6 +93,12 @@ carries `CreatedBy = 'migrate:CERPNVI:<sourceId>'` — the only link back to the
 `AnnualLeaveSetting`; balance rows are identified by `LeaveTypeId IS NULL` and `LeaveType` covers only
 the other leave kinds. See `logic.md` §3.1.1 — that section is the rule, not a summary.
 
+**App-shell height (2026-08-10).** `DashboardLayout` pins the shell to `h-screen` (NOT `min-h-screen`)
+and gives the content column + `<main>` `min-h-0`. Every list/tree/grid in both SPAs is written as
+`min-h-0 flex-1 overflow-auto` inside an `h-full` panel and depends on that definite height to scroll
+inside itself; with a mere minimum, `main` grew to its content and the WINDOW scrolled instead. Scroll
+bounds come from this chain — do not add hard-coded panel heights.
+
 **Table naming (2026-08-08, APPLIED to CERP): every table lives in its MODULE schema.**
 `Hrms.Achievement`, `Core.Module`, `Core.Step`, `Core.Person`, `Core.SalaryScale`, `Core.Notification`
 — the `dbo.hrmsX` / `coreX` / `lupX` prefixes are gone. The 10 unprefixed `Core.*` tables (User, Role,

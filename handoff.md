@@ -116,6 +116,70 @@
 
 ## 1. Most recent changes (latest first)
 
+00EL. **`ReviewCycle` save failed: two booleans missing from `booleanFields` (2026-08-10, HRMS frontend).**
+    Saving a Review Cycle returned *"The dto field is required"* + *"The JSON value could not be
+    converted to System.Boolean. Path: $.enableSecondLevelReview"*. **One cause, two messages.**
+    - `FormData` values are ALWAYS strings; `createSaveService` converts only the fields named in
+      `booleanFields`. `enableSecondLevelReview` and `enableHrSignOff` were not listed, so they went
+      out as the string `"false"`, JSON binding failed, and the whole DTO arrived null — which is what
+      "the dto field is required" actually means.
+    - Only the FIRST bad field is reported (binding stops there), so fixing just the reported one would
+      have moved the error to `enableHrSignOff` on the next save. Both are now registered.
+    - Verified by executing the REAL save service through the dev server with `fetch` stubbed: all five
+      booleans now serialise as JSON booleans. Mutation-tested — re-introducing the omission reproduces
+      `"enableSecondLevelReview": "false"` exactly as the user saw it. No API needed.
+    - **Audited all 43 entity save services in both apps** (every boolean dropdown vs its
+      `booleanFields`): no other gaps. The audit was mutation-tested too, so the clean result means
+      something.
+    - ⚠️ **Design footgun, unchanged:** `booleanFields` is a hand-maintained mirror of the backend DTO
+      with no compile-time link, and adding a bool to any DTO silently breaks its form until someone
+      edits the list. Making `createSaveService` coerce `"true"`/`"false"` generically would remove the
+      list entirely — not done, it changes shared behaviour for all 43 services.
+
+00EK. **The app shell had no definite height, so NOTHING scrolled internally (2026-08-10, both SPAs).**
+    Reported as "the tree has no scrollbar"; it was the whole app. `DashboardLayout` sized the shell
+    with **`min-h-screen`** — a MINIMUM, not a definite height — so `<main class="flex-1 overflow-auto">`
+    grew with its content, and every `h-full` / `min-h-0 flex-1 overflow-auto` below it (the org tree
+    AND every data grid) grew too. The browser window scrolled instead of the panels.
+    - Fix, three classes: `min-h-screen` → **`h-screen`** on the shell root, `min-h-screen` → `min-h-0`
+      on the content column, `min-h-0` added to `<main>`. Mirrored in Home (identical shell).
+    - Deliberately NOT hard-coded pixel heights: the bound is the viewport minus chrome, delivered
+      through the flex chain the grids already use, so the tree and all ~100 grids get it uniformly.
+      There is no fixed-height convention in the codebase to copy — every grid uses
+      `min-h-0 flex-1 overflow-auto` and was relying on this same broken chain.
+    - Measured on `/employee`: tree panel **23,325px → 658px fixed**, window scrolling gone. With 120
+      rows injected the panel HELD at 658px and scrolled (content 4436px, viewport 617px).
+    - Swept 10 other routes: none scroll the window, and the bottom of the content is reachable inside
+      `main` on every one (the Dashboard, 1028px of content, now scrolls internally).
+    - ⚠️ This changes scrolling on EVERY screen in both apps — page-level becomes content-area
+      scrolling. It is the desktop-ERP behaviour the code was written for, and the sweep was clean, but
+      it is a broad change.
+
+00EJ. **Tree: horizontal scrolling + header search (2026-08-10, both SPAs, shared `treeView.tsx`).**
+    - **Horizontal.** Row labels were `truncate`d inside a fixed 336px panel, so a deep unit name was
+      clipped with no way to read it — and `truncate` (overflow:hidden) meant content could never be
+      wider than the panel, so there was nothing to scroll. Now `whitespace-nowrap` + `w-max min-w-full`
+      on the row: it grows to its content so the panel scrolls sideways, while short rows still fill the
+      panel so hover/selected backgrounds and the right-aligned badge look unchanged.
+    - **Search** in the header (reuses the shared `SearchBar`): filters by label OR badge,
+      case-insensitive, with the matched run highlighted.
+      **A match keeps its ANCESTORS** — a hit five levels down is useless if the branches above it are
+      filtered away. A matched node also keeps its whole subtree so you can still drill in.
+      Branches that only survived because a DESCENDANT matched are force-opened; branches that matched
+      themselves stay shut — without that, searching "directorate" re-rendered essentially the whole
+      tree and looked like search had done nothing (8 rows → 5 on the probe data). The user's own
+      collapse state is untouched and returns when the box is cleared.
+      Empty results say *"No matches for X"*, not the "no units yet" empty state — different answers.
+    - `searchable` defaults TRUE, so it also appears on the Report Viewer catalog rail, which had no
+      search before. Opt out with `searchable={false}`.
+    - Verified 9/9 in the browser as `demo` on `/employee`. Demo Corp had 0 org units, so a 7-node
+      hierarchy was seeded there to test against a real render and **deleted afterwards**
+      (`CreatedBy='treesearch-probe'`; org units back to 121, all Head Office).
+    - ⚠️ Testing wall hit repeatedly this session: `/employee`, `/organizationUnit`, `/position`,
+      `/annualLeaveLedger` and `/reports` are all `CanView=0` for `UserRole`, so **`hoadmin` cannot open
+      any of them**. Only `admin` / `medhanit` (Administrator) and HR Admin can; `demo` holds `/employee`
+      only. Grants were NOT altered — attempting to was correctly blocked.
+
 00EI. **Annual Leave Ledger pagination was inert + a system-wide grid audit (2026-08-10, HRMS frontend).**
     Selecting a page size of 10 or 15 still rendered the whole dataset. Three things combined:
     `param` was seeded with `take: 1000`, the component passed **every** row as `rows`, and it set
