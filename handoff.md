@@ -118,8 +118,23 @@
     - **Pattern behind both 00EB and 00EC: adding a state to a lifecycle invalidates assumptions made
       when the old final state WAS final.** Anything keyed on "Approved means done" — filters,
       defaults, dashboards, reports — needs re-checking.
-    - Still open (not done): nothing on the Home DASHBOARD prompts "you have leave to confirm". The
-      employee has to visit the Annual Leave screen to discover it.
+    - **Closed by 00ED** — the dashboard now prompts for it.
+
+00ED. **Dashboard prompt: "Confirm your return from leave" (2026-08-10, Home portal only,
+    `6917084`).** Third and last discoverability fix for the return feature: the employee is now TOLD
+    they have something to confirm instead of having to go looking.
+    - New `LeaveReturnsDue` widget, first in the dashboard's work column, listing each approved leave
+      still awaiting confirmation (period, days) with a button through to `/annualLeave`.
+    - **Renders nothing when there is nothing to confirm** — a prompt that is always on screen stops
+      being a prompt. Also silent when HRMS is unreachable rather than implying "nothing to do", the
+      same best-effort contract the other subsystem-bound widgets follow.
+    - Filters on `canConfirmReturn`, the server's own answer to "may this person act on this row", so
+      the eligibility rule is not reimplemented in the portal.
+    - Verified both ways: 3/3 with nothing due (no panel rendered, dashboard otherwise intact) and
+      8/8 with one due (prompt shown, period and days correct, link lands on the screen where the
+      action is available).
+    - Adding a widget stayed pure configuration, as `dashboardLayout.tsx` promises: one import, one
+      zone entry, no page edits.
 
 00EB. **The Confirm-return action was invisible on a normal laptop (2026-08-10, HRMS + Home, FE only).**
     Reported as "I haven't seen anything on the front end" for the return-from-leave feature. The
