@@ -38,7 +38,7 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses
                 dto.Code, dto.Title, dto.SalaryScaleId, dto.JobCategoryId, dto.AllocatedHeadcount,
                 dto.ReportsToPositionClassId, dto.WorkLocationId, dto.MinQualifications,
                 dto.MinExperienceYears, dto.Skills, dto.Description, dto.IsActive,
-                dto.MinimumAge, dto.MaximumAge, dto.WeeklyWorkingHours);
+                dto.MinimumAge, dto.MaximumAge, dto.WeeklyWorkingHours, dto.TitleA);
             await repository.AddAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created PositionClass {Id} ({Code})", entity.Id, entity.Code);
@@ -93,7 +93,7 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses
                 dto.Code, dto.Title, dto.SalaryScaleId, dto.JobCategoryId, dto.AllocatedHeadcount,
                 dto.ReportsToPositionClassId, dto.WorkLocationId, dto.MinQualifications,
                 dto.MinExperienceYears, dto.Skills, dto.Description, dto.IsActive,
-                dto.MinimumAge, dto.MaximumAge, dto.WeeklyWorkingHours);
+                dto.MinimumAge, dto.MaximumAge, dto.WeeklyWorkingHours, dto.TitleA);
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Updated PositionClass {Id}", entity.Id);
@@ -137,6 +137,7 @@ namespace CyberErp.Hrms.App.Features.Core.PositionClasses
             Id = p.Id,
             Code = p.Code,
             Title = p.Title,
+            TitleA = p.TitleA,
             AllocatedHeadcount = p.AllocatedHeadcount,
             MinQualifications = p.MinQualifications,
             MinExperienceYears = p.MinExperienceYears,

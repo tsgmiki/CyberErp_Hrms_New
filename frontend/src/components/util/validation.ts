@@ -1285,6 +1285,7 @@ export const PositionSchema = z.object({
 export const PositionClassSchema = z.object({
   code: z.string().min(1, "Code is Required").max(50),
   title: z.string().min(2, "Title is Required").max(200),
+  titleA: z.string().max(200).optional(),
   salaryScaleId: z.string().min(1, "Salary Scale is Required").max(200),
   jobCategoryId: z.string().min(1, "Job Category is Required").max(200),
 });

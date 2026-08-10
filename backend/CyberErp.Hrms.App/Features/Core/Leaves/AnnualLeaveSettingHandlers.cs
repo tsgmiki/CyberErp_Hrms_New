@@ -32,6 +32,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public decimal DefaultAnnualEntitlement { get; set; }
         public decimal? CarryForwardMaxDays { get; set; }
         public int? MaxConsecutiveDays { get; set; }
+        public bool AllowHalfDay { get; set; } = true;
         public bool IsActive { get; set; }
     }
 
@@ -61,6 +62,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public decimal? CarryForwardMaxDays { get; set; }
         /// <summary>Cap on one continuous request; null = no cap (was LeaveType.MaxConsecutiveDays).</summary>
         public int? MaxConsecutiveDays { get; set; }
+        /// <summary>Allow half-day request lines (was LeaveType.AllowHalfDay).</summary>
+        public bool AllowHalfDay { get; set; } = true;
         public bool IsActive { get; set; } = true;
     }
 
@@ -125,6 +128,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             DefaultAnnualEntitlement = s.DefaultAnnualEntitlement,
             CarryForwardMaxDays = s.CarryForwardMaxDays,
             MaxConsecutiveDays = s.MaxConsecutiveDays,
+            AllowHalfDay = s.AllowHalfDay,
             IsActive = s.IsActive
         };
     }
@@ -157,7 +161,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays, dto.IncrementIntervalYears,
                     dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience, dto.MilestoneDate,
                     dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays, dto.PreMilestoneIntervalYears,
-                    dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.IsActive);
+                    dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.IsActive, dto.AllowHalfDay);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
@@ -168,7 +172,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 dto.IncrementIntervalYears, dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience,
                 dto.MilestoneDate, dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays,
                 dto.PreMilestoneIntervalYears, dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays,
-                dto.MaxConsecutiveDays, dto.IsActive);
+                dto.MaxConsecutiveDays, dto.IsActive, dto.AllowHalfDay);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Created AnnualLeaveSetting {Id}", created.Id);

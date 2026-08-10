@@ -14,6 +14,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(p => p.Code).IsRequired().HasMaxLength(50);
             builder.Property(p => p.Title).IsRequired().HasMaxLength(200);
+            builder.Property(p => p.TitleA).HasMaxLength(200);
             builder.Property(p => p.MinQualifications).HasMaxLength(1000);
             builder.Property(p => p.Skills).HasMaxLength(1000);
             builder.Property(p => p.Description).HasMaxLength(2000);

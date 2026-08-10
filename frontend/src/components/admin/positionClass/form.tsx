@@ -144,6 +144,7 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
           components: [
             { name: "code", label: "Code", placeholder: "Code", required: true, value: formData.code, onChange: changeHandler, error: formState?.zodErrors?.code, type: "text" },
             { name: "title", label: "Title", placeholder: "Title", required: true, value: formData.title, onChange: changeHandler, error: formState?.zodErrors?.title, type: "text" },
+            { name: "titleA", label: "Title (Amharic)", placeholder: "ርዕስ", value: formData.titleA, onChange: changeHandler, error: formState?.zodErrors?.titleA, type: "text" },
             {
               name: "jobGradeId", label: "Job Grade", required: true, type: "dropDown", onSelect: gradeSelectHandler,
               value: formData.jobGradeId, displayValue: formData.jobGradeName,

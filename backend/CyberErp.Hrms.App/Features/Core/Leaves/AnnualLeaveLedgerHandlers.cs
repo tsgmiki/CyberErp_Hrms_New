@@ -38,7 +38,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public string? FiscalYearName { get; set; }
         public DateTime FiscalYearStart { get; set; }
         public DateTime FiscalYearEnd { get; set; }
-        public Guid LeaveTypeId { get; set; }
+        /// <summary>Fixed label — annual leave is not a configurable <c>LeaveType</c>.</summary>
         public string? LeaveTypeName { get; set; }
         public bool FiscalYearClosed { get; set; }
         public int TotalEmployees { get; set; }
@@ -58,7 +58,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<LeaveBalance> balances,
         IRepository<Position> positions,
         IRepository<OrganizationUnit> organizationUnits,
-        IRepository<LeaveType> leaveTypes,
         ILeaveAccrualService accrualService) : IGetAnnualLeaveLedger
     {
         public async Task<AnnualLeaveLedgerDto> GetAsync(Guid settingId)
@@ -69,11 +68,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 ?? throw new NotFoundException(nameof(AnnualLeaveSetting), settingId.ToString());
             var fy = setting.FiscalYear
                 ?? throw new ValidationException("id", "The setting's fiscal year could not be loaded.");
-
-            // The ledger posts against THE annual leave type (the setting no longer names one).
-            var annualLeaveTypeId = await accrualService.ResolveAnnualLeaveTypeIdAsync();
-            var annualLeaveTypeName = await leaveTypes.GetAll()
-                .Where(t => t.Id == annualLeaveTypeId).Select(t => t.Name).FirstOrDefaultAsync();
 
             var fyStart = fy.StartDate.ToDateTimeUtc().Date;
             var fyEnd = fy.EndDate.ToDateTimeUtc().Date;
@@ -116,8 +110,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                         (p, u) => new { p.Id, UnitName = u.Name })
                     .ToDictionaryAsync(x => x.Id, x => x.UnitName);
 
+            // Annual balances are the ones with no leave type — annual leave is driven by this
+            // per-FY setting, not by a LeaveType row.
             var existing = await balances.GetAll()
-                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == annualLeaveTypeId)
+                .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == null)
                 .Select(b => new
                 {
                     b.EmployeeId,
@@ -174,8 +170,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 FiscalYearStart = fyStart,
                 FiscalYearEnd = fyEnd,
                 FiscalYearClosed = fy.IsClosed,
-                LeaveTypeId = annualLeaveTypeId,
-                LeaveTypeName = annualLeaveTypeName,
+                LeaveTypeName = AnnualLeave.DisplayName,
                 TotalEmployees = rows.Count,
                 GeneratedCount = rows.Count(r => r.IsGenerated),
                 Rows = rows

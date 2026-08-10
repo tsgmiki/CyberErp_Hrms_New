@@ -8,15 +8,18 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-6`** (branched off `main` at `6150894`, 2026-08-09) —
-  empty so far; the next batch of work starts here.
+- **CURRENT BRANCH: `feature/hrms-buildout-7`** (branched off `main` at `5a2e246`, 2026-08-09) —
+  carries the return-from-leave work (PR #9, open), `PositionClass.TitleA`, and from this session the
+  annual-leave/`LeaveType` decoupling and the ledger pagination fix (00EG–00EI).
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
   performance score bands, detail-as-grid, and the route state-loss fix, **PR #6** the module-schema
-  rename, and **PR #7** the salary-increment work (00DR–00DW: eligibility rules, the Increment Rules
+  rename, **PR #7** the salary-increment work (00DR–00DW: eligibility rules, the Increment Rules
   screen, the Hired Date column, grade-ceiling promotion, the terminated-employee exclusion and the
-  Approve/Apply button fixes). The `feature/hrms-buildout`, `-2`, `-3`, `-4` and `-5` branches were
+  Approve/Apply button fixes), and **PR #8** the return-from-leave workflow plus the retiree exclusion
+  and the per-case `AffectsSalaryIncrement` flag (00DX–00DZ) — paired with Home `711b7bb`.
+  The `feature/hrms-buildout`, `-2`, `-3`, `-4`, `-5` and `-6` branches were
   deleted after merging — historical references to them below are accurate for their date, but those
   branches no longer exist.
 - ⚠️ **The module-schema rename IS APPLIED to CERP** (PR #6 + Home `8ee69da`). Tables are
@@ -29,8 +32,26 @@
   `SalaryRevisionPerformanceBands`, `ModuleSchemaRename`, and from this session
   `AddSalaryIncrementPolicy`, `AddSalaryRevisionLineEligibility`, `AddGradeCeilingPromotion`,
   `AddAffectsSalaryIncrement`, `AddAnnualLeaveReturn`).
-  The three new ones are additive (one table + five nullable/defaulted columns) and need
-  `dotnet ef database update` anywhere else. **A new menu operation `/salaryIncrementPolicy` also
+  The five newest are additive (two tables + six nullable/defaulted columns; `AddAnnualLeaveReturn`
+  also widens `AnnualLeaveHeader.Status` 20→30, `Up` widens only so no data loss) and need
+  `dotnet ef database update` anywhere else.
+  **Add from this session (00EH):** `AddPositionClassTitleA`, `DecoupleAnnualLeaveFromLeaveType` and
+  `AnnualLeaveSettingAllowHalfDay` — all applied to CERP, all local-only. The decoupling one is NOT
+  purely additive: it makes `LeaveBalance.LeaveTypeId` / `LeaveBalanceTransaction.LeaveTypeId`
+  **nullable** and repoints existing annual rows to NULL. Its `Down` restores non-null with a
+  `Guid.Empty` default, which would NOT recover the original type ids — restore from backup instead
+  of rolling back.
+- ⚠️ **CERP now contains ONLY migrated NVI production data** (00EG): 490 employees under Head Office
+  `aadb4e82`, 125 other tables emptied, 490 accounts with the default password `password`. All prior
+  demo/test data is gone. Restore point `CERP_before-purge-and-retenant-20260810-154842.bak`.
+  **Every `WorkflowDefinition` was purged**, so annual leave (and every other governed process)
+  rejects submissions until the chains are reconfigured.
+- **CERP tenant configuration is DONE and is not reproducible from the repo** (see 00EA): all three
+  tenants have an active `AnnualLeave.Return` chain, and Demo Corp now has a full annual-leave setup
+  (leave type + generated 16-day ledger + `AnnualLeave` chain). **A new tenant or a fresh database
+  needs all of that configured by hand** — early/late returns fail with a message naming the process
+  until `AnnualLeave.Return` exists.
+- **A new menu operation `/salaryIncrementPolicy` also
   needs seeding per tenant** (`POST /Module/seed-defaults`, per-CURRENT-tenant) **and then granting** —
   seeding creates the operation but no `RolePermission`, so the screen 403s until an admin grants it
   (verified). **Both tenants in CERP are already done** and need nothing: `aadb4e82` was set up by hand
@@ -95,6 +116,264 @@
 
 ## 1. Most recent changes (latest first)
 
+00EL. **`ReviewCycle` save failed: two booleans missing from `booleanFields` (2026-08-10, HRMS frontend).**
+    Saving a Review Cycle returned *"The dto field is required"* + *"The JSON value could not be
+    converted to System.Boolean. Path: $.enableSecondLevelReview"*. **One cause, two messages.**
+    - `FormData` values are ALWAYS strings; `createSaveService` converts only the fields named in
+      `booleanFields`. `enableSecondLevelReview` and `enableHrSignOff` were not listed, so they went
+      out as the string `"false"`, JSON binding failed, and the whole DTO arrived null — which is what
+      "the dto field is required" actually means.
+    - Only the FIRST bad field is reported (binding stops there), so fixing just the reported one would
+      have moved the error to `enableHrSignOff` on the next save. Both are now registered.
+    - Verified by executing the REAL save service through the dev server with `fetch` stubbed: all five
+      booleans now serialise as JSON booleans. Mutation-tested — re-introducing the omission reproduces
+      `"enableSecondLevelReview": "false"` exactly as the user saw it. No API needed.
+    - **Audited all 43 entity save services in both apps** (every boolean dropdown vs its
+      `booleanFields`): no other gaps. The audit was mutation-tested too, so the clean result means
+      something.
+    - ⚠️ **Design footgun, unchanged:** `booleanFields` is a hand-maintained mirror of the backend DTO
+      with no compile-time link, and adding a bool to any DTO silently breaks its form until someone
+      edits the list. Making `createSaveService` coerce `"true"`/`"false"` generically would remove the
+      list entirely — not done, it changes shared behaviour for all 43 services.
+
+00EK. **The app shell had no definite height, so NOTHING scrolled internally (2026-08-10, both SPAs).**
+    Reported as "the tree has no scrollbar"; it was the whole app. `DashboardLayout` sized the shell
+    with **`min-h-screen`** — a MINIMUM, not a definite height — so `<main class="flex-1 overflow-auto">`
+    grew with its content, and every `h-full` / `min-h-0 flex-1 overflow-auto` below it (the org tree
+    AND every data grid) grew too. The browser window scrolled instead of the panels.
+    - Fix, three classes: `min-h-screen` → **`h-screen`** on the shell root, `min-h-screen` → `min-h-0`
+      on the content column, `min-h-0` added to `<main>`. Mirrored in Home (identical shell).
+    - Deliberately NOT hard-coded pixel heights: the bound is the viewport minus chrome, delivered
+      through the flex chain the grids already use, so the tree and all ~100 grids get it uniformly.
+      There is no fixed-height convention in the codebase to copy — every grid uses
+      `min-h-0 flex-1 overflow-auto` and was relying on this same broken chain.
+    - Measured on `/employee`: tree panel **23,325px → 658px fixed**, window scrolling gone. With 120
+      rows injected the panel HELD at 658px and scrolled (content 4436px, viewport 617px).
+    - Swept 10 other routes: none scroll the window, and the bottom of the content is reachable inside
+      `main` on every one (the Dashboard, 1028px of content, now scrolls internally).
+    - ⚠️ This changes scrolling on EVERY screen in both apps — page-level becomes content-area
+      scrolling. It is the desktop-ERP behaviour the code was written for, and the sweep was clean, but
+      it is a broad change.
+
+00EJ. **Tree: horizontal scrolling + header search (2026-08-10, both SPAs, shared `treeView.tsx`).**
+    - **Horizontal.** Row labels were `truncate`d inside a fixed 336px panel, so a deep unit name was
+      clipped with no way to read it — and `truncate` (overflow:hidden) meant content could never be
+      wider than the panel, so there was nothing to scroll. Now `whitespace-nowrap` + `w-max min-w-full`
+      on the row: it grows to its content so the panel scrolls sideways, while short rows still fill the
+      panel so hover/selected backgrounds and the right-aligned badge look unchanged.
+    - **Search** in the header (reuses the shared `SearchBar`): filters by label OR badge,
+      case-insensitive, with the matched run highlighted.
+      **A match keeps its ANCESTORS** — a hit five levels down is useless if the branches above it are
+      filtered away. A matched node also keeps its whole subtree so you can still drill in.
+      Branches that only survived because a DESCENDANT matched are force-opened; branches that matched
+      themselves stay shut — without that, searching "directorate" re-rendered essentially the whole
+      tree and looked like search had done nothing (8 rows → 5 on the probe data). The user's own
+      collapse state is untouched and returns when the box is cleared.
+      Empty results say *"No matches for X"*, not the "no units yet" empty state — different answers.
+    - `searchable` defaults TRUE, so it also appears on the Report Viewer catalog rail, which had no
+      search before. Opt out with `searchable={false}`.
+    - Verified 9/9 in the browser as `demo` on `/employee`. Demo Corp had 0 org units, so a 7-node
+      hierarchy was seeded there to test against a real render and **deleted afterwards**
+      (`CreatedBy='treesearch-probe'`; org units back to 121, all Head Office).
+    - ⚠️ Testing wall hit repeatedly this session: `/employee`, `/organizationUnit`, `/position`,
+      `/annualLeaveLedger` and `/reports` are all `CanView=0` for `UserRole`, so **`hoadmin` cannot open
+      any of them**. Only `admin` / `medhanit` (Administrator) and HR Admin can; `demo` holds `/employee`
+      only. Grants were NOT altered — attempting to was correctly blocked.
+
+00EI. **Annual Leave Ledger pagination was inert + a system-wide grid audit (2026-08-10, HRMS frontend).**
+    Selecting a page size of 10 or 15 still rendered the whole dataset. Three things combined:
+    `param` was seeded with `take: 1000`, the component passed **every** row as `rows`, and it set
+    `total={rows.length}`. `EntityListShell`'s contract is `rows` = ONE page and `total` = the full
+    count; nothing ever read `param`, so there was neither a refetch nor a slice.
+    - Same root cause made the **search box inert** — `param.searchText` was never read either.
+    - Fixed client-side (filter → `filtered.slice(param.skip, param.skip + param.take)`,
+      `total={filtered.length}`), matching `reportViewer`, `salaryRevision/detail` and
+      `employee/childManager`. The single bulk fetch stays: entitlement is computed across the whole
+      employee set, Calculate acts on all of it, and the header's generated/total needs the full set.
+      Export still covers the whole filtered ledger, not the visible page; changing setting resets to
+      page 1.
+    - **Audit — this was the ONLY broken grid in either SPA.** 98 of 101 HRMS `EntityListShell` grids
+      (and all 18 in Home) use `useEntityList`, which keys the query on `param` and takes `total` from
+      the server. Of the 3 that hand-roll data, `salaryRevision/detail` and `employee/childManager`
+      slice correctly. Every other `count: rows.length` hit is a `pagination: "None"` sub-table inside
+      a modal/detail pane (loan schedules, beneficiaries, tax brackets, trip lines) — intentional.
+      `operationList.tsx:120` looks similar but is a row count inside a GROUP LABEL, not the total.
+    - Verified against the real 345-row payload: size 15 → 15 rows, size 10 → 10, page 2 differs,
+      last page is a correct partial (5), every row reachable exactly once, search narrows page AND
+      total. ⚠️ **Not confirmed in a browser** — `/annualLeaveLedger` is `CanView=0` for `UserRole`
+      (so `hoadmin` gets `/unauthorized`) and only `admin` / `medhanit` (Administrator) hold it.
+
+00EH. **Annual leave decoupled from `LeaveType` (2026-08-10, HRMS full stack, 2 migrations).**
+    Generating the ledger failed with *"No active leave type uses the Annual accrual method."* The
+    immediate trigger was the purge (00EG) emptying `Hrms.LeaveType`, but the real problem was the
+    coupling: annual leave is driven by `AnnualLeaveSetting`, yet still had to resolve a `LeaveType`
+    row. **See `logic.md` §3.1.1 for the full rule** — annual balances are now `LeaveTypeId IS NULL`.
+    - A second, hidden half: `SubmitAnnualLeave` **hard-required** `ledger.LeaveType` ("The selected
+      ledger has no leave type"). Fixing only the ledger would have left annual leave un-submittable.
+    - `AllowHalfDay` moved onto `AnnualLeaveSetting` (+ form field, + `booleanFields` in the save
+      service — a boolean not listed there posts as a string). Migration backfills per tenant from the
+      old annual type; column defaults **true** (EF generated `false`, which would have silently
+      disabled half-days everywhere).
+    - Migrations: `DecoupleAnnualLeaveFromLeaveType` (nullable columns + repoint existing annual rows
+      to NULL) and `AnnualLeaveSettingAllowHalfDay`. Both applied to CERP.
+    - Verified end-to-end: ledger loads 345 employees, Calculate creates 345 (re-run 0 — idempotent),
+      self-service balance widget returns the annual figure (its old INNER JOIN to `LeaveType` would
+      have silently dropped every annual row), and submit → approve → **18 entitled / 5 taken / 13
+      available** on a single row. The unfiltered unique index genuinely blocks a duplicate annual row
+      (tested with a direct INSERT). Test data removed afterwards.
+    - ⚠️ The purge also removed every `WorkflowDefinition`, so annual leave submission currently fails
+      with "No active approval workflow is configured for Annual Leave" until they are reconfigured.
+
+00EG. **CERPNVI → CERP data migration, full purge, and 490 accounts (2026-08-10, DATA ONLY — no code).**
+    **Not reproducible from this repo** — the scripts lived in a scratchpad. CERP now holds **only NVI
+    production data**, re-tenanted to Head Office `aadb4e82-2075-48ca-a93c-5cdac93a59b2`.
+    - Copied 7 tables from `CERPNVI` (int PKs → Guid PKs via temp map tables): `coreUnit`,
+      `coreJobGrade`, `coreSalaryScale`, `corePositionClass`, `corePosition`, `corePerson`,
+      `hrmsEmployee`. Then emptied **125** other Hrms/Core tables, dropped non-NVI rows from the nine
+      data tables, re-tenanted, and retired the temporary migration tenant.
+    - **Traceability:** every migrated row carries `CreatedBy = 'migrate:CERPNVI:<sourceId>'`; the
+      accounts carry `CreatedBy = 'migrate:CERPNVI'`. That is the only link back to the source.
+    - Final: 490 employees (345 Active + 145 Terminated — the directory API shows 345 because
+      terminated staff live in the Termination List), 1356 persons, 1162 positions, 814 position
+      classes, 121 org units, 38 job grades. Restore point
+      `CERP_before-purge-and-retenant-20260810-154842.bak`.
+    - **Credentials:** username = lowercase `FirstName` + first letter of `FatherName`, non-alphanumerics
+      stripped, numeric suffix on the 17 repeats (`abebed`, `abebed2`). Password for all 490 is
+      `password`.
+    - Two deliberate deviations from the literal instruction: **`Core.Tenant` was preserved** (Finbuckle
+      resolves the tenant per request from it — emptying it locks everyone out), and the 16 kept
+      accounts had `EmployeeId` **set to NULL** where it pointed at a deleted employee, so the FK
+      re-check could pass. The accounts themselves survived.
+    - ⚠️ **Two security findings raised, neither fixed** (see §2):
+      **(a)** `LoginRepository.cs` computes `isHeadOffice = branchId is null || isBranchHeadOffice`.
+      The comment says this is for the "tenant owner / unlinked system account", but it never checks
+      whether the account is linked to an employee — and head office ⇒ `IsAdminAsync` ⇒ HR-admin data
+      scope. Confirmed: signed in as `abaynehh` (a rank-and-file employee with **no role at all**) and
+      `GET /api/v1/Employee` returned all 345 colleagues **including salary, DOB, national ID and
+      pension number**. Per-operation permissions still hold (`/User`, `/Role` → 403); the Employee
+      list is deliberately open for self-service and leans on the visibility scope alone.
+      **(b)** `Encryption.GenerateHash` uses PBKDF2 with an **empty salt**, so all 490 accounts share
+      one identical hash — one cracked hash exposes every account.
+
+00EF. **`Hrms.PositionClass.TitleA` — Amharic title (2026-08-10, HRMS full stack).**
+    Follows the existing `*A` convention (`JobGrade.NameA`, `LeaveType.NameA`, `Holiday.NameA`):
+    nullable `nvarchar(200)`, never required — the English title stays the mandatory one and not
+    every class gets translated.
+    - Entity (trailing optional param on `Create`/`Update`, so no existing caller broke), EF config,
+      all three DTOs + both validators, the read projection, and the frontend model / form field /
+      list column / Zod bound.
+    - **No Home mirror** — the portal has no positionClass screen, so this is HRMS only.
+    - Locale note: `"Title (Amharic)"` is NOT in `am.json`, matching `"Name (Amharic)"` on JobGrade,
+      which is not either. Every `*A` LABEL in the app falls back untranslated — a pre-existing gap
+      worth a sweep, not something to fix for one field in isolation.
+    - Verified 9/9 by API (Amharic round-trips byte-exact, optional, clears on omit, 201 chars
+      rejected) and 7/7 through the UI (column renders the Amharic, the edit form loads and SAVES it).
+    - ⚠️ Testing gotcha: `hoadmin` holds the `UserRole` role, which has **CanView=0** on
+      `/positionClass` — the screen redirects to `/unauthorized`, which looks exactly like a missing
+      field. Grants were flipped on temporarily and **restored to all-false afterwards**; verify
+      against a role that actually holds the permission (`admin` = Administrator, or HR Admin).
+
+00EE. **The APPROVER could not see what they were approving (2026-08-10, HRMS + Home `d7d30ce`).**
+    A return adjustment reached the inbox as `"Early return — 2 day(s) against leave of 5 day(s)"`
+    and nothing else. The History action beside it shows only that INSTANCE's step log, so the
+    employee's written explanation — the one thing the decision turns on — was nowhere on screen,
+    nor were the original dates or the approved-vs-actual comparison.
+    - The workflow row now offers **Leave details**, opening the full leave history popup (the same
+      one the list uses). The step-log History stays beside it; they answer different questions.
+    - ⚠️ **A return adjustment's workflow instance carries the `AnnualLeaveReturn` id, NOT the header
+      id.** `GET /AnnualLeave/{id}/history` now accepts either and resolves a return to its owning
+      request — the approver holds an id from an inbox row and cannot be expected to know which kind
+      it is. One extra lookup, only on a miss.
+    - **Home needed a data change to carry it:** the portal's normalized `ApprovalItemModel` mapped
+      `entityType` to a display LABEL and dropped `entityId` entirely, so a tracking row could not
+      identify its own record. Both are now optional generic fields — any subsystem can supply them
+      to offer an "open the underlying record" affordance.
+    - Verified 9/9 in each app, including that the employee's explanation and the original approver's
+      comment are both visible before deciding.
+
+00EC. **The REQUESTER could not see their own approved leave (2026-08-10, Home portal only).**
+    Second visibility bug in the same feature: the person who must confirm a return could not reach
+    the action at all.
+    - **The requester's screen is the Home portal → Annual Leave** (`AnnualLeave/mine`, strictly
+      scoped to the signed-in employee). HRMS `/annualLeave` is the HR/admin view.
+    - That grid defaulted its status filter to **Pending**, written when `Approved` was a terminal
+      state. It is not any more — an approved request is waiting for the employee to confirm their
+      return. So the requester opened the screen and saw **"No data available"**. Measured: 0 rows and
+      0 Confirm-return buttons on the default filter, 1 of each on "All statuses".
+    - Defaults to **All statuses** now. Their own list is scoped to them and small; a default that can
+      hide the one row they must act on buys nothing.
+    - **Pattern behind both 00EB and 00EC: adding a state to a lifecycle invalidates assumptions made
+      when the old final state WAS final.** Anything keyed on "Approved means done" — filters,
+      defaults, dashboards, reports — needs re-checking.
+    - **Closed by 00ED** — the dashboard now prompts for it.
+
+00ED. **Dashboard prompt: "Confirm your return from leave" (2026-08-10, Home portal only,
+    `6917084`).** Third and last discoverability fix for the return feature: the employee is now TOLD
+    they have something to confirm instead of having to go looking.
+    - New `LeaveReturnsDue` widget, first in the dashboard's work column, listing each approved leave
+      still awaiting confirmation (period, days) with a button through to `/annualLeave`.
+    - **Renders nothing when there is nothing to confirm** — a prompt that is always on screen stops
+      being a prompt. Also silent when HRMS is unreachable rather than implying "nothing to do", the
+      same best-effort contract the other subsystem-bound widgets follow.
+    - Filters on `canConfirmReturn`, the server's own answer to "may this person act on this row", so
+      the eligibility rule is not reimplemented in the portal.
+    - Verified both ways: 3/3 with nothing due (no panel rendered, dashboard otherwise intact) and
+      8/8 with one due (prompt shown, period and days correct, link lands on the screen where the
+      action is available).
+    - Adding a widget stayed pure configuration, as `dashboardLayout.tsx` promises: one import, one
+      zone entry, no page edits.
+
+00EB. **The Confirm-return action was invisible on a normal laptop (2026-08-10, HRMS + Home, FE only).**
+    Reported as "I haven't seen anything on the front end" for the return-from-leave feature. The
+    implementation was on `main` and working — the ACTION COLUMN was overflowing.
+    - Four actions (History / Confirm return / Print / Cancel) pushed the column past the table's
+      right edge below ~1400px. Measured at three widths: **1152px clipped the button entirely**
+      behind 208px of hidden horizontal overflow; 1280px already cut Print and Cancel. The table
+      scrolls sideways, but nobody thinks to scroll a table.
+    - Fixed by letting the cluster WRAP (`flex-wrap`) instead of overflowing, and promoting Confirm
+      return to FIRST and filled — it is the one time-sensitive action on the row.
+    - **Lesson for any new row action: measure it at 1152/1280px, not just at the dev machine's
+      width.** Shipping-and-invisible looks exactly like not-shipped from the user's side, and every
+      automated check passed because Playwright finds clipped elements perfectly well.
+    - ⚠️ **Process slip in the same round:** a `git add -A` intended for the HRMS repo ran in the Home
+      repo (cwd resets between tool calls) and committed the user's uncommitted
+      `dashboardLayout.tsx` WIP under a leave-list message. Reverted in Home `d42def0` and the WIP
+      restored to the working tree. **Stage explicit paths, never `-A`, when the tree holds work that
+      is not yours.**
+
+00EA. **Tenant configuration for return-from-leave, and Demo Corp made usable (2026-08-09,
+    CERP DATA ONLY — no code, nothing to deploy).** All of this is configuration in the live CERP
+    database; recorded here because it is not reproducible from the repo.
+    - **`AnnualLeave.Return` definitions created for all three tenants.** Head Office and WF wf01
+      **mirror their existing `AnnualLeave` chain exactly** (2 and 4 steps respectively) — the user's
+      choice, on the basis that whoever approves the leave approves a change to it. Copied by
+      INSERT…SELECT so approver types and target ids came across verbatim; verified field-by-field,
+      6 steps in / 6 out, zero mismatches. **A hand-typed DisplayName with a wrong ApproverId looks
+      right in the UI and routes nowhere — always copy, never retype.**
+    - **Demo Corp had no leave chain to mirror**, so it got a single `HR Review → Role: HRMS Access`
+      step. `ImmediateManager` was rejected there: the tenant has ONE employee and nobody managerial,
+      so it would never resolve and every adjustment would jam at step 1.
+    - **Demo Corp set up end to end**: it was missing a leave type, a ledger and the `AnnualLeave`
+      workflow (it already had fiscal years, a work week and an annual-leave setting). All three
+      created **through the app's own endpoints**, not by inserting rows — the accrual engine computed
+      the 16-day entitlement from the tenant's own service-year rules rather than a number I picked.
+      `AccrualMethod: Annual` is what makes the engine treat a leave type as THE annual one.
+    - **E2E leftovers cleaned.** Fiscal years RENAMED (`FY 2026/27 (E2E)` → `FY 2026/27`) because they
+      are load-bearing — the active one carries the annual-leave setting and the ledger. 5 inactive
+      workflow definitions and 3 orphan roles DELETED: every one of those definitions had a **dangling
+      approver** (role ids that no longer exist), so they were inactive *and* unusable, and renaming
+      would have made a broken workflow easier to activate by mistake. The delete refused any
+      definition with workflow instances and re-checked every role reference at delete time.
+    - Verified through the UI: 19/19 on the full lifecycle in Demo Corp (submit → approve → early
+      return → approve → Closed, ledger 3 taken / 13 available), then reset to the pristine setup
+      (16 entitled / 0 taken, no requests, both chains active).
+    - ⚠️ **Two TEST bugs worth remembering, both of which made a broken run look green:**
+      (a) asserting status against whole-page text matches the STATUS FILTER DROPDOWN, so a request
+      that was never created still "passed" — scope row assertions to `table tbody tr`;
+      (b) the workflow Approve/Reject actions are ICON buttons carrying `title=`, so
+      `button:has-text("Approve")` clicks the *"Approved" filter tab* instead. Use
+      `button[title="Approve"]`. Both were caught only by querying the DB, not by reading the run.
+
 00DZ. **Return-from-leave confirmation workflow (2026-08-09, HRMS + Home, full stack).**
     An approved annual leave request is no longer finished when the dates pass: the employee confirms
     they are back, and early/late returns route back through approval. Full rules in `logic.md` §3.4.1.
@@ -109,8 +388,8 @@
       inside an overrun is free" and "a half-day row the return lands inside keeps its 0.5".
     - **Adjustments need a NEW workflow definition** — `AnnualLeave.Return`. Without one, confirming an
       early/late return fails with a message naming the process to configure; on-time returns work
-      with no workflow at all. No tenant has this definition yet, so it must be added before the
-      early/late paths can be used.
+      with no workflow at all. **All three CERP tenants now have one (see 00EA)** — a NEW tenant still
+      needs its own.
     - UI in BOTH apps (Home keeps its own copy of these screens): a Confirm-return modal whose day
       count is previewed server-side as the date changes, and a lifecycle History popup on every row.
     - Verified live: early return → approval → ledger `Taken` 5→3, Available 15→17, header `Closed`
@@ -1791,6 +2070,22 @@
 
 ## 2. Outstanding tasks / backlog
 
+- ⚠️ **Security — raised 2026-08-10 (00EG), awaiting a decision. Neither is fixed.**
+  - **A null branch grants head-office (HR-admin) visibility.** `LoginRepository.cs`:
+    `isHeadOffice = branchId is null || isBranchHeadOffice`. Harmless while the only accounts were
+    unlinked staff logins; now 490 employee-linked accounts have no branch (the purge left no
+    branches), so each of them reads the whole employee directory incl. salaries via
+    `GET /api/v1/Employee`. Candidate fix, matching the code's own comment
+    ("tenant owner / unlinked system account"):
+    `branchId is null && user.EmployeeId is null || isBranchHeadOffice` — all 16 kept accounts are
+    `EmployeeId IS NULL`, so they keep head office and only the new accounts change. **Not applied:
+    it changes login behaviour for every tenant.** The alternative is creating branches and assigning
+    employees.
+  - **Empty-salt password hashing.** `Encryption.GenerateHash` =
+    `Rfc2898DeriveBytes(pw, new byte[0], 10000, SHA256)` — deterministic, so all 490 accounts sharing
+    the default password share one hash. Force a change on first login; a per-user salt is the fix.
+  - **The 490 migrated accounts have no role**, so they can sign in but see no menu. Assigning one is
+    an access-control decision that was deliberately left to the user.
 - **Salary increment — open questions raised to the user (2026-08-09):**
   - ~~`Retired` employees are still included~~ — **DONE**, they are excluded too (00DX).
   - ~~`AffectsSalaryIncrement` flag on `DisciplinaryMeasure`~~ — **DONE** (00DY), as an opt-OUT.

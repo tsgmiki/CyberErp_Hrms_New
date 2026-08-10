@@ -128,7 +128,22 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
           name: "Action",
           label: "Action",
           render: (_t: unknown, r: AnnualLeaveModel) => (
-            <div className="flex items-center gap-1.5">
+            // WRAPS, never overflows. Four actions pushed this column past the table's right edge on
+            // anything under ~1400px, so "Confirm return" sat behind a horizontal scroll nobody
+            // thinks to use — the action was shipped but invisible on a normal laptop.
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* FIRST, and filled rather than outlined: this is the one time-sensitive action on the
+                  row, and it is the whole point of the return workflow. Everything else can wait. */}
+              {r.canConfirmReturn && (
+                <button
+                  type="button"
+                  onClick={() => setReturnFor(r)}
+                  title="Confirm your return from this leave"
+                  className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-semibold text-on-accent hover:opacity-90"
+                >
+                  <Undo2 size={13} /> Confirm return
+                </button>
+              )}
               {/* Available on every row and every status: an approver deciding on an adjustment needs
                   the whole lifecycle, and an employee wants to see where their request got to. */}
               <button
@@ -139,16 +154,6 @@ function AnnualLeaveList({ editHandler, employeeId }: Props) {
               >
                 <History size={13} /> History
               </button>
-              {r.canConfirmReturn && (
-                <button
-                  type="button"
-                  onClick={() => setReturnFor(r)}
-                  title="Confirm your return from this leave"
-                  className="inline-flex items-center gap-1 rounded-md border border-primary/40 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
-                >
-                  <Undo2 size={13} /> Confirm return
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => setPrintFor(r)}

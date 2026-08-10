@@ -13,7 +13,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public Guid Id { get; set; }
         public Guid EmployeeId { get; set; }
-        public Guid LeaveTypeId { get; set; }
+        /// <summary>Null on the ANNUAL balance, which has no leave type by design.</summary>
+        public Guid? LeaveTypeId { get; set; }
         public string? LeaveTypeCode { get; set; }
         public string? LeaveTypeName { get; set; }
         public Guid FiscalYearId { get; set; }
@@ -75,7 +76,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     EmployeeId = b.EmployeeId,
                     LeaveTypeId = b.LeaveTypeId,
                     LeaveTypeCode = b.LeaveType != null ? b.LeaveType.Code : null,
-                    LeaveTypeName = b.LeaveType != null ? b.LeaveType.Name : null,
+                    // No type => this is the annual balance; label it rather than showing a blank.
+                    LeaveTypeName = b.LeaveType != null ? b.LeaveType.Name : AnnualLeave.DisplayName,
                     FiscalYearId = b.FiscalYearId,
                     FiscalYearName = b.FiscalYear != null ? b.FiscalYear.Name : null,
                     Entitled = b.Entitled,

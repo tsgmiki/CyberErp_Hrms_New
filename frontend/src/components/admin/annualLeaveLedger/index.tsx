@@ -58,8 +58,10 @@ function AnnualLeaveLedger() {
   const [settingId, setSettingId] = useState("");
   const queryClient = useQueryClient();
 
-  // Grid state (single bulk fetch → one page; grouping + collapse is the render optimization).
-  const [param, setParam] = useState<ParameterModel>({ ...parameterInitialData, take: 1000 });
+  // The ledger is computed for EVERY eligible employee in one call (entitlement depends on the whole
+  // set, and Calculate acts on all of it), so search and paging are applied client-side over that
+  // result — the same shape reportViewer and salaryRevision/detail use.
+  const [param, setParam] = useState<ParameterModel>({ ...parameterInitialData });
   const [displayMode, setDisplayMode] = useState<ListDisplayMode>("list");
 
   const [settingParam] = useState({ ...parameterInitialData, take: 200 });
@@ -85,7 +87,29 @@ function AnnualLeaveLedger() {
     onError: () => toast.error("Failed to calculate the ledger."),
   });
 
-  const rows = ledger?.rows ?? [];
+  const rows = useMemo(() => ledger?.rows ?? [], [ledger]);
+
+  // Search box was previously inert on this grid — param.searchText was never read.
+  const filtered = useMemo(() => {
+    const q = (param.searchText ?? "").trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.employeeName, r.employeeNumber, r.organizationUnitName]
+        .some((v) => String(v ?? "").toLowerCase().includes(q)),
+    );
+  }, [rows, param.searchText]);
+
+  const pageRows = useMemo(
+    () => filtered.slice(param.skip, param.skip + param.take),
+    [filtered, param.skip, param.take],
+  );
+
+  // A new setting is a different dataset — go back to page 1 rather than stranding the user on a
+  // page number the new result may not have.
+  const settingHandler = (next: string) => {
+    setSettingId(next);
+    setParam((p) => ({ ...p, skip: 0 }));
+  };
 
   const body = (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -95,13 +119,13 @@ function AnnualLeaveLedger() {
           <label className="mb-1 block text-sm font-medium text-muted">Annual Leave Setting</label>
           <select
             value={settingId}
-            onChange={(e) => setSettingId(e.target.value)}
+            onChange={(e) => settingHandler(e.target.value)}
             className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
           >
             <option value="">Select a setting…</option>
             {settingOptions.map((s: any) => (
               <option key={s.id} value={s.id}>
-                {s.fiscalYearName} — {s.leaveTypeName}
+                {s.fiscalYearName}
               </option>
             ))}
           </select>
@@ -128,13 +152,16 @@ function AnnualLeaveLedger() {
           listLabel="Annual Leave Ledger"
           columns={COLUMNS}
           isLoading={isLoading}
-          rows={rows}
-          total={rows.length}
+          rows={pageRows}
+          total={filtered.length}
           param={param}
           setParam={setParam}
           displayMode={displayMode}
           setDisplayMode={setDisplayMode}
-          fetchAllData={async () => rows as unknown as Record<string, unknown>[]}
+          fetchAllData={
+            // Export covers the whole (filtered) ledger, not just the visible page.
+            async () => filtered as unknown as Record<string, unknown>[]
+          }
           groupBy="organizationUnitName"
           getGroupLabel={(key) => key || "Unassigned"}
           rowKey="employeeId"

@@ -37,6 +37,7 @@ function PositionClassList({ editHandler }: Props) {
           ),
         },
         { name: "title", label: "Title", sort: true },
+        { name: "titleA", label: "Title (Amharic)" },
         { name: "jobGradeName", label: "Grade" },
         {
           name: "salary",

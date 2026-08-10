@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260810112109_AddPositionClassTitleA")]
+    partial class AddPositionClassTitleA
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -419,9 +422,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("AllowHalfDay")
-                        .HasColumnType("bit");
 
                     b.Property<int>("BaseLeaveDays")
                         .HasColumnType("int");
@@ -5945,7 +5945,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("FiscalYearId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("LeaveTypeId")
+                    b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
@@ -6007,7 +6007,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("FiscalYearId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("LeaveTypeId")
+                    b.Property<Guid>("LeaveTypeId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Reason")
@@ -13534,7 +13534,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.LeaveType", "LeaveType")
                         .WithMany()
                         .HasForeignKey("LeaveTypeId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("FiscalYear");
 
