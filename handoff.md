@@ -104,6 +104,24 @@
 
 ## 1. Most recent changes (latest first)
 
+00EB. **The Confirm-return action was invisible on a normal laptop (2026-08-10, HRMS + Home, FE only).**
+    Reported as "I haven't seen anything on the front end" for the return-from-leave feature. The
+    implementation was on `main` and working — the ACTION COLUMN was overflowing.
+    - Four actions (History / Confirm return / Print / Cancel) pushed the column past the table's
+      right edge below ~1400px. Measured at three widths: **1152px clipped the button entirely**
+      behind 208px of hidden horizontal overflow; 1280px already cut Print and Cancel. The table
+      scrolls sideways, but nobody thinks to scroll a table.
+    - Fixed by letting the cluster WRAP (`flex-wrap`) instead of overflowing, and promoting Confirm
+      return to FIRST and filled — it is the one time-sensitive action on the row.
+    - **Lesson for any new row action: measure it at 1152/1280px, not just at the dev machine's
+      width.** Shipping-and-invisible looks exactly like not-shipped from the user's side, and every
+      automated check passed because Playwright finds clipped elements perfectly well.
+    - ⚠️ **Process slip in the same round:** a `git add -A` intended for the HRMS repo ran in the Home
+      repo (cwd resets between tool calls) and committed the user's uncommitted
+      `dashboardLayout.tsx` WIP under a leave-list message. Reverted in Home `d42def0` and the WIP
+      restored to the working tree. **Stage explicit paths, never `-A`, when the tree holds work that
+      is not yours.**
+
 00EA. **Tenant configuration for return-from-leave, and Demo Corp made usable (2026-08-09,
     CERP DATA ONLY — no code, nothing to deploy).** All of this is configuration in the live CERP
     database; recorded here because it is not reproducible from the repo.
