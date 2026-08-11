@@ -46,13 +46,27 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
     public class GetPerformanceHistory(
         IRepository<PerformanceHistory> repository,
+        IRepository<Appraisal> appraisals,
+        IRepository<Achievement> achievements,
+        IRepository<IndividualDevelopmentPlan> developmentPlans,
+        IRepository<PerformanceImprovementPlan> improvementPlans,
+        IRepository<EmployeeRecognition> recognitions,
         IPerformanceVisibilityService visibility) : IGetPerformanceHistory
     {
         public async Task<List<PerformanceHistoryDto>> GetAsync(string entityType, Guid entityId)
         {
+            // The audit trail follows the RECORD it documents: if you may see the appraisal, you may see
+            // its history. It used to be HR-only, which was invisible while every session resolved to
+            // admin — once that was fixed (00EM) an employee opening their own appraisal was refused the
+            // history panel on their own record.
             var scope = await visibility.GetScopeAsync();
             if (!scope.IsAdmin)
-                throw new ValidationException("access", "Only HR can view performance history.");
+            {
+                var ownerId = await ResolveOwnerEmployeeAsync(entityType, entityId);
+                // Unknown entity type => fail CLOSED: no owner to check means no basis to grant access.
+                if (ownerId is null || !await visibility.CanAccessEmployeeAsync(ownerId.Value))
+                    throw new ValidationException("access", "You do not have access to this record's history.");
+            }
 
             return await repository.GetAll().AsNoTracking()
                 .Where(h => h.EntityType == entityType && h.EntityId == entityId)
@@ -70,5 +84,26 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 })
                 .ToListAsync();
         }
+
+        /// <summary>
+        /// The employee a history row's subject belongs to. Every type written by
+        /// <see cref="IPerformanceHistoryWriter"/> is listed here — add new ones as they appear, or they
+        /// silently become HR-only.
+        /// </summary>
+        private async Task<Guid?> ResolveOwnerEmployeeAsync(string entityType, Guid entityId) =>
+            entityType switch
+            {
+                "Appraisal" => await FirstOwnerAsync(appraisals.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
+                "Achievement" => await FirstOwnerAsync(achievements.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
+                "DevelopmentPlan" => await FirstOwnerAsync(developmentPlans.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
+                "ImprovementPlan" => await FirstOwnerAsync(improvementPlans.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
+                "Recognition" => await FirstOwnerAsync(recognitions.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
+                // "Calibration" is deliberately absent: its history rows carry a CalibrationSession id,
+                // and a session spans a COHORT rather than one employee — there is no individual owner
+                // to authorise against, so it stays HR-only via the fail-closed default below.
+                _ => null,
+            };
+
+        private static Task<Guid?> FirstOwnerAsync(IQueryable<Guid?> query) => query.FirstOrDefaultAsync();
     }
 }

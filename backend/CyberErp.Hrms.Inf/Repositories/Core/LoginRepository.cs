@@ -56,7 +56,7 @@ public class LoginRepository(
 
                 // Branch scope + head-office visibility are DERIVED from the linked employee's branch:
                 // a user tied to a REGULAR branch is scoped to that branch, while a user assigned to the
-                // branch flagged Head Office — or one with no branch at all (tenant owner / unlinked
+                // branch flagged Head Office — or one with no employee at all (tenant owner / unlinked
                 // system account) — keeps global visibility across every branch and department.
                 //
                 // Read WITHOUT the repository's tenant/branch filters and re-assert the tenant by hand:
@@ -76,7 +76,14 @@ public class LoginRepository(
                     isBranchHeadOffice = assignment?.IsHeadOfficeBranch ?? false;
                 }
 
-                var isHeadOffice = branchId is null || isBranchHeadOffice;
+                // "No branch" only means head office for an account that is NOT tied to an employee —
+                // the tenant owner / system login the comment above describes. It previously applied to
+                // ANY branchless account, so every employee-linked user whose employee had no branch
+                // logged in as head office; head office short-circuits IsAdminAsync, which turns off the
+                // manager/self scoping in the appraisal, employee and goal queries and shows everyone
+                // the whole organisation (salaries included). An employee is scoped by their branch, or
+                // by the visibility service when there are no branches — never by this flag.
+                var isHeadOffice = (branchId is null && !user.EmployeeId.HasValue) || isBranchHeadOffice;
 
                 var tokenId = Guid.NewGuid();
                 var userResult = new UserResult

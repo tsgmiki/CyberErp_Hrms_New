@@ -227,6 +227,34 @@ Ordering matters: the instance is **completed and saved before** the handler run
 `WorkflowGate` check passes inside the handler. Approvals surface automatically in the generic
 `/workflow` tracking UI + dashboard — **no per-module approval screen**.
 
+## 2.9 Employee data visibility (who sees whom)
+
+One rule serves every scoped module — appraisal, employee list/options, goals, development plans:
+
+| Scope | Sees |
+|---|---|
+| `IsAdmin` | every employee in the tenant |
+| `IsManager` | self + every employee whose position sits in their org-unit **subtree** |
+| otherwise | self only |
+
+Resolved once per request by `IPerformanceVisibilityService.GetScopeAsync()` and applied as a **SQL
+predicate**, never an in-memory filter. `CanAccessEmployeeAsync(id)` answers the same question for
+single-record endpoints.
+
+- **Manager** = `Employee.IsManagerial` **and** a position with an org unit; the subtree comes from
+  `EstablishmentShared.ResolveSubtreeAsync`. Without the flag a user is self-only regardless of title.
+- **Admin** = head office **or** an `HrSignOff` approver on an active Appraisal workflow definition.
+- **Per-record reads follow the record's owner**, not a blanket HR gate: performance history resolves
+  its subject to an employee (`ResolveOwnerEmployeeAsync`) and reuses `CanAccessEmployeeAsync`, so the
+  appraisee and their management line can read their own audit trail. **Aggregate/cohort reads stay
+  HR-only** — medical expense reports, calibration sessions, trip budget utilisation and aging, and
+  individual peer reviews (anonymity). An unmapped entity type fails CLOSED to HR-only.
+- ⚠️ **Head office is the master switch** — `IsAdminAsync` opens with
+  `if (currentUser.IsHeadOffice()) return true`, so anything that wrongly marks a session head office
+  silently disables all of the above. It is set at login from the employee's branch, and (2026-08-10)
+  a missing branch only counts when the account has **no linked employee** at all. Before that fix,
+  every employee in a tenant with no branches was an admin and the whole table above was dead code.
+
 ## 3. Leave logic (Annual Leave — the flagship)
 
 ### 3.1 Fiscal-year anchoring

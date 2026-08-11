@@ -8,9 +8,11 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-7`** (branched off `main` at `5a2e246`, 2026-08-09) —
-  carries the return-from-leave work (PR #9, open), `PositionClass.TitleA`, and from this session the
-  annual-leave/`LeaveType` decoupling and the ledger pagination fix (00EG–00EI).
+- **CURRENT BRANCH: `feature/hrms-buildout-8`** (branched off `main` at `57e7ff7`, 2026-08-10) —
+  carries the employee-visibility fix (00EM). **PR #9 IS MERGED** (`57e7ff7`): it landed the
+  return-from-leave reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType`
+  decoupling, the ledger pagination fix, the app-shell height fix and the tree scroll/search
+  (00EF–00EL), paired with Home `84f8003`. `feature/hrms-buildout-7` can be deleted.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
@@ -115,6 +117,60 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00EN. **"Only HR can view performance history" after saving an appraisal (2026-08-10, HRMS backend).**
+    Fallout from 00EM, not a regression in it. `GetPerformanceHistory` was gated on `scope.IsAdmin`
+    outright, which was invisible while EVERY session resolved to admin. With scoping restored, an
+    employee opening their own appraisal was refused the history panel **on their own record** — and
+    `scoring.tsx` fetches it unconditionally (`enabled: id !== ""`), so it fired for everyone.
+    - **The save itself always succeeded** — the appraisal and its history row were both written; only
+      the follow-up history fetch failed, which made a working save look broken.
+    - Now the audit trail follows the RECORD it documents: resolve the history row's subject to its
+      owning employee and reuse `CanAccessEmployeeAsync`, so appraisee + their management line + HR can
+      read it. Types mapped: Appraisal, Achievement, DevelopmentPlan (`IndividualDevelopmentPlan`),
+      ImprovementPlan (`PerformanceImprovementPlan`), Recognition (`EmployeeRecognition`).
+    - ⚠️ **`Calibration` is deliberately NOT mapped:** its history rows carry a `CalibrationSession` id
+      and a session spans a COHORT, so there is no individual owner to authorise against. It falls
+      through to the fail-closed default and stays HR-only — as does any entity type added later, so
+      **new types must be added to `ResolveOwnerEmployeeAsync` or they silently become HR-only.**
+    - Verified against the user's REAL appraisal (6/6): appraisee ✅, their unit's manager ✅, unrelated
+      employee ❌, manager of a different unit ❌, HR ✅, unknown/cohort type ❌ for non-admin but ✅ for HR.
+    - **Swept the other `Only HR can view…` gates** (medical expense report, individual peer reviews,
+      calibration sessions, trip budget utilisation, trip aging): all are cross-employee aggregates or
+      deliberately confidential, so HR-only is right for them. Performance history was the only
+      per-record read mis-gated as an aggregate. No Home change — same API.
+
+00EM. **Everyone could see every employee — appraisal + all scoped modules (2026-08-10, HRMS backend).**
+    Reported against the appraisal modules, but it was never an appraisal bug: `AppraisalHandlers`,
+    `EmployeeOptions`, `EmployeeGoal`, `DevelopmentPlan` etc. ALREADY implement
+    admin→all / manager→own+subtree / employee→self. Every one of them is wrapped in
+    `if (!scope.IsAdmin)`, and **every user was an admin**.
+    - Chain: `LoginRepository` computed `isHeadOffice = branchId is null || isBranchHeadOffice`; the
+      purge left **0 branches**, so all 490 employee-linked accounts logged in as head office →
+      `PerformanceVisibilityService.IsAdminAsync` opens with
+      `if (currentUser.IsHeadOffice()) return true` → `scope.IsAdmin` true → every restriction skipped.
+    - **One-line fix:** `(branchId is null && !user.EmployeeId.HasValue) || isBranchHeadOffice`.
+      "No branch = head office" now applies only to accounts NOT tied to an employee — the
+      tenant-owner / system login the surrounding comment already described. The 16 preserved staff
+      accounts are all `EmployeeId IS NULL`, so they keep global visibility; only employee-linked
+      accounts change. **No appraisal code was touched.**
+    - Safe against `Repository.ApplyBranchFilter`: a non-head-office user with NO branch falls through
+      unrestricted (it only filters when a BranchId is present), so the branch filter stays a no-op and
+      only the row-level visibility scoping re-engages. Nothing goes blank.
+    - Verified per role — normal user sees **1**, manager sees **5** (their unit subtree, matching the
+      SQL-computed expectation), unlinked HR account still **345**; cross-employee reads via
+      `EmployeePerformanceSummary` allow/deny exactly per rule (8/8).
+      **Mutation-tested:** with the fix reverted a normal employee sees all **345** and can read any
+      employee's summary (HTTP 200) — so the fix is demonstrably what enforces this.
+    - **Home is covered by the same change** — its appraisal screens call the HRMS API (55900); it has
+      no appraisal backend of its own.
+    - ⚠️ Only **2 of 490** employees have `IsManagerial = 1`, and manager scope requires that flag plus
+      a position with an org unit. Everyone else resolves to self-only. If real managers are missing
+      from their teams, that is the flag, not the logic.
+    - ⚠️ With `IsAdmin` no longer granted by branchlessness, the ONLY other route to admin scope is
+      being an `HrSignOff` approver on an active Appraisal workflow definition — and the purge removed
+      every definition. Employee-linked HR staff therefore have no admin scope until those chains are
+      configured; the unlinked staff accounts are unaffected.
 
 00EL. **`ReviewCycle` save failed: two booleans missing from `booleanFields` (2026-08-10, HRMS frontend).**
     Saving a Review Cycle returned *"The dto field is required"* + *"The JSON value could not be
@@ -2070,17 +2126,8 @@
 
 ## 2. Outstanding tasks / backlog
 
-- ⚠️ **Security — raised 2026-08-10 (00EG), awaiting a decision. Neither is fixed.**
-  - **A null branch grants head-office (HR-admin) visibility.** `LoginRepository.cs`:
-    `isHeadOffice = branchId is null || isBranchHeadOffice`. Harmless while the only accounts were
-    unlinked staff logins; now 490 employee-linked accounts have no branch (the purge left no
-    branches), so each of them reads the whole employee directory incl. salaries via
-    `GET /api/v1/Employee`. Candidate fix, matching the code's own comment
-    ("tenant owner / unlinked system account"):
-    `branchId is null && user.EmployeeId is null || isBranchHeadOffice` — all 16 kept accounts are
-    `EmployeeId IS NULL`, so they keep head office and only the new accounts change. **Not applied:
-    it changes login behaviour for every tenant.** The alternative is creating branches and assigning
-    employees.
+- ⚠️ **Security — raised 2026-08-10 (00EG).**
+  - ~~A null branch grants head-office (HR-admin) visibility~~ — **FIXED 2026-08-10 (00EM).**
   - **Empty-salt password hashing.** `Encryption.GenerateHash` =
     `Rfc2898DeriveBytes(pw, new byte[0], 10000, SHA256)` — deterministic, so all 490 accounts sharing
     the default password share one hash. Force a change on first login; a per-user salt is the fix.
