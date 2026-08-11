@@ -25,6 +25,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// <summary>The requester's effective manager(s), or null when none exist up the chain.</summary>
         Task<ResolvedManager?> ResolveImmediateManagerAsync(Guid requesterEmployeeId);
 
+        /// <summary>
+        /// Warm the employee→unit lookup for a whole batch in ONE query. Call before resolving managers
+        /// for many employees (e.g. every row of an approval inbox); without it each employee costs a
+        /// round-trip of its own.
+        /// </summary>
+        Task PreloadEmployeeUnitsAsync(IEnumerable<Guid> employeeIds);
+
         /// <summary>The requester's second-level manager(s) — the immediate manager's own manager (two-hop
         /// climb). Null when there is no immediate manager, or none above them.</summary>
         Task<ResolvedManager?> ResolveSecondLevelManagerAsync(Guid requesterEmployeeId);
@@ -54,15 +61,104 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         private readonly Dictionary<Guid, ResolvedManager?> _immediateCache = [];
         private readonly Dictionary<(Guid Unit, Guid Requester), ResolvedManager?> _climbCache = [];
 
+        // ---- The org snapshot the climb runs against -----------------------------------------
+        // The climb used to issue TWO queries per level (managers here? then who is my parent?) for
+        // EVERY requester — and because the cache key carries the requester (self-exclusion), two
+        // people in the same unit could not share a climb. An approval inbox over 2,000 running
+        // instances spent ~3,800 queries and 5s resolving the same handful of units over and over.
+        //
+        // The inputs are tiny and stable within a request: the unit tree, and the MANAGERIAL employees
+        // (a small subset). Load both once, then every climb is pure in-memory — 3 queries per request
+        // regardless of how many instances are evaluated. Loaded lazily, so a request that never
+        // resolves a manager pays nothing.
+        private sealed record ManagerRow(Guid EmployeeId, string Name, List<Guid> UserIds);
+        private Dictionary<Guid, Guid?>? _unitParent;              // unit -> parent
+        private Dictionary<Guid, List<ManagerRow>>? _managersByUnit;
+
+        private async Task EnsureOrgSnapshotAsync()
+        {
+            if (_unitParent is not null) return;
+
+            _unitParent = await units.GetAll().AsNoTracking()
+                .Select(u => new { u.Id, u.ParentId })
+                .ToDictionaryAsync(x => x.Id, x => x.ParentId);
+
+            // Same predicate the per-level query used, minus the requester exclusion — that is applied
+            // in memory per climb, which is exactly what made the old cache un-shareable.
+            var managers = await employees.GetAll().AsNoTracking()
+                .Where(e => e.IsManagerial
+                    && e.EmploymentStatus != EmploymentStatus.Terminated
+                    && e.EmploymentStatus != EmploymentStatus.Suspended
+                    && e.Position != null)
+                .Select(e => new
+                {
+                    e.Id,
+                    UnitId = e.Position!.OrganizationUnitId,
+                    Name = e.Person != null
+                        ? (e.Person.FirstName + " " + e.Person.GrandFatherName).Trim()
+                        : e.EmployeeNumber
+                })
+                .ToListAsync();
+
+            var managerIds = managers.Select(m => m.Id).Distinct().ToList();
+            var userIdsByEmployee = managerIds.Count == 0
+                ? []
+                : (await users.GetAll().AsNoTracking()
+                        .Where(u => u.EmployeeId != null && managerIds.Contains(u.EmployeeId.Value))
+                        .Select(u => new { u.Id, EmployeeId = u.EmployeeId!.Value })
+                        .ToListAsync())
+                    .GroupBy(x => x.EmployeeId)
+                    .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
+            _managersByUnit = managers
+                .GroupBy(m => m.UnitId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.Select(m => new ManagerRow(
+                            m.Id, m.Name, userIdsByEmployee.GetValueOrDefault(m.Id) ?? []))
+                          .ToList());
+        }
+
+        /// <summary>
+        /// Resolve the org unit of many employees in ONE query. A caller that is about to resolve
+        /// managers for a batch (the approval inbox, over every running instance) should call this
+        /// first, otherwise each employee costs its own round-trip.
+        /// </summary>
+        public async Task PreloadEmployeeUnitsAsync(IEnumerable<Guid> employeeIds)
+        {
+            var missing = employeeIds.Where(id => id != Guid.Empty && !_employeeUnit.ContainsKey(id))
+                .Distinct().ToList();
+            if (missing.Count == 0) return;
+
+            var rows = await employees.GetAll().AsNoTracking()
+                .Where(e => missing.Contains(e.Id))
+                .Select(e => new { e.Id, UnitId = e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null })
+                .ToListAsync();
+            foreach (var r in rows) _employeeUnit[r.Id] = r.UnitId;
+            // Employees the query did not return (deleted/inaccessible) are cached as "no unit" so a
+            // later lookup does not re-query them one at a time.
+            foreach (var id in missing) _employeeUnit.TryAdd(id, null);
+        }
+
+        private readonly Dictionary<Guid, Guid?> _employeeUnit = [];
+
+        private async Task<Guid?> EmployeeUnitAsync(Guid employeeId)
+        {
+            if (_employeeUnit.TryGetValue(employeeId, out var cachedUnit)) return cachedUnit;
+            var unit = await employees.GetAll().AsNoTracking()
+                .Where(e => e.Id == employeeId)
+                .Select(e => e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null)
+                .FirstOrDefaultAsync();
+            _employeeUnit[employeeId] = unit;
+            return unit;
+        }
+
         public async Task<ResolvedManager?> ResolveImmediateManagerAsync(Guid requesterEmployeeId)
         {
             if (_immediateCache.TryGetValue(requesterEmployeeId, out var cached)) return cached;
 
             // The requester's org unit is derived from their assigned Position (not stored on Employee).
-            var unitId = await employees.GetAll()
-                .Where(e => e.Id == requesterEmployeeId)
-                .Select(e => e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null)
-                .FirstOrDefaultAsync();
+            var unitId = await EmployeeUnitAsync(requesterEmployeeId);
             // unplaced employee (null unit) → nothing to traverse.
             var result = unitId is null ? null : await ClimbAsync(unitId.Value, requesterEmployeeId);
             _immediateCache[requesterEmployeeId] = result;
@@ -132,48 +228,35 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
         private async Task<ResolvedManager?> ClimbCoreAsync(Guid startUnitId, Guid? requesterEmployeeId)
         {
+            await EnsureOrgSnapshotAsync();
+
             var visited = new HashSet<Guid>();
             Guid? unitId = startUnitId;
 
+            // Identical walk to before — start unit, then parent, grandparent … stopping at the first
+            // unit with an eligible manager, at the root, or on a cycle. Only the data source changed:
+            // it reads the pre-loaded snapshot instead of querying at each level.
             while (unitId.HasValue && visited.Add(unitId.Value))
             {
-                var managers = await employees.GetAll()
-                    .Where(e => e.IsManagerial
-                        && e.Id != requesterEmployeeId
-                        && e.EmploymentStatus != EmploymentStatus.Terminated
-                        && e.EmploymentStatus != EmploymentStatus.Suspended
-                        && e.Position != null
-                        && e.Position.OrganizationUnitId == unitId.Value)
-                    .Select(e => new
-                    {
-                        e.Id,
-                        Name = e.Person != null
-                            ? (e.Person.FirstName + " " + e.Person.GrandFatherName).Trim()
-                            : e.EmployeeNumber
-                    })
-                    .ToListAsync();
+                var managers = _managersByUnit!.TryGetValue(unitId.Value, out var rows)
+                    // Self-exclusion applied HERE rather than in SQL, so the per-unit data is shared by
+                    // every requester in that unit instead of being re-fetched for each of them.
+                    ? rows.Where(m => m.EmployeeId != requesterEmployeeId).ToList()
+                    : [];
 
                 if (managers.Count > 0)
                 {
-                    var managerIds = managers.Select(m => m.Id).ToList();
-                    // Managers act through their login account(s) (User.EmployeeId link).
-                    var userIds = await users.GetAll()
-                        .Where(u => u.EmployeeId != null && managerIds.Contains(u.EmployeeId.Value))
-                        .Select(u => u.Id)
-                        .ToListAsync();
                     return new ResolvedManager(
-                        managerIds,
+                        managers.Select(m => m.EmployeeId).ToList(),
                         string.Join(", ", managers.Select(m => m.Name)),
-                        userIds);
+                        // Managers act through their login account(s) (User.EmployeeId link).
+                        managers.SelectMany(m => m.UserIds).Distinct().ToList());
                 }
 
                 // No managerial employee positioned in this unit — escalate: parent → grandparent → …
-                var parentId = await units.GetAll()
-                    .Where(u => u.Id == unitId.Value)
-                    .Select(u => new { u.ParentId })
-                    .FirstOrDefaultAsync();
-                if (parentId is null) return null;
-                unitId = parentId.ParentId;
+                // An unknown unit id is treated as "no parent", matching the old FirstOrDefault → null.
+                if (!_unitParent!.TryGetValue(unitId.Value, out var parent)) return null;
+                unitId = parent;
             }
 
             return null; // reached the root (or a cycle) without finding an eligible manager
