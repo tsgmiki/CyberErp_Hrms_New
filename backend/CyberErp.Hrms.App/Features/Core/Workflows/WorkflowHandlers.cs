@@ -154,6 +154,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<Employee> employees,
         IRepository<User> users,
         IWorkflowApproverAuth approverAuth,
+        IOrgManagerResolver managerResolver,
         Common.Services.ICurrentUserService currentUser) : IGetMyApprovals
     {
         public async Task<MyApprovalsDto> GetAsync()
@@ -224,6 +225,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     a.ApproverId
                 })
                 .ToListAsync();
+
+            // Dynamic (manager/subject) steps resolve against the REQUESTER, so warm every requester's
+            // unit in one query before the loop. Without it each row resolved its own — the dominant
+            // cost of this endpoint once a tenant has a few thousand running instances.
+            var requesterIds = running.Where(x => x.EmployeeId.HasValue)
+                .Select(x => x.EmployeeId!.Value).Distinct().ToList();
+            if (requesterIds.Count > 0) await managerResolver.PreloadEmployeeUnitsAsync(requesterIds);
 
             var items = new List<MyApprovalItemDto>();
             foreach (var x in running.OrderBy(x => x.CreatedAt))

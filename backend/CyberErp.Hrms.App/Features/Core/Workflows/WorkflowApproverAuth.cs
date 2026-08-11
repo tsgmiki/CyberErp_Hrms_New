@@ -58,11 +58,27 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// <summary>Link of the operation that grants the right to act on workflow approvals.</summary>
         private const string WorkflowOperationLink = "/workflow";
 
+        // ---- Per-request memoisation --------------------------------------------------------
+        // This service is SCOPED, so these live exactly one request. Every field below answers a
+        // question whose answer cannot change mid-request (who am I, which roles do I hold, who
+        // approves step N of definition D), yet each was re-queried on EVERY call — and callers call
+        // in loops: the approval inbox evaluates one instance at a time, and opening an appraisal asks
+        // the workflow service four separate questions. That turned into ~5 round-trips per instance
+        // and 20 queries to open one record. Caching here fixes both without touching the callers.
+        private HashSet<Guid>? _roleIds;
+        private Guid? _myEmployeeId;
+        private bool _myEmployeeLoaded;
+        private readonly Dictionary<(Guid DefinitionId, int StepOrder), List<StepApprover>> _stepApprovers = [];
+
+        /// <summary>Approver row as this service needs it (flattened out of the definition aggregate).</summary>
+        private sealed record StepApprover(WorkflowApproverType ApproverType, Guid ApproverId, string DisplayName);
+
         public async Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync()
         {
+            if (_roleIds is not null) return _roleIds;
             var userId = currentUser.GetCurrentUserId();
-            if (userId is null) return [];
-            return (await userRoles.GetAll()
+            if (userId is null) return _roleIds = [];
+            return _roleIds = (await userRoles.GetAll()
                     .Where(u => u.UserId == userId.Value)
                     .Select(u => u.RoleId)
                     .ToListAsync())
@@ -72,23 +88,40 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// <summary>The current user's linked employee id (null for system/unlinked accounts).</summary>
         private async Task<Guid?> CurrentEmployeeIdAsync()
         {
+            if (_myEmployeeLoaded) return _myEmployeeId;
+            _myEmployeeLoaded = true;
             var userId = currentUser.GetCurrentUserId();
-            if (userId is null) return null;
-            return await users.GetAll().Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
+            if (userId is null) return _myEmployeeId = null;
+            return _myEmployeeId = await users.GetAll()
+                .Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
+        }
+
+        /// <summary>
+        /// The approver rows of one step. Cached per (definition, step) because a single inbox render
+        /// asks for the same step repeatedly — once per instance sitting on it.
+        /// </summary>
+        private async Task<List<StepApprover>> StepApproversAsync(Guid definitionId, int stepOrder)
+        {
+            if (_stepApprovers.TryGetValue((definitionId, stepOrder), out var cached)) return cached;
+
+            // Approver rows are read through the definition aggregate (children carry no reliable
+            // tenant stamp); by-id access keeps this tenant-safe.
+            var rows = await definitions.GetAllWithoutTenantFilter()
+                .Where(d => d.Id == definitionId)
+                .SelectMany(d => d.Steps)
+                .Where(s => s.StepOrder == stepOrder)
+                .SelectMany(s => s.Approvers)
+                .Select(a => new StepApprover(a.ApproverType, a.ApproverId, a.DisplayName))
+                .ToListAsync();
+
+            _stepApprovers[(definitionId, stepOrder)] = rows;
+            return rows;
         }
 
         public async Task<(bool CanDecide, List<string> ApproverNames)> EvaluateAsync(
             Guid definitionId, int stepOrder, Guid? requesterEmployeeId)
         {
-            // Approver rows are read through the definition aggregate (children carry no reliable
-            // tenant stamp); by-id access keeps this tenant-safe.
-            var approvers = await definitions.GetAllWithoutTenantFilter()
-                .Where(d => d.Id == definitionId)
-                .SelectMany(d => d.Steps)
-                .Where(s => s.StepOrder == stepOrder)
-                .SelectMany(s => s.Approvers)
-                .Select(a => new { a.ApproverType, a.ApproverId, a.DisplayName })
-                .ToListAsync();
+            var approvers = await StepApproversAsync(definitionId, stepOrder);
 
             if (approvers.Count == 0)
                 return (true, []); // open step — anyone may act

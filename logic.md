@@ -275,6 +275,27 @@ on the appraisal would clear every peer's.
 **Anything a user must act on that is NOT a workflow instance needs an `APPROVAL_SOURCES` entry** —
 otherwise it is invisible on every approvals surface, as peer reviews were.
 
+## 2.11 Approver resolution — the performance contract
+
+`IOrgManagerResolver` answers "who manages this employee" by climbing the org unit tree. It is called
+**once per work item** by the approval inbox, so its cost is multiplied by every running instance in
+the tenant. Two rules keep that affordable:
+
+- **Load the org snapshot once per request, climb in memory.** The unit tree and the (small) set of
+  managerial employees are fetched once; the walk itself does no I/O. Never reintroduce a
+  per-level query — that cost 3,795 queries / 5 s on 2,000 instances.
+- **Cache per UNIT, not per requester.** Self-exclusion ("a manager cannot approve their own request")
+  is applied in memory *after* the lookup. Putting it in the SQL predicate makes the cache key
+  requester-specific, so nobody sharing a unit can share a climb.
+
+Callers resolving for many employees should call `PreloadEmployeeUnitsAsync` first — one query for the
+whole batch instead of one per employee.
+
+**Portal grids read cached registry feeds, never their own fetch.** The Approvals Inbox and My Pending
+Requests grids share `useApprovalFeeds`/`useRequestFeeds` with the dashboard cards and page/search in
+memory. Handing `useEntityList` a `fetchPage` that calls the registries re-runs the entire fan-out on
+every page change and every keystroke, because its query key includes `param`.
+
 ## 3. Leave logic (Annual Leave — the flagship)
 
 ### 3.1 Fiscal-year anchoring

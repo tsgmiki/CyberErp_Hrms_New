@@ -8,8 +8,10 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-9`** (branched off `main` at `4c2534a`, 2026-08-11) —
-  carries the notification routing + approval-card work (00EO).
+- **CURRENT BRANCH: `feature/hrms-buildout-10`** (branched off `main` at `151974f`, 2026-08-11) —
+  carries the approvals performance work (00EP). **PR #11 (`151974f`) IS MERGED** — it landed the
+  notification routing + approval-card work (00EO), paired with Home `dfd75e8`;
+  `feature/hrms-buildout-9` can be deleted.
   **PR #9 (`57e7ff7`) and PR #10 (`4c2534a`) ARE MERGED.** #9 landed the return-from-leave
   reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType` decoupling, the ledger
   pagination fix, the app-shell height fix and the tree scroll/search (00EF–00EL, paired with Home
@@ -119,6 +121,40 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00EP. **Approvals performance: 5,028 ms → 39 ms at scale (2026-08-11, HRMS backend + Home frontend).**
+    Reported three times as "dashboard cards and grids are slow". The first two investigations found
+    nothing because the purged DB has almost no rows — **seeding 2,000 running WorkflowInstances
+    reproduced it instantly.** Measure at volume or you will not see this class of bug.
+    - **Root cause — `OrgManagerResolver`.** The org climb issued TWO queries per level ("managers in
+      this unit?" then "who is its parent?"), and its cache key was `(unit, REQUESTER)` because
+      self-exclusion was applied in SQL — so two people in the same unit could never share a climb.
+      490 employees over 121 units meant ~490 full climbs. `Workflow/my-approvals` spent **3,795
+      queries / 5,028 ms** to return 23 items.
+    - **Fix:** load the unit tree + the (small) managerial-employee set ONCE per request and climb in
+      memory, applying self-exclusion afterwards so per-unit data is shared. Walk order, cycle guard
+      and fallbacks are unchanged — the returned instance-id set is byte-identical.
+      Plus `PreloadEmployeeUnitsAsync` so the inbox resolves every requester's unit in one query.
+      **→ 39 ms / 23 queries.**
+    - **Frontend — the grid re-fetched everything constantly.** `useEntityList` keys on
+      `[queryKey, param]`, and the workflow grid gave it a `fetchPage` that called every registry
+      source in full — so every page change and EVERY SEARCH KEYSTROKE re-ran the whole fan-out, and it
+      bypassed the dashboard's cache entirely. Both grids now read the same cached
+      `useApprovalFeeds`/`useRequestFeeds` the dashboard cards use and page/search in memory
+      (`useRegistryList`). Decisions invalidate `myApprovals`/`myRequests`, which refreshes both screens.
+    - **Also:** per-request memoisation in `WorkflowApproverAuth` (role ids, current employee, step
+      approvers); the appraisal record no longer loads its workflow instance twice; and the four
+      request feeds push `employeeId`/`status` to SQL instead of pulling 100 rows to filter in the
+      browser — which also fixed a WRONG `total` (it counted matches inside that 100-row window).
+    - Measured after: navigate to grid **89 ms / 0 calls**, search keystroke **0 calls**, page change
+      0 calls, open record 2 calls, dashboard fan-out 222 ms at 2,000 instances.
+    - ⚠️ **Two false leads recorded so they are not chased again.** (1) A "25-second stall" reported in
+      an earlier session was MY environment: a stale `CyberErp.Hrms.Api.exe` held port 55900, so
+      restarts silently failed (`Failed to bind: address already in use`) and measurements ran against
+      an old binary beside a competing process. **`pkill -f CyberErp.Hrms.Api` does NOT match it — use
+      `Get-Process -Name 'CyberErp*' | Stop-Process -Force`, and always grep the run log for a bind
+      error before trusting a number.** (2) A hard browser reload of `/workflow` taking ~26 s is Vite
+      dev transforming that route's modules — in-app navigation is 89 ms.
 
 00EO. **Portal notifications route to the RECORD; new peer-review alert (2026-08-11, HRMS backend + Home frontend).**
     - **Appraisal alerts now deep-link.** `WorkflowService.NotifyCurrentStepApproversAsync` hard-coded

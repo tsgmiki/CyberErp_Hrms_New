@@ -59,6 +59,21 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<WorkflowDefinition> definitions,
         IPerformanceVisibilityService visibility) : IAppraisalWorkflowService
     {
+        // Per-request memo of the routing instance (this service is SCOPED). Opening ONE appraisal
+        // asked the engine for the same running instance twice — once for ResolveAsync (who owns the
+        // current stage) and again for CanActOnStageAsync (may I sign as manager) — so every record
+        // open paid two identical round-trips. Invalidated by SyncInstanceAsync, the only path that
+        // moves the instance, so a caller that mutates then re-reads still sees fresh state.
+        private readonly Dictionary<Guid, WorkflowInstance?> _instanceCache = [];
+
+        private async Task<WorkflowInstance?> RunningInstanceAsync(Guid appraisalId)
+        {
+            if (_instanceCache.TryGetValue(appraisalId, out var cached)) return cached;
+            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.Appraisal, appraisalId);
+            _instanceCache[appraisalId] = instance;
+            return instance;
+        }
+
         /// <summary>
         /// The default Appraisal routing definition — steps named EXACTLY after the <see cref="AppraisalStage"/>
         /// values (the lockstep key), routed to the subject / manager / second-level / subject, with HR sign-off
@@ -85,7 +100,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             var myEmp = (await visibility.GetScopeAsync()).EmployeeId;
             var viewerIsAppraisee = myEmp.HasValue && myEmp.Value == appraisal.EmployeeId;
 
-            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.Appraisal, appraisal.Id);
+            var instance = await RunningInstanceAsync(appraisal.Id);
             if (instance is null)
                 // No routing instance (an appraisal created before routing existed, or a deactivated definition):
                 // fail SAFE — nobody may act until it is re-attached (regenerate). Never fall open.
@@ -103,7 +118,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
         public async Task EnsureCanActAsync(Appraisal appraisal)
         {
-            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.Appraisal, appraisal.Id);
+            var instance = await RunningInstanceAsync(appraisal.Id);
             if (instance is null)
                 // Fail safe — an appraisal with no routing instance is not actionable (regenerate to attach one).
                 throw new ValidationException("workflow",
@@ -113,7 +128,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
         public async Task<bool> CanActOnStageAsync(Appraisal appraisal, string stageName)
         {
-            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.Appraisal, appraisal.Id);
+            var instance = await RunningInstanceAsync(appraisal.Id);
             if (instance is null) return false; // fail safe — no routing instance, no side actions
             var stepOrder = await definitions.GetAllWithoutTenantFilter()
                 .Where(d => d.Id == instance.DefinitionId)
@@ -128,11 +143,14 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
 
         public async Task SyncInstanceAsync(Appraisal appraisal, string? comment)
         {
-            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.Appraisal, appraisal.Id);
+            var instance = await RunningInstanceAsync(appraisal.Id);
             if (instance is null) return; // no workflow configured
             // Completed → close the instance (fires the module handler); otherwise advance to the step named for the new stage.
             var target = appraisal.Stage == AppraisalStage.Completed ? null : appraisal.Stage.ToString();
             await workflowService.AdvanceToStepAsync(instance.Id, target, comment);
+            // The instance just moved (or closed) — drop the memo so anything re-reading it in this
+            // same request sees the new step rather than the pre-advance snapshot.
+            _instanceCache.Remove(appraisal.Id);
         }
 
         public async Task<HashSet<Guid>> PendingMyActionAppraisalIdsAsync()
