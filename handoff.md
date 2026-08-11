@@ -8,11 +8,13 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-8`** (branched off `main` at `57e7ff7`, 2026-08-10) —
-  carries the employee-visibility fix (00EM). **PR #9 IS MERGED** (`57e7ff7`): it landed the
-  return-from-leave reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType`
-  decoupling, the ledger pagination fix, the app-shell height fix and the tree scroll/search
-  (00EF–00EL), paired with Home `84f8003`. `feature/hrms-buildout-7` can be deleted.
+- **CURRENT BRANCH: `feature/hrms-buildout-9`** (branched off `main` at `4c2534a`, 2026-08-11) —
+  carries the notification routing + approval-card work (00EO).
+  **PR #9 (`57e7ff7`) and PR #10 (`4c2534a`) ARE MERGED.** #9 landed the return-from-leave
+  reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType` decoupling, the ledger
+  pagination fix, the app-shell height fix and the tree scroll/search (00EF–00EL, paired with Home
+  `84f8003`); #10 landed the employee-visibility fix and the performance-history access fix
+  (00EM–00EN). `feature/hrms-buildout-7` and `-8` can both be deleted.
   `main` is the integration branch — **open a PR from the current branch when a batch is ready**, then
   rotate to a fresh `feature/hrms-buildout-N`. Merged so far: **PR #2** the buildout (18 commits),
   **PR #3** the doc sync, **PR #4** URL-driven `:id` routing + salary revision by step, **PR #5**
@@ -117,6 +119,54 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00EO. **Portal notifications route to the RECORD; new peer-review alert (2026-08-11, HRMS backend + Home frontend).**
+    - **Appraisal alerts now deep-link.** `WorkflowService.NotifyCurrentStepApproversAsync` hard-coded
+      `"/workflow"` for every entity type. An appraisal is *module-driven* — `EnsureNotModuleDriven`
+      REFUSES the generic approve/reject — so an approver clicking the alert landed on a screen whose
+      only possible response was "go somewhere else". `NotificationLinkFor(instance)` now yields
+      `/appraisal/{EntityId}` for `WorkflowEntityTypes.Appraisal`, `/workflow` for everything else.
+    - **New alert: peer-review assignment.** `InviteAppraisalPeers` raised nothing at all — the
+      assignment was silent unless the reviewer happened to open My Peer Reviews. It now notifies each
+      invited peer (link `/myPeerReviews`, severity Action), AFTER `SaveChanges` so an alert can never
+      point at a review that failed to persist, and inside try/catch so a portal hiccup cannot fail the
+      invite. Peers with no portal account are skipped, logged not thrown.
+    - **Correlated PER REVIEW, not per appraisal.** `sourceEntityId` is the `AppraisalPeerReview.Id`
+      (source type `AppraisalPeerReview`), so `SubmitAppraisalPeerReview` can `ResolveAsync` and clear
+      **only that peer's** alert. Correlating on the appraisal id would have cleared every peer's alert
+      the moment one of them submitted.
+    - **Home needed URL-backed routing to land on.** Its appraisal module used the state-based
+      `useEntityCrudModule`, so no `/appraisal/{id}` URL existed. Ported `useEntityRouteModule` from
+      HRMS (identical file), exported it from the template barrel, switched
+      `components/admin/appraisal/index.tsx`, and split the flat route into `index` / `new` / `:id`.
+      Home has **no route-level PermissionGate** (only `selfServiceGate`), so nesting introduces no
+      gate hole here — unlike HRMS, where nested routes fall through ungated.
+    - Verified in Home against the real appraisal: `/appraisal` calls the LIST endpoint with search +
+      pager; `/appraisal/{id}` calls `Appraisal/{id}` with no list chrome — i.e. the deep link opens
+      that record's form. Back returns to the list; `/myPeerReviews` resolves.
+    - **Both approval CARDS now carry these too, sharing the bell's routing.** New
+      `Home/src/config/recordRouting.ts` is the single definition of *where a record opens and how*:
+      `routeForRecord()` (Appraisal → `/appraisal/{id}`, AppraisalPeerReview → `/myPeerReviews`) plus
+      `openPortalTarget()` (absolute URL → new tab, otherwise in-app navigate). The bell, the dashboard
+      notifications card and the Approvals Inbox rows all call it — the notifications card previously
+      held a COPY of the bell's opener, and every inbox row navigated to `/workflow` whatever it was.
+    - **Peer reviews registered as an approval source** (`hrmsPeerReviews` in `approvalSources.ts`).
+      They are not workflow instances, so they never reached `Workflow/my-approvals` and were invisible
+      on every approvals surface. One registry entry puts them in the Approvals Inbox card, the Pending
+      Approvals count AND the `/workflow` screen, because all three read that registry. Read-only (no
+      `decide`) — a peer review is written on its own screen; every call site already guards on
+      `source?.decide`. Submitted reviews are filtered out: an inbox shows outstanding work only.
+    - Verified end-to-end once VS released the build lock (both APIs run locally): new appraisal alert
+      `LinkUrl = /appraisal/{id}` (the pre-change row still reads `/workflow` — clean before/after);
+      invite raises one row per reviewer correlated to **that peer's own review id**; submitting clears
+      ONLY the submitter's alert while the other peer's stays unread; the inbox lists the peer review
+      and routes to `/myPeerReviews`; the appraisal row routes to `/appraisal/{id}`; the Pending
+      Approvals count includes the peer review.
+    - ⚠️ Correlating the alert on the APPRAISAL id (the obvious first cut) would have cleared every
+      peer's alert the moment one of them submitted. The control test — both alerts unread, one peer
+      submits — is what catches that; keep it if this code is touched again.
+    - Test data restored afterwards: appraisal + workflow back to `SelfAssessment`, the probe peer
+      review deleted, notifications back to the original 4 with their original read states.
 
 00EN. **"Only HR can view performance history" after saving an appraisal (2026-08-10, HRMS backend).**
     Fallout from 00EM, not a regression in it. `GetPerformanceHistory` was gated on `scope.IsAdmin`

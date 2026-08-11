@@ -438,6 +438,18 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         }
 
         /// <summary>
+        /// Where a portal alert should land. Most requests are decided with the generic approve/reject on
+        /// the workflow screen, so `/workflow` is right for them. An APPRAISAL is module-driven — the
+        /// generic buttons are refused (see <see cref="EnsureNotModuleDriven"/>) — so sending an approver
+        /// to `/workflow` left them on a screen that could only tell them to go elsewhere. Link straight
+        /// to the record instead; Home resolves `/appraisal/{id}` to that appraisal's form.
+        /// </summary>
+        private static string NotificationLinkFor(WorkflowInstance instance) =>
+            instance.EntityType == WorkflowEntityTypes.Appraisal
+                ? $"/appraisal/{instance.EntityId}"
+                : "/workflow";
+
+        /// <summary>
         /// Best-effort: alert the CURRENT step's approvers in the Home portal that this request awaits
         /// their decision. Resolves the same approver set the decision-time auth uses, then writes one
         /// coreNotification per approver (correlated to this instance). A failure is logged, never thrown —
@@ -479,7 +491,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     userIds,
                     $"Approval required: {instance.Summary}",
                     $"Awaiting your approval at step '{instance.CurrentStepName}'.",
-                    "/workflow",
+                    NotificationLinkFor(instance),
                     "Action",
                     PortalSource,
                     instance.Id);

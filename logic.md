@@ -255,6 +255,26 @@ single-record endpoints.
   a missing branch only counts when the account has **no linked employee** at all. Before that fix,
   every employee in a tenant with no branches was an admin and the whole table above was dead code.
 
+## 2.10 Portal alerts: where a record opens
+
+HRMS raises portal alerts through `IPortalNotifier` into the Home-owned `Core.Notification`. Two
+things decide where a click lands, and they must agree:
+
+- **HRMS writes `LinkUrl`.** `WorkflowService.NotificationLinkFor` → `/appraisal/{EntityId}` for an
+  Appraisal (module-driven: the generic approve/reject is refused for it), `/workflow` otherwise.
+  `InviteAppraisalPeers` writes `/myPeerReviews`.
+- **Home resolves the same mapping** in `config/recordRouting.ts` for surfaces that hold a record
+  rather than a notification — the Approvals Inbox card and the Pending Approvals count, which read
+  the `APPROVAL_SOURCES` registry, not the notification feed. `openPortalTarget` is the one opener
+  (absolute URL → new tab, else in-app), shared with the bell.
+
+**Alerts are correlated per RECIPIENT-ACTIONABLE record**, not per parent: a peer-review alert carries
+the `AppraisalPeerReview.Id`, so `ResolveAsync` on submit clears that peer's alert alone. Correlating
+on the appraisal would clear every peer's.
+
+**Anything a user must act on that is NOT a workflow instance needs an `APPROVAL_SOURCES` entry** —
+otherwise it is invisible on every approvals surface, as peer reviews were.
+
 ## 3. Leave logic (Annual Leave — the flagship)
 
 ### 3.1 Fiscal-year anchoring

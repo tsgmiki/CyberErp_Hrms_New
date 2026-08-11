@@ -70,8 +70,10 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<AppraisalPeerReview> repository,
         IRepository<Appraisal> appraisalRepository,
         IRepository<Employee> employeeRepository,
+        IRepository<User> userRepository,
         IAppraisalWorkflowService workflowService,
         IPerformanceHistoryWriter history,
+        IPortalNotifier portalNotifier,
         IValidator<InviteAppraisalPeersDto> validator,
         ILogger<InviteAppraisalPeers> logger) : IInviteAppraisalPeers
     {
@@ -101,12 +103,17 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 .Where(e => candidateIds.Contains(e.Id)).Select(e => e.Id).ToListAsync()).ToHashSet();
 
             var invited = 0;
+            // (review id, peer employee id) — each peer's alert is correlated to THEIR OWN review row so
+            // that one peer submitting clears only their alert, not every peer's.
+            var invitedReviews = new List<(Guid ReviewId, Guid PeerEmployeeId)>();
             foreach (var peerId in candidateIds)
             {
                 if (existing.Contains(peerId)) continue;
                 if (!validIds.Contains(peerId))
                     throw new NotFoundException(nameof(Employee), peerId.ToString());
-                await repository.AddAsync(AppraisalPeerReview.Create(dto.AppraisalId, peerId));
+                var review = AppraisalPeerReview.Create(dto.AppraisalId, peerId);
+                await repository.AddAsync(review);
+                invitedReviews.Add((review.Id, peerId));
                 invited++;
             }
 
@@ -114,7 +121,60 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 await history.WriteAsync("Appraisal", dto.AppraisalId, "PeerInvited", $"Invited {invited} peer reviewer(s).");
             await repository.SaveChangesAsync();
             logger.LogInformation("Invited {Count} peers to Appraisal {Id}", invited, dto.AppraisalId);
+
+            // Tell the peers. Without this the assignment was silent — it only appeared if the reviewer
+            // happened to open My Peer Reviews. Raised AFTER SaveChanges so an alert never points at a
+            // review that failed to persist, and best-effort so a portal hiccup cannot fail the invite.
+            if (invitedReviews.Count > 0)
+                await NotifyInvitedPeersAsync(dto.AppraisalId, appraisal.EmployeeId, invitedReviews);
         }
+
+        private async Task NotifyInvitedPeersAsync(
+            Guid appraisalId, Guid appraiseeId, List<(Guid ReviewId, Guid PeerEmployeeId)> invitedReviews)
+        {
+            try
+            {
+                // Notifications address Core.User ids, not employees; a peer with no portal account is
+                // simply skipped rather than failing the invite.
+                var peerIds = invitedReviews.Select(r => r.PeerEmployeeId).ToList();
+                var userByEmployee = await userRepository.GetAll().AsNoTracking()
+                    .Where(u => u.EmployeeId != null && peerIds.Contains(u.EmployeeId.Value))
+                    .Select(u => new { EmployeeId = u.EmployeeId!.Value, u.Id })
+                    .ToDictionaryAsync(x => x.EmployeeId, x => x.Id);
+                if (userByEmployee.Count == 0)
+                {
+                    logger.LogInformation(
+                        "Appraisal {Id}: {Count} peer(s) invited but none has a portal account — no alert raised.",
+                        appraisalId, invitedReviews.Count);
+                    return;
+                }
+
+                var appraiseeName = await employeeRepository.GetAll().AsNoTracking()
+                    .Where(e => e.Id == appraiseeId && e.Person != null)
+                    .Select(e => (e.Person!.FirstName + " " + e.Person.GrandFatherName).Trim())
+                    .FirstOrDefaultAsync();
+                var body = string.IsNullOrWhiteSpace(appraiseeName)
+                    ? "You have been asked to complete a peer review."
+                    : $"You have been asked to complete a peer review for {appraiseeName}.";
+
+                // One call per review so each alert carries its own correlation id (see above).
+                foreach (var (reviewId, peerEmployeeId) in invitedReviews)
+                {
+                    if (!userByEmployee.TryGetValue(peerEmployeeId, out var userId)) continue;
+                    await portalNotifier.NotifyUsersAsync(
+                        [userId], "Peer review assigned", body, "/myPeerReviews",
+                        "Action", PeerReviewSource, reviewId);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Appraisal {Id}: failed to raise peer-review portal alerts", appraisalId);
+            }
+        }
+
+        /// <summary>Correlation key for peer-review alerts — kept distinct from the appraisal's own
+        /// workflow alerts so resolving one never clears the other.</summary>
+        internal const string PeerReviewSource = "AppraisalPeerReview";
     }
 
     public class SubmitAppraisalPeerReview(
@@ -122,6 +182,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<User> userRepository,
         ICurrentUserService currentUser,
         IPerformanceHistoryWriter history,
+        IPortalNotifier portalNotifier,
         ILogger<SubmitAppraisalPeerReview> logger) : ISubmitAppraisalPeerReview
     {
         public async Task SubmitAsync(SubmitAppraisalPeerReviewDto dto)
@@ -141,6 +202,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 $"Peer review submitted (score {dto.Score?.ToString() ?? "—"}).");
             await repository.SaveChangesAsync();
             logger.LogInformation("Submitted peer review {Id}", dto.Id);
+
+            // The assignment alert has served its purpose — clear it so the bell does not keep nagging
+            // for work already done. Best-effort: never fail a submitted review over a portal write.
+            try { await portalNotifier.ResolveAsync(InviteAppraisalPeers.PeerReviewSource, dto.Id); }
+            catch (Exception ex) { logger.LogWarning(ex, "Peer review {Id}: failed to clear its portal alert", dto.Id); }
         }
     }
 
