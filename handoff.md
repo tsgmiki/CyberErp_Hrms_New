@@ -8,10 +8,11 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-11`** (branched off `main` at `8d08480`, 2026-08-12) —
-  carries the entity-route hardening (00EQ). **PR #12 (`8d08480`) IS MERGED** — it landed the
-  approvals performance work (00EP), paired with Home `fe2e5ba` + `15aad77`;
-  `feature/hrms-buildout-9` and `-10` can both be deleted.
+- **CURRENT BRANCH: `feature/hrms-buildout-12`** (branched off `main` at `d16bc99`, 2026-08-12) —
+  carries the two-flow dashboard performance batch (00ER), paired with Home commits on its `main`.
+  **PR #13 (`d16bc99`) IS MERGED** — it landed the entity-route hardening (00EQ), paired with Home
+  `14a1deb`; **PR #12 (`8d08480`) IS MERGED** — the approvals performance work (00EP), paired with
+  Home `fe2e5ba` + `15aad77`. `feature/hrms-buildout-9`, `-10` and `-11` can all be deleted.
   **PR #9 (`57e7ff7`) and PR #10 (`4c2534a`) ARE MERGED.** #9 landed the return-from-leave
   reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType` decoupling, the ledger
   pagination fix, the app-shell height fix and the tree scroll/search (00EF–00EL, paired with Home
@@ -121,6 +122,58 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00ER. **Home dashboard two-flow performance batch (2026-08-12, HRMS backend+frontend + Home backend+frontend).**
+    The user's staged request: map the bottlenecks of (1) login → dashboard and (2) grid action →
+    record, then fix backend, then frontend. All fixes measured against a production Vite build in a
+    real browser, A/B'd by stash-reverting one side at a time.
+    - **The dominant felt cost was CORS preflights, and page-level Playwright events DO NOT SHOW
+      THEM** — my first capture reported "0 preflights" for both builds; only a CDP
+      `Network.requestWillBeSent` capture revealed **18 of 36 dashboard requests were OPTIONS**.
+      Cause: both SPAs' `apiClient.ts` (and the raw `fetch` in Home `services/admin/employee/me.ts`)
+      sent `Content-Type: application/json` on bodyless GETs — not a CORS-safelisted value, so every
+      cross-origin read preflighted, uncached (~5 s browser default). Fix: send the header only with
+      a body → **2 of 20** (the login POSTs, correctly). Safety net: `SetPreflightMaxAge(24h)` in both
+      APIs (HRMS `ServiceCollectionExtensions.AddHrmsCors`, Home `Program.cs`).
+      Checked before shipping: NO bodyless POST/PUT/PATCH exists in either SPA and no `FormData` goes
+      through `apiClient`, so nothing lost a header it needed.
+    - **`GetMyApprovals` no longer materialises every Running instance.** SQL pre-filter classifying
+      steps static/subject/dynamic + `OrgManagerResolver.EmployeesInMyManagedUnitsAsync` (inverse
+      subtree walk off the per-request org snapshot) + memoised
+      `WorkflowApproverAuth.CurrentEmployeeIdForInboxAsync`. Dynamic predicate is a SUPERSET;
+      `EvaluateAsync` still decides per row. Proven by reverting to the old code and diffing
+      instance-id sets per role at 5,002 seeded instances — IDENTICAL for all four
+      (58/1/0/0 items) — **346 ms → 31 ms**. EF cannot translate tuple `Contains`, hence the
+      re-pairing step in memory. Seeded rows deleted after (`CreatedBy='perf-probe'`, verified 0
+      left, 2 real instances intact). See logic.md §2.11.
+    - **`DatabaseTenantStore`**: one predicate for both key shapes + 5-min `IMemoryCache` primed under
+      id AND identifier; misses cached briefly too. Was 2 `Core.Tenant` queries on EVERY request (the
+      cookie carries the GUID; the old code queried `Identifier` first — a guaranteed miss). Now 0
+      steady-state, confirmed in the SQL log.
+    - **Home identity waterfall**: 5 of 7 request feeds awaited `getMyEmployeeId()` before building
+      their URL (`scanPending`). `AuthContext` now warms `getMyEmployeeStatusCached()` the moment the
+      session is confirmed, and REMOVES the cached answer on login/logout so a second sign-in on the
+      same tab cannot inherit the previous identity. Probe fires at ~79 ms vs ~155 ms; the whole
+      11-call fan-out now goes out as one wave (~452 ms) and settles by ~500 ms.
+    - **Record-open chunk off the click path**: new Home `template/prefetchLazy.ts` (idle-time warm of
+      a `React.lazy` factory) + `config/routePrefetch.ts` (segment → route-chunk map; specifiers MUST
+      match `routes/index.tsx` exactly). Both dashboard grids prefetch only the destinations their
+      visible rows can open (stable string key — the feed arrays are rebuilt every render);
+      `appraisal/index.tsx` warms its own form chunk. A/B: chunk at ~531 ms idle vs 4,150 ms
+      post-click; scripts fetched after click 6 → **0**.
+    - **`GetAppraisalById`**: appraisee name + peer names merged into ONE `Hrms.Employee` query
+      (13 → 12 on a warm cache; every remaining query is an indexed point lookup). DTO proven
+      byte-identical (`cmp`); 11–16 ms warm.
+    - Verified end-to-end: browser smoke on production builds of BOTH SPAs (dashboard KPIs, inbox
+      rows, `/appraisal/{id}` deep link, annual-leave list, HRMS employee list — no page errors);
+      `tsc -b` + `eslint --quiet` clean ×2; both backends build clean.
+    - ⚠️ Traps recorded: (1) Playwright page events hide preflights — use CDP. (2) A JIT-cold API
+      answers ~90–115 ms for a call that is 11 ms warm — warm up before trusting a number. (3) The
+      Home SPA's `.env.production` points the HRMS API at `jtempurl.com` — a "production build" test
+      must use `--mode development` locally or every measurement includes remote latency. (4) The
+      `403 AuditLog` in the HRMS smoke run is a pre-existing permission wall (403 with AND without
+      the header), not a regression. (5) `Invoke-Sqlcmd` here lacks `-TrustServerCertificate`; use
+      `sqlcmd -S 'CLOUDX-SICS2\SQLEXPRESS' -d CERP -E -C`.
 
 00EQ. **Appraisal "Add" did nothing in HOME; `useEntityRouteModule` hardened (2026-08-12, both SPAs).**
     Reported against both apps. **HRMS was fine** — verified directly before touching anything: Add

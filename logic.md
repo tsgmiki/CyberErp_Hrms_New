@@ -291,10 +291,39 @@ the tenant. Two rules keep that affordable:
 Callers resolving for many employees should call `PreloadEmployeeUnitsAsync` first — one query for the
 whole batch instead of one per employee.
 
+- **The inbox pre-filters candidates in SQL** (`GetMyApprovals`). Approver rows for all Running-step
+  definitions are classified once — *static* (User/Role match), *subject* (`EmployeeId == mine`), or
+  *dynamic* (manager types, matched against `EmployeesInMyManagedUnitsAsync`, the inverse subtree walk
+  off the same org snapshot) — and the `WorkflowInstance` query keeps only instances whose current
+  step could possibly route to the caller. The dynamic predicate is a deliberate **superset** (the
+  whole managed subtree); `EvaluateAsync` still makes the final per-row decision, so results are
+  identical to the full scan (diffed per role at 5,002 seeded instances: 346 ms → 31 ms). Never revert
+  to `.Where(Status == Running)` alone — that materialises every running instance in the tenant.
+
+**Tenant resolution is cached** (`DatabaseTenantStore`, 5-min `IMemoryCache`, primed under both the id
+and the identifier). One predicate serves both key shapes — the cookie flow carries the GUID, the
+host/header flow the identifier; querying `Identifier` first then falling back to `Id` guaranteed a
+wasted miss on every cookie request. Finbuckle resolves the tenant on EVERY request, so an uncached
+store taxes each of them; subscription changes take effect within the TTL.
+
+**Cross-origin reads must stay "simple" CORS requests.** Both SPAs set `Content-Type: application/json`
+only when a request has a body. The value is not CORS-safelisted, so sending it on GETs preflighted
+every read — half of all dashboard requests were OPTIONS round-trips (18 of 36, measured via CDP).
+Both APIs also send `SetPreflightMaxAge(24h)` so the writes that legitimately preflight cache it.
+
 **Portal grids read cached registry feeds, never their own fetch.** The Approvals Inbox and My Pending
 Requests grids share `useApprovalFeeds`/`useRequestFeeds` with the dashboard cards and page/search in
 memory. Handing `useEntityList` a `fetchPage` that calls the registries re-runs the entire fan-out on
 every page change and every keystroke, because its query key includes `param`.
+
+**Grid rows warm their destination before the click.** Every route is `lazy`, so opening a record used
+to download + parse the screen's chunk *inside* the click (6 scripts on the path). The dashboard grids
+call `prefetchRoutes` (Home `config/routePrefetch.ts` → `template/prefetchLazy.ts`) on idle for exactly
+the destinations their visible rows can open; the specifiers must match `routes/index.tsx` character
+for character or the browser downloads a second copy instead of priming the one `lazy` resolves. The
+identity probe (`Employee/me`) is likewise warmed from `AuthContext` the moment the session is
+confirmed — five request feeds cannot build their URL without it — and cleared on login/logout so a
+second sign-in on the same tab cannot inherit the previous user's identity.
 
 ## 3. Leave logic (Annual Leave — the flagship)
 

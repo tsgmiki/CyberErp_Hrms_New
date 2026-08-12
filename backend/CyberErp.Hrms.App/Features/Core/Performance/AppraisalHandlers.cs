@@ -540,20 +540,19 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 ?? throw new NotFoundException(nameof(Appraisal), id.ToString());
             // Visibility: only the appraisee, their manager chain, or an HR administrator may open an appraisal.
             await workflowService.EnsureCanViewAsync(entity);
-            var employeeName = await employeeRepository.GetAll().Where(e => e.Id == entity.EmployeeId)
-                .Select(e => e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "").FirstOrDefaultAsync();
             var cycleName = await reviewCycleRepository.GetAll().Where(c => c.Id == entity.ReviewCycleId).Select(c => c.Name).FirstOrDefaultAsync();
             var finalLabel = entity.FinalRatingLevelId.HasValue
                 ? await ratingLevelRepository.GetAll().Where(l => l.Id == entity.FinalRatingLevelId.Value).Select(l => l.Label).FirstOrDefaultAsync()
                 : null;
-            var dto = AppraisalMapper.Map(entity, employeeName, cycleName, finalLabel);
 
             var peers = await peerRepository.GetAll().AsNoTracking().Where(p => p.AppraisalId == id).ToListAsync();
-            // Batch peer-reviewer names into one query (was one query per peer).
-            var peerIds = peers.Select(p => p.PeerEmployeeId).Distinct().ToList();
-            var peerNames = await employeeRepository.GetAll().Where(e => peerIds.Contains(e.Id))
+            // ONE Employee round-trip for every name this screen shows: the appraisee + all peer
+            // reviewers (they used to be two identically-shaped queries against the same table).
+            var nameIds = peers.Select(p => p.PeerEmployeeId).Append(entity.EmployeeId).Distinct().ToList();
+            var names = await employeeRepository.GetAll().Where(e => nameIds.Contains(e.Id))
                 .Select(e => new { e.Id, Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : "" })
                 .ToDictionaryAsync(x => x.Id, x => x.Name);
+            var dto = AppraisalMapper.Map(entity, names.GetValueOrDefault(entity.EmployeeId), cycleName, finalLabel);
             foreach (var p in peers)
             {
                 dto.PeerReviews.Add(new AppraisalPeerReviewDto
@@ -561,7 +560,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                     Id = p.Id,
                     AppraisalId = p.AppraisalId,
                     PeerEmployeeId = p.PeerEmployeeId,
-                    PeerEmployeeName = peerNames.GetValueOrDefault(p.PeerEmployeeId),
+                    PeerEmployeeName = names.GetValueOrDefault(p.PeerEmployeeId),
                     Status = p.Status.ToString(),
                     Score = p.Score,
                     Comments = p.Comments,
