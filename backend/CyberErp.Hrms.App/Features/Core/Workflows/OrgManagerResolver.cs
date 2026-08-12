@@ -32,6 +32,15 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         /// </summary>
         Task PreloadEmployeeUnitsAsync(IEnumerable<Guid> employeeIds);
 
+        /// <summary>
+        /// Everyone positioned in a unit this employee manages, including descendant units — the INVERSE
+        /// of the manager climb. Lets a caller narrow "requests I might approve" to a SQL predicate
+        /// instead of resolving a manager per row. A superset of the strict chain-of-command answer, so
+        /// use it only to pre-filter candidates that <see cref="ResolveImmediateManagerAsync"/> (via
+        /// EvaluateAsync) then confirms. Empty when the employee manages nothing.
+        /// </summary>
+        Task<HashSet<Guid>> EmployeesInMyManagedUnitsAsync(Guid employeeId);
+
         /// <summary>The requester's second-level manager(s) — the immediate manager's own manager (two-hop
         /// climb). Null when there is no immediate manager, or none above them.</summary>
         Task<ResolvedManager?> ResolveSecondLevelManagerAsync(Guid requesterEmployeeId);
@@ -151,6 +160,41 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 .FirstOrDefaultAsync();
             _employeeUnit[employeeId] = unit;
             return unit;
+        }
+
+        public async Task<HashSet<Guid>> EmployeesInMyManagedUnitsAsync(Guid employeeId)
+        {
+            await EnsureOrgSnapshotAsync();
+
+            // Units where this employee is one of the managerial staff — the roots of what they manage.
+            var roots = _managersByUnit!
+                .Where(kv => kv.Value.Any(m => m.EmployeeId == employeeId))
+                .Select(kv => kv.Key)
+                .ToHashSet();
+            if (roots.Count == 0) return [];
+
+            // Everything beneath those roots. Walks the parent map downward via a reverse index, with a
+            // visited set so a cyclic parent chain cannot loop forever (same guard as the climb).
+            var childrenOf = _unitParent!
+                .Where(kv => kv.Value.HasValue)
+                .GroupBy(kv => kv.Value!.Value)
+                .ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).ToList());
+
+            var scope = new HashSet<Guid>(roots);
+            var queue = new Queue<Guid>(roots);
+            while (queue.Count > 0)
+            {
+                var unit = queue.Dequeue();
+                if (!childrenOf.TryGetValue(unit, out var kids)) continue;
+                foreach (var child in kids)
+                    if (scope.Add(child)) queue.Enqueue(child);
+            }
+
+            var scoped = await employees.GetAll().AsNoTracking()
+                .Where(e => e.Position != null && scope.Contains(e.Position.OrganizationUnitId))
+                .Select(e => e.Id)
+                .ToListAsync();
+            return scoped.ToHashSet();
         }
 
         public async Task<ResolvedManager?> ResolveImmediateManagerAsync(Guid requesterEmployeeId)

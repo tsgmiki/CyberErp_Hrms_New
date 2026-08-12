@@ -397,6 +397,17 @@ tenant is derived FROM THE KEY, and the principal carries no user-id claim so it
 read. Keys are env-only (`ServiceClients__<name>__{Subsystem,TenantId,Key}`); `appsettings.json`
 deliberately has no such section.
 
+**Dashboard two-flow performance batch (2026-08-12, both repos — handoff 00ER, logic §2.11).** The
+felt delay on "login → dashboard" and "grid action → record" was mostly **CORS preflights**: both SPAs
+sent `Content-Type: application/json` on bodyless GETs, so half of all dashboard requests were
+uncached OPTIONS round-trips (18 of 36 → 2 of 20 after; the header is now body-only, and both APIs
+send `SetPreflightMaxAge(24h)`). Also landed: the `GetMyApprovals` SQL pre-filter (346 ms → 31 ms at
+5k instances, id-sets diffed identical), the cached single-query `DatabaseTenantStore` (was 2
+`Core.Tenant` queries on EVERY request), the Home identity-probe warm-up from `AuthContext` (kills the
+feed waterfall), and idle-time route-chunk prefetch for the dashboard grids (6 scripts on the click
+path → 0). ⚠️ Playwright page events DO NOT surface preflights — capture via CDP; and a JIT-cold API
+answers ~10× slower than warm, so warm up before trusting a measurement.
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

@@ -78,7 +78,14 @@ public static class ServiceCollectionExtensions
                 policy.WithOrigins(corsOrigins)
                     .AllowAnyHeader()
                     .AllowAnyMethod()
-                    .AllowCredentials();
+                    .AllowCredentials()
+                    // The SPAs send "Content-Type: application/json" on EVERY request, including
+                    // GETs — and that value is not CORS-safelisted, so each cross-origin call costs
+                    // a preflight OPTIONS round-trip before the real one. Without an explicit
+                    // max-age browsers cache a preflight for ~5 seconds, so a dashboard firing a
+                    // dozen calls paid the extra trip on nearly all of them, and again seconds later
+                    // when opening a record. A day lets the browser preflight each route once.
+                    .SetPreflightMaxAge(TimeSpan.FromHours(24));
             });
         });
 

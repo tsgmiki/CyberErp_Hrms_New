@@ -201,21 +201,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             }
             if (!isApprover) return new MyApprovalsDto { IsApprover = false };
 
-            // Batch the running instances' current-step approvers (same shape as the tracking list).
-            var running = await repository.GetAll()
-                .Where(x => x.Status == WorkflowInstanceStatus.Running)
-                .Select(x => new
-                {
-                    x.Id, x.DefinitionId, x.EntityType, x.EntityId, x.EmployeeId, x.Summary,
-                    x.CurrentStepOrder, x.CurrentStepName, x.TotalSteps,
-                    x.RequestedBy, x.CreatedAt
-                })
-                .ToListAsync();
-            if (running.Count == 0) return new MyApprovalsDto { IsApprover = true };
-
-            var defIds = running.Select(x => x.DefinitionId).Distinct().ToList();
+            // Which (definition, step) pairs could possibly route to THIS caller, and how. Read once
+            // from the definitions — a tenant has a handful, versus thousands of instances.
             var approverRows = await definitions.GetAllWithoutTenantFilter()
-                .Where(d => defIds.Contains(d.Id))
                 .SelectMany(d => d.Steps, (d, s) => new { d.Id, Step = s })
                 .SelectMany(x => x.Step.Approvers, (x, a) => new
                 {
@@ -225,6 +213,81 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     a.ApproverId
                 })
                 .ToListAsync();
+
+            // PRE-FILTER IN SQL. This endpoint used to pull EVERY running instance in the tenant into
+            // memory and decide ownership in C# — O(all workflows) per dashboard load, whatever the
+            // caller's actual queue. Instead, narrow to the instances that could plausibly be theirs
+            // and let the existing per-instance evaluation confirm. Three disjoint ways a step reaches
+            // a person, mirrored from EvaluateAsync:
+            //
+            //   static   — I am a named User approver, or hold an approver Role      → step matches
+            //   subject  — the step routes to the request's subject                  → + it is mine
+            //   dynamic  — manager/unit-manager/second-level                         → + the requester
+            //                                                                          sits in a unit
+            //                                                                          I manage
+            //
+            // The dynamic case is a deliberate SUPERSET (my whole unit subtree, not just my direct
+            // reports): EvaluateAsync still has the final say, so a wider candidate set can only cost
+            // a little extra evaluation, never a wrong answer — whereas too narrow would silently hide
+            // work. Open steps (no approvers at all) are matched separately below.
+            var staticSteps = approverRows
+                .Where(a => (a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value)
+                         || (a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId)))
+                .Select(a => new { a.DefinitionId, a.StepOrder }).Distinct().ToList();
+
+            var subjectSteps = approverRows
+                .Where(a => a.ApproverType == WorkflowApproverType.Subject)
+                .Select(a => new { a.DefinitionId, a.StepOrder }).Distinct().ToList();
+
+            var dynamicSteps = approverRows
+                .Where(a => a.ApproverType is WorkflowApproverType.ImmediateManager
+                         or WorkflowApproverType.UnitManager or WorkflowApproverType.SecondLevelManager)
+                .Select(a => new { a.DefinitionId, a.StepOrder }).Distinct().ToList();
+
+            // Steps with NO approver rows are "open" — actionable by anyone entitled to approve.
+            var stepsWithApprovers = approverRows.Select(a => (a.DefinitionId, a.StepOrder)).ToHashSet();
+
+            var myEmp = await approverAuth.CurrentEmployeeIdForInboxAsync();
+            var managedEmployeeIds = dynamicSteps.Count > 0 && myEmp.HasValue
+                ? await managerResolver.EmployeesInMyManagedUnitsAsync(myEmp.Value)
+                : [];
+
+            // EF cannot translate a tuple Contains, so the step filters go in as parallel id/order
+            // lists and the precise pairing is re-checked in memory straight after.
+            var staticDefIds = staticSteps.Select(s => s.DefinitionId).Distinct().ToList();
+            var staticOrders = staticSteps.Select(s => s.StepOrder).Distinct().ToList();
+            var subjectDefIds = subjectSteps.Select(s => s.DefinitionId).Distinct().ToList();
+            var subjectOrders = subjectSteps.Select(s => s.StepOrder).Distinct().ToList();
+            var dynamicDefIds = dynamicSteps.Select(s => s.DefinitionId).Distinct().ToList();
+            var dynamicOrders = dynamicSteps.Select(s => s.StepOrder).Distinct().ToList();
+
+            var candidates = await repository.GetAll()
+                .Where(x => x.Status == WorkflowInstanceStatus.Running)
+                .Where(x =>
+                    // open steps — the definition has no approver rows for the current step at all
+                    (canActOnOpenSteps)
+                    || (staticDefIds.Contains(x.DefinitionId) && staticOrders.Contains(x.CurrentStepOrder))
+                    || (subjectDefIds.Contains(x.DefinitionId) && subjectOrders.Contains(x.CurrentStepOrder)
+                        && x.EmployeeId != null && x.EmployeeId == myEmp)
+                    || (dynamicDefIds.Contains(x.DefinitionId) && dynamicOrders.Contains(x.CurrentStepOrder)
+                        && x.EmployeeId != null && managedEmployeeIds.Contains(x.EmployeeId.Value)))
+                .Select(x => new
+                {
+                    x.Id, x.DefinitionId, x.EntityType, x.EntityId, x.EmployeeId, x.Summary,
+                    x.CurrentStepOrder, x.CurrentStepName, x.TotalSteps,
+                    x.RequestedBy, x.CreatedAt
+                })
+                .ToListAsync();
+
+            // Re-pair (definition, step) exactly — the SQL filter above matched the two lists
+            // independently, so it can admit a row whose definition and step never occur together.
+            var running = candidates
+                .Where(x => !stepsWithApprovers.Contains((x.DefinitionId, x.CurrentStepOrder))
+                         || staticSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder)
+                         || subjectSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder)
+                         || dynamicSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder))
+                .ToList();
+            if (running.Count == 0) return new MyApprovalsDto { IsApprover = true };
 
             // Dynamic (manager/subject) steps resolve against the REQUESTER, so warm every requester's
             // unit in one query before the loop. Without it each row resolved its own — the dominant

@@ -17,13 +17,19 @@ export async function apiClient<T = unknown>(
 ): Promise<T> {
   const { skipAuthRedirect = false, ...fetchOptions } = options;
 
+  // "Content-Type: application/json" is NOT a CORS-safelisted header value, and the SPA is a
+  // different origin from the API. Sending it on a GET — which has no body to describe — made the
+  // browser preflight EVERY read, doubling the round-trips of any screen that loads several lists.
+  // Setting it only when there IS a body keeps reads "simple" requests, so they go straight out.
+  const headers: HeadersInit = {
+    ...(fetchOptions.body != null ? { "Content-Type": "application/json" } : {}),
+    ...fetchOptions.headers,
+  };
+
   const response = await fetch(API_BASE_URL + "/" + endpoint, {
     ...fetchOptions,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...fetchOptions.headers,
-    },
+    headers,
   });
 
   // Handle 401 Unauthorized - session expired on server

@@ -24,6 +24,13 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task EnsureCanDecideAsync(WorkflowInstance instance);
         /// <summary>Role ids held by the current user (for batch evaluation in list queries).</summary>
         Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync();
+
+        /// <summary>
+        /// The caller's linked employee id (null for system/unlinked accounts). Exposed so the approval
+        /// inbox can pre-filter subject-routed steps in SQL instead of loading every instance to test
+        /// them in memory. Memoised per request like the rest of this service.
+        /// </summary>
+        Task<Guid?> CurrentEmployeeIdForInboxAsync();
         /// <summary>
         /// The DISTINCT Core.User ids who may act on a step — the same resolution
         /// <see cref="EvaluateAsync"/> performs, but projected to recipients (for notifying approvers).
@@ -84,6 +91,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     .ToListAsync())
                 .ToHashSet();
         }
+
+        public Task<Guid?> CurrentEmployeeIdForInboxAsync() => CurrentEmployeeIdAsync();
 
         /// <summary>The current user's linked employee id (null for system/unlinked accounts).</summary>
         private async Task<Guid?> CurrentEmployeeIdAsync()
