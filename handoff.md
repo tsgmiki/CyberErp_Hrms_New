@@ -8,10 +8,10 @@
 
 ## 0. ⚠️ Repository state — READ FIRST
 
-- **CURRENT BRANCH: `feature/hrms-buildout-10`** (branched off `main` at `151974f`, 2026-08-11) —
-  carries the approvals performance work (00EP). **PR #11 (`151974f`) IS MERGED** — it landed the
-  notification routing + approval-card work (00EO), paired with Home `dfd75e8`;
-  `feature/hrms-buildout-9` can be deleted.
+- **CURRENT BRANCH: `feature/hrms-buildout-11`** (branched off `main` at `8d08480`, 2026-08-12) —
+  carries the entity-route hardening (00EQ). **PR #12 (`8d08480`) IS MERGED** — it landed the
+  approvals performance work (00EP), paired with Home `fe2e5ba` + `15aad77`;
+  `feature/hrms-buildout-9` and `-10` can both be deleted.
   **PR #9 (`57e7ff7`) and PR #10 (`4c2534a`) ARE MERGED.** #9 landed the return-from-leave
   reachability work, `PositionClass.TitleA`, the annual-leave/`LeaveType` decoupling, the ledger
   pagination fix, the app-shell height fix and the tree scroll/search (00EF–00EL, paired with Home
@@ -121,6 +121,32 @@
   (bypass: `SKIP_DOC_CHECK=1` or `git commit --no-verify`). `App_Data/employee-photos/` is gitignored.
 
 ## 1. Most recent changes (latest first)
+
+00EQ. **Appraisal "Add" did nothing in HOME; `useEntityRouteModule` hardened (2026-08-12, both SPAs).**
+    Reported against both apps. **HRMS was fine** — verified directly before touching anything: Add
+    navigates to `/appraisal/new` and renders the Generate Appraisal form. Only Home was broken, by
+    00EO's URL-backed routing.
+    - **Cause.** Home's route declared a static `new` child beside `:id`:
+      `<Route path="new">` + `<Route path=":id">`. A static segment matches AHEAD of `:id`, so on
+      `/appraisal/new` there is **no `id` param** — and the hook derives `showForm` from
+      `useParams().id`, so it stayed false: the URL changed while the LIST kept rendering and the
+      button looked dead. (The code comment I wrote there even stated the mechanism.)
+    - HRMS never hit it: `renderEntityRoutes` declares only `index` + `:id`, `:id` matches the literal
+      "new", and `EntityRecordGuard` explicitly accepts `NEW_SEGMENT`.
+    - **Fix (1)** drop the `new` route from Home so it mirrors the HRMS shape.
+      **Fix (2)** `useEntityRouteModule` now falls back to reading the segment from the pathname when
+      `useParams().id` is absent, so the module behaves identically however the route is declared.
+      The path check is SEGMENT-AWARE (`base + "/"`), so `/appraisal` cannot swallow
+      `/appraisalTemplate` — the same substring trap that bit `/loan` vs `/loanType`.
+    - ⚠️ **Never declare a `new` route next to `:id`** for a module using this hook. `:id` matches the
+      literal "new" and the hook + guard already handle it.
+    - Verified: Home Add → form (the reported bug), record deep-link still hits the BY-ID endpoint and
+      the list route the LIST endpoint; HRMS `appraisal` + `employeeGoal` each 6/6 on
+      list → Add → form → direct `/new` → back.
+    - ⚠️ Two regression assertions failed spuriously and were the TEST's fault: `/appraisalTemplate` is
+      `CanView=0` for `UserRole` (permission wall, not a routing bug), and "page contains a `<table>`"
+      does NOT distinguish list from form — the appraisal scoring form contains goal/competency grids.
+      Discriminate by WHICH endpoint the route calls (`Appraisal?…` vs `Appraisal/{id}`).
 
 00EP. **Approvals performance: 5,028 ms → 39 ms at scale (2026-08-11, HRMS backend + Home frontend).**
     Reported three times as "dashboard cards and grids are slow". The first two investigations found
