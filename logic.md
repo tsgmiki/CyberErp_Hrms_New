@@ -1279,3 +1279,41 @@ Delete.
 
 Covered by `IncrementEligibilityTests`, `ProratedProposalTests`, `GradeCeilingPromotionTests`,
 `SalaryRevisionLineTests` and `RevisionPopulationTests` (128 tests in total across the suite).
+
+## 10. Editing a record: cache invalidation and branch reassignment
+
+### 10.1 A save must invalidate the RECORD's key, not just the list
+
+Every entity form runs a detail query keyed `["<entitySingular>", id]` while its grid uses the plural
+`["<entityPlural>"]`. Saving used to invalidate only the plural, and the app's `QueryClient` sets
+`staleTime: 30_000` — so re-opening the same record within 30 s served the **pre-save copy without
+refetching**. The grid showed the new values while the form showed the old ones, and only a full page
+reload (which builds a new `QueryClient`) cleared it. That reads as "my edit did not save".
+
+Every save-success block therefore invalidates its own detail key as well:
+
+```ts
+queryClient.invalidateQueries({ queryKey: ["organizationUnits"] });   // the grid
+queryClient.invalidateQueries({ queryKey: ["organizationUnit"] });    // the record itself
+```
+
+The bare key prefix-matches every `["organizationUnit", <id>]` entry. Prefix matching compares array
+ELEMENTS, not strings, so `["loan"]` never touches `["loanType", id]` — the substring trap that
+applies to route matching does not apply here. A form that already invalidates the targeted form
+(`["candidate", formState.id]`) is equally correct and must not be double-patched.
+
+> When adding an entity form, add BOTH lines. The list-only version looks like it works, because the
+> grid updates; the failure only shows on the next Edit, inside the 30 s window.
+
+### 10.2 Branch reassignment must fail out loud
+
+`OrganizationUnit` is `IBranchScoped`. Head Office may move a unit between branches; a branch admin
+may not — that is deliberate isolation, and `ICurrentUserService.IsHeadOffice()` (a **cookie**, set by
+`LoginRepository.SetBranchCookies` at sign-in) decides. What was wrong is that breaking the rule was
+SILENT: `UpdateOrganizationUnit` substituted the entity's existing `BranchId` and still answered
+**200**, so the user was told the save succeeded and watched the field revert.
+
+The rule now throws a 400 naming the restriction, and only when the value would actually CHANGE —
+an omitted or unchanged `BranchId` is not an attempt to reassign and must never fail an ordinary
+edit. Create is different and stays as it was: it PINS a branch admin's new unit to their own branch
+(`GetCurrentBranchId()`), which is an assignment, not an override.

@@ -123,6 +123,40 @@
 
 ## 1. Most recent changes (latest first)
 
+00ES. **Organization Unit edit: Branch not saving + form showing stale data (2026-08-12, HRMS both halves).**
+    Two reported symptoms that turned out to be MOSTLY ONE bug. Reproduced in a real browser before
+    changing anything: the server HAD the branch saved while the re-opened form showed EMPTY — so
+    "the branch does not save" was largely a symptom of #2.
+    - **#2 stale form (the big one).** Forms invalidate the plural list key on save but never their
+      own detail key `["<entity>", id]`, and `main.tsx` sets `staleTime: 30_000` — so re-opening a
+      record within 30 s served the PRE-SAVE copy with NO refetch. Grid fresh, form stale, cleared
+      only by a full page reload (which builds a new QueryClient). A/B proof, same test either side:
+      unfixed saved "PME-86928" then showed "PME-37458"; fixed saved "PME-33546" and showed it back.
+    - **Swept ALL of it, not just Organization Unit: 57 forms.** ⚠️ My first count of 64 was WRONG —
+      it matched keys by FOLDER NAME. That gave 7 false positives (candidate, appraisalAppeal,
+      hiringRequest, jobRequisition, improvementPlan, careerPathChangeRequest, workforcePlan already
+      invalidate correctly in the TARGETED form `["candidate", formState.id]`) and would have written
+      2 keys matching nothing (formBuilder's detail key is `dynamicForm`, not `formBuilder`).
+      **Derive the key from the form's own useQuery, never from the directory name.**
+      54 applied by codemod (brace-matches the success block, inserts after the last existing
+      invalidation); 3 hand-edited because their shape differs — `employeeGuarantee` (shared
+      `invalidate()` helper) and `otherLeave`/`otherLeaveSetting` (`if (res.ok)`, not `formState.status`).
+    - **#1 branch silently discarded — a REAL second bug, for non-head-office users.**
+      `UpdateOrganizationUnit` read `IsHeadOffice() ? dto.BranchId : entity.BranchId` and answered
+      **200** while dropping the value. Proven by sending identical payloads as two accounts. It bites
+      real users: `tatekg` is an Administrator (so HAS the Organization Unit permission) AND is not
+      head office. Now throws 400 naming the restriction, and ONLY when the value would change — an
+      omitted or unchanged BranchId still saves normally (all four paths verified). See logic.md §10.
+    - Verified: 4 modules proven end-to-end in the browser (organizationUnit, workLocation,
+      competencyCategory, awardCategory); the other 53 rest on the static re-survey (0 remaining)
+      plus `tsc -b` / `eslint` clean. MedicalProvider/TrainingCourse/Holiday could NOT be exercised —
+      0 rows in the purged DB, so no Edit button; ratingScale has no `name` field; jobGrade was
+      inconclusive because renaming re-sorts the grid so the first Edit button changes record.
+    - All test data restored (no `zz-` values remain; PME-01, GM-01, Bishoftu and the two categories
+      are back to their original values).
+    - ⚠️ **Editing these docs from Git-Bash heredocs/`node -e` mangles backticks and `$(...)`, and a
+      `\n\n` replace silently no-ops because the files are CRLF.** Use the editor tool instead.
+
 00ER. **Home dashboard two-flow performance batch (2026-08-12, HRMS backend+frontend + Home backend+frontend).**
     The user's staged request: map the bottlenecks of (1) login → dashboard and (2) grid action →
     record, then fix backend, then frontend. All fixes measured against a production Vite build in a

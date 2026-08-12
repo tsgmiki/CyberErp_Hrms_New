@@ -69,6 +69,10 @@ function GuaranteeForm({
     queryClient.invalidateQueries({ queryKey: ["employeeGuarantees"] });
     queryClient.invalidateQueries({ queryKey: ["myGuarantees"] });
     queryClient.invalidateQueries({ queryKey: ["guaranteeDashboard"] });
+    // The record's OWN cache entry, not just the lists: without this the detail query
+    // ["employeeGuarantee", id] kept the pre-save copy and the client's 30 s staleTime served it to
+    // the next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+    queryClient.invalidateQueries({ queryKey: ["employeeGuarantee"] });
   };
 
   const submitHandler = async (e: any) => {

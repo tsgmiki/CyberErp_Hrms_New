@@ -90,6 +90,13 @@ function OrganizationUnitForm({ id, presetParentId, presetParentName, onClose, o
     if (formState.status == "success") {
       queryClient.invalidateQueries({ queryKey: ["organizationUnits"] });
       queryClient.invalidateQueries({ queryKey: ["organizationTree"] });
+      // The RECORD's own cache entry too, not just the list. Without this the detail query
+      // ["organizationUnit", id] kept the pre-save copy, and with the client's 30 s staleTime a
+      // re-opened form served that copy WITHOUT refetching — so the grid showed the new values
+      // while the form showed the old ones, and only a full page reload (a new QueryClient)
+      // cleared it. Prefix-matching invalidates every ["organizationUnit", <id>] entry; the list
+      // key is the plural "organizationUnits", so it is unaffected by this call.
+      queryClient.invalidateQueries({ queryKey: ["organizationUnit"] });
       onSaved();
       onClose();
     }

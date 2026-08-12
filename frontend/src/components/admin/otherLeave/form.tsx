@@ -142,6 +142,10 @@ function OtherLeaveForm({
     if (res.ok) {
       queryClient.invalidateQueries({ queryKey: ["otherLeaves"] });
       queryClient.invalidateQueries({ queryKey: ["otherLeaveBalances"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["otherLeave", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["otherLeave"] });
       setId("");
     }
   };

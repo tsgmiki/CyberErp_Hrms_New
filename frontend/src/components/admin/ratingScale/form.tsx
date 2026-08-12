@@ -91,6 +91,10 @@ function RatingScaleForm({ id, setId }: { id: string; setId: (id: string) => voi
     if (result.status === "success") {
       queryClient.invalidateQueries({ queryKey: ["ratingScalesList"] });
       queryClient.invalidateQueries({ queryKey: ["ratingScales"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["ratingScale", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["ratingScale"] });
       setId("");
     }
   };

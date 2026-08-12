@@ -64,8 +64,24 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(OrganizationUnit), dto.Id.ToString());
 
-            // Head Office may reassign to another branch; branch admins keep it in their branch.
-            var branchId = currentUser.IsHeadOffice() ? dto.BranchId : entity.BranchId;
+            // Head Office may reassign to another branch; a branch admin stays inside theirs.
+            // The rule itself is deliberate branch isolation — what was wrong is that breaking it
+            // used to be SILENT: the submitted BranchId was dropped and the call still answered
+            // 200, so the user was told the save succeeded and watched the field revert. Say no
+            // out loud instead, and only when the value would actually change (an unchanged or
+            // omitted BranchId is not an attempt to reassign, so it must not fail an ordinary edit).
+            Guid? branchId;
+            if (currentUser.IsHeadOffice())
+            {
+                branchId = dto.BranchId;
+            }
+            else
+            {
+                if (dto.BranchId.HasValue && dto.BranchId != entity.BranchId)
+                    throw new ValidationException(nameof(dto.BranchId),
+                        "Only a Head Office user can move an organization unit to a different branch.");
+                branchId = entity.BranchId;
+            }
 
             if (await repository.GetAll().AnyAsync(x => x.Code == dto.Code && x.BranchId == branchId && x.Id != dto.Id))
                 throw new DuplicateException(nameof(OrganizationUnit), nameof(dto.Code), dto.Code);
