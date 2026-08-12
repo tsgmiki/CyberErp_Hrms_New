@@ -1,5 +1,17 @@
 import { useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+
+/**
+ * The single path segment directly under `basePath`, or undefined at the base itself.
+ * Matches on a SEGMENT boundary: base "/appraisal" must not swallow "/appraisalTemplate".
+ */
+function segmentAfter(basePath: string, pathname: string): string | undefined {
+  const base = basePath.replace(/\/+$/, "");
+  if (pathname === base) return undefined;
+  if (!pathname.startsWith(`${base}/`)) return undefined;
+  const rest = pathname.slice(base.length + 1);
+  return rest ? rest.split("/")[0] : undefined;
+}
 
 /** URL segment that means "creating a new record". Declared as a static route, so it is matched
  *  ahead of `:id` and never reaches the GUID guard. */
@@ -30,8 +42,16 @@ export interface EntityRouteModule {
  * `basePath` is the route root, e.g. "/branch".
  */
 export function useEntityRouteModule(basePath: string): EntityRouteModule {
-  const { id: seg } = useParams();
+  const { id: param } = useParams();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
+
+  // The segment normally arrives as `:id`, but a route may match it STATICALLY — declaring
+  // `<Route path="new">` alongside `<Route path=":id">` matches "new" first and leaves
+  // `useParams().id` undefined. Reading it from the URL as a fallback means the hook behaves the same
+  // however the route is declared; without it, `showForm` stayed false on /x/new and the Add button
+  // silently did nothing while the list kept rendering.
+  const seg = param ?? segmentAfter(basePath, pathname);
 
   const isNew = seg === NEW_SEGMENT;
   // "" is the legacy "no record" sentinel that forms and `createSaveService` (POST vs PUT) rely on.
