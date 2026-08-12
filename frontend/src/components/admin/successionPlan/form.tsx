@@ -63,6 +63,10 @@ function SuccessionPlanForm({ id, setId }: { id: string; setId: (id: string) => 
   useEffect(() => {
     if (formState.status == "success") {
       queryClient.invalidateQueries({ queryKey: ["successionPlans"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["successionPlan", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["successionPlan"] });
       if (formState.id && !id) setId(formState.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

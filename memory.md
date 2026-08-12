@@ -408,6 +408,15 @@ feed waterfall), and idle-time route-chunk prefetch for the dashboard grids (6 s
 path → 0). ⚠️ Playwright page events DO NOT surface preflights — capture via CDP; and a JIT-cold API
 answers ~10× slower than warm, so warm up before trusting a measurement.
 
+**Entity forms must invalidate their OWN detail key on save (2026-08-12 — handoff 00ES, logic §10.1).**
+Every form invalidated the plural list key but not `["<entity>", id]`, and the client sets
+`staleTime: 30_000` — so re-opening a record within 30 s showed the PRE-SAVE copy with no refetch
+(grid fresh, form stale, fixed only by a full page reload). Swept **57 forms**; 7 others already did
+it correctly in the targeted `["x", formState.id]` form. ⚠️ Derive the key from the form's own
+`useQuery`, never from the folder name — `formBuilder`'s key is `dynamicForm`, and a folder-name
+sweep produces both false positives and keys that match nothing. Same session: branch reassignment on
+`OrganizationUnit` used to be discarded SILENTLY with a 200 for non-head-office callers (see §10.2).
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

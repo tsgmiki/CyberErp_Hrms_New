@@ -92,6 +92,10 @@ function LearningPathForm({ id, setId }: { id: string; setId: (id: string) => vo
     setIsSaving(false);
     if (result.status === "success") {
       queryClient.invalidateQueries({ queryKey: ["learningPaths"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["learningPath", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["learningPath"] });
       setId("");
     }
   };

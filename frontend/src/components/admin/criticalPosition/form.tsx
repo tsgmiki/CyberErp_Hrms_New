@@ -71,6 +71,10 @@ function CriticalPositionForm({ id, setId }: { id: string; setId: (id: string) =
       setFormData({} as CriticalPositionModel);
       formRef.current?.reset();
       queryClient.invalidateQueries({ queryKey: ["criticalPositions"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["criticalPosition", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["criticalPosition"] });
       setId("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

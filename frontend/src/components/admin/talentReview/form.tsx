@@ -59,6 +59,10 @@ function TalentReviewForm({ id, setId }: { id: string; setId: (id: string) => vo
     // On save, keep the record open (so its 9-box / assessments become editable) — refresh the id.
     if (formState.status == "success") {
       queryClient.invalidateQueries({ queryKey: ["talentReviews"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["talentReview", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["talentReview"] });
       if (formState.id && !id) setId(formState.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

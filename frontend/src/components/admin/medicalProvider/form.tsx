@@ -61,6 +61,10 @@ function MedicalProviderForm(props: { id: string; setId: (id: string) => void })
       setFormData({ ...NEW_DEFAULTS });
       if (formRef.current) formRef.current.reset();
       queryClient.invalidateQueries({ queryKey: ["medicalProviders"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["medicalProvider", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["medicalProvider"] });
       setId("");
     }
   }, [formState]);

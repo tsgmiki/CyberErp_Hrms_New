@@ -91,6 +91,10 @@ function FormBuilderForm({ id, setId }: { id: string; setId: (id: string) => voi
       // Refresh both the admin list and the active-forms metadata that drives the profile tabs.
       queryClient.invalidateQueries({ queryKey: ["dynamicFormsList"] });
       queryClient.invalidateQueries({ queryKey: ["dynamicForms"] });
+      // The record's OWN cache entry, not just the list: without this the detail query
+      // ["dynamicForm", id] kept the pre-save copy and the client's 30 s staleTime served it to the
+      // next Edit WITHOUT refetching -- grid fresh, form stale until a full page reload.
+      queryClient.invalidateQueries({ queryKey: ["dynamicForm"] });
       setId("");
     }
   };
