@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.OrganizationUnits;
 using CyberErp.Hrms.App.Features.Core.OrganizationUnits.DTOs;
@@ -32,10 +33,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => getByIdHandler.GetAsync(id);
 
         [HttpPost]
+
+        [RequirePermission("organizationUnit")]
         public Task<Guid> Create([FromBody] CreateOrganizationUnitDto dto)
             => createHandler.CreateAsync(dto);
 
         [HttpPut]
+
+        [RequirePermission("organizationUnit")]
         public async Task<IActionResult> Update([FromBody] UpdateOrganizationUnitDto dto)
         {
             await updateHandler.UpdateAsync(dto);
@@ -43,6 +48,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("organizationUnit")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await deleteHandler.DeleteAsync(id);

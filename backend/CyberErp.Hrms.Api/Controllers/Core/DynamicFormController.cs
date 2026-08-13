@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.DynamicForms;
 using Microsoft.AspNetCore.Mvc;
@@ -22,14 +23,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => service.GetFormByIdAsync(id);
 
         [HttpPost]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Create([FromBody] SaveDynamicFormDto dto)
             => Ok(new { id = await service.SaveFormAsync(dto) });
 
         [HttpPut]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Update([FromBody] SaveDynamicFormDto dto)
             => Ok(new { id = await service.SaveFormAsync(dto) });
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await service.DeleteFormAsync(id);
@@ -46,14 +53,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => service.GetRecordsAsync(formId, ownerType, ownerId, request);
 
         [HttpPost]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Create([FromBody] SaveDynamicFormRecordDto dto)
             => Ok(new { id = await service.SaveRecordAsync(dto) });
 
         [HttpPut]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Update([FromBody] SaveDynamicFormRecordDto dto)
             => Ok(new { id = await service.SaveRecordAsync(dto) });
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await service.DeleteRecordAsync(id);

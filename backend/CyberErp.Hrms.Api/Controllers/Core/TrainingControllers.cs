@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Performance;
 using CyberErp.Hrms.App.Features.Core.Training;
@@ -9,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Training & Development (§3.8, HC187–HC202) — Phase TD1: catalog + training needs.
 
     /// <summary>Training / education program categories (HC191).</summary>
+    [RequirePermission("trainingCategory")]
     public class TrainingCategoryController(
         ISaveTrainingCategory saveHandler,
         IDeleteTrainingCategory deleteHandler,
@@ -32,6 +34,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>The course catalog / training directory (HC191/HC196; external providers per HC194).</summary>
+    [RequirePermission("trainingCourse")]
     public class TrainingCourseController(
         ISaveTrainingCourse saveHandler,
         IDeleteTrainingCourse deleteHandler,
@@ -117,6 +120,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Scheduled deliveries of catalog courses (HC197) — admin-managed, company-visible.</summary>
+    [RequirePermission("trainingSession")]
     public class TrainingSessionController(
         ISaveTrainingSession saveHandler,
         ICreateTrainingSessionSeries seriesHandler,
@@ -158,6 +162,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Participation tracking (HC198) + effectiveness feedback (HC199).</summary>
+    [RequirePermission("trainingSession", "myTraining")]
     public class TrainingEnrollmentController(
         IEnrollTraining enrollHandler,
         IRecordTrainingParticipation participationHandler,
@@ -190,6 +195,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Structured learning paths aligned to career progression (HC193).</summary>
+    [RequirePermission("learningPath")]
     public class LearningPathController(
         ISaveLearningPath saveHandler,
         IDeleteLearningPath deleteHandler,
@@ -219,6 +225,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Certification management (HC200): issue, renew, expiry tracking.</summary>
+    [RequirePermission("trainingCertificate", "myTraining")]
     public class TrainingCertificateController(
         IIssueTrainingCertificate issueHandler,
         ISaveTrainingCertificate saveHandler,
@@ -253,6 +260,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>CPD credits/hours rollup (HC200) — own record by default, scope-gated otherwise.</summary>
+    [RequirePermission("myTraining")]
     public class TrainingCpdController(IGetCpdSummary cpdHandler) : BaseController
     {
         [HttpGet]
@@ -261,6 +269,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Provider-payment hand-off for finance (HC202) — admin-only.</summary>
+    [RequirePermission("trainingProviderPayment")]
     public class TrainingProviderPaymentController(
         IGetAllProviderPayments getAllHandler,
         IMarkProviderPaymentPaid payHandler,
@@ -285,6 +294,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Learning communities + discussion threads (HC198/HC199): any employee founds/joins; reading is
     /// open, posting needs membership; founders moderate.
     /// </summary>
+    [RequirePermission("learningCommunity")]
     public class LearningCommunityController(
         ISaveLearningCommunity saveHandler,
         IDeleteLearningCommunity deleteHandler,
@@ -336,6 +346,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Training budgets + utilization (HC190) — admin-only.</summary>
+    [RequirePermission("trainingBudget")]
     public class TrainingBudgetController(
         ISaveTrainingBudget saveHandler,
         IDeleteTrainingBudget deleteHandler,

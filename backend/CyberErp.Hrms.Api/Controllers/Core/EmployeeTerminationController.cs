@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
@@ -8,6 +9,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Termination &amp; clearance module: initiation (routed through the workflow engine),
     /// departmental clearance checklist, and final settlement automations.
     /// </summary>
+    [RequirePermission("terminationList", "myExit")]
     public class EmployeeTerminationController(
         ISaveEmployeeTermination saveHandler,
         IGetEmployeeTerminations getHandler,

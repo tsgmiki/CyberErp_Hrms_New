@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Steps;
 using Microsoft.AspNetCore.Mvc;
@@ -20,10 +21,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => getByIdHandler.GetAsync(id);
 
         [HttpPost]
+
+        [RequirePermission("salaryScale")]
         public Task<Guid> Create([FromBody] SaveStepDto dto)
             => saveHandler.SaveAsync(dto);
 
         [HttpPut]
+
+        [RequirePermission("salaryScale")]
         public async Task<IActionResult> Update([FromBody] SaveStepDto dto)
         {
             await saveHandler.SaveAsync(dto);
@@ -31,6 +36,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("salaryScale")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await deleteHandler.DeleteAsync(id);

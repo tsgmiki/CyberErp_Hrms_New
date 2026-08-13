@@ -473,7 +473,15 @@ permissions). ⚠️ Found while testing, unfixed: `Subsystem`/`Module`/`Operati
 links `subsystem`/`module`/`operation`. ⚠️ **Do NOT gate these controllers at class level** — `GET
 Operation` is what `permissionGate.tsx` builds its catalogSet from, and an empty catalog reads as "no
 route is gated", so every route would fall through UNGATED; gating `Module/WithOperations` would leave
-everyone with no sidebar. **Core.User/Role/Operation ALIGNED
+everyone with no sidebar. **Remaining controllers swept 2026-08-13** (handoff 00FF, logic §12.9): 25
+gated in THREE patterns — controller-level 1 link (15), controller-level 2 links where an HR and a
+self-service screen share it (TrainingEnrollment/Certificate, Survey, EmployeeTermination;
+`HasAnyAsync` is an OR), and **writes-only** for reference data whose GETs feed dropdowns app-wide
+(Position 12 screens, OrganizationUnit 12, Lookup every combobox, Step, CompanyAsset, DynamicForm).
+⚠️ `learningCommunity`/`recognitionWall`/`myPoints`/`myTraining` are EMPLOYEE links, so gating on them
+is safe. Left open by design: Auth, Dashboard, Search, Employee(+children), leave, Guarantee,
+ProfileChangeRequest, Exit*, Suggestion/Grievance/Announcement, Workflow, EmployeeMovement/
+DisciplinaryMeasure, RewardNomination, TrainingNeed. **Core.User/Role/Operation ALIGNED
 with cybererp_srms 2026-08-13** (handoff 00FB, logic §12.5, migration `AlignCoreTablesWithSrms`):
 `User.Password`→**`PasswordHash`**+9 cols, `Role.Code` NOT NULL+3 cols, `Operation.SortOrder`→
 **`DisplayOrder`**+`SubSystemId`(FK)+`IsActive`. ⚠️ **`TenantId` KEPT** (SRMS has none) — dropping it

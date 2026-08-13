@@ -123,6 +123,31 @@
 
 ## 1. Most recent changes (latest first)
 
+00FF. **The remaining ungated controllers are gated (2026-08-13).** Detail in logic.md §12.9.
+    No migration, no data change. 25 controllers across 12 files.
+    - ⚠️ **THREE patterns, chosen per controller from what actually calls it.** A blanket sweep would
+      have broken self-service for the 490 employee accounts.
+    - **Controller-level, one link (15):** AnnualLeaveLedger, Training{Category,Course,Session,
+      Budget,ProviderPayment,Cpd}, LearningPath, LearningCommunity, AwardCategory,
+      RecognitionProgram, RewardDisbursement, RecognitionWall, RewardPoints, WorkflowDefinition.
+      Note `learningCommunity` / `recognitionWall` / `myPoints` / `myTraining` are **employee** links
+      (granted by `assign-employee-role.sql`), so gating on them keeps self-service working.
+    - **Controller-level, TWO links (4)** — an HR screen and a self-service screen share the
+      controller: TrainingEnrollment (`trainingSession`+`myTraining`), TrainingCertificate
+      (`trainingCertificate`+`myTraining`), Survey (`survey`+`surveyTake`), EmployeeTermination
+      (`terminationList`+`myExit`). `HasAnyAsync` is an OR, so either link admits.
+    - **Writes only (6 files):** Position, OrganizationUnit, Lookup, Step, CompanyAsset, DynamicForm.
+      ⚠️ Their GETs are reference data — Position feeds dropdowns on **12** screens, OrganizationUnit
+      on **12**, Lookup on every form's comboboxes — so gating the reads would 403 a dropdown for
+      anyone lacking that screen.
+    - **Left open on purpose:** Auth (anonymous), Dashboard/Search (everyone; the palette
+      self-filters), Employee + child controllers (`IPerformanceVisibilityService`, `/myProfile`),
+      LeaveRequest/AnnualLeave/LeaveBalance, Guarantee, ProfileChangeRequest, ExitInterview/
+      TerminationSettlement, Suggestion/Grievance/Announcement, Workflow, EmployeeMovement/
+      DisciplinaryMeasure, RewardNomination, TrainingNeed — self-service or already guarded.
+    - Verified live: self-service links 200, admin-only 403, reference GETs 200 with their writes
+      403, sidebar unchanged at 34 links.
+
 00FE. **The ungated navigation controllers are closed (2026-08-13).** Detail in logic.md §12.8.
     No migration, no data change.
     - `Subsystem` / `Module` / `Operation` controllers had **no `[RequirePermission]` at all** — any

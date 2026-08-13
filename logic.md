@@ -1906,6 +1906,67 @@ with the permission    POST Operation 200, throwaway created and deleted
 baseline               174 operations | 598 grants | 0 leftover probe rows
 ```
 
+### 12.9 The remaining ungated controllers
+
+Follow-on from §12.8, across the rest of `Controllers/Core`. **Three patterns**, chosen per
+controller from what actually calls it — a blanket sweep would have broken self-service for the 490
+employee accounts.
+
+**1. Controller-level, one link** (the only consumer is the screen being gated) — 15:
+`AnnualLeaveLedger`, `TrainingCategory`, `TrainingCourse`, `TrainingSession`, `TrainingBudget`,
+`TrainingProviderPayment`, `LearningPath`, `LearningCommunity`, `AwardCategory`,
+`RecognitionProgram`, `RewardDisbursement`, `RecognitionWall`, `RewardPoints`(→`myPoints`),
+`TrainingCpd`(→`myTraining`), `WorkflowDefinition`.
+
+> `learningCommunity`, `recognitionWall`, `myPoints` and `myTraining` are **employee** links —
+> `assign-employee-role.sql` grants them — so gating on them keeps self-service working.
+
+**2. Controller-level, TWO links** (an HR screen and a self-service screen share the controller) — 4:
+
+| Controller | Links | Why |
+|---|---|---|
+| `TrainingEnrollment` | `trainingSession`, `myTraining` | HR's participants modal **and** My Training |
+| `TrainingCertificate` | `trainingCertificate`, `myTraining` | same |
+| `Survey` | `survey`, `surveyTake` | employees respond via `/surveyTake` |
+| `EmployeeTermination` | `terminationList`, `myExit` | employees see their own exit |
+
+`HasAnyAsync` is an OR, so either link admits.
+
+**3. Writes only** (the GETs are reference data consumed app-wide) — 6 files:
+`Position` (12 screens use it as a dropdown), `OrganizationUnit` (12), `Lookup` (every form's
+comboboxes), `Step`, `CompanyAsset` (also read by `/myExit`), `DynamicForm` (+`DynamicFormRecord`,
+read by the profile tabs). Gating those GETs would 403 a dropdown for anyone lacking that screen.
+
+#### Deliberately left open
+
+| | Why |
+|---|---|
+| `Auth` | `[AllowAnonymous]` — sign-in |
+| `Dashboard`, `Search` | every user's landing page; the palette is already permission-filtered internally |
+| `Employee`, `EmployeeChild*` | scoped by `IPerformanceVisibilityService`; also serve `/myProfile` |
+| `LeaveRequest`, `AnnualLeave`, `LeaveBalance` | employee self-service |
+| `Guarantee`, `ProfileChangeRequest`, `ExitInterview`, `TerminationSettlement` | self-service |
+| `Suggestion`, `Grievance`, `Announcement` | anonymous-safe self-service |
+| `Workflow` | `/workflow` is My Approvals / My Submissions |
+| `EmployeeMovement`, `DisciplinaryMeasure` | employee profile tabs |
+| `RewardNomination`, `TrainingNeed` | employees nominate and raise needs |
+
+These have their own guards or are self-service by design; a link gate would be wrong, not merely
+redundant.
+
+#### Verification
+
+```
+self-service (employee links)  TrainingEnrollment 200 | TrainingCertificate 200
+                              TrainingCpd 400 (validation, so the GATE PASSED) 
+                              LearningCommunity 200 | RecognitionWall 200
+admin-only                    TrainingCategory | TrainingCourse | AwardCategory
+                              WorkflowDefinition | AnnualLeaveLedger      all 403
+reference GETs                Position | OrganizationUnit | Step          all 200
+reference WRITES              Position | Step | OrganizationUnit | Lookup all 403
+sidebar                       34 links, unchanged
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

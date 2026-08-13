@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Leaves;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,6 +13,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Annual Leave Ledger: previews and generates service-length-based leave entitlements for all
     /// eligible employees under a selected annual-leave setting (fiscal year + leave type).
     /// </summary>
+    [RequirePermission("annualLeaveLedger")]
     public class AnnualLeaveLedgerController(
         IGetAnnualLeaveLedger getHandler,
         ILeaveAccrualService accrualService) : BaseController
