@@ -123,6 +123,27 @@
 
 ## 1. Most recent changes (latest first)
 
+00EY. **`IsAdmin` repointed — categories B and C fixed at the root; the audit is CLOSED (2026-08-13,
+    ONE file).** Detail in logic.md §11.8.
+    - `IsAdminAsync` no longer short-circuits on `IsHeadOffice()`; it checks the `/employee` menu
+      permission (`HrScreens.EmployeeRegister`), keeping the existing HrSignOff-approver fallback.
+    - **None of the 73 scoping sites or 54 "Only HR" gates was edited.** They were never wrong — they
+      ask `scope.IsAdmin`, which was answering "yes" for everyone. One line made the answer correct.
+    - ⚠️ **This is only survivable because of 00EW** (every employee now holds a role). Do NOT port it
+      to an environment where `backend/scripts/assign-employee-role.sql` has not been run — before
+      that, 480 accounts had no permissions at all and would have lost everything.
+    - **Acceptance test (effective visibility, same endpoints before/after):**
+      `Administrator 345 employees BEFORE and AFTER` (unchanged); an ordinary employee went
+      `345 → 1`, appraisals `1 → 0`, goals `3 → 0`. A second employee kept **1** other-leave row —
+      their OWN maternity request — proving per-owner scoping rather than a blanket zero. Managers
+      resolve in between: `engdag` 2 and `rojer(dr)b` 5 employees (their unit subtrees).
+    - Verified no 500s across 12 modules for admin/manager/employee; self-service all 200; the Home
+      News Feed still works (it uses `Announcement/feed`, open to staff, while the admin
+      `Announcement` list now correctly refuses them — that 400 is the fix working, not a break).
+    - 158/158 tests pass. LoginTrail rows from testing removed.
+    - **The IsAdmin audit is now complete: A (00EX), B and C (this).** Remaining related work is
+      SRMS phase 2 (the tenant-scoped auth model).
+
 00EX. **Category A fixed: the 16 cross-employee guards (2026-08-13, HRMS App).** Detail in logic.md §11.7.
     - All 16 read `if (!scope.IsAdmin && record.EmployeeId != mine) throw`. `IsAdmin` is true for
       everyone, so the condition was ALWAYS FALSE and the throw unreachable — any employee could
