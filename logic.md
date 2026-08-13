@@ -1546,6 +1546,46 @@ sign-in: `RecordLoginEventAsync` swallows and logs.
 > which is what `SmtpEmailService` actually reads. Neither has been repointed — doing so silently
 > would change what letters render and where mail is sent from.
 
+### 12.3 Phase 2 step 1 — the model exists and is MIRRORED, but nothing reads it yet
+
+Migration `AddTenantScopedAuthorization` creates the six tables; `backend/scripts/
+seed-tenant-authorization.sql` fills them FROM CERP's own data. **No reader has been switched over**,
+so this changed no behaviour — verified at runtime (Administrator 345 employees / 144 sidebar links,
+employee 1 / 34, manager 2 / 34, all identical to before).
+
+**The mirror is 1:1 with the live model:**
+
+```
+TenantRole 8   TenantOperation 150   TenantRolePermission 598
+TenantUser 500 TenantUserRole 503    TenantSubSystem 7
+```
+
+> ⚠️ **The existing model is ALREADY tenant-scoped** through the `TenantId` discriminator: 3 roles
+> belong to `demo`, 5 to `headoffice`, and all 150 operations and 598 permissions to `headoffice`.
+> So each row joins to ITS OWN tenant. **Do not cross join `Role × Tenant`** — that replicates every
+> role into every tenant, and the membership insert then makes each user a member of ALL of them
+> (506 users produced 1500 memberships on the first attempt, caught by the row counts).
+>
+> ⚠️ `SELECT DISTINCT NEWID(), …` does NOT dedupe — `NEWID()` makes every row unique. Resolve the
+> distinct pairs in a subquery first, or a user holding two roles yields two membership rows.
+
+**Acceptance test** (`seed-tenant-authorization-verify.sql`, read-only) compares EFFECTIVE
+permissions per user — the distinct `(Link, CanView, CanAdd, CanEdit, CanDelete, CanApprove)` each
+user reaches through any role — with a full outer join in both directions:
+
+```
+old_grant_rows 70852 | new_grant_rows 70852 | lost_in_new 0 | gained_in_new 0
+users_whose_viewable_link_count_differs 0
+verdict: MATCH - effective permissions identical in both models
+```
+
+`CanExport` is seeded FALSE everywhere: the old model has no such column, so granting it would invent
+access nobody assigned.
+
+**Step 2 (not started) is the flip** — pointing `IEndpointPermissionService`, login, the DB-driven
+sidebar and the Role Permissions screens at the new tables. Re-run the verify script immediately
+before flipping: it must still say MATCH, or the live model has drifted since the seed.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

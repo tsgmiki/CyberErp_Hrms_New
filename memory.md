@@ -454,9 +454,13 @@ tables to `Core` (`Organization`, `OrganizationSubscription`, `SubscriptionPlanM
 `TenantSubscriptionAddOn`, `LoginTrail`, `Setting`, `UserPreference`) via `AddSrmsPlatformLayer` —
 applied to CERP, no alters or drops, auth untouched — and wired `LoginTrail` into sign-in, which is
 the system's FIRST login audit. ⚠️ `Organization` overlaps `CompanyProfile` and `Setting`'s SMTP
-columns overlap `appsettings.json:Email`; neither has been repointed. **Phase 2 = the tenant-scoped
-auth model, generated FROM CERP's existing 8 roles / 150 operations / 598 permissions, never from
-SRMS's.**
+columns overlap `appsettings.json:Email`; neither has been repointed. **Phase 2 STEP 1 DONE
+2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
+1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
+rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:
+the live model is already tenant-scoped via the discriminator so do NOT cross join Role × Tenant
+(506 users → 1500 memberships), and `SELECT DISTINCT NEWID()` never dedupes. **Step 2 = flipping the
+readers; re-run the verify script immediately before.**
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
