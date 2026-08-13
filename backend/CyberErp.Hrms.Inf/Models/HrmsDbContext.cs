@@ -267,7 +267,6 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<WorkflowInstance> WorkflowInstance { get; set; }
     public DbSet<WorkflowActionLog> WorkflowActionLog { get; set; }
     public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
-    public DbSet<CompanyProfile> CompanyProfile { get; set; }
     public DbSet<OfferLetterTemplate> OfferLetterTemplate { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -545,7 +544,6 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new WorkflowInstanceConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowActionLogConfiguration());
         modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
-        modelBuilder.ApplyConfiguration(new CompanyProfileConfiguration());
         modelBuilder.ApplyConfiguration(new OfferLetterTemplateConfiguration());
     }
 }

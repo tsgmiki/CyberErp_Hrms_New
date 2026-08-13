@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0101. **CompanyProfile consolidated into Organization (2026-08-13).** Detail in logic.md §12.11.
+    Migration `ConsolidateCompanyProfileIntoOrganization`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-companyprofile-consolidation-*.bak`.
+    - `Hrms.CompanyProfile` is gone; `Core.Organization` owns the letterhead. Organization had been
+      added additively and had **no reader at all**, while the profile fed the logo, the offer letter
+      and the movement letters. Mapping: `CompanyName`→`LegalName`, `ContactAddress`→`Address`,
+      `ContactPhone`→`PhoneNumber`, `ContactEmail`→`Email`, `LogoContent`→`Logo`.
+    - ⚠️ **Organization was INVISIBLE to the repository.** It sits above the tenant and its row has an
+      empty `TenantId`, so the filter matched nothing and the table read as absent. Adding it to
+      `IsGlobalEntity` is what makes this work — without it the consolidation would have swapped a
+      table with no rows for one nobody could see.
+    - This is an improvement, not a tidy-up: the profile had **zero rows**, so the letterhead rendered
+      empty. It now resolves real data that was sitting unused — `Cybersoft`, `Menelik II Avenue`,
+      `cyber@cyber.com`, and a 13,905-byte PNG logo.
+    - **Wire contract unchanged** — `CompanyProfileDto` keeps its field names, so the screen and its
+      service needed no change. `Organization.SetLetterhead` covers exactly that subset and leaves
+      `LegalName` alone when the posted name is blank (it is REQUIRED here, optional on the profile).
+    - ⚠️ The migration **copies before dropping even though there was nothing to copy** — this
+      database has zero profile rows, but a migration that only works against the database it was
+      written on is not a migration. It fills only gaps, so a real organization record is never
+      overwritten by a thinner profile.
+    - `OfferLetterTemplateConfiguration` shared the deleted config file and moved to its own.
+    - Verified: table gone, 1 organization; letterhead endpoint 200 with the real values;
+      `logo/info` `{"hasLogo":true,"contentType":"image/png"}` and `logo` 200 / 13905 bytes;
+      login 200, sidebar 34 links, 598 grants, temporary grants restored to `000000`.
+
 0100. **TenantId DROPPED from Core.User / Role / Operation — the SRMS model is complete
     (2026-08-13).** Detail in logic.md §12.10. Migration `DropTenantIdFromUserRoleOperation`,
     APPLIED to CERP. Backup: `D:\Backups\CERP_before-drop-tenantid-*.bak`.

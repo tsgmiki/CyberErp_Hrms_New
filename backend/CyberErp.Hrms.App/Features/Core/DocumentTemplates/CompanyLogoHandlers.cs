@@ -31,22 +31,31 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             [".gif"] = "image/gif",
         };
 
-        /// <summary>Loads (or creates) the single company profile row for the current tenant.</summary>
-        internal static async Task<CompanyProfile> GetOrCreateAsync(IRepository<CompanyProfile> repository)
+        /// <summary>
+        /// Loads (or creates) the single organization row.
+        ///
+        /// <para>This was <c>Hrms.CompanyProfile</c> until 2026-08-13. Core.Organization is the richer
+        /// successor and now owns the letterhead outright — see logic.md §12.11.</para>
+        ///
+        /// <para>Organization requires a Code and a LegalName, neither of which the profile had, so a
+        /// row created here carries deliberate placeholders for an administrator to correct on the
+        /// company-profile screen. Refusing to store a logo for want of a legal name would be worse.</para>
+        /// </summary>
+        internal static async Task<Organization> GetOrCreateAsync(IRepository<Organization> repository)
         {
-            var profile = await repository.GetAll().FirstOrDefaultAsync();
-            if (profile is null)
+            var organization = await repository.GetAll().FirstOrDefaultAsync();
+            if (organization is null)
             {
-                profile = CompanyProfile.Create();
-                await repository.AddAsync(profile);
+                organization = Organization.Create("DEFAULT", "Organization");
+                await repository.AddAsync(organization);
             }
-            return profile;
+            return organization;
         }
     }
 
     /// <summary>Stores the tenant's company logo inline for use as the {{Logo}} merge token (HC022).</summary>
     public class UploadCompanyLogo(
-        IRepository<CompanyProfile> repository,
+        IRepository<Organization> repository,
         ILogger<UploadCompanyLogo> logger) : IUploadCompanyLogo
     {
         public async Task UploadAsync(Stream content, string fileName, long length)
@@ -61,57 +70,57 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             await content.CopyToAsync(ms);
             var bytes = ms.ToArray();
 
-            var profile = await LogoStorage.GetOrCreateAsync(repository);
-            profile.SetLogo(bytes, contentType);
-            repository.UpdateAsync(profile);
+            var organization = await LogoStorage.GetOrCreateAsync(repository);
+            organization.SetLogo(bytes, contentType);
+            repository.UpdateAsync(organization);
             await repository.SaveChangesAsync();
             logger.LogInformation("Stored company logo ({Bytes} bytes)", bytes.Length);
         }
     }
 
     /// <summary>Returns the company logo bytes, or throws NotFound when none is configured.</summary>
-    public class GetCompanyLogo(IRepository<CompanyProfile> repository) : IGetCompanyLogo
+    public class GetCompanyLogo(IRepository<Organization> repository) : IGetCompanyLogo
     {
         public async Task<(byte[] Content, string ContentType)> GetAsync()
         {
-            var profile = await repository.GetAll()
-                .Select(p => new { p.LogoContent, p.LogoContentType })
+            var organization = await repository.GetAll()
+                .Select(o => new { o.Logo, o.LogoContentType })
                 .FirstOrDefaultAsync();
 
-            if (profile?.LogoContent is null || profile.LogoContent.Length == 0)
+            if (organization?.Logo is null || organization.Logo.Length == 0)
                 throw new NotFoundException("CompanyLogo", "current");
 
-            return (profile.LogoContent, profile.LogoContentType ?? "application/octet-stream");
+            return (organization.Logo, organization.LogoContentType ?? "application/octet-stream");
         }
     }
 
-    public class GetCompanyLogoInfo(IRepository<CompanyProfile> repository) : IGetCompanyLogoInfo
+    public class GetCompanyLogoInfo(IRepository<Organization> repository) : IGetCompanyLogoInfo
     {
         public async Task<CompanyLogoInfo> GetAsync()
         {
-            var profile = await repository.GetAll()
-                .Select(p => new { HasLogo = p.LogoContent != null, p.LogoContentType })
+            var organization = await repository.GetAll()
+                .Select(o => new { HasLogo = o.Logo != null, o.LogoContentType })
                 .FirstOrDefaultAsync();
 
             return new CompanyLogoInfo
             {
-                HasLogo = profile?.HasLogo ?? false,
-                ContentType = profile?.LogoContentType,
+                HasLogo = organization?.HasLogo ?? false,
+                ContentType = organization?.LogoContentType,
             };
         }
     }
 
     public class DeleteCompanyLogo(
-        IRepository<CompanyProfile> repository,
+        IRepository<Organization> repository,
         ILogger<DeleteCompanyLogo> logger) : IDeleteCompanyLogo
     {
         public async Task DeleteAsync()
         {
-            var profile = await repository.GetAll().FirstOrDefaultAsync();
-            if (profile is null) return;
+            var organization = await repository.GetAll().FirstOrDefaultAsync();
+            if (organization is null) return;
 
-            profile.ClearLogo();
-            repository.UpdateAsync(profile);
+            organization.SetLogo(null, null);
+            repository.UpdateAsync(organization);
             await repository.SaveChangesAsync();
             logger.LogInformation("Cleared company logo");
         }

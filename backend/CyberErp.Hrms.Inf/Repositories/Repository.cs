@@ -37,9 +37,15 @@ namespace CyberErp.Hrms.Inf.Repositories
         /// flip side is that anything listing these three must scope itself through the tenant
         /// tables; see GetAllUsers / GetAllRoles / GetAllOperations.</para>
         /// </summary>
+        /// <remarks>
+        /// <b>Organization</b> joined on 2026-08-13, when it absorbed CompanyProfile. It sits ABOVE
+        /// the tenant — one organization may hold several — and the row that exists carries an empty
+        /// TenantId, so the filter matched nothing and the whole table was invisible: the logo and
+        /// letterhead silently read as "not configured".
+        /// </remarks>
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
-                   or "User" or "Role" or "Operation";
+                   or "User" or "Role" or "Operation" or "Organization";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {

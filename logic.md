@@ -2028,6 +2028,65 @@ live        HRMS 3 identities: login 200, 34 links, employee counts unchanged
 integrity   0 dangling | 0 cross-tenant | 0 orphan screens | 15369 viewable pairs, unchanged
 ```
 
+### 12.11 CompanyProfile consolidated into Organization
+
+Migration `ConsolidateCompanyProfileIntoOrganization`. `Hrms.CompanyProfile` is gone;
+`Core.Organization` owns the letterhead.
+
+`Organization` was added as an additive layer in the SRMS phase-1 change and **had no reader at all**,
+while the profile fed the company logo, the offer letter and the movement letters. The overlap was
+always meant to end this way round — the profile's four fields are a strict subset of what
+Organization carries.
+
+| CompanyProfile | Organization |
+|---|---|
+| `CompanyName` | `LegalName` |
+| `ContactAddress` | `Address` |
+| `ContactPhone` | `PhoneNumber` |
+| `ContactEmail` | `Email` |
+| `LogoContent` / `LogoContentType` | `Logo` / `LogoContentType` |
+
+#### ⚠️ Organization was invisible to the repository
+
+It sits ABOVE the tenant — one organization may hold several — and the row that exists carries an
+**empty `TenantId`**, so `Repository<T>`'s filter matched nothing and the whole table read as absent.
+Adding it to `IsGlobalEntity` is what makes this work at all; without it the consolidation would have
+swapped a table with no rows for a table nobody could see.
+
+The practical effect is an improvement, not just a tidy-up: the profile had **zero rows**, so the
+letterhead rendered empty. It now resolves the real data that was sitting unused in Organization —
+`Cybersoft`, `Menelik II Avenue`, `cyber@cyber.com`, and a 13,905-byte PNG logo.
+
+#### The wire contract is unchanged
+
+`CompanyProfileDto` keeps its field names (`companyName`, `contactAddress`, …) and maps to
+Organization's, so the company-profile screen and its service needed no change.
+
+`Organization.SetLetterhead` exists for exactly the subset that screen posts. It leaves `LegalName`
+alone when the posted name is blank — that field is REQUIRED here though it was optional on the
+profile, so a blank one must not put the row into a state `Create` would have rejected.
+
+#### ⚠️ The migration copies before dropping, even though there was nothing to copy
+
+This database has **zero** profile rows, so the drop was free. Another environment may not be, and a
+migration that only works against the database it was written on is not a migration. It fills only
+the fields Organization has not already got, so a real organization record is never overwritten by a
+thinner profile, and it creates an organization for any tenant that had a profile but none.
+
+`OfferLetterTemplateConfiguration` shared the deleted configuration file and moved to its own.
+
+#### Verification
+
+```
+schema      Hrms.CompanyProfile gone | Core.Organization 1 row
+letterhead  GET OfferLetterTemplate/company -> 200
+            {"companyName":"Cybersoft","contactAddress":"Menelik II Avenue",
+             "contactEmail":"cyber@cyber.com","hasLogo":true}
+logo        GET DocumentTemplate/logo/info -> {"hasLogo":true,"contentType":"image/png"}
+            GET DocumentTemplate/logo      -> 200, 13905 bytes, image/png
+live        login 200 | sidebar 34 links | 598 grants, baseline restored
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
