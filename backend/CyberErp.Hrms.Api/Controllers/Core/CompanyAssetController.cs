@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
@@ -21,16 +22,24 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<PaginatedResponse<CompanyAssetDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
 
         [HttpPost]
+
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Create([FromBody] SaveCompanyAssetDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
 
         [HttpPut]
+
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Update([FromBody] SaveCompanyAssetDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
 
         [HttpPost("{id:guid}/assign/{employeeId:guid}")]
+
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Assign(Guid id, Guid employeeId)
         { await assignHandler.AssignAsync(id, employeeId); return Ok(new { message = "Assigned" }); }
 
         [HttpPost("{id:guid}/return")]
+
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Return(Guid id) { await returnHandler.ReturnAsync(id); return Ok(new { message = "Returned" }); }
 
         /// <summary>The exit case's asset-recovery checklist (HC215).</summary>
@@ -39,10 +48,13 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         /// <summary>Ticks one checklist item: Recover (asset returns to the pool) or Waive (written off).</summary>
         [HttpPost("recoveries/{id:guid}/resolve")]
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Resolve(Guid id, [FromBody] ResolveAssetRecoveryDto dto)
         { await resolveHandler.ResolveAsync(id, dto); return Ok(new { message = "Updated" }); }
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("companyAsset")]
         public async Task<IActionResult> Delete(Guid id) { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
     }
 }

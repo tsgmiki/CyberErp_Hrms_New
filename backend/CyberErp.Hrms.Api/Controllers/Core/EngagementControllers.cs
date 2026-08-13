@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Engagement;
 using Microsoft.AspNetCore.Mvc;
@@ -64,6 +65,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Surveys, questionnaires and quick polls (HC204); anonymous supported (HC207).</summary>
+    [RequirePermission("survey", "surveyTake")]
     public class SurveyController(
         ISaveSurvey saveHandler,
         IOpenSurvey openHandler,

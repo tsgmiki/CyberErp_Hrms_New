@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Lookups;
 using Microsoft.AspNetCore.Mvc;
@@ -25,10 +26,14 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => getAllHandler.GetAsync(request);
 
         [HttpPost]
+
+        [RequirePermission("formBuilder")]
         public Task<Guid> Create([FromBody] SaveLookupCategoryDto dto)
             => saveHandler.SaveAsync(dto);
 
         [HttpPut]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Update([FromBody] SaveLookupCategoryDto dto)
         {
             await saveHandler.SaveAsync(dto);
@@ -36,6 +41,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
 
         [HttpDelete("{id:guid}")]
+
+        [RequirePermission("formBuilder")]
         public async Task<IActionResult> Delete(Guid id)
         {
             await deleteHandler.DeleteAsync(id);

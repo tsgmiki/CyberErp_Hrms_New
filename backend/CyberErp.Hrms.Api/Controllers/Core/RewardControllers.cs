@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using System.Text;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Performance;
@@ -11,6 +12,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Reward & Recognition (§3.7.4, HC177–HC186).
 
     /// <summary>Award categories grouping badges under shared criteria (HC178).</summary>
+    [RequirePermission("awardCategory")]
     public class AwardCategoryController(
         ISaveAwardCategory saveHandler,
         IDeleteAwardCategory deleteHandler,
@@ -34,6 +36,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Recurring recognition programs, e.g. Employee of the Month (HC182).</summary>
+    [RequirePermission("recognitionProgram")]
     public class RecognitionProgramController(
         ISaveRecognitionProgram saveHandler,
         IDeleteRecognitionProgram deleteHandler,
@@ -109,6 +112,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Reward-points ledger: balance + statement, and self-service redemption (HC180).</summary>
+    [RequirePermission("myPoints")]
     public class RewardPointsController(
         IGetRewardPoints getHandler,
         IRedeemRewardPoints redeemHandler,
@@ -129,6 +133,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Monetary reward hand-off for payroll/finance (HC185) — admin-only.</summary>
+    [RequirePermission("rewardDisbursement")]
     public class RewardDisbursementController(
         IGetAllRewardDisbursements getAllHandler,
         IMarkRewardDisbursementPaid payHandler,
@@ -153,6 +158,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>The company-wide public recognition feed (HC184).</summary>
+    [RequirePermission("recognitionWall")]
     public class RecognitionWallController(IGetRecognitionWall wallHandler) : BaseController
     {
         [HttpGet]
