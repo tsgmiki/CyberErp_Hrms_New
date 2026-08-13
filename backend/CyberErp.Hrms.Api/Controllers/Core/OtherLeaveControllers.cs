@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Leaves;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +74,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Per-fiscal-year policy rows for the non-annual leave types (hrmsOtherLeaveSetting).</summary>
+    [RequirePermission("otherLeaveSetting")]
     public class OtherLeaveSettingController(
         ISaveOtherLeaveSetting saveHandler,
         IDeleteOtherLeaveSetting deleteHandler,

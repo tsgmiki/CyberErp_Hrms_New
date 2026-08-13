@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Medical;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.2 Medical Benefit Management — MB1: providers, plans, service contracts.
 
     /// <summary>Approved medical service providers (HC238).</summary>
+    [RequirePermission("medicalProvider")]
     public class MedicalProviderController(
         ISaveMedicalProvider saveHandler,
         IGetAllMedicalProviders getAllHandler,
@@ -21,6 +23,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Medical coverage plans (HC235).</summary>
+    [RequirePermission("medicalPlan")]
     public class MedicalPlanController(
         ISaveMedicalPlan saveHandler,
         IGetAllMedicalPlans getAllHandler,
@@ -35,6 +38,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Credit medical service contracts with providers (HC236).</summary>
+    [RequirePermission("medicalContract")]
     public class MedicalContractController(
         ISaveMedicalContract saveHandler,
         IGetAllMedicalContracts getAllHandler,

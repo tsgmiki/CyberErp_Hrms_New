@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Insurance;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.3 Insurance Management — I1: policies + premium schedule (HC247/HC250 hand-off).
 
     /// <summary>Employer group insurance policies and their premium payment schedule (HC247/HC250).</summary>
+    [RequirePermission("insurancePolicy")]
     public class InsurancePolicyController(
         ISaveInsurancePolicy saveHandler,
         IGetAllInsurancePolicies getAllHandler,

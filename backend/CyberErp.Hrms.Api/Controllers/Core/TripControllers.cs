@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Trips;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.5 Trip Management — T1: per-diem rates + travel budgets.
 
     /// <summary>Per-diem daily rates by job grade and trip type (HC267).</summary>
+    [RequirePermission("perDiemRate")]
     public class PerDiemRateController(
         ISavePerDiemRate saveHandler,
         IGetAllPerDiemRates getAllHandler,
@@ -21,6 +23,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Travel budgets per organization unit and fiscal year (HC266).</summary>
+    [RequirePermission("tripBudget")]
     public class TripBudgetController(
         ISaveTripBudget saveHandler,
         IGetAllTripBudgets getAllHandler,

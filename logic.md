@@ -1342,6 +1342,40 @@ This is not theoretical; it has produced real defects:
 | "this employee's own data" | a dedicated `/mine` endpoint (§11.2) |
 | "the person approving it" | `IWorkflowApproverAuth.ResolveApproverUserIdsAsync` (§11.3) |
 
+### 11.5 The audit: what is actually exposed, and why it cannot simply be fixed
+
+**143 `IsAdmin` checks across 60 files are no-ops.** Measured as an ordinary employee: a
+`GET CalibrationSession` (explicitly *"Only HR can view calibration sessions"*) answered **200**, and
+five HR-only POSTs — `LoanType`, `MedicalPlan`, `InsurancePolicy`, `PerDiemRate`, `BenefitPlan` —
+reached FIELD VALIDATION, proving the HR gate never fired. The contrast: `POST SalaryRevision`
+answered **403**, because that controller also carries `[RequirePermission]`.
+
+Three shapes, worst first:
+
+| | Pattern | Count | Effect |
+|---|---|---|---|
+| A | `!IsAdmin && notMine → throw` | 16 | Guard is unreachable — any employee can act on ANOTHER's loan / trip / guarantee |
+| B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff |
+| C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect |
+
+> ⚠️ **THE BLOCKER, and the reason this is still open: 480 of the 490 employee accounts have NO ROLE
+> AT ALL** (20 users hold any role). `HasAnyAsync` needs a role carrying `CanView`, so EVERY
+> `[RequirePermission]` added returns 403 for those 480 — and fixing `IsAdminAsync` at the root has
+> the same effect, because those users can only use the system today BY VIRTUE OF the bug.
+> **Assigning roles to the 480 is the prerequisite for any further hardening.** The ordinary
+> `UserRole` role is itself incomplete for self-service (no `/myGuarantees`, `/myTraining`,
+> `/myInsuranceClaims`), so it needs filling out before it is switched on.
+
+**What has been done:** `[RequirePermission]` added to 31 pure HR/master-data controllers, where a
+403 for a roleless employee is the CORRECT answer. None of them exposes a self-service route
+(`/me`, `/mine`, `/my*`) — that was checked before applying, and `EmployeeController` was deliberately
+EXCLUDED because it carries `Employee/me`. Verified both directions: roleless 403 / Administrator 200
+on 15 endpoints, with self-service (`Employee/me`, `OtherLeave/mine`, `AnnualLeave/mine`,
+`my-balance`, `Workflow/my-approvals`, `AppraisalPeer/mine`) still 200.
+
+Categories A and C remain OPEN: they live inside handlers, where a controller-level filter cannot
+reach them.
+
 ### 11.1 Approval precedes submission (salary revision)
 
 `Draft → PendingApproval → Approved → Submitted → Applied`. The author may only SEND FOR APPROVAL;
