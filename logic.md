@@ -1358,13 +1358,10 @@ Three shapes, worst first:
 | B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff |
 | C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect |
 
-> ⚠️ **THE BLOCKER, and the reason this is still open: 480 of the 490 employee accounts have NO ROLE
-> AT ALL** (20 users hold any role). `HasAnyAsync` needs a role carrying `CanView`, so EVERY
-> `[RequirePermission]` added returns 403 for those 480 — and fixing `IsAdminAsync` at the root has
-> the same effect, because those users can only use the system today BY VIRTUE OF the bug.
-> **Assigning roles to the 480 is the prerequisite for any further hardening.** The ordinary
-> `UserRole` role is itself incomplete for self-service (no `/myGuarantees`, `/myTraining`,
-> `/myInsuranceClaims`), so it needs filling out before it is switched on.
+> ⚠️ **THE BLOCKER (now CLEARED — see §11.6): 480 of the 490 employee accounts had NO ROLE AT ALL.**
+> `HasAnyAsync` needs a role carrying `CanView`, so every `[RequirePermission]` added returned 403 for
+> those 480 — and fixing `IsAdminAsync` at the root had the same effect, because those users could
+> only use the system BY VIRTUE OF the bug.
 
 **What has been done:** `[RequirePermission]` added to 31 pure HR/master-data controllers, where a
 403 for a roleless employee is the CORRECT answer. None of them exposes a self-service route
@@ -1375,6 +1372,37 @@ on 15 endpoints, with self-service (`Employee/me`, `OtherLeave/mine`, `AnnualLea
 
 Categories A and C remain OPEN: they live inside handlers, where a controller-level filter cannot
 reach them.
+
+### 11.6 Every employee now holds a role — the prerequisite is done
+
+`backend/scripts/assign-employee-role.sql` (idempotent; run it on any other environment) does two
+things: it grants the ordinary `UserRole` the employee-facing screens it was missing, then assigns
+that role to every employee-linked account that had none. **480 accounts assigned; 0 roleless
+employees remain**, and 495 users now hold it.
+
+The missing grants were `/myGuarantees`, `/myInsuranceClaims`, `/myTraining`, `/notifications`,
+`/workflow`, `/surveyTake`, `/recognitionWall`, `/learningCommunity`, `/appraisalAppeal`. Four
+look self-service but were deliberately EXCLUDED, and should stay that way: `/employeeGuarantee` (the
+HR register — employees get `/myGuarantees`), `/transferRequest` (the *Manager Requests* module),
+`/exitQuestionnaire` (Personnel/HR — employees get `/myExit`) and `/compensationRequest` (employees
+already hold `/myCompensation`).
+
+The change only ever ADDS access, so it cannot lock anyone out. In practice it flipped existing
+`CanView = 0` rows rather than inserting: the role already carried a row per operation, which is why
+the permission-row count stayed at 598.
+
+> ⚠️ **The catalog holds DUPLICATE operations per link** (150 rows, 132 distinct links). A link is
+> granted when ANY row for it grants it, so audit queries must aggregate by `Link` — checking a
+> single row reports false gaps.
+
+Measured after: an account that was roleless reaches `Employee/me`, `OtherLeave/mine`,
+`AnnualLeave/mine`, `Workflow/my-approvals`, `AppraisalPeer/mine` and the portal's loan/trip/medical
+feeds (200), is refused every HR master screen (403), and its sidebar resolves to **34 links against
+an Administrator's 144**. Five randomly sampled accounts behaved identically.
+
+**This unblocks the rest**: categories A and C can now be closed, and `IsAdminAsync` can be repointed
+off `IsHeadOffice()` — with the same acceptance test as phase 2, that each user's effective
+permissions are unchanged where they should be.
 
 ### 11.1 Approval precedes submission (salary revision)
 
