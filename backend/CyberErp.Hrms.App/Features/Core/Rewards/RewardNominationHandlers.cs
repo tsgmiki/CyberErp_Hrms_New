@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -106,6 +107,7 @@ namespace CyberErp.Hrms.App.Features.Core.Rewards
         IRepository<RecognitionBadge> badgeRepository,
         IRepository<RecognitionProgram> programRepository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         Employees.IDisciplinaryEligibilityService disciplineEligibility,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
@@ -162,7 +164,7 @@ namespace CyberErp.Hrms.App.Features.Core.Rewards
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(RewardNomination), dto.Id.Value.ToString());
-                if (!scope.IsAdmin && entity.NominatedByEmployeeId != scope.EmployeeId)
+                if (!await permissions.HasAnyAsync(HrScreens.RewardNominationRegister) && entity.NominatedByEmployeeId != scope.EmployeeId)
                     throw new ValidationException(nameof(dto.Id), "Only the nominator or HR can edit a nomination.");
                 if (entity.Status != NominationStatus.Pending)
                     throw new ValidationException(nameof(dto.Id), "Only a pending nomination can be edited.");
@@ -256,6 +258,7 @@ namespace CyberErp.Hrms.App.Features.Core.Rewards
     public class DeleteRewardNomination(
         IRepository<RewardNomination> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate,
         ILogger<DeleteRewardNomination> logger) : IDeleteRewardNomination
     {
@@ -265,7 +268,7 @@ namespace CyberErp.Hrms.App.Features.Core.Rewards
                 ?? throw new NotFoundException(nameof(RewardNomination), id.ToString());
 
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin && entity.NominatedByEmployeeId != scope.EmployeeId)
+            if (!await permissions.HasAnyAsync(HrScreens.RewardNominationRegister) && entity.NominatedByEmployeeId != scope.EmployeeId)
                 throw new ValidationException(nameof(id), "Only the nominator or HR can withdraw a nomination.");
             if (entity.Status != NominationStatus.Pending)
                 throw new ValidationException(nameof(id), "Only a pending nomination can be withdrawn.");

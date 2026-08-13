@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -336,6 +337,7 @@ namespace CyberErp.Hrms.App.Features.Core.Loans
     public class CancelLoan(
         IRepository<Loan> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate) : ICancelLoan
     {
         public async Task CancelAsync(Guid id)
@@ -344,7 +346,12 @@ namespace CyberErp.Hrms.App.Features.Core.Loans
             var entity = await repository.GetAll().FirstOrDefaultAsync(l => l.Id == id)
                 ?? throw new NotFoundException(nameof(Loan), id.ToString());
             // Owner may cancel their own request; HR may cancel any.
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            //
+            // HR is the LOAN REGISTER permission, not scope.IsAdmin: IsAdmin short-circuits on
+            // head-office status, which is true for every employee in a single-branch tenant, so
+            // this guard never fired and ANY employee could cancel a colleague's loan. Employees
+            // hold /myLoans, HR holds /loan — that is what separates them (logic.md §11).
+            if (!await permissions.HasAnyAsync(HrScreens.LoanRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(id), "You can only cancel your own loan requests.");
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.EmployeeLoan, id);
             entity.Cancel();

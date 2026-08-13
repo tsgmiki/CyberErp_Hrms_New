@@ -1352,11 +1352,11 @@ answered **403**, because that controller also carries `[RequirePermission]`.
 
 Three shapes, worst first:
 
-| | Pattern | Count | Effect |
-|---|---|---|---|
-| A | `!IsAdmin && notMine → throw` | 16 | Guard is unreachable — any employee can act on ANOTHER's loan / trip / guarantee |
-| B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff |
-| C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect |
+| | Pattern | Count | Effect | Status |
+|---|---|---|---|---|
+| A | `!IsAdmin && notMine → throw` | 16 | Guard unreachable — any employee could act on ANOTHER's loan / trip / guarantee | **FIXED (§11.7)** |
+| B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff | partly covered by §11.5's 31 gated controllers |
+| C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect | OPEN |
 
 > ⚠️ **THE BLOCKER (now CLEARED — see §11.6): 480 of the 490 employee accounts had NO ROLE AT ALL.**
 > `HasAnyAsync` needs a role carrying `CanView`, so every `[RequirePermission]` added returned 403 for
@@ -1403,6 +1403,33 @@ an Administrator's 144**. Five randomly sampled accounts behaved identically.
 **This unblocks the rest**: categories A and C can now be closed, and `IsAdminAsync` can be repointed
 off `IsHeadOffice()` — with the same acceptance test as phase 2, that each user's effective
 permissions are unchanged where they should be.
+
+### 11.7 "Owner OR HR" guards check a menu permission, never `IsAdmin`
+
+All 16 category-A guards now read
+`if (!await permissions.HasAnyAsync(HrScreens.X) && record.EmployeeId != mine) throw`.
+
+`HrScreens` (App/Common/Authorization) names the link once per record type. **Each is the HR-side
+REGISTER, which ordinary staff do not hold** — they hold the matching self-service screen:
+`/loan` vs `/myLoans`, `/trip` vs `/myTrips`, `/employeeGuarantee` vs `/myGuarantees`,
+`/trainingNeed` vs `/myTraining`.
+
+> ⚠️ **Before reusing one of these for a new guard, check the two sides really differ.** A link BOTH
+> hold cannot discriminate — which is exactly why grievances use `HrScreens.EmployeeRegister`
+> (`/employee`, held only by Administrator and HR Admin): every employee holds `/grievance`, so it
+> would have been useless.
+
+Proven against real records — the three parties hit three DIFFERENT gates, which is the whole point:
+
+```
+employee B (not owner) : "You can only cancel your own loan requests."   <- ownership guard fires
+owner       (employee) : "This record is awaiting workflow approval…"    <- passed ownership
+HR                     : "This record is awaiting workflow approval…"    <- override intact
+```
+
+> ⚠️ `RewardNominationHandlers` also contains `if (!scope.IsAdmin && !scope.IsManager)` — an
+> HR-or-manager gate, NOT an ownership guard. It is left as-is (it belongs to category B) and is
+> still broken: any employee can currently raise a nomination.
 
 ### 11.1 Approval precedes submission (salary revision)
 

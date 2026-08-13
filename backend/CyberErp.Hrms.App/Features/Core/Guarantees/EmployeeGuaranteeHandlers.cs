@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -119,6 +120,7 @@ namespace CyberErp.Hrms.App.Features.Core.Guarantees
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IValidator<SaveEmployeeGuaranteeDto> validator,
         ILogger<SaveEmployeeGuarantee> logger) : ISaveEmployeeGuarantee
     {
@@ -166,7 +168,7 @@ namespace CyberErp.Hrms.App.Features.Core.Guarantees
 
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(EmployeeGuarantee), dto.Id.Value.ToString());
-                if (!scope.IsAdmin && entity.EmployeeId != employeeId)
+                if (!await permissions.HasAnyAsync(HrScreens.GuaranteeRegister) && entity.EmployeeId != employeeId)
                     throw new ValidationException("scope", "You can only amend your own guarantee commitments.");
                 // Handler-level precheck: the domain guard would throw ArgumentException (→ 500).
                 if (entity.Status == GuaranteeCommitmentStatus.Released)
@@ -223,6 +225,7 @@ namespace CyberErp.Hrms.App.Features.Core.Guarantees
     public class DeleteEmployeeGuarantee(
         IRepository<EmployeeGuarantee> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate,
         ILogger<DeleteEmployeeGuarantee> logger) : IDeleteEmployeeGuarantee
     {
@@ -233,7 +236,7 @@ namespace CyberErp.Hrms.App.Features.Core.Guarantees
                 ?? throw new NotFoundException(nameof(EmployeeGuarantee), id.ToString());
 
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.GuaranteeRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException("scope", "You can only remove your own guarantee commitments.");
             if (entity.Status == GuaranteeCommitmentStatus.Released)
                 throw new ValidationException(nameof(id), "A released commitment is part of the audit trail and cannot be deleted.");

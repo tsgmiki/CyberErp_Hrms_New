@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
@@ -97,14 +98,15 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public class SettleTrip(
         IRepository<TripRequest> repository,
         IRepository<TripExpense> expenseRepository,
-        IPerformanceVisibilityService visibility) : ISettleTrip
+        IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions) : ISettleTrip
     {
         public async Task<decimal> SettleAsync(Guid id, string? reference)
         {
             var scope = await visibility.GetScopeAsync();
             var entity = await repository.GetAll().FirstOrDefaultAsync(t => t.Id == id) ?? throw new NotFoundException(nameof(TripRequest), id.ToString());
             // The traveller submits their settlement request; HR may finalize it.
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.TripRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(id), "You can only settle your own trips.");
             if (entity.Status is not (TripRequestStatus.Completed or TripRequestStatus.InProgress))
                 throw new ValidationException(nameof(id), "Only a completed trip can be settled.");
