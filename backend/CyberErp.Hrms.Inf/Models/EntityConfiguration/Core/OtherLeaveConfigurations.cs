@@ -73,4 +73,24 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(x => new { x.OtherLeaveHeaderId, x.StartDate, x.EndDate });
         }
     }
+
+    /// <summary>Supporting document uploaded with an other-leave request.</summary>
+    public class OtherLeaveAttachmentConfiguration : IEntityTypeConfiguration<OtherLeaveAttachment>
+    {
+        public void Configure(EntityTypeBuilder<OtherLeaveAttachment> builder)
+        {
+            builder.ToTable("OtherLeaveAttachment", "Hrms");
+            builder.HasKey(a => a.Id);
+
+            builder.Property(a => a.FileName).IsRequired().HasMaxLength(300);
+            builder.Property(a => a.ContentType).IsRequired().HasMaxLength(150);
+            builder.Property(a => a.Content).IsRequired();
+
+            builder.HasOne<OtherLeaveHeader>()
+                .WithMany(h => h.Attachments)
+                .HasForeignKey(a => a.OtherLeaveHeaderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasIndex(a => a.OtherLeaveHeaderId);
+        }
+    }
 }

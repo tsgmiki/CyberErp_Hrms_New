@@ -1317,3 +1317,69 @@ The rule now throws a 400 naming the restriction, and only when the value would 
 an omitted or unchanged `BranchId` is not an attempt to reassign and must never fail an ordinary
 edit. Create is different and stays as it was: it PINS a branch admin's new unit to their own branch
 (`GetCurrentBranchId()`), which is an assignment, not an override.
+
+## 11. ⚠️ `IsAdmin` is NOT an authorization check in this deployment
+
+`PerformanceVisibilityService.IsAdminAsync` short-circuits on `ICurrentUserService.IsHeadOffice()`,
+and that flag is `isBranchHeadOffice` — true when the employee's branch has `IsHeadOffice = 1`. **CERP
+has ONE branch and it is flagged head office, so every one of the 490 employee-linked users resolves
+to `IsAdmin = true`.** Any check written as *"if IsAdmin then show everything"* therefore applies to
+ordinary staff.
+
+This is not theoretical; it has produced real defects:
+
+- The portal's Other Leave grid listed the WHOLE organisation's leave, because `GetAllOtherLeaves`
+  widens for `IsAdmin` (§11.2).
+- A first cut of the salary-revision review endpoint gated on `IsAdmin` and granted the entire
+  payroll to every user; it now gates on the `salaryRevision` MENU PERMISSION, which has no
+  head-office bypass (`IEndpointPermissionService.HasAnyAsync`).
+
+**When you need a real gate, use one of these instead — never `IsAdmin` alone:**
+
+| Need | Use |
+|---|---|
+| "HR only" | `IEndpointPermissionService.HasAnyAsync(["<screen>"])` — role `CanView`, no bypass |
+| "this employee's own data" | a dedicated `/mine` endpoint (§11.2) |
+| "the person approving it" | `IWorkflowApproverAuth.ResolveApproverUserIdsAsync` (§11.3) |
+
+### 11.1 Approval precedes submission (salary revision)
+
+`Draft → PendingApproval → Approved → Submitted → Applied`. The author may only SEND FOR APPROVAL;
+`Submit` is unreachable until an approver has approved, and `Apply` requires `Submitted`. Sending for
+approval REFUSES when no active `SalaryRevision` workflow definition exists — otherwise the revision
+lands in PendingApproval with nobody but its author able to approve it, which is the self-approval
+hole the states exist to prevent. `Status` persists as a STRING, so adding `Submitted` needed no
+migration. Every transition writes a `PerformanceHistory` row, which is what makes "who created / who
+approved / who submitted" three separately attributed facts.
+
+### 11.2 Self-service grids read a `/mine` endpoint
+
+A personal screen must never call the role-widened list. `AnnualLeave/mine` and `OtherLeave/mine`
+scope to `scope.EmployeeId` with **no** admin/manager widening, return EMPTY for an account with no
+linked employee (never a broader set), and apply that scope BEFORE the `employeeId` query filter — so
+passing someone else's id widens nothing. The portal's Other Leave grid is additionally pinned to
+`status=Pending`: a decided request belongs in the employee-profile tab, which is the record of what
+was granted.
+
+### 11.3 Reading a record you are approving
+
+An approver is routed a request by the WORKFLOW, which says nothing about whether they manage the
+requester or hold the owning screen's permission — so deciding blind was the default. `OtherLeave`
+and `SalaryRevision` both expose a `/review` endpoint granting the assigned approver read access to
+the record (and, for leave, its attachment).
+
+> ⚠️ Resolve the approver with **`ResolveApproverUserIdsAsync`, never `EvaluateAsync`**.
+> `EvaluateAsync` answers "may this person DECIDE", and for an OPEN step (no configured approvers)
+> that is TRUE FOR EVERYONE by design. Routing READ access through it would hand a colleague's
+> medical certificate to the whole tenant the moment a step is left unconfigured — which is exactly
+> how the OtherLeave chain ships. `ResolveApproverUserIdsAsync` returns an empty set for an open step.
+
+### 11.4 Leave approval notifies the requester
+
+Approval is the moment a request LEAVES every list the employee was watching — the approver's inbox
+(the instance stops running) and the requester's pending feed (filtered to Pending). `LeaveNotifier`
+therefore mails the requester on annual- and other-leave approval, AFTER the commit and never
+throwing: a mail failure must not undo an approval. An employee with no address on file is logged,
+not failed. Note the chain is TWO steps (Supervisor Review → HR Approval); the leave becomes
+Approved only when the instance COMPLETES, so step 1 leaves that approver's queue while the request
+correctly stays Pending for the requester.

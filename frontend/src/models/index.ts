@@ -306,6 +306,7 @@ export type {
 export type {
   OtherLeaveSettingModel,
   OtherLeaveDetailModel,
+  OtherLeaveAttachmentModel,
   OtherLeaveModel,
   OtherLeaveBalanceModel,
   LumpSumEndModel,

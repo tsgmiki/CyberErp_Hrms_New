@@ -64,8 +64,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISimulateSalaryRevision simulateHandler,
         ISaveSalaryRevision saveHandler,
         IGetSalaryRevisionById getByIdHandler,
+        IGetSalaryRevisionForApproval getForApprovalHandler,
         IGetAllSalaryRevisions getAllHandler,
         ISetSalaryRevisionLine setLineHandler,
+        ISendSalaryRevisionForApproval sendForApprovalHandler,
         ISubmitSalaryRevision submitHandler,
         IApproveSalaryRevision approveHandler,
         IApplySalaryRevision applyHandler,
@@ -76,6 +78,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         [HttpGet("{id:guid}")]
         public Task<SalaryRevisionDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
+
+        /// <summary>
+        /// The revision as its assigned APPROVER may read it, for review before deciding.
+        ///
+        /// <para><c>[RequirePermission]</c> with no links deliberately CLEARS the controller-level
+        /// <c>salaryRevision</c> requirement (action-level wins): an approver is routed the request by
+        /// the workflow and has no reason to hold the HR screen's menu permission, so gating this on
+        /// it would force them to approve without seeing what they are approving. The handler
+        /// authorises instead — HR, or the approver this revision is currently routed to, and nobody
+        /// else.</para>
+        /// </summary>
+        [HttpGet("{id:guid}/review")]
+        [RequirePermission]
+        public Task<SalaryRevisionDto> Review(Guid id) => getForApprovalHandler.GetAsync(id);
 
         /// <summary>HC228 — stateless scenario simulation: try a rate over a target set without persisting.</summary>
         [HttpPost("simulate")]
@@ -93,9 +109,18 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public async Task<IActionResult> SetLine(Guid lineId, [FromBody] SetSalaryRevisionLineRequest body)
         { await setLineHandler.SetAsync(lineId, body.ProposedSalary); return Ok(new { message = "Line updated" }); }
 
+        /// <summary>Draft → PendingApproval. The author's only forward move; it commits nothing.</summary>
+        [HttpPost("{id:guid}/send-for-approval")]
+        public async Task<IActionResult> SendForApproval(Guid id)
+        { await sendForApprovalHandler.SendAsync(id); return Ok(new { message = "Sent for approval" }); }
+
+        /// <summary>
+        /// Approved → Submitted. Deliberately NOT available on a draft: a revision is submitted only
+        /// after its approver has approved it.
+        /// </summary>
         [HttpPost("{id:guid}/submit")]
         public async Task<IActionResult> Submit(Guid id)
-        { await submitHandler.SubmitAsync(id); return Ok(new { message = "Submitted for approval" }); }
+        { await submitHandler.SubmitAsync(id); return Ok(new { message = "Submitted" }); }
 
         [HttpPost("{id:guid}/approve")]
         public async Task<IActionResult> Approve(Guid id)

@@ -417,6 +417,21 @@ it correctly in the targeted `["x", formState.id]` form. ⚠️ Derive the key f
 sweep produces both false positives and keys that match nothing. Same session: branch reassignment on
 `OrganizationUnit` used to be discarded SILENTLY with a 200 for non-head-office callers (see §10.2).
 
+**⚠️ `IsAdmin` grants EVERYONE in this deployment (2026-08-13 — logic.md §11, handoff 00ET).**
+`PerformanceVisibilityService.IsAdminAsync` short-circuits on `IsHeadOffice()`, which is true when the
+employee's branch has `IsHeadOffice = 1`. CERP has ONE branch, so flagged — every one of the 490
+employee-linked users is `IsAdmin`. Any *"if IsAdmin show everything"* check therefore applies to
+ordinary staff; it caused the portal to list the whole organisation's Other Leave. Use the menu
+permission (`IEndpointPermissionService`), a `/mine` endpoint, or the resolved approver instead. **A
+full audit of the remaining `IsAdmin` call sites is outstanding.**
+
+**Leave + salary-revision workflow rules (2026-08-13).** Salary revision now goes
+Draft → PendingApproval → **Approved → Submitted** → Applied (the author may only *send for
+approval*), with a `PerformanceHistory` row per transition. Other Leave supports **attachments**
+(`Hrms.OtherLeaveAttachment`), approvers get `/review` endpoints on both entities, and approval mails
+the requester. ⚠️ Resolve "is this the approver" with `ResolveApproverUserIdsAsync`, NOT
+`EvaluateAsync` — the latter returns true for everyone on an OPEN step.
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

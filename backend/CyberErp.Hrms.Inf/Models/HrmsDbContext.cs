@@ -189,6 +189,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<OtherLeaveSetting> OtherLeaveSetting { get; set; }
     public DbSet<OtherLeaveHeader> OtherLeaveHeader { get; set; }
     public DbSet<OtherLeaveDetail> OtherLeaveDetail { get; set; }
+    public DbSet<OtherLeaveAttachment> OtherLeaveAttachment { get; set; }
     public DbSet<RewardNomination> RewardNomination { get; set; }
     public DbSet<RewardPointsTransaction> RewardPointsTransaction { get; set; }
     public DbSet<RewardDisbursement> RewardDisbursement { get; set; }
@@ -454,6 +455,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new OtherLeaveSettingConfiguration());
         modelBuilder.ApplyConfiguration(new OtherLeaveHeaderConfiguration());
         modelBuilder.ApplyConfiguration(new OtherLeaveDetailConfiguration());
+        modelBuilder.ApplyConfiguration(new OtherLeaveAttachmentConfiguration());
         modelBuilder.ApplyConfiguration(new RecognitionProgramConfiguration());
         modelBuilder.ApplyConfiguration(new RewardNominationConfiguration());
         modelBuilder.ApplyConfiguration(new RewardPointsTransactionConfiguration());

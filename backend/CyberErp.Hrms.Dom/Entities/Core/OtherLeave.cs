@@ -135,6 +135,15 @@ public class OtherLeaveHeader : BaseEntity, IAggregateRoot, IAuditable
     private readonly List<OtherLeaveDetail> _details = [];
     public IReadOnlyCollection<OtherLeaveDetail> Details => _details;
 
+    /// <summary>
+    /// Supporting documents (medical certificate, death certificate…). Read-only here: rows are
+    /// inserted through their own repository at submission, the way medical-claim attachments are,
+    /// so a child never depends on the aggregate to carry its TenantId. This navigation exists so
+    /// the header projection can read the metadata in one query.
+    /// </summary>
+    private readonly List<OtherLeaveAttachment> _attachments = [];
+    public IReadOnlyCollection<OtherLeaveAttachment> Attachments => _attachments;
+
     private Employee? _employee;
     public Employee? Employee => _employee;
 
@@ -218,6 +227,44 @@ public class OtherLeaveDetail : BaseEntity
             StartDate = startDate.Date,
             EndDate = endDate.Date,
             LeaveDays = leaveDays
+        };
+    }
+}
+
+/// <summary>
+/// A supporting document uploaded with an <see cref="OtherLeaveHeader"/> — the medical certificate
+/// behind sick leave, the death certificate behind mourning leave, and so on.
+///
+/// <para>Stored as bytes in the row, matching <c>MedicalClaimAttachment</c> and
+/// <c>InsuranceClaimAttachment</c>. That keeps the document inside the same transaction and the same
+/// tenant boundary as the request it proves: an approver's decision and its evidence can never drift
+/// apart, and no separate file store has to be backed up or access-controlled in step with the DB.</para>
+/// </summary>
+public class OtherLeaveAttachment : BaseEntity
+{
+    public Guid OtherLeaveHeaderId { get; private set; }
+    public string FileName { get; private set; } = string.Empty;
+    public string ContentType { get; private set; } = "application/octet-stream";
+    public long FileSize { get; private set; }
+    public byte[] Content { get; private set; } = [];
+
+    private OtherLeaveAttachment() : base() { }
+
+    public static OtherLeaveAttachment Create(Guid otherLeaveHeaderId, string fileName, string? contentType, byte[] content)
+    {
+        if (otherLeaveHeaderId == Guid.Empty)
+            throw new ArgumentException("The leave request is required.", nameof(otherLeaveHeaderId));
+        if (string.IsNullOrWhiteSpace(fileName))
+            throw new ArgumentException("File name is required.", nameof(fileName));
+        if (content is null || content.Length == 0)
+            throw new ArgumentException("File content is required.", nameof(content));
+        return new OtherLeaveAttachment
+        {
+            OtherLeaveHeaderId = otherLeaveHeaderId,
+            FileName = fileName.Trim(),
+            ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
+            FileSize = content.Length,
+            Content = content
         };
     }
 }

@@ -13,6 +13,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISubmitOtherLeave submitHandler,
         ICancelOtherLeave cancelHandler,
         IGetOtherLeaveById getByIdHandler,
+        IGetOtherLeaveForApproval reviewHandler,
+        IDownloadOtherLeaveAttachment attachmentHandler,
         IGetAllOtherLeaves getAllHandler,
         IGetOtherLeaveBalances balancesHandler,
         IGetLumpSumEndDate lumpSumHandler) : BaseController
@@ -20,6 +22,16 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet]
         public Task<PaginatedResponse<OtherLeaveHeaderDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
+
+        /// <summary>
+        /// Self-service list — strictly the signed-in employee's OWN requests, with no admin or
+        /// manager widening. The portal's Other Leave grid MUST use this rather than the list above:
+        /// that one widens for `IsAdmin`, which is true for effectively every employee-linked user in
+        /// a single-branch tenant, so it showed the whole organisation's leave on a personal screen.
+        /// </summary>
+        [HttpGet("mine")]
+        public Task<PaginatedResponse<OtherLeaveHeaderDto>> GetMine([FromQuery] GetAllRequest request)
+            => getAllHandler.GetMineAsync(request);
 
         /// <summary>The employee's selectable entitlements for the ACTIVE fiscal year (gender-filtered).</summary>
         [HttpGet("balances/{employeeId:guid}")]
@@ -32,6 +44,22 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         [HttpGet("{id:guid}")]
         public Task<OtherLeaveHeaderDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
+
+        /// <summary>
+        /// The request as its assigned APPROVER may read it — details plus attachment metadata, so a
+        /// decision is never made blind. Authorised in the handler (requester / manager chain / HR /
+        /// the approver the request is currently routed to).
+        /// </summary>
+        [HttpGet("{id:guid}/review")]
+        public Task<OtherLeaveHeaderDto> Review(Guid id) => reviewHandler.GetAsync(id);
+
+        /// <summary>Downloads one supporting document; same audience as the request itself.</summary>
+        [HttpGet("attachments/{attachmentId:guid}")]
+        public async Task<IActionResult> DownloadAttachment(Guid attachmentId)
+        {
+            var f = await attachmentHandler.GetAsync(attachmentId);
+            return File(f.Content, f.ContentType, f.FileName);
+        }
 
         [HttpPost]
         public Task<Guid> Create([FromBody] SaveOtherLeaveDto dto) => submitHandler.SubmitAsync(dto);

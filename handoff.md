@@ -123,6 +123,46 @@
 
 ## 1. Most recent changes (latest first)
 
+00ET. **Salary-revision lifecycle + leave attachments, approver review, leave e-mail, Other Leave
+    isolation (2026-08-12/13, HRMS both halves + Home frontend).** Five requested batches; one
+    migration (`AddOtherLeaveAttachment`, additive, ALREADY APPLIED to CERP).
+    - **⚠️ THE HEADLINE, see logic.md §11: `IsAdmin` IS NOT AN AUTHORIZATION CHECK HERE.**
+      `IsAdminAsync` short-circuits on `IsHeadOffice()`, CERP has ONE branch flagged head office, so
+      ALL 490 employee-linked users are `IsAdmin = true`. It produced a real reported bug (the portal
+      listed everyone's Other Leave) and it silently broke my own first cut of the salary-revision
+      review endpoint. Gate on the MENU PERMISSION, a `/mine` endpoint, or the resolved approver —
+      never `IsAdmin`. **An audit of the other `IsAdmin` call sites is still OUTSTANDING** (offered
+      three times, not yet requested).
+    - **Salary revision — approve BEFORE submit.** New `Submitted` state
+      (Draft → PendingApproval → Approved → Submitted → Applied); the author may only *Send for
+      Approval*. Sending refuses with no active workflow definition (else the author is the only
+      possible approver). `Status` is a STRING column so no migration was needed. Every transition
+      writes a `PerformanceHistory` row → the History popup answers created/approved/submitted by.
+      Verified live: Submit-from-Draft 400, Apply-from-Approved 400, approver `tatekg` approves, then
+      Submit → Apply.
+    - **⚠️ I APPLIED A REAL REVISION TO 345 EMPLOYEES DURING TESTING and restored it** (each line
+      stores the pre-apply salary and there were no grade promotions, so the reversal was exact:
+      345 restored, 0 off-original, status back to Draft, my history/instance rows deleted). **Use a
+      throwaway record for lifecycle tests — never an existing one.**
+    - **Approver review popups.** `SalaryRevision/{id}/review` and `OtherLeave/{id}/review` let the
+      assigned approver READ what they are deciding. Salary revision: enterprise object-page layout
+      with search + Excel/PDF export (lazy `listExport` chunk preserved), Approve disabled until the
+      figures are opened. Added `xl` to the shared Home Modal (additive).
+    - **Other Leave attachments** (`Hrms.OtherLeaveAttachment`, 5 MB/file): picker on the request
+      form in BOTH SPAs, list+download wherever the request is read — which covers the HR admin via
+      the employee-profile tab, since that tab reuses the same form.
+    - **Leave approval e-mail** (`LeaveNotifier`, annual + other), after commit, never throwing.
+      ⚠️ `Email:UserName`/`Password` are EMPTY in appsettings — verified via `Email__PickupDirectory`
+      (.eml on disk). Employees also need addresses: `rojer(dr)b` had none, which logs and sends
+      nothing by design.
+    - **Other Leave isolation (the reported bug).** Portal grid now calls `OtherLeave/mine` pinned to
+      `status=Pending`; status dropdown hidden there (it stays on the profile tab). Reproduced first:
+      `rojer(dr)b` saw *"Meseret Negewo — Approved"* on the old endpoint, 0 on `/mine`; `/mine` cannot
+      be widened by passing another `employeeId`, and an unlinked account gets 0, never everything.
+    - ⚠️ Test-data note: the Other Leave module was UNCONFIGURED (0 types/settings/requests) so tests
+      needed temporary config — all removed. The `Maternity Leave` request + `blank (1).pdf` now in
+      CERP is the USER's own UI test, deliberately left alone.
+
 00ES. **Organization Unit edit: Branch not saving + form showing stale data (2026-08-12, HRMS both halves).**
     Two reported symptoms that turned out to be MOSTLY ONE bug. Reproduced in a real browser before
     changing anything: the server HAD the branch saved while the re-opened form showed EMPTY — so

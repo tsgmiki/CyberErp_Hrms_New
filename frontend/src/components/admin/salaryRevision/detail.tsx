@@ -1,8 +1,8 @@
 "use client";
-import { memo, useMemo, useRef, useState } from "react";
+import { lazy, memo, useMemo, useRef, useState, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Send, CheckCircle2, Play, Trash2, FileQuestion, ArrowUpRight, Hourglass } from "lucide-react";
+import { Send, CheckCircle2, Play, Trash2, FileQuestion, ArrowUpRight, Hourglass, History } from "lucide-react";
 import ButtonField from "@/components/ui/buttonField";
 import Loading from "@/components/common/loader/loader";
 import { EntityListShell } from "@/template";
@@ -12,10 +12,14 @@ import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type { SalaryRevisionLineModel } from "@/models";
 import type { ListDisplayMode } from "@/components/common/dataTableProvider/listViewToolbar";
 import {
-  getSalaryRevision, submitSalaryRevision, approveSalaryRevision,
+  getSalaryRevision, sendSalaryRevisionForApproval, submitSalaryRevision, approveSalaryRevision,
   applySalaryRevision, deleteSalaryRevision,
 } from "@/services/admin/compensation";
 import { money, revisionStatusBadge } from "./shared";
+
+// Lazy: the audit trail is opened deliberately, so its chunk should not sit on the path of simply
+// viewing the increment grid.
+const HistoryModal = memo(lazy(() => import("./historyModal")));
 
 interface Props {
   id: string;
@@ -41,6 +45,7 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [param, setParam] = useState<ParameterModel>({ ...parameterInitialData });
   const [displayMode, setDisplayMode] = useState<ListDisplayMode>("list");
+  const [showHistory, setShowHistory] = useState(false);
 
   // retry:false — a 404 means the revision is genuinely gone; retrying only delays the
   // "no longer available" state behind a spinner.
@@ -323,20 +328,31 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* Available in every state, including Applied — the audit question ("who approved this?") is
+            asked most often about revisions that have already been paid. */}
+        <ButtonField value="History" variant="outline" icon={<History size={14} />}
+          onClick={() => setShowHistory(true)} />
+        {/* A draft's author may only SEND IT FOR APPROVAL — never submit it. Submission is a separate
+            act that appears once the approver has approved, so nobody can commit their own pay
+            decision. The backend enforces the same order; this only keeps the UI honest about it. */}
         {detail.status === "Draft" && (
-          <ButtonField value="Submit" variant="outline" icon={<Send size={14} />} disabled={busy}
-            onClick={() => run(() => submitSalaryRevision(id))} />
+          <ButtonField value="Send for Approval" variant="outline" icon={<Send size={14} />} disabled={busy}
+            onClick={() => run(() => sendSalaryRevisionForApproval(id))} />
         )}
-        {/* Submitting starts the approval workflow when one is defined, and the backend then REFUSES a
-            direct approve (EnsureNoRunningAsync). Offering the button anyway gives an action that can
-            only fail — approval belongs to the workflow from that point on. */}
+        {/* Sending for approval starts the workflow, and the backend then REFUSES a direct approve
+            (EnsureNoRunningAsync). Offering the button anyway gives an action that can only fail —
+            approval belongs to the workflow from that point on. */}
         {detail.status === "PendingApproval" && !detail.awaitingWorkflow && (
           <ButtonField value="Approve" variant="primary" icon={<CheckCircle2 size={15} />} disabled={busy}
             onClick={() => run(() => approveSalaryRevision(id))} />
         )}
+        {detail.status === "Approved" && (
+          <ButtonField value="Submit" variant="primary" icon={<Send size={14} />} disabled={busy}
+            onClick={() => run(() => submitSalaryRevision(id))} />
+        )}
         {/* Stay on the grid after applying: the status becomes Applied, which is what removes Apply and
             Delete, and the refreshed lines are the record of what was just paid. */}
-        {detail.status === "Approved" && (
+        {detail.status === "Submitted" && (
           <ButtonField value="Apply" variant="primary" icon={<Play size={14} />} disabled={busy}
             onClick={() => run(() => applySalaryRevision(id))} />
         )}
@@ -345,6 +361,12 @@ function SalaryRevisionDetail({ id, onBack }: Props) {
             onClick={() => run(() => deleteSalaryRevision(id), true)} />
         )}
       </div>
+
+      {showHistory && (
+        <Suspense fallback={null}>
+          <HistoryModal revisionId={id} revisionName={detail.name} onClose={() => setShowHistory(false)} />
+        </Suspense>
+      )}
     </div>
   );
 

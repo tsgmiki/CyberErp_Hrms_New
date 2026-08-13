@@ -44,3 +44,38 @@ export const getLumpSumEnd = (employeeId: string, otherLeaveSettingId: string, s
   api.get<LumpSumEndModel>(
     `OtherLeave/lump-sum-end?employeeId=${employeeId}&otherLeaveSettingId=${otherLeaveSettingId}&startDate=${startDate}`,
   );
+
+/* ---- Supporting documents ------------------------------------------------ */
+
+/**
+ * The request as its assigned APPROVER may read it — details plus attachment metadata.
+ *
+ * Separate from `getOtherLeave`: that one authorises with the normal employee-visibility rule, and
+ * an approver routed the request by the workflow does not necessarily manage the requester, so it
+ * would refuse them. The server grants this one to the requester, their manager chain, HR, or the
+ * approver the request is currently routed to.
+ */
+export const reviewOtherLeave = (id: string) => api.get<OtherLeaveModel>(`OtherLeave/${id}/review`);
+
+/** Download one supporting document (credentialed fetch → browser save). */
+export const downloadOtherLeaveAttachment = async (attachmentId: string, fileName: string) => {
+  const res = await fetch(`${API_BASE_URL}/OtherLeave/attachments/${attachmentId}`, {
+    credentials: "include",
+  });
+  if (!res.ok) return false;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+  return true;
+};
+
+/** Read a File as base64 (strips the data: prefix) for attachment upload. */
+export const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });

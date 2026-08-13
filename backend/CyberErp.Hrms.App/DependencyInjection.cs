@@ -105,6 +105,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.IGetWorkingDays, Features.Core.Leaves.GetWorkingDays>();
             // Phase 2: leave balances (ledger) + leave requests (workflow-backed)
             services.AddScoped<Features.Core.Leaves.ILeaveBalanceService, Features.Core.Leaves.LeaveBalanceService>();
+            services.AddScoped<Features.Core.Leaves.ILeaveNotifier, Features.Core.Leaves.LeaveNotifier>();
             services.AddScoped<Features.Core.Leaves.IGetLeaveBalances, Features.Core.Leaves.GetLeaveBalances>();
             services.AddScoped<Features.Core.Leaves.ISetLeaveBalance, Features.Core.Leaves.SetLeaveBalance>();
             services.AddScoped<Features.Core.Leaves.ISubmitLeaveRequest, Features.Core.Leaves.SubmitLeaveRequest>();
@@ -133,6 +134,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Leaves.ISubmitOtherLeave, Features.Core.Leaves.SubmitOtherLeave>();
             services.AddScoped<Features.Core.Leaves.ICancelOtherLeave, Features.Core.Leaves.CancelOtherLeave>();
             services.AddScoped<Features.Core.Leaves.IGetOtherLeaveById, Features.Core.Leaves.GetOtherLeaveById>();
+            services.AddScoped<Features.Core.Leaves.IGetOtherLeaveForApproval, Features.Core.Leaves.GetOtherLeaveForApproval>();
+            services.AddScoped<Features.Core.Leaves.IDownloadOtherLeaveAttachment, Features.Core.Leaves.DownloadOtherLeaveAttachment>();
             services.AddScoped<Features.Core.Leaves.IGetAllOtherLeaves, Features.Core.Leaves.GetAllOtherLeaves>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Leaves.OtherLeaveWorkflowHandler>();
             // Fiscal-year integration: FY CRUD/resolver, accrual policy, entitlement generation + rollover
@@ -689,8 +692,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Compensation.ISimulateSalaryRevision, Features.Core.Compensation.SimulateSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.ISaveSalaryRevision, Features.Core.Compensation.SaveSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionById, Features.Core.Compensation.GetSalaryRevisionById>();
+            services.AddScoped<Features.Core.Compensation.IGetSalaryRevisionForApproval, Features.Core.Compensation.GetSalaryRevisionForApproval>();
             services.AddScoped<Features.Core.Compensation.IGetAllSalaryRevisions, Features.Core.Compensation.GetAllSalaryRevisions>();
             services.AddScoped<Features.Core.Compensation.ISetSalaryRevisionLine, Features.Core.Compensation.SetSalaryRevisionLine>();
+            services.AddScoped<Features.Core.Compensation.ISendSalaryRevisionForApproval, Features.Core.Compensation.SendSalaryRevisionForApproval>();
             services.AddScoped<Features.Core.Compensation.ISubmitSalaryRevision, Features.Core.Compensation.SubmitSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IApproveSalaryRevision, Features.Core.Compensation.ApproveSalaryRevision>();
             services.AddScoped<Features.Core.Compensation.IApplySalaryRevision, Features.Core.Compensation.ApplySalaryRevision>();
