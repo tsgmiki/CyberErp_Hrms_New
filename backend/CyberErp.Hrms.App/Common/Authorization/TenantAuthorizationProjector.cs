@@ -12,10 +12,14 @@ namespace CyberErp.Hrms.App.Common.Authorization
     ///
     /// <para><b>Why this exists.</b> Since the SRMS phase-2 flip the runtime READS authorization from
     /// <c>TenantUser / TenantUserRole / TenantRolePermission / TenantOperation</c>, but the admin
-    /// screens still EDIT the global <c>Role / Operation / RolePermission / UserRole</c> tables. Without
-    /// a projection in between, saving a permission would update a table nobody reads and the change
-    /// would appear to do nothing — a silent, severe regression. Every admin write therefore calls
-    /// <see cref="SyncAsync"/> before returning.</para>
+    /// screens still EDIT the global <c>Role / Operation / UserRole</c> tables. Without a projection in
+    /// between, creating a role would leave the runtime unable to resolve it. Every admin write
+    /// therefore calls <see cref="SyncAsync"/> before returning.</para>
+    ///
+    /// <para>⚠️ <b>PERMISSIONS ARE NOT PROJECTED.</b> <c>Core.RolePermission</c> was retired on
+    /// 2026-08-13; the Role Permissions screen writes <c>TenantRolePermission</c> directly, so there is
+    /// no longer anything to project them from. Do not add a sweep back — with no template table
+    /// behind it, every hand-edited grant would look orphaned and be deleted.</para>
     ///
     /// <para><b>Why a full reconcile rather than a surgical per-row update.</b> One tenant has ~150
     /// operations, 8 roles and ~600 grants; reconciling the lot costs a handful of set comparisons on
@@ -41,7 +45,6 @@ namespace CyberErp.Hrms.App.Common.Authorization
         IRepository<Role> roles,
         IRepository<Operation> operations,
         IRepository<Module> modules,
-        IRepository<RolePermission> rolePermissions,
         IRepository<UserRole> userRoles,
         IRepository<Subsystem> subsystems,
         IRepository<TenantRole> tenantRoles,
@@ -73,7 +76,10 @@ namespace CyberErp.Hrms.App.Common.Authorization
             // before those joins are resolved.
             if (written > 0) await unitOfWork.SaveChangesAsync();
 
-            written += await SyncPermissionsAsync(ct);
+            // ⚠️ NO permission projection. Core.RolePermission was retired on 2026-08-13 and the admin
+            // screen now writes TenantRolePermission directly, so there is nothing left to project
+            // FROM. A sweep here would be actively destructive: it would treat every hand-edited grant
+            // as one with no template behind it and delete the lot.
             written += await SyncMembershipsAsync(tenantId.Value, ct);
             written += await SyncSubsystemsAsync(tenantId.Value, ct);
             if (written > 0) await unitOfWork.SaveChangesAsync();
@@ -179,64 +185,6 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 tenantOperations.Delete(orphan);
                 written++;
             }
-
-            return written;
-        }
-
-        /// <summary>RolePermission -> TenantRolePermission, resolved through the template ids.</summary>
-        private async Task<int> SyncPermissionsAsync(CancellationToken ct)
-        {
-            var roleMap = await tenantRoles.GetAll()
-                .Where(r => r.SourceTemplateId != null)
-                .ToDictionaryAsync(r => r.SourceTemplateId!.Value, r => r.Id, ct);
-            var operationMap = await tenantOperations.GetAll()
-                .ToDictionaryAsync(o => o.OperationId, o => o.Id, ct);
-
-            var templates = await rolePermissions.GetAll().ToListAsync(ct);
-            var existing = await tenantRolePermissions.GetAll().ToListAsync(ct);
-            var written = 0;
-            var wanted = new HashSet<(Guid, Guid)>();
-
-            // Only roles that came FROM a template are reconciled. A bespoke tenant role has no
-            // counterpart in the global tables, so "not in the templates" would read as "revoked" and
-            // the projection would quietly strip its grants on the next admin save.
-            var projectedRoleIds = roleMap.Values.ToHashSet();
-
-            foreach (var template in templates)
-            {
-                if (!roleMap.TryGetValue(template.RoleId, out var tenantRoleId)) continue;
-                if (!operationMap.TryGetValue(template.OperationId, out var tenantOperationId)) continue;
-                wanted.Add((tenantRoleId, tenantOperationId));
-
-                var row = existing.FirstOrDefault(p =>
-                    p.TenantRoleId == tenantRoleId && p.TenantOperationId == tenantOperationId);
-                if (row is null)
-                {
-                    // CanExport has no counterpart in the global model, so a projected grant never
-                    // carries it: inventing access nobody assigned is worse than withholding a new one.
-                    await tenantRolePermissions.AddAsync(TenantRolePermission.Create(
-                        tenantRoleId, tenantOperationId, template.CanView, template.CanAdd,
-                        template.CanEdit, template.CanDelete, template.CanApprove));
-                    written++;
-                }
-                else if (row.CanView != template.CanView || row.CanAdd != template.CanAdd
-                    || row.CanEdit != template.CanEdit || row.CanDelete != template.CanDelete
-                    || row.CanApprove != template.CanApprove)
-                {
-                    row.Set(template.CanView, template.CanAdd, template.CanEdit, template.CanDelete,
-                        template.CanApprove, row.CanExport);
-                    tenantRolePermissions.UpdateAsync(row);
-                    written++;
-                }
-            }
-
-            // A revoked grant has to be REMOVED, not just left behind — otherwise revoking access
-            // through the admin screen would have no effect at all.
-            var revoked = existing
-                .Where(p => projectedRoleIds.Contains(p.TenantRoleId))
-                .Where(p => !wanted.Contains((p.TenantRoleId, p.TenantOperationId)))
-                .ToList();
-            foreach (var row in revoked) { tenantRolePermissions.Delete(row); written++; }
 
             return written;
         }

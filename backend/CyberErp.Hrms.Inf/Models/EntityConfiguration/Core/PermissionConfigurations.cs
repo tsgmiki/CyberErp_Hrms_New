@@ -95,29 +95,4 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
-    public class RolePermissionConfiguration : IEntityTypeConfiguration<RolePermission>
-    {
-        public void Configure(EntityTypeBuilder<RolePermission> builder)
-        {
-            builder.ToTable("RolePermission", "Core");
-
-            builder.HasKey(rp => rp.Id);
-
-            // Real FK columns — no EF-invented shadow keys.
-            builder.HasOne(rp => rp.Role)
-                .WithMany(r => r.RolePermissions)
-                .HasForeignKey(rp => rp.RoleId)
-                .OnDelete(DeleteBehavior.Cascade);
-            builder.HasOne(rp => rp.Operation)
-                .WithMany()
-                .HasForeignKey(rp => rp.OperationId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            builder.Navigation(rp => rp.Role).UsePropertyAccessMode(PropertyAccessMode.Field);
-            builder.Navigation(rp => rp.Operation).UsePropertyAccessMode(PropertyAccessMode.Field);
-
-            builder.HasIndex(rp => rp.RoleId);
-            builder.HasIndex(rp => rp.OperationId);
-        }
-    }
 }

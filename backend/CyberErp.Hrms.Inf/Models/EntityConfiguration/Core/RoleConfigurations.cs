@@ -27,8 +27,6 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // therefore enforced PER TENANT in SaveRole, the same way the role name already is.
             builder.HasIndex(r => r.Code);
 
-            // Relationship configured on RolePermissionConfiguration; expose the backing field.
-            builder.Navigation(r => r.RolePermissions).UsePropertyAccessMode(PropertyAccessMode.Field);
         }
     }
 
