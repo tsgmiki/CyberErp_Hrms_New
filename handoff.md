@@ -123,6 +123,41 @@
 
 ## 1. Most recent changes (latest first)
 
+00EU. **SRMS platform layer ported into CERP — PHASE 1 of 2, additive only (2026-08-13, HRMS backend).**
+    Asked to "improve the schema" by copying tables from `cybererp_srms`, excluding
+    `Core.LookUpCategory` / `Core.LookUpCategoryList`. **The user chose the additive scope after I
+    presented the analysis; the auth cutover is phase 2 and was NOT started.**
+    - **Analysis finding that reframed it: SRMS is a DIFFERENT PRODUCT.** Its 326 operations and
+      CERP's 150 share **ZERO** links. Its own data is an empty template (1 role, 3 users, 6
+      permissions), so "include all related data" could never mean copying its rows. What is valuable
+      is its architecture — see logic.md §12.
+    - **Landed:** migration `AddSrmsPlatformLayer` (7 CreateTable + 12 indexes, **no alters/drops**),
+      APPLIED to CERP. Tables: `Organization`, `OrganizationSubscription`, `SubscriptionPlanModule`,
+      `TenantSubscriptionAddOn`, `LoginTrail`, `Setting`, `UserPreference`. Entities follow CERP
+      conventions (BaseEntity / NodaTime Instant / varbinary(8)), NOT byte-matched to SRMS.
+    - **Backup before the change: `D:\Backups\CERP_before-srms-platform-20260813-134225.bak`** (77 MB).
+      ⚠️ `BACKUP ... WITH COMPRESSION` is unsupported on SQL Express — omit it.
+    - **Data: copied only what is referentially valid.** SRMS has NO FK constraints on these tables,
+      so a bulk copy would have succeeded while leaving dangling ids. Copied `Setting` (1) and
+      `Organization` (1, "Cybersoft"). SKIPPED: `SubscriptionPlanModule` (9 — CERP has 0
+      SubscriptionPlans and different Module ids), `OrganizationSubscription` (1 — same),
+      `UserPreference` (2 — SRMS users/tenant), `LoginTrail` (85 — an audit log starts clean).
+    - **Code alignment = `LoginTrail` wired into `LoginRepository`** (there was NO login audit at
+      all). Records success / wrong password / unknown user name with IP + user-agent; keeps the
+      attempted name separate from `UserId`; never stores the password; no FK to `Core.User`; and
+      swallows its own errors so an audit write can never fail a sign-in. Verified live for all three
+      cases, 401s unchanged. My 4 verification rows were deleted (they document MY testing).
+    - **Regression checked after the migration:** 506 users / 8 roles / 598 permissions / 23
+      user-roles / 150 operations / 490 employees — all unchanged; gated endpoints still 200/403.
+    - ⚠️ **Two deliberate overlaps left in place** so the phase stayed additive: `Organization` vs the
+      existing `CompanyProfile` (still feeds offer letters + report letterhead), and `Setting`'s SMTP
+      columns vs `appsettings.json:Email` (still what `SmtpEmailService` reads). Consolidating either
+      is a CODE change, not a data one.
+    - **Phase 2 (not started):** `TenantRole`/`TenantOperation`/`TenantRolePermission`(+`CanExport`)/
+      `TenantUser`/`TenantUserRole`/`TenantSubSystem`. **Recorded decision: generate those rows FROM
+      CERP's existing data, never from SRMS's**, and accept only if each user's effective permission
+      set is byte-identical before/after. See logic.md §12.2.
+
 00ET. **Salary-revision lifecycle + leave attachments, approver review, leave e-mail, Other Leave
     isolation (2026-08-12/13, HRMS both halves + Home frontend).** Five requested batches; one
     migration (`AddOtherLeaveAttachment`, additive, ALREADY APPLIED to CERP).

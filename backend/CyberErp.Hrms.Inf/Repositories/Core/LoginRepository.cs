@@ -14,6 +14,7 @@ namespace CyberErp.Hrms.Inf.Repositories.Core;
 public class LoginRepository(
     IRepository<User> userRepository,
     IRepository<Employee> employeeRepository,
+    IRepository<LoginTrail> loginTrailRepository,
     IAuthentication authentication,
     ITokenStore tokenStore,
     ITokenParser tokenParser,
@@ -21,6 +22,7 @@ public class LoginRepository(
     ILogger<LoginRepository> logger,
     IExceptionHandler exceptionHandler) : ILoginRepository
 {
+    private readonly IRepository<LoginTrail> _loginTrailRepository = loginTrailRepository;
     private readonly IRepository<User> _userRepository = userRepository;
     private readonly IRepository<Employee> _employeeRepository = employeeRepository;
     private readonly IAuthentication _authentication = authentication;
@@ -51,6 +53,12 @@ public class LoginRepository(
                 if (user is null)
                 {
                     _logger.LogWarning("Invalid credentials for UserName: {UserName }", dto.UserName);
+                    // A FAILED attempt is the one most worth recording: it is how a lockout, a shared
+                    // account or a credential-stuffing run becomes visible. Written before the throw,
+                    // and never allowed to change the outcome — see RecordLoginEventAsync.
+                    await RecordLoginEventAsync(LoginTrail.Failure(
+                        dto.UserName ?? string.Empty, ClientIp(), UserAgent(),
+                        userList.Count == 0 ? "Unknown user name" : "Incorrect password"));
                     throw new UnauthorizedException("Invalid username or password");
                 }
 
@@ -109,8 +117,47 @@ public class LoginRepository(
                 SetUserCookies(user.Id.ToString(), user.UserName);
                 SetBranchCookies(branchId, isHeadOffice);
 
+                await RecordLoginEventAsync(LoginTrail.Success(
+                    user.Id, user.UserName ?? string.Empty, ClientIp(), UserAgent()), user.TenantId);
+
                 return userResult;
             });
+
+    /// <summary>
+    /// Appends one authentication event.
+    ///
+    /// <para>Swallows every failure by design: an audit row must never be the reason a sign-in fails,
+    /// and on the failure path it runs immediately before an <c>UnauthorizedException</c> that has to
+    /// reach the caller unchanged. The tenant is passed explicitly on success because the ambient
+    /// tenant context is not established until the cookies above are read on the NEXT request.</para>
+    /// </summary>
+    private async Task RecordLoginEventAsync(LoginTrail entry, string? tenantId = null)
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(tenantId)) entry.TenantId = tenantId;
+            await _loginTrailRepository.AddAsync(entry);
+            await _loginTrailRepository.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not record the login trail for {UserName}", entry.UserNameAttempted);
+        }
+    }
+
+    /// <summary>Caller IP, preferring the proxy header so a reverse-proxied deployment logs the real client.</summary>
+    private string? ClientIp()
+    {
+        var context = _httpContextAccessor.HttpContext;
+        if (context is null) return null;
+        var forwarded = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+            return forwarded.Split(',')[0].Trim();
+        return context.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private string? UserAgent() =>
+        _httpContextAccessor.HttpContext?.Request.Headers.UserAgent.FirstOrDefault();
 
     private void SetTenantCookie(string tenantId)
     {

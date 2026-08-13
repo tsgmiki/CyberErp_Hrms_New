@@ -432,6 +432,17 @@ approval*), with a `PerformanceHistory` row per transition. Other Leave supports
 the requester. ⚠️ Resolve "is this the approver" with `ResolveApproverUserIdsAsync`, NOT
 `EvaluateAsync` — the latter returns true for everyone on an OPEN step.
 
+**SRMS platform layer, phase 1 (2026-08-13 — logic.md §12, handoff 00EU).** `cybererp_srms` is a
+DIFFERENT product, not a newer CERP: its 326 operations share **zero** links with CERP's 150, and its
+data is an empty template. Its *architecture* is what is worth taking. Phase 1 added seven additive
+tables to `Core` (`Organization`, `OrganizationSubscription`, `SubscriptionPlanModule`,
+`TenantSubscriptionAddOn`, `LoginTrail`, `Setting`, `UserPreference`) via `AddSrmsPlatformLayer` —
+applied to CERP, no alters or drops, auth untouched — and wired `LoginTrail` into sign-in, which is
+the system's FIRST login audit. ⚠️ `Organization` overlaps `CompanyProfile` and `Setting`'s SMTP
+columns overlap `appsettings.json:Email`; neither has been repointed. **Phase 2 = the tenant-scoped
+auth model, generated FROM CERP's existing 8 roles / 150 operations / 598 permissions, never from
+SRMS's.**
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

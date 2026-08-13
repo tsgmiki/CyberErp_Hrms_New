@@ -1383,3 +1383,48 @@ throwing: a mail failure must not undo an approval. An employee with no address 
 not failed. Note the chain is TWO steps (Supervisor Review → HR Approval); the leave becomes
 Approved only when the instance COMPLETES, so step 1 leaves that approver's queue while the request
 correctly stays Pending for the requester.
+
+## 12. The SRMS platform layer (phase 1 of 2)
+
+`cybererp_srms` is a DIFFERENT PRODUCT, not a newer CERP: its 326 operations and CERP's 150 share
+**zero** links. What is worth taking from it is its platform architecture, which is a generation
+ahead of ours.
+
+### 12.1 What landed (additive, phase 1)
+
+Seven tables in `Core`, migration `AddSrmsPlatformLayer` — `Organization`,
+`OrganizationSubscription`, `SubscriptionPlanModule`, `TenantSubscriptionAddOn`, `LoginTrail`,
+`Setting`, `UserPreference`. Nothing existing was altered or dropped, so no login or permission
+behaviour changed.
+
+**Which of them are tenant-scoped matters.** `Organization` sits ABOVE the tenant (one organization
+may hold several), and the plan/add-on rows are billing records *about* tenants that platform staff
+must read across all of them, so none of those carry `[MultiTenant]`. `Setting` is a deployment
+SINGLETON. `LoginTrail` and `UserPreference` do carry the `BaseEntity` tenant discriminator.
+
+`LoginTrail` is wired into `LoginRepository`: success, wrong password, and unknown user name. It
+stores the attempted name SEPARATELY from `UserId` (a failed attempt often has no user to point at,
+and that is the case worth recording), never the submitted password, and has **no FK to `Core.User`**
+— an audit row that disappears with its subject is not an audit row. Writing it can never fail a
+sign-in: `RecordLoginEventAsync` swallows and logs.
+
+> ⚠️ Two deliberate OVERLAPS, left alone so this phase stayed additive:
+> `Organization` duplicates much of `CompanyProfile`, which still feeds offer letters and report
+> letterheads; and `Setting`'s SMTP columns duplicate the `Email` section of `appsettings.json`,
+> which is what `SmtpEmailService` actually reads. Neither has been repointed — doing so silently
+> would change what letters render and where mail is sent from.
+
+### 12.2 What phase 2 is, and its one hard rule
+
+The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
+`IsCustomized`), `TenantOperation`, `TenantRolePermission` (which adds **`CanExport`**), `TenantUser`,
+`TenantUserRole`, `TenantSubSystem` (per-tenant licensing with status and dates).
+
+**The rule: generate the new rows FROM CERP's existing data, never from SRMS's.** SRMS ships 1 role,
+3 users and 6 permissions against operations that match none of our screens; CERP has 8 roles, 150
+operations, 598 permissions and 506 users. The map is
+`Role → TenantRole`, `Operation → TenantOperation`, `RolePermission → TenantRolePermission`,
+`UserRole → TenantUser + TenantUserRole`, and the acceptance test is that each user's EFFECTIVE
+permission set is identical before and after. Everything that reads the current model has to move in
+lockstep: login, `PermissionAuthorizationFilter`, `IEndpointPermissionService`, the DB-driven sidebar
+and the Role Permissions screens.
