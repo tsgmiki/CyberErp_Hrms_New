@@ -432,8 +432,11 @@ guards, 54 HR-only gates, 73 query-scoping sites, with the exposure measured aga
 (idempotent; **run on every other environment**) fills the ordinary role's missing self-service grants
 and assigns it — 480 assigned, 0 roleless employees left, sidebar 34 links vs an admin's 144.
 ⚠️ The operation catalog has DUPLICATE rows per link (150/132), so permission audits must aggregate by
-`Link`. Categories A (16 cross-employee guards) and C (73 scoping sites) and repointing `IsAdminAsync`
-are now unblocked.
+`Link`. **Category A (16 cross-employee guards) FIXED 2026-08-13** (handoff 00EX, logic §11.7): each
+"owner OR HR" guard now checks the HR-side register permission via `HrScreens` — `/loan` vs
+`/myLoans`, `/trip` vs `/myTrips` etc. ⚠️ grievances use `/employee` because BOTH sides hold
+`/grievance`; always check the two sides differ before reusing a link. **Still open: category C (73
+scoping sites), the 54 category-B gates, and repointing `IsAdminAsync` off `IsHeadOffice()`.**
 
 **Leave + salary-revision workflow rules (2026-08-13).** Salary revision now goes
 Draft → PendingApproval → **Approved → Submitted** → Applied (the author may only *send for

@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+00EX. **Category A fixed: the 16 cross-employee guards (2026-08-13, HRMS App).** Detail in logic.md §11.7.
+    - All 16 read `if (!scope.IsAdmin && record.EmployeeId != mine) throw`. `IsAdmin` is true for
+      everyone, so the condition was ALWAYS FALSE and the throw unreachable — any employee could
+      cancel a colleague's loan, trip or guarantee. Each now checks the HR-side MENU PERMISSION via
+      `IEndpointPermissionService`, which has no head-office bypass.
+    - New `App/Common/Authorization/HrScreens.cs` names the link once per record type:
+      `/loan`, `/trip`, `/employeeGuarantee`, `/trainingNeed`, `/rewardNomination` — each the HR
+      REGISTER, which staff do NOT hold (they hold `/myLoans`, `/myTrips`, `/myGuarantees`,
+      `/myTraining`).
+    - ⚠️ **Grievances use `/employee` instead**, because EVERY employee holds `/grievance` — a link
+      both sides hold cannot discriminate. Check that separation before reusing a link for a new guard.
+    - **Proven with real records** (throwaway loan type + loan, deleted after): employee B →
+      *"You can only cancel your own loan requests."*; the OWNER and HR both pass ownership and reach
+      the workflow gate instead. Three parties, three different gates.
+    - ⚠️ My replacement pattern initially also caught
+      `if (!scope.IsAdmin && !scope.IsManager)` in `RewardNominationHandlers` — an HR-or-MANAGER gate,
+      not an ownership guard. **Reverted** to keep the change to the 16 asked for. It is still broken
+      (any employee can raise a nomination); it belongs to category B.
+    - Backend builds clean, 158/158 tests pass, 0 cross-employee guards still use `IsAdmin`, all test
+      data removed (loans/types/schedules/guarantors/instances/LoginTrail all back to 0).
+    - **STILL OPEN: category C (73 query-scoping sites)** and repointing `IsAdminAsync` itself.
+
 00EW. **Employee role assignment — the 00EV blocker is CLEARED (2026-08-13, DATA change to CERP +
     a reusable script). No application code changed.** Detail in logic.md §11.6.
     - **`backend/scripts/assign-employee-role.sql`** (idempotent — RUN IT ON EVERY OTHER ENVIRONMENT):

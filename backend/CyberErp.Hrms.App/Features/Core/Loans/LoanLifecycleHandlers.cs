@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Performance;
@@ -140,7 +141,8 @@ namespace CyberErp.Hrms.App.Features.Core.Loans
     /// <summary>HC257 — the borrower's online service-commitment consent after endorsement/disbursement.</summary>
     public class GiveLoanConsent(
         IRepository<Loan> repository,
-        IPerformanceVisibilityService visibility) : IGiveLoanConsent
+        IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions) : IGiveLoanConsent
     {
         public async Task ConsentAsync(Guid id)
         {
@@ -148,7 +150,7 @@ namespace CyberErp.Hrms.App.Features.Core.Loans
             var entity = await repository.GetAll().FirstOrDefaultAsync(l => l.Id == id)
                 ?? throw new NotFoundException(nameof(Loan), id.ToString());
             // The borrower gives their own consent; HR may record it on their behalf.
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.LoanRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(id), "You can only consent to your own loan.");
             entity.GiveServiceCommitmentConsent(DateTime.UtcNow.Date);
             repository.UpdateAsync(entity);

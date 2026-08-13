@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -94,6 +95,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         IRepository<Employee> employeeRepository,
         IRepository<TrainingCourse> courseRepository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
         IValidator<SaveTrainingNeedDto> validator,
@@ -136,7 +138,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)
                     ?? throw new NotFoundException(nameof(TrainingNeed), dto.Id.Value.ToString());
-                if (!scope.IsAdmin && entity.RequestedByEmployeeId != scope.EmployeeId && entity.EmployeeId != scope.EmployeeId)
+                if (!await permissions.HasAnyAsync(HrScreens.TrainingNeedRegister) && entity.RequestedByEmployeeId != scope.EmployeeId && entity.EmployeeId != scope.EmployeeId)
                     throw new ValidationException(nameof(dto.Id), "Only the requester, the employee or HR can edit a training need.");
                 if (entity.Status != TrainingNeedStatus.Pending)
                     throw new ValidationException(nameof(dto.Id), "Only a pending training need can be edited.");
@@ -198,6 +200,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
     public class CancelTrainingNeed(
         IRepository<TrainingNeed> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate,
         ILogger<CancelTrainingNeed> logger) : ICancelTrainingNeed
     {
@@ -207,7 +210,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 ?? throw new NotFoundException(nameof(TrainingNeed), id.ToString());
 
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin && entity.RequestedByEmployeeId != scope.EmployeeId && entity.EmployeeId != scope.EmployeeId)
+            if (!await permissions.HasAnyAsync(HrScreens.TrainingNeedRegister) && entity.RequestedByEmployeeId != scope.EmployeeId && entity.EmployeeId != scope.EmployeeId)
                 throw new ValidationException(nameof(id), "Only the requester, the employee or HR can cancel a training need.");
             await workflowGate.EnsureNoRunningAsync("TrainingNeed", entity.Id);
 
@@ -221,6 +224,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
     public class DeleteTrainingNeed(
         IRepository<TrainingNeed> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate,
         ILogger<DeleteTrainingNeed> logger) : IDeleteTrainingNeed
     {
@@ -230,7 +234,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 ?? throw new NotFoundException(nameof(TrainingNeed), id.ToString());
 
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin && entity.RequestedByEmployeeId != scope.EmployeeId)
+            if (!await permissions.HasAnyAsync(HrScreens.TrainingNeedRegister) && entity.RequestedByEmployeeId != scope.EmployeeId)
                 throw new ValidationException(nameof(id), "Only the requester or HR can delete a training need.");
             if (entity.Status != TrainingNeedStatus.Pending)
                 throw new ValidationException(nameof(id), "Only a pending training need can be deleted — cancel it instead.");

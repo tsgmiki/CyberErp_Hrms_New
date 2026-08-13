@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -309,13 +310,14 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public class CancelTrip(
         IRepository<TripRequest> repository,
         IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions,
         IWorkflowGate workflowGate) : ICancelTrip
     {
         public async Task CancelAsync(Guid id)
         {
             var scope = await visibility.GetScopeAsync();
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException(nameof(TripRequest), id.ToString());
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.TripRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(id), "You can only cancel your own trips.");
             await workflowGate.EnsureNoRunningAsync(TripShared.WorkflowPrefix, id);
             entity.Cancel();
@@ -326,13 +328,14 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
 
     public class TransitionTrip(
         IRepository<TripRequest> repository,
-        IPerformanceVisibilityService visibility) : ITransitionTrip
+        IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions) : ITransitionTrip
     {
         private async Task<TripRequest> LoadOwnedAsync(Guid id)
         {
             var scope = await visibility.GetScopeAsync();
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id) ?? throw new NotFoundException(nameof(TripRequest), id.ToString());
-            if (!scope.IsAdmin && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.TripRegister) && entity.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(id), "You can only update your own trips.");
             return entity;
         }
@@ -357,14 +360,15 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public class AddTripExpense(
         IRepository<TripExpense> expenseRepository,
         IRepository<TripRequest> tripRepository,
-        IPerformanceVisibilityService visibility) : IAddTripExpense
+        IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions) : IAddTripExpense
     {
         public async Task<Guid> AddAsync(AddTripExpenseDto dto)
         {
             var scope = await visibility.GetScopeAsync();
             var trip = await tripRepository.GetAll().AsNoTracking().FirstOrDefaultAsync(t => t.Id == dto.TripRequestId)
                 ?? throw new NotFoundException(nameof(TripRequest), dto.TripRequestId.ToString());
-            if (!scope.IsAdmin && trip.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.TripRegister) && trip.EmployeeId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(dto.TripRequestId), "You can only add expenses to your own trips.");
             if (trip.Status is not (TripRequestStatus.Approved or TripRequestStatus.InProgress or TripRequestStatus.Completed))
                 throw new ValidationException(nameof(dto.TripRequestId), "Expenses can only be added to an approved, in-progress or completed trip.");
@@ -381,14 +385,15 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public class RemoveTripExpense(
         IRepository<TripExpense> expenseRepository,
         IRepository<TripRequest> tripRepository,
-        IPerformanceVisibilityService visibility) : IRemoveTripExpense
+        IPerformanceVisibilityService visibility,
+        IEndpointPermissionService permissions) : IRemoveTripExpense
     {
         public async Task RemoveAsync(Guid expenseId)
         {
             var scope = await visibility.GetScopeAsync();
             var entity = await expenseRepository.GetByIdAsync(expenseId) ?? throw new NotFoundException(nameof(TripExpense), expenseId.ToString());
             var ownerId = await tripRepository.GetAll().Where(t => t.Id == entity.TripRequestId).Select(t => t.EmployeeId).FirstOrDefaultAsync();
-            if (!scope.IsAdmin && ownerId != (scope.EmployeeId ?? Guid.Empty))
+            if (!await permissions.HasAnyAsync(HrScreens.TripRegister) && ownerId != (scope.EmployeeId ?? Guid.Empty))
                 throw new ValidationException(nameof(expenseId), "You can only remove expenses from your own trips.");
             expenseRepository.Delete(entity);
             await expenseRepository.SaveChangesAsync();
