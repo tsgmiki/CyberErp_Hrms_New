@@ -123,6 +123,35 @@
 
 ## 1. Most recent changes (latest first)
 
+0100. **TenantId DROPPED from Core.User / Role / Operation — the SRMS model is complete
+    (2026-08-13).** Detail in logic.md §12.10. Migration `DropTenantIdFromUserRoleOperation`,
+    APPLIED to CERP. Backup: `D:\Backups\CERP_before-drop-tenantid-*.bak`.
+    - The three tables now match SRMS **exactly**, no extra columns. Tenancy lives in
+      `TenantUser` / `TenantRole` / `TenantOperation`.
+    - ⚠️ **THE BUG THIS CAUSED, IN BOTH APPS.** Login derived the session tenant from
+      `user.TenantId` and set the cookie every later request resolves against. Unmapped, it read as
+      `""` — so there was NO tenant and **every tenant-filtered query returned nothing**: empty
+      sidebar, zero employees, blank portal. Login still returned 200 and neither log showed an
+      error. Both now resolve the tenant from MEMBERSHIP (default first, then any active). Home also
+      needs `IgnoreQueryFilters()` there — `TenantUser` carries the same filter, and at login there
+      is no tenant yet, which is what the query is working out.
+    - ⚠️ **The migration carries membership across BEFORE dropping.** `TenantId` IS the membership;
+      once gone it cannot be recovered. The seed built `TenantUser` from `UserRole`, so it only
+      covered users holding a ROLE — six did not, one (`dagmawi`) a live headoffice user. Now
+      506 users → 506 memberships, 0 without.
+    - ⚠️ **`Repository<T>` skips these three** (`IsGlobalEntity`), so every list scopes itself:
+      `GetAllUsers` via TenantUser (else 506 not 500), `GetAllRoles` via TenantRole (else 8 not 5),
+      `SaveRole` duplicate checks, `SaveUserRole` existence checks (existence no longer proves
+      ownership). `SaveUser` now CREATES the membership, or the account belongs nowhere. User
+      name/e-mail uniqueness is global now, matching the indexes the database actually has.
+    - ⚠️ **The projector no longer instantiates templates** — with Role/Operation global it would
+      hand this tenant every other tenant's roles. It UPDATES existing instances only; creation
+      moved to `SaveRole`, `CreateOperationHandler` and `SeedDefaultMenu`.
+    - ⚠️ **Deploy both repos together.**
+    - Verified: 0 TenantId columns left; Users list 500, Roles 5; three HRMS identities log in with
+      34 links and unchanged employee counts; Home 2/12/34; gate 403/200/200/403; integrity all zero
+      and 15369 viewable pairs, unchanged.
+
 00FF. **The remaining ungated controllers are gated (2026-08-13).** Detail in logic.md §12.9.
     No migration, no data change. 25 controllers across 12 files.
     - ⚠️ **THREE patterns, chosen per controller from what actually calls it.** A blanket sweep would

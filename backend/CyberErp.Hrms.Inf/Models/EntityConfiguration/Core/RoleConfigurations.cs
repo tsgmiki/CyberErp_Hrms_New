@@ -11,6 +11,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("Role", "Core");
 
+            // TenantId is GONE (2026-08-13) — Role is a global TEMPLATE now; the per-tenant instance
+            // is Core.TenantRole. BaseEntity still declares the property, so it must be ignored
+            // explicitly or EF keeps looking for the column.
+            builder.Ignore(r => r.TenantId);
+
             builder.HasKey(r => r.Id);
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
 
@@ -20,11 +25,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(r => r.IsPlatformRole).IsRequired().HasDefaultValue(false);
             builder.Property(r => r.IsActive).IsRequired().HasDefaultValue(true);
 
-            // ⚠️ NOT unique, unlike SRMS's IX_StandardRoleTemplate_Code. CERP keeps TenantId, so two
-            // tenants may each define an "Administrator" template and a global unique index would
-            // reject the second one with a raw SQL error. It cannot be scoped to (TenantId, Code)
-            // either — TenantId is nvarchar(max) and SQL Server will not index that. Uniqueness is
-            // therefore enforced PER TENANT in SaveRole, the same way the role name already is.
+            // Still NOT unique, even though SRMS's IX_StandardRoleTemplate_Code is. The 8 rows here
+            // came from two tenants and were only ever distinct by accident; making it unique now
+            // would be a data assertion this table has never had to satisfy. Uniqueness stays where
+            // it can be stated meaningfully — per tenant, in SaveRole, via TenantRole.
             builder.HasIndex(r => r.Code);
 
         }

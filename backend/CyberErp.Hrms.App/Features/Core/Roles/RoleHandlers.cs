@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
@@ -73,6 +74,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
     // ---- Role handlers -----------------------------------------------------------
     public class SaveRole(
         IRepository<Role> repository,
+        IRepository<TenantRole> tenantRoles,
+        ICurrentTenantService currentTenant,
         IValidator<SaveRoleDto> validator,
         ITenantAuthorizationProjector projector,
         ILogger<SaveRole> logger) : ISaveRole
@@ -82,15 +85,20 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            if (await repository.GetAll().AnyAsync(r => r.Name == dto.Name && r.Id != dto.Id))
+            // ⚠️ Core.Role is GLOBAL since 2026-08-13, so repository.GetAll() no longer scopes these
+            // checks — a name unique to this tenant would collide with another tenant's role. Both
+            // uniqueness rules are therefore evaluated over THIS tenant's instances.
+            var mine = await tenantRoles.GetAll()
+                .Where(tr => tr.SourceTemplateId != null)
+                .Select(tr => tr.SourceTemplateId!.Value)
+                .ToListAsync();
+
+            if (await repository.GetAll().AnyAsync(r => mine.Contains(r.Id) && r.Name == dto.Name && r.Id != dto.Id))
                 throw new DuplicateException(nameof(Role), nameof(dto.Name), dto.Name);
 
-            // Code is required and identifies the role template. It is enforced here rather than by a
-            // unique index: CERP keeps TenantId, so two tenants may each hold an "Administrator", and
-            // the index cannot be scoped to (TenantId, Code) because TenantId is nvarchar(max).
-            // GetAll() is tenant-filtered, so this check is per-tenant.
             var code = string.IsNullOrWhiteSpace(dto.Code) ? null : dto.Code.Trim();
-            if (code is not null && await repository.GetAll().AnyAsync(r => r.Code == code && r.Id != dto.Id))
+            if (code is not null && await repository.GetAll()
+                    .AnyAsync(r => mine.Contains(r.Id) && r.Code == code && r.Id != dto.Id))
                 throw new DuplicateException(nameof(Role), nameof(dto.Code), code);
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
@@ -107,21 +115,42 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             var created = Role.Create(dto.Name, dto.Code);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
-            // A new role needs its tenant instance before any permission can be granted against it.
+
+            // ⚠️ The instance is created HERE, not by the projector. The projector only updates what
+            // already exists — with Core.Role global it can no longer tell which templates belong to
+            // this tenant, and instantiating them all would hand us every other tenant's roles. The
+            // tenant that creates a role is the one that gets it.
+            var tenantId = currentTenant.GetCurrentTenantId();
+            if (tenantId is not null && tenantId != Guid.Empty)
+            {
+                await tenantRoles.AddAsync(TenantRole.Create(
+                    tenantId.Value, created.Code, created.Name, created.Id));
+                await tenantRoles.SaveChangesAsync();
+            }
+
             await projector.SyncAsync();
             logger.LogInformation("Created Role {Id} ({Name})", created.Id, created.Name);
             return created.Id;
         }
     }
 
-    public class GetAllRoles(IRepository<Role> repository) : IGetAllRoles
+    public class GetAllRoles(
+        IRepository<Role> repository,
+        IRepository<TenantRole> tenantRoles) : IGetAllRoles
     {
         public async Task<PaginatedResponse<RoleDto>> GetAsync(GetAllRequest request)
         {
             var skip = int.TryParse(request.Skip, out var s) ? s : 0;
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
-            var query = repository.GetAll();
+            // Core.Role lost its TenantId on 2026-08-13, so repository.GetAll() is now GLOBAL — every
+            // tenant's templates, not this one's. Scoping through TenantRole restores exactly what the
+            // screen showed before: the roles THIS tenant holds an instance of.
+            var mine = tenantRoles.GetAll()
+                .Where(tr => tr.SourceTemplateId != null)
+                .Select(tr => tr.SourceTemplateId!.Value);
+
+            var query = repository.GetAll().Where(r => mine.Contains(r.Id));
             if (!string.IsNullOrWhiteSpace(request.SearchText))
             {
                 var term = request.SearchText.Trim();
@@ -175,8 +204,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
     // ---- UserRole handlers ---------------------------------------------------------
     public class SaveUserRole(
         IRepository<UserRole> repository,
-        IRepository<User> userRepository,
-        IRepository<Role> roleRepository,
+        IRepository<TenantUser> tenantUsers,
+        IRepository<TenantRole> tenantRoles,
         ITenantAuthorizationProjector projector,
         ILogger<SaveUserRole> logger) : ISaveUserRole
     {
@@ -185,11 +214,14 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             if (dto.UserId == Guid.Empty || dto.RoleId == Guid.Empty)
                 throw new ValidationException("roleId", "A user and a role are both required.");
 
-            // The role/user must be visible in the current tenant (blocks stale or cross-tenant
-            // ids from ever reaching the database FK).
-            if (!await userRepository.GetAll().AnyAsync(u => u.Id == dto.UserId))
+            // The role/user must belong to the current tenant (blocks stale or cross-tenant ids from
+            // ever reaching the database FK).
+            //
+            // ⚠️ Both tables are GLOBAL since 2026-08-13, so existence alone no longer proves the row
+            // is ours — that check would happily accept another tenant's user. Membership does.
+            if (!await tenantUsers.GetAll().AnyAsync(tu => tu.UserId == dto.UserId))
                 throw new NotFoundException(nameof(User), dto.UserId.ToString());
-            if (!await roleRepository.GetAll().AnyAsync(r => r.Id == dto.RoleId))
+            if (!await tenantRoles.GetAll().AnyAsync(tr => tr.SourceTemplateId == dto.RoleId))
                 throw new NotFoundException(nameof(Role), dto.RoleId.ToString());
             if (await repository.GetAll().AnyAsync(x => x.UserId == dto.UserId && x.RoleId == dto.RoleId && x.Id != dto.Id))
                 throw new ValidationException("roleId", "The user already holds this role.");
@@ -276,14 +308,20 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
     }
 
     // ---- User lookup (list only — creation stays on the auth register flow) --------
-    public class GetAllUsers(IRepository<User> repository) : IGetAllUsers
+    public class GetAllUsers(
+        IRepository<User> repository,
+        IRepository<TenantUser> tenantUsers) : IGetAllUsers
     {
         public async Task<PaginatedResponse<UserDto>> GetAsync(GetAllRequest request)
         {
             var skip = int.TryParse(request.Skip, out var s) ? s : 0;
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
-            var query = repository.GetAll();
+            // Core.User lost its TenantId on 2026-08-13, so repository.GetAll() spans EVERY tenant —
+            // 506 accounts rather than this tenant's 500. Membership is the scope now.
+            var members = tenantUsers.GetAll().Select(tu => tu.UserId);
+
+            var query = repository.GetAll().Where(u => members.Contains(u.Id));
             if (!string.IsNullOrWhiteSpace(request.SearchText))
             {
                 var term = request.SearchText.Trim();

@@ -23,12 +23,27 @@ namespace CyberErp.Hrms.Inf.Repositories
             _currentUserService = currentUserService;
         }
 
+        /// <summary>
+        /// Entities with NO TenantId column, which therefore cannot be filtered or stamped by one.
+        ///
+        /// <para>Tenant and SubscriptionPlan are roots; the lookup tables are global reference data.
+        /// <b>User, Role and Operation joined them on 2026-08-13</b>, when the column was dropped to
+        /// finish the SRMS alignment: a user is a global identity, a role is a global template and an
+        /// operation is a global menu entry, and tenancy lives in TenantUser / TenantRole /
+        /// TenantOperation instead.</para>
+        ///
+        /// <para>⚠️ Filtering on a property EF no longer maps throws at query-translation time, so
+        /// missing an entity here is not a subtle bug — it is every query against it failing. The
+        /// flip side is that anything listing these three must scope itself through the tenant
+        /// tables; see GetAllUsers / GetAllRoles / GetAllOperations.</para>
+        /// </summary>
+        private static bool IsGlobalEntity(Type t) =>
+            t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
+                   or "User" or "Role" or "Operation";
+
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {
-            // Skip tenant filter for Tenant and SubscriptionPlan (root entities) and for the generic
-            // lookup tables (GLOBAL reference data shared across all tenants).
-            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan"
-                || typeof(T).Name == "LookupCategory" || typeof(T).Name == "LookupCategoryList")
+            if (IsGlobalEntity(typeof(T)))
             {
                 return query;
             }
@@ -78,8 +93,7 @@ namespace CyberErp.Hrms.Inf.Repositories
         {
             // Skip tenant stamping for Tenant/SubscriptionPlan (root) and the GLOBAL lookup tables —
             // lookups keep an empty TenantId so they are shared system-wide.
-            if (typeof(T).Name == "Tenant" || typeof(T).Name == "SubscriptionPlan"
-                || typeof(T).Name == "LookupCategory" || typeof(T).Name == "LookupCategoryList")
+            if (IsGlobalEntity(typeof(T)))
             {
                 if (isNew)
                 {
