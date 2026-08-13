@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Handlers;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -12,6 +13,8 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.Create;
 
 public class CreateOperationHandler(
     IRepository<Operation> repository,
+    IRepository<TenantOperation> tenantOperations,
+    ICurrentTenantService currentTenant,
     IUnitOfWork unitOfWork,
     ITenantAuthorizationProjector projector,
     IValidator<CreateOperationRequest> validator,
@@ -47,8 +50,21 @@ public class CreateOperationHandler(
 
         await repository.AddAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);
-        // Menu operations are the unit of permission, so the tenant copy has to follow the template
-        // immediately: a screen the runtime cannot resolve is a screen nobody can reach.
+
+        // ⚠️ The tenant copy is created HERE, not by the projector. Core.Operation went global on
+        // 2026-08-13, so the projector can no longer tell which templates are ours and only updates
+        // copies that already exist. Menu operations are the unit of permission — a screen the
+        // runtime cannot resolve is a screen nobody can reach — so this must not be skipped.
+        var tenantId = currentTenant.GetCurrentTenantId();
+        if (tenantId is not null && tenantId != Guid.Empty)
+        {
+            await tenantOperations.AddAsync(TenantOperation.Create(
+                tenantId.Value, operation.SubSystemId, operation.Id, operation.ModuleId,
+                operation.Name, operation.Link, operation.Icon,
+                operation.DisplayOrder, operation.IsActive));
+            await unitOfWork.SaveChangesAsync(ct);
+        }
+
         await projector.SyncAsync(ct);
 
         logger.LogInformation("Operation created with Id: {Id}", operation.Id);

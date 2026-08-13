@@ -1967,6 +1967,67 @@ reference WRITES              Position | Step | OrganizationUnit | Lookup all 40
 sidebar                       34 links, unchanged
 ```
 
+### 12.10 TenantId dropped from User / Role / Operation — the SRMS model completed
+
+Migration `DropTenantIdFromUserRoleOperation`. A user is a global identity, a role a global template
+and an operation a global menu entry; tenancy lives entirely in `TenantUser` / `TenantRole` /
+`TenantOperation`. The three tables now match SRMS **exactly**, with no extra columns.
+
+#### ⚠️ The bug this caused, in BOTH apps
+
+Login derived the session's tenant from `user.TenantId` and set the cookie every later request
+resolves against. With the column unmapped it read as `""` — so there was no tenant, and **every
+tenant-filtered query in the system returned nothing**: empty sidebar, zero employees, blank portal.
+Login itself still returned 200, and neither log showed an error.
+
+Both now resolve the tenant from **membership** (`TenantUser`, default first, then any active one),
+which is also what makes multi-tenant users possible. Home additionally needs `IgnoreQueryFilters()`
+there: `TenantUser` carries the same tenant filter as everything else, and at login there is no
+tenant yet — that is precisely what the query is working out.
+
+An account with no membership is now refused at sign-in with a plain message, rather than being
+dropped into an application where nothing exists.
+
+#### ⚠️ The migration had to carry the membership across FIRST
+
+`TenantId` **is** the membership for these rows; once dropped there is no way to recover which tenant
+a user belonged to. The seed had built `TenantUser` from `UserRole`, so it only covered users holding
+a **role** — six accounts did not, and one (`dagmawi`) is a live headoffice user. The migration
+backfills memberships for every user, and instances for every role, before dropping anything.
+Result: 506 users → 506 memberships, 0 without.
+
+#### What had to be scoped by hand
+
+`Repository<T>` skips these three now (`IsGlobalEntity`), so anything listing them must scope itself:
+
+| | Scope |
+|---|---|
+| `GetAllUsers` | through `TenantUser` — otherwise 506 rows instead of 500 |
+| `GetAllRoles` | through `TenantRole` — otherwise 8 instead of 5 |
+| `SaveRole` duplicate name/code | through `TenantRole`; `GetAll()` no longer scopes them |
+| `SaveUserRole` user/role checks | existence no longer proves ownership — membership does |
+| `SaveUser` | creates the `TenantUser` **membership**, or the account belongs nowhere |
+| `SaveUser` uniqueness | now GLOBAL, matching the unique indexes the database actually has |
+
+#### ⚠️ The projector no longer instantiates templates
+
+With `Role` and `Operation` global, `templates` spans every tenant — instantiating them all would
+hand this tenant every other tenant's roles. `SyncRolesAsync` and `SyncOperationsAsync` **update
+existing instances only**. Creation moved to where it can be attributed: `SaveRole`,
+`CreateOperationHandler` and `SeedDefaultMenu` each create their own tenant copy.
+
+#### Verification
+
+```
+schema      0 TenantId columns left on the three | column sets now match SRMS exactly
+backfill    506 users -> 506 memberships, 0 without | headoffice 500, demo 1, candbg 5
+scoping     Users list 500 (not 506) | Roles list 5 (not 8)
+live        HRMS 3 identities: login 200, 34 links, employee counts unchanged
+            Home: login 200, 2 subsystems / 12 modules / 34 operations
+            gate: RolePermission 403, OtherLeave 200, Position GET 200 / POST 403
+integrity   0 dangling | 0 cross-tenant | 0 orphan screens | 15369 viewable pairs, unchanged
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

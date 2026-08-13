@@ -481,7 +481,17 @@ self-service screen share it (TrainingEnrollment/Certificate, Survey, EmployeeTe
 ⚠️ `learningCommunity`/`recognitionWall`/`myPoints`/`myTraining` are EMPLOYEE links, so gating on them
 is safe. Left open by design: Auth, Dashboard, Search, Employee(+children), leave, Guarantee,
 ProfileChangeRequest, Exit*, Suggestion/Grievance/Announcement, Workflow, EmployeeMovement/
-DisciplinaryMeasure, RewardNomination, TrainingNeed. **Core.User/Role/Operation ALIGNED
+DisciplinaryMeasure, RewardNomination, TrainingNeed. **TenantId DROPPED from User/Role/Operation
+2026-08-13** (handoff 0100, logic §12.10, migration `DropTenantIdFromUserRoleOperation`) — SRMS model
+COMPLETE, the three tables match exactly. ⚠️ **THE TRAP:** login derived the session tenant from
+`user.TenantId` and set the cookie everything resolves against; unmapped it reads `""` → NO tenant →
+**every tenant-filtered query returns nothing** (empty sidebar, 0 employees, blank portal) while login
+still returns 200 and no log shows an error. Both apps now resolve the tenant from `TenantUser`
+membership; Home needs `IgnoreQueryFilters()` there (no tenant exists yet at login). ⚠️ The migration
+backfills memberships BEFORE dropping — TenantId IS the membership and 6 users (incl. live headoffice
+`dagmawi`) had none. ⚠️ `Repository<T>.IsGlobalEntity` skips the three, so lists scope themselves via
+TenantUser/TenantRole, `SaveUser` creates the membership, and the projector UPDATES instances only
+(creation moved to SaveRole/CreateOperationHandler/SeedDefaultMenu). **Core.User/Role/Operation ALIGNED
 with cybererp_srms 2026-08-13** (handoff 00FB, logic §12.5, migration `AlignCoreTablesWithSrms`):
 `User.Password`→**`PasswordHash`**+9 cols, `Role.Code` NOT NULL+3 cols, `Operation.SortOrder`→
 **`DisplayOrder`**+`SubSystemId`(FK)+`IsActive`. ⚠️ **`TenantId` KEPT** (SRMS has none) — dropping it

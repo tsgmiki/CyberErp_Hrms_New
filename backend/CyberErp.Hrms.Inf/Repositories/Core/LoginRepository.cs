@@ -13,6 +13,7 @@ namespace CyberErp.Hrms.Inf.Repositories.Core;
 
 public class LoginRepository(
     IRepository<User> userRepository,
+    IRepository<TenantUser> tenantUserRepository,
     IRepository<Employee> employeeRepository,
     IRepository<LoginTrail> loginTrailRepository,
     IAuthentication authentication,
@@ -24,6 +25,7 @@ public class LoginRepository(
 {
     private readonly IRepository<LoginTrail> _loginTrailRepository = loginTrailRepository;
     private readonly IRepository<User> _userRepository = userRepository;
+    private readonly IRepository<TenantUser> _tenantUserRepository = tenantUserRepository;
     private readonly IRepository<Employee> _employeeRepository = employeeRepository;
     private readonly IAuthentication _authentication = authentication;
     private readonly ILogger<LoginRepository> _logger = logger;
@@ -72,12 +74,39 @@ public class LoginRepository(
                 // session (logout does not clear BranchId/IsHeadOffice). A stale BranchId made this
                 // lookup return no row, which silently collapsed to "no branch" — the wrong answer for
                 // both scoping and head-office status.
+                // ⚠️ THE TENANT COMES FROM MEMBERSHIP NOW, not from the user row.
+                //
+                // Core.User lost its TenantId on 2026-08-13. This is the row that decides which tenant
+                // the session belongs to — it sets the cookie every later request resolves against —
+                // so with the column gone and nothing put in its place, every query in the app
+                // silently returned nothing: empty sidebar, zero employees.
+                //
+                // A user can now hold several memberships, so the default one wins, then any active
+                // one. Read WITHOUT the tenant filter: there is no tenant context yet, by definition.
+                var membership = await _tenantUserRepository.GetAllWithoutTenantFilter().AsNoTracking()
+                    .Where(tu => tu.UserId == user.Id && tu.Status == TenantUserStatuses.Active)
+                    .OrderByDescending(tu => tu.IsDefaultTenant)
+                    .Select(tu => new { tu.OwningTenantId })
+                    .FirstOrDefaultAsync();
+
+                if (membership is null)
+                {
+                    // Authentic credentials but no tenant: the account exists and cannot be used.
+                    // Saying so beats dropping them into an empty application.
+                    _logger.LogWarning("User {UserName} authenticated but belongs to no tenant", user.UserName);
+                    await RecordLoginEventAsync(LoginTrail.Failure(
+                        dto.UserName ?? string.Empty, ClientIp(), UserAgent(), "No tenant membership"));
+                    throw new UnauthorizedException("This account is not assigned to any organization.");
+                }
+
+                var tenantId = membership.OwningTenantId.ToString();
+
                 Guid? branchId = null;
                 var isBranchHeadOffice = false;
                 if (user.EmployeeId.HasValue)
                 {
                     var assignment = await _employeeRepository.GetAllWithoutTenantFilter().AsNoTracking()
-                        .Where(e => e.Id == user.EmployeeId.Value && e.TenantId == user.TenantId)
+                        .Where(e => e.Id == user.EmployeeId.Value && e.TenantId == tenantId)
                         .Select(e => new { e.BranchId, IsHeadOfficeBranch = e.Branch != null && e.Branch.IsHeadOffice })
                         .FirstOrDefaultAsync();
                     branchId = assignment?.BranchId;
@@ -101,7 +130,7 @@ public class LoginRepository(
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
                     UserName = user.UserName,
-                    TenantId = !string.IsNullOrEmpty(user.TenantId) ? Guid.Parse(user.TenantId) : null,
+                    TenantId = membership.OwningTenantId,
                     BranchId = branchId,
                     IsHeadOffice = isHeadOffice
                 };
@@ -111,14 +140,13 @@ public class LoginRepository(
                 userResult.Token = token;
                 await _tokenStore.StoreAsync(tokenId.ToString(), jwtToken.ValidTo);
 
-                if (!string.IsNullOrEmpty(user.TenantId))
-                    SetTenantCookie(user.TenantId);
+                SetTenantCookie(tenantId);
 
                 SetUserCookies(user.Id.ToString(), user.UserName);
                 SetBranchCookies(branchId, isHeadOffice);
 
                 await RecordLoginEventAsync(LoginTrail.Success(
-                    user.Id, user.UserName ?? string.Empty, ClientIp(), UserAgent()), user.TenantId);
+                    user.Id, user.UserName ?? string.Empty, ClientIp(), UserAgent()), tenantId);
 
                 return userResult;
             });

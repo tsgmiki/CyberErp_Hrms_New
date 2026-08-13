@@ -8,6 +8,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<User> builder)
         {
+            // TenantId is GONE from this table (2026-08-13) — a user is a global identity now, and
+
+            // membership lives in Core.TenantUser. BaseEntity still declares the property, so it has to be
+
+            // ignored explicitly or EF keeps looking for the column.
+
+            builder.Ignore(u => u.TenantId);
+
+
             builder.HasKey(u => u.Id);
 
             builder.Property(u => u.FullName)

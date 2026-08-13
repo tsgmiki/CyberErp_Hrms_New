@@ -61,6 +61,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("Operation", "Core");
 
+            // TenantId is GONE — the per-tenant copy is Core.TenantOperation.
+
+
+            builder.Ignore(o => o.TenantId);
+
+
+
             builder.HasKey(o => o.Id);
 
             // Lengths narrowed to the SRMS caps; the longest value in any of these is 25 characters.

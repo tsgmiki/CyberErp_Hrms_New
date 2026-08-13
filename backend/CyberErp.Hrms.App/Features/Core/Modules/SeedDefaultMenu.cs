@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -19,6 +20,8 @@ public class SeedDefaultMenu(
     IRepository<Subsystem> subsystemRepository,
     IRepository<Module> moduleRepository,
     IRepository<Operation> operationRepository,
+    IRepository<TenantOperation> tenantOperationRepository,
+    ICurrentTenantService currentTenant,
     IUnitOfWork unitOfWork,
     ITenantAuthorizationProjector projector,
     ILogger<SeedDefaultMenu> logger) : ISeedDefaultMenu
@@ -264,7 +267,25 @@ public class SeedDefaultMenu(
         if (created > 0)
         {
             await unitOfWork.SaveChangesAsync();
-            // Newly seeded operations need their tenant copies before any role can be granted them.
+
+            // ⚠️ Tenant copies are made HERE, not by the projector. Core.Operation went global on
+            // 2026-08-13, so the projector only updates copies that already exist — a seeded
+            // operation with no copy is a screen nobody can be granted.
+            var tenantId = currentTenant.GetCurrentTenantId();
+            if (tenantId is not null && tenantId != Guid.Empty)
+            {
+                var copied = await tenantOperationRepository.GetAll()
+                    .Select(o => o.OperationId).ToListAsync();
+                foreach (var op in await operationRepository.GetAll()
+                             .Where(o => !copied.Contains(o.Id)).ToListAsync())
+                {
+                    await tenantOperationRepository.AddAsync(TenantOperation.Create(
+                        tenantId.Value, op.SubSystemId, op.Id, op.ModuleId,
+                        op.Name, op.Link, op.Icon, op.DisplayOrder, op.IsActive));
+                }
+                await unitOfWork.SaveChangesAsync();
+            }
+
             await projector.SyncAsync();
             logger.LogInformation("Seeded {Count} navigation rows (subsystem/modules/operations)", created);
         }

@@ -102,16 +102,17 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var existing = await tenantRoles.GetAll().ToListAsync(ct);
             var written = 0;
 
-            foreach (var template in templates)
+            // ⚠️ UPDATES ONLY — it no longer instantiates missing templates.
+            //
+            // Core.Role lost its TenantId on 2026-08-13, so `templates` is now every tenant's roles.
+            // Creating an instance for each would hand this tenant every other tenant's roles, which
+            // is both wrong and visible (the Roles screen lists what has an instance). A role is
+            // instantiated where it is CREATED instead — see SaveRole.
+            foreach (var row in existing)
             {
-                var row = existing.FirstOrDefault(r => r.SourceTemplateId == template.Id);
-                if (row is null)
-                {
-                    await tenantRoles.AddAsync(TenantRole.Create(
-                        tenantId, template.Code ?? template.Name, template.Name, template.Id));
-                    written++;
-                }
-                else if (row.SyncFromTemplate(template.Name, template.Code, null))
+                var template = templates.FirstOrDefault(t => t.Id == row.SourceTemplateId);
+                if (template is null) continue;
+                if (row.SyncFromTemplate(template.Name, template.Code, null))
                 {
                     tenantRoles.UpdateAsync(row);
                     written++;
@@ -136,41 +137,32 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var existing = await tenantOperations.GetAll().ToListAsync(ct);
             var written = 0;
 
-            foreach (var template in templates)
+            // ⚠️ UPDATES ONLY, for the same reason as the roles above: Core.Operation lost its
+            // TenantId, so `templates` spans every tenant. A copy is made where the operation is
+            // CREATED — see CreateOperationHandler and SeedDefaultMenu.
+            foreach (var row in existing)
             {
-                // The template now owns DisplayOrder, IsActive AND SubSystemId, so everything copies
-                // straight across — no lookup through Core.Module, which is no longer what the menu
-                // hierarchy is built from. ModuleId carries the PARENT link, null on a group row.
-                var subSystemId = template.SubSystemId;
+                var template = templates.FirstOrDefault(t => t.Id == row.OperationId);
+                if (template is null) continue;
 
-                var row = existing.FirstOrDefault(o => o.OperationId == template.Id);
-                if (row is null)
+                // The template owns DisplayOrder, IsActive and SubSystemId, so everything copies
+                // straight across. ModuleId carries the PARENT link, null on a group row.
+                var changed = row.SyncFromTemplate(template.SubSystemId, template.ModuleId,
+                    template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
+                    template.DisplayOrder, template.Filter);
+
+                // IsActive is a template-level kill switch, and the readers filter on the TENANT
+                // copy — so deactivating a screen has no effect at all unless it propagates here.
+                if (row.IsActive != template.IsActive)
                 {
-                    await tenantOperations.AddAsync(TenantOperation.Create(
-                        tenantId, subSystemId, template.Id, template.ModuleId,
-                        template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
-                        template.DisplayOrder, template.IsActive));
-                    written++;
+                    row.SetActive(template.IsActive);
+                    changed = true;
                 }
-                else
+
+                if (changed)
                 {
-                    var changed = row.SyncFromTemplate(subSystemId, template.ModuleId,
-                        template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
-                        template.DisplayOrder, template.Filter);
-
-                    // IsActive is a template-level kill switch, and the readers filter on the TENANT
-                    // copy — so deactivating a screen has no effect at all unless it propagates here.
-                    if (row.IsActive != template.IsActive)
-                    {
-                        row.SetActive(template.IsActive);
-                        changed = true;
-                    }
-
-                    if (changed)
-                    {
-                        tenantOperations.UpdateAsync(row);
-                        written++;
-                    }
+                    tenantOperations.UpdateAsync(row);
+                    written++;
                 }
             }
 

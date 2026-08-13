@@ -47,6 +47,8 @@ namespace CyberErp.Hrms.App.Features.Core.Users
     // ---- Handlers -----------------------------------------------------------
     public class SaveUser(
         IRepository<User> repository,
+        IRepository<TenantUser> tenantUsers,
+        ICurrentTenantService currentTenant,
         IAuthentication authentication,
         IValidator<SaveUserDto> validator,
         ILogger<SaveUser> logger) : ISaveUser
@@ -56,10 +58,13 @@ namespace CyberErp.Hrms.App.Features.Core.Users
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            // Username / email must be unique within the tenant.
+            // Username / email are unique GLOBALLY now, not per tenant — Core.User lost its TenantId
+            // on 2026-08-13 and the database backs both with unique indexes (the e-mail one filtered,
+            // since 489 accounts have no address). The check matches the constraint.
             if (await repository.GetAll().AnyAsync(u => u.UserName == dto.UserName && u.Id != dto.Id))
                 throw new DuplicateException(nameof(User), nameof(dto.UserName), dto.UserName);
-            if (await repository.GetAll().AnyAsync(u => u.Email == dto.Email && u.Id != dto.Id))
+            if (!string.IsNullOrWhiteSpace(dto.Email)
+                && await repository.GetAll().AnyAsync(u => u.Email == dto.Email && u.Id != dto.Id))
                 throw new DuplicateException(nameof(User), nameof(dto.Email), dto.Email);
 
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
@@ -85,6 +90,17 @@ namespace CyberErp.Hrms.App.Features.Core.Users
             created.LinkEmployee(dto.EmployeeId);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
+
+            // ⚠️ The membership makes the account BELONG here. Without it the new user is a global
+            // identity attached to no tenant: absent from this screen's list (which scopes through
+            // TenantUser) and unable to reach anything. Previously the TenantId column did this job.
+            var tenantId = currentTenant.GetCurrentTenantId();
+            if (tenantId is not null && tenantId != Guid.Empty)
+            {
+                await tenantUsers.AddAsync(TenantUser.Create(tenantId.Value, created.Id));
+                await tenantUsers.SaveChangesAsync();
+            }
+
             logger.LogInformation("Created User {Id} ({UserName})", created.Id, created.UserName);
             return created.Id;
         }
