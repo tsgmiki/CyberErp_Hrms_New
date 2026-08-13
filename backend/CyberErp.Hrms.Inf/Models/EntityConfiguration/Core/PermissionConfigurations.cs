@@ -63,19 +63,32 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasKey(o => o.Id);
 
-            builder.Property(o => o.Name).IsRequired().HasMaxLength(200);
-            builder.Property(o => o.Link).IsRequired().HasMaxLength(400);
-            builder.Property(o => o.Filter).IsRequired().HasMaxLength(400);
-            builder.Property(o => o.Icon).IsRequired().HasMaxLength(200);
-            builder.Property(o => o.SortOrder).HasDefaultValue(0);
+            // Lengths narrowed to the SRMS caps; the longest value in any of these is 25 characters.
+            builder.Property(o => o.Name).IsRequired().HasMaxLength(100);
+            builder.Property(o => o.Link).IsRequired().HasMaxLength(200);
+            builder.Property(o => o.Filter).IsRequired().HasMaxLength(200);
+            builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
+            builder.Property(o => o.DisplayOrder).HasDefaultValue(0);   // was SortOrder
+            builder.Property(o => o.IsActive).IsRequired().HasDefaultValue(true);
 
+            // ⚠️ ModuleId keeps pointing at Core.Module. In SRMS the same-named column is a self-FK
+            // to Operation.Id and there is no Module table at all — see the note on the entity.
             builder.HasOne(o => o.Module)
                 .WithMany(m => m.Operations)
                 .HasForeignKey(o => o.ModuleId)
                 .OnDelete(DeleteBehavior.Cascade);
             builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
 
+            // Denormalised subsystem. Restrict, not Cascade: deleting a subsystem must not silently
+            // take the menu with it, and Module already cascades.
+            builder.HasOne<Subsystem>()
+                .WithMany()
+                .HasForeignKey(o => o.SubSystemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             builder.HasIndex(o => o.ModuleId);
+            builder.HasIndex(o => o.SubSystemId);
+            builder.HasIndex(o => new { o.SubSystemId, o.ModuleId, o.DisplayOrder });
         }
     }
 

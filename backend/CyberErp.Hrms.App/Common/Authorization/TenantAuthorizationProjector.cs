@@ -135,8 +135,8 @@ namespace CyberErp.Hrms.App.Common.Authorization
 
             foreach (var template in templates)
             {
-                // CERP's Operation names its ordering column SortOrder and has no IsActive, so
-                // DisplayOrder maps from SortOrder and a projected operation is always active.
+                // Since the SRMS alignment the template carries DisplayOrder and IsActive itself,
+                // so both copy straight across instead of being defaulted.
                 var subSystemId = moduleSubsystems.TryGetValue(template.ModuleId, out var ssId)
                     ? ssId : Guid.Empty;
 
@@ -146,14 +146,28 @@ namespace CyberErp.Hrms.App.Common.Authorization
                     await tenantOperations.AddAsync(TenantOperation.Create(
                         tenantId, subSystemId, template.Id, template.ModuleId,
                         template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
-                        template.SortOrder, isActive: true));
+                        template.DisplayOrder, template.IsActive));
                     written++;
                 }
-                else if (row.SyncFromTemplate(subSystemId, template.ModuleId, template.Name ?? string.Empty,
-                    template.Link ?? string.Empty, template.Icon, template.SortOrder, template.Filter))
+                else
                 {
-                    tenantOperations.UpdateAsync(row);
-                    written++;
+                    var changed = row.SyncFromTemplate(subSystemId, template.ModuleId,
+                        template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
+                        template.DisplayOrder, template.Filter);
+
+                    // IsActive is a template-level kill switch, and the readers filter on the TENANT
+                    // copy — so deactivating a screen has no effect at all unless it propagates here.
+                    if (row.IsActive != template.IsActive)
+                    {
+                        row.SetActive(template.IsActive);
+                        changed = true;
+                    }
+
+                    if (changed)
+                    {
+                        tenantOperations.UpdateAsync(row);
+                        written++;
+                    }
                 }
             }
 

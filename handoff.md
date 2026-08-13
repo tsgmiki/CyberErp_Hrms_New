@@ -123,6 +123,41 @@
 
 ## 1. Most recent changes (latest first)
 
+00FB. **Core.User / Core.Role / Core.Operation aligned with the cybererp_srms schema
+    (2026-08-13).** Detail in logic.md §12.5. Migration `AlignCoreTablesWithSrms`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-srms-table-align-*.bak`.
+    - `User.Password` → **`PasswordHash`** + 9 columns; `Role.Code` now `nvarchar(80) NOT NULL` +
+      `Description`/`IsPlatformRole`/`IsActive`; `Operation.SortOrder` → **`DisplayOrder`** +
+      `SubSystemId` (real FK to Core.Subsystem, denormalised from the module) + `IsActive`.
+      Column sets now match SRMS exactly — 0 missing, 0 type/length mismatches.
+    - ⚠️ **`TenantId` was KEPT** on all three (SRMS has no such column). `Repository<T>` filters every
+      query on it; dropping it makes the User/Role screens show all tenants at once. That refactor —
+      scoping them via `TenantUser`/`TenantRole` — is a separate change.
+    - ⚠️ **Three forced departures from SRMS:** the `NormalizedEmail` unique index is **filtered**
+      (`<> ''`) because **489 of 506 accounts have no e-mail**; `Operation.ModuleId` still points at
+      `Core.Module` because **SRMS has no Module table** (its same-named column is a renamed
+      `ParentOperationId` self-FK, and `FK_Operation_Module_ModuleId` actually sits on `SubSystemId`);
+      and `IX_Role_Code` is **not** unique, since two tenants may each hold an "Administrator" and the
+      index cannot be scoped to `(TenantId, Code)` — `TenantId` is `nvarchar(max)`. Role code
+      uniqueness is enforced per tenant in `SaveRole`.
+    - ⚠️ **The scaffolded migration was NOT runnable as generated** — EF orders by dependency, not by
+      data. Three backfills had to be interleaved by hand: normalised columns before their unique
+      index (all 506 rows were `''`), `SubSystemId` before its FK (empty Guid matches no subsystem),
+      and `Role.Code` before `NOT NULL` (the `''` default would have blanked 5 real roles).
+    - ⚠️ **The Home portal shares this database** and reads the password column directly. Its
+      `Navigation.cs`, portal feed and `SeedHomeMenu` were updated in the same pass — **deploy both
+      repos together**. Shared tables are `ExcludeFromMigrations` there, so Home won't fight it.
+    - The **wire contract still says `sortOrder`** (mapped to `DisplayOrder`); `Module.SortOrder` is
+      genuine and unchanged, so renaming only the operation half would split two adjacent screens.
+      No frontend change was needed in either SPA.
+    - `Core.RolePermission` and `Core.Module` **do not exist in SRMS**; RolePermission is already
+      superseded at runtime by `TenantRolePermission` (00FA). Removing either is its own decision.
+    - The projector now propagates `Operation.IsActive` to the tenant copy — the readers filter on the
+      TENANT row, so a template-level kill switch would otherwise do nothing.
+    - Verified: readers still MATCH (gate 15369, menu 17409), model still MATCH (70852), HRMS login
+      200 / 34 links, Home login 200 + portal feed correct, 0 errors in either log, throwaway
+      operation round-tripped.
+
 00FA. **SRMS phase 2, STEP 2 — THE FLIP: the runtime now reads the tenant-scoped tables
     (2026-08-13).** Detail in logic.md §12.4.
     - `EndpointPermissionService` and `GetModuleWithOperationsRepository` resolve through

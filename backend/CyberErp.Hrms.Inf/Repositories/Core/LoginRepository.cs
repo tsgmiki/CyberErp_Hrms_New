@@ -48,7 +48,7 @@ public class LoginRepository(
                     .Where(mu => mu.UserName == dto.UserName)
                     .ToListAsync();
 
-                var user = userList.FirstOrDefault(a => _authentication.VerifyPassword(dto.Password, a.Password));
+                var user = userList.FirstOrDefault(a => _authentication.VerifyPassword(dto.Password, a.PasswordHash));
 
                 if (user is null)
                 {

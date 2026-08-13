@@ -135,7 +135,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             var data = await query
                 .OrderBy(rp => rp.Role.Name)
                 .ThenBy(rp => rp.Operation.Module.SortOrder)
-                .ThenBy(rp => rp.Operation.SortOrder)
+                .ThenBy(rp => rp.Operation.DisplayOrder)
                 .Skip(skip).Take(take)
                 .Select(rp => new RolePermissionDto
                 {

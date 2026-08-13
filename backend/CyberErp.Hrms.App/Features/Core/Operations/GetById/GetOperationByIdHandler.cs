@@ -30,7 +30,7 @@ public class GetOperationByIdHandler(
                 Link = x.Link,
                 Filter = x.Filter,
                 Icon = x.Icon,
-                SortOrder = x.SortOrder
+                SortOrder = x.DisplayOrder
             })
             .FirstOrDefaultAsync(ct);
 

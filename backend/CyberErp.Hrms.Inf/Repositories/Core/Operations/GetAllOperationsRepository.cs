@@ -39,7 +39,7 @@ public class GetAllOperationsRepository(
         query = query
             .OrderBy(x => x.Module.Subsystem.SortOrder)
             .ThenBy(x => x.Module.SortOrder)
-            .ThenBy(x => x.SortOrder)
+            .ThenBy(x => x.DisplayOrder)
             .ThenBy(x => x.Name);
 
         var skip = int.Parse(request.Skip ?? "0");
@@ -59,7 +59,7 @@ public class GetAllOperationsRepository(
                 Link = x.Link,
                 Filter = x.Filter,
                 Icon = x.Icon,
-                SortOrder = x.SortOrder
+                SortOrder = x.DisplayOrder
             })
             .ToListAsync(ct);
 
