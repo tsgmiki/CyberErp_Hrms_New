@@ -60,6 +60,16 @@ export const simulateSalaryRevision = (body: {
 export const saveSalaryRevision = (m: SalaryRevisionModel) => action(m.id ? "PUT" : "POST", "SalaryRevision", m);
 export const setSalaryRevisionLine = (lineId: string, proposedSalary: number) =>
   action("PUT", `SalaryRevision/lines/${lineId}`, { proposedSalary });
+/**
+ * The entity type a salary revision's audit rows are filed under. Must match
+ * `SalaryRevisionHistory.EntityType` on the server — a mismatch yields a silently empty trail.
+ */
+export const SALARY_REVISION_HISTORY_TYPE = "SalaryRevision";
+
+/** Draft → PendingApproval. The author's only forward move; it commits nothing. */
+export const sendSalaryRevisionForApproval = (id: string) =>
+  action("POST", `SalaryRevision/${id}/send-for-approval`);
+/** Approved → Submitted. Only available AFTER the approver has approved. */
 export const submitSalaryRevision = (id: string) => action("POST", `SalaryRevision/${id}/submit`);
 export const approveSalaryRevision = (id: string) => action("POST", `SalaryRevision/${id}/approve`);
 export const applySalaryRevision = (id: string) => action("POST", `SalaryRevision/${id}/apply`);

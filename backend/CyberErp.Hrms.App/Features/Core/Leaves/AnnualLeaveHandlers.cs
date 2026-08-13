@@ -540,6 +540,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<AnnualLeaveHeader> repository,
         IRepository<LeaveBalance> ledgers,
         ILeaveBalanceService balanceService,
+        ILeaveNotifier notifier,
         ILogger<AnnualLeaveWorkflowHandler> logger) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) =>
@@ -557,6 +558,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             await balanceService.DeductAsync(ledger.EmployeeId, ledger.LeaveTypeId, ledger.FiscalYearId,
                 header.TotalLeaveDays, header.Id, "Annual leave approved");
             logger.LogInformation("Annual leave {Id} approved via workflow; balance debited {Days}d", header.Id, header.TotalLeaveDays);
+
+            // AFTER the balance is debited, and never throwing — see OtherLeaveWorkflowHandler.
+            await notifier.AnnualLeaveApprovedAsync(header.Id);
         }
 
         public async Task OnRejectedAsync(string entityType, Guid entityId)

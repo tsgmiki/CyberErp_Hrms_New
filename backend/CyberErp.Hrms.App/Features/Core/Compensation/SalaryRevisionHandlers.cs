@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -11,6 +12,17 @@ using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationExcept
 
 namespace CyberErp.Hrms.App.Features.Core.Compensation
 {
+    /// <summary>
+    /// The audit-trail identity of a salary revision. Named once because the same string has to match
+    /// in four places — the handlers that WRITE history, the workflow handler that writes the
+    /// approver's decision, the access switch in <c>GetPerformanceHistory</c> that decides who may
+    /// READ it, and the query the UI sends. A typo in any one of them silently yields an empty trail.
+    /// </summary>
+    public static class SalaryRevisionHistory
+    {
+        public const string EntityType = "SalaryRevision";
+    }
+
     // ---- DTOs ---------------------------------------------------------------
     public class SalaryRevisionLineDto
     {
@@ -206,6 +218,16 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
     public interface IGetSalaryRevisionById { Task<SalaryRevisionDto> GetAsync(Guid id); }
     public interface IGetAllSalaryRevisions { Task<PaginatedResponse<SalaryRevisionDto>> GetAsync(GetAllRequest request); }
     public interface ISetSalaryRevisionLine { Task SetAsync(Guid lineId, decimal proposedSalary); }
+    /// <summary>
+    /// The revision as its ASSIGNED APPROVER may read it, so nobody has to decide on a pay rise they
+    /// cannot see. Deliberately separate from <see cref="IGetSalaryRevisionById"/>: that one sits
+    /// behind the <c>salaryRevision</c> menu permission, which an approver (a unit manager routed the
+    /// request by the workflow) has no reason to hold.
+    /// </summary>
+    public interface IGetSalaryRevisionForApproval { Task<SalaryRevisionDto> GetAsync(Guid id); }
+    /// <summary>Draft → PendingApproval. The author's only forward move; it commits nothing.</summary>
+    public interface ISendSalaryRevisionForApproval { Task SendAsync(Guid id); }
+    /// <summary>Approved → Submitted. Only reachable AFTER the approver has approved.</summary>
     public interface ISubmitSalaryRevision { Task SubmitAsync(Guid id); }
     public interface IApproveSalaryRevision { Task ApproveAsync(Guid id); }
     public interface IApplySalaryRevision { Task ApplyAsync(Guid id); }
@@ -550,6 +572,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IPerformanceAwardResolverFactory awardFactory,
         ISalaryIncrementEligibilityFactory eligibilityFactory,
         IPerformanceVisibilityService visibility,
+        IPerformanceHistoryWriter history,
         IValidator<SaveSalaryRevisionDto> validator,
         ILogger<SaveSalaryRevision> logger) : ISaveSalaryRevision
     {
@@ -591,6 +614,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
                 created.ReplaceBands(SalaryRevisionShared.ToBandTuples(dto.Bands));
                 await repository.AddAsync(created);
                 planId = created.Id;
+                // "Who created it" is the first fact the trail has to carry — the author is otherwise
+                // only recoverable from the row's CreatedBy, which the history panel does not read.
+                await history.WriteAsync(SalaryRevisionHistory.EntityType, created.Id, "Created",
+                    $"Draft created — {created.Name} ({type}, effective {dto.EffectiveDate:yyyy-MM-dd}).");
             }
 
             var eligibility = await eligibilityFactory.BuildAsync(
@@ -679,6 +706,58 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         }
     }
 
+    /// <summary>
+    /// Read access for the person being asked to APPROVE the revision.
+    ///
+    /// <para>An approver is routed the request by the workflow (typically a unit manager), not by
+    /// holding the HR salary-revision screen permission — so the permission-gated
+    /// <see cref="GetSalaryRevisionById"/> would answer them 403 and they would be deciding blind.
+    /// This endpoint is therefore NOT menu-gated; it authorises here instead, and narrowly: the
+    /// caller must either be HR, or be the person the CURRENT step of this revision's running
+    /// workflow actually routes to. Anyone else is refused, so opening it to the approver does not
+    /// open the payroll of 345 people to the tenant.</para>
+    ///
+    /// <para>The approver's window is the approval itself: once the instance completes there is no
+    /// current step to authorise against and this falls back to permission-only, which is correct —
+    /// a past approver has no standing claim on the figures.</para>
+    ///
+    /// <para>⚠️ The HR half is the <c>salaryRevision</c> MENU PERMISSION, deliberately not
+    /// <c>IPerformanceVisibilityService.IsAdmin</c>. IsAdmin short-circuits on
+    /// <c>IsHeadOffice()</c>, and in a single-branch tenant — where every employee sits in a branch
+    /// flagged IsHeadOffice — that is true for literally every employee-linked user, so gating on it
+    /// would hand the whole payroll to everyone. The permission service has no such bypass
+    /// (it checks role CanView), which is exactly the protection the controller-level attribute
+    /// gives every other action here; this endpoint drops that attribute only to ADD the approver,
+    /// never to remove the permission.</para>
+    /// </summary>
+    public class GetSalaryRevisionForApproval(
+        IGetSalaryRevisionById inner,
+        IEndpointPermissionService permissions,
+        IWorkflowService workflowService,
+        IWorkflowApproverAuth approverAuth) : IGetSalaryRevisionForApproval
+    {
+        private static readonly string[] SalaryRevisionScreen = ["salaryRevision"];
+
+        public async Task<SalaryRevisionDto> GetAsync(Guid id)
+        {
+            if (!await permissions.HasAnyAsync(SalaryRevisionScreen) && !await IsCurrentApproverAsync(id))
+                throw new ValidationException("access",
+                    "You do not have access to this salary revision. Only HR and the approver it is " +
+                    "currently routed to can review it.");
+
+            return await inner.GetAsync(id);
+        }
+
+        private async Task<bool> IsCurrentApproverAsync(Guid id)
+        {
+            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.SalaryRevision, id);
+            if (instance is null) return false;
+            var (canDecide, _) = await approverAuth.EvaluateAsync(
+                instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId);
+            return canDecide;
+        }
+    }
+
     public class GetAllSalaryRevisions(IRepository<SalaryRevision> repository) : IGetAllSalaryRevisions
     {
         public async Task<PaginatedResponse<SalaryRevisionDto>> GetAsync(GetAllRequest request)
@@ -740,23 +819,42 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         }
     }
 
-    public class SubmitSalaryRevision(
+    /// <summary>
+    /// Draft → PendingApproval. This is what the revision's AUTHOR may do, and all they may do: hand
+    /// the plan to the approval chain. It is not a submission and it commits nothing — submission is a
+    /// separate act that only becomes available once an approver has approved (see
+    /// <see cref="SubmitSalaryRevision"/>).
+    /// </summary>
+    public class SendSalaryRevisionForApproval(
         IRepository<SalaryRevision> repository,
         IRepository<SalaryRevisionLine> lineRepository,
+        IRepository<WorkflowDefinition> definitions,
         IPerformanceVisibilityService visibility,
-        IWorkflowService workflowService) : ISubmitSalaryRevision
+        IPerformanceHistoryWriter history,
+        IWorkflowService workflowService) : ISendSalaryRevisionForApproval
     {
-        public async Task SubmitAsync(Guid id)
+        public async Task SendAsync(Guid id)
         {
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can submit salary revisions.");
+            if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can send salary revisions for approval.");
 
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(SalaryRevision), id.ToString());
             if (!await lineRepository.GetAll().AnyAsync(l => l.SalaryRevisionId == id))
                 throw new ValidationException(nameof(id), "The revision has no employees to revise.");
 
-            entity.Submit();
+            // FAIL CLOSED with no approval chain. StartIfDefinedAsync is a no-op when no definition
+            // exists, which would leave the revision sitting in PendingApproval with nobody able to
+            // approve it but the author themselves — exactly the self-approval hole this lifecycle
+            // exists to prevent. A pay rise must never be approvable by the person proposing it.
+            if (!await definitions.GetAll().AnyAsync(d => d.EntityType == WorkflowEntityTypes.SalaryRevision && d.IsActive))
+                throw new ValidationException("workflow",
+                    "No active approval workflow is configured for salary revisions. Configure one under " +
+                    "Workflow Definitions before sending a revision for approval.");
+
+            entity.SendForApproval();
+            await history.WriteAsync(SalaryRevisionHistory.EntityType, entity.Id, "SentForApproval",
+                $"Sent for approval by HR — {entity.Name}.");
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
 
@@ -765,9 +863,38 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         }
     }
 
+    /// <summary>
+    /// Approved → Submitted. Committing an approved revision; the domain refuses this from any other
+    /// state, so a revision can never be submitted before its approver has approved it.
+    /// </summary>
+    public class SubmitSalaryRevision(
+        IRepository<SalaryRevision> repository,
+        IPerformanceVisibilityService visibility,
+        IPerformanceHistoryWriter history) : ISubmitSalaryRevision
+    {
+        public async Task SubmitAsync(Guid id)
+        {
+            var scope = await visibility.GetScopeAsync();
+            if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can submit salary revisions.");
+
+            var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
+                ?? throw new NotFoundException(nameof(SalaryRevision), id.ToString());
+            if (entity.Status != SalaryRevisionStatus.Approved)
+                throw new ValidationException(nameof(id),
+                    "Only an approved revision can be submitted. It must be approved by the approver first.");
+
+            entity.Submit();
+            await history.WriteAsync(SalaryRevisionHistory.EntityType, entity.Id, "Submitted",
+                $"Submitted by HR after approval — {entity.Name}.");
+            repository.UpdateAsync(entity);
+            await repository.SaveChangesAsync();
+        }
+    }
+
     public class ApproveSalaryRevision(
         IRepository<SalaryRevision> repository,
         IPerformanceVisibilityService visibility,
+        IPerformanceHistoryWriter history,
         IWorkflowGate workflowGate) : IApproveSalaryRevision
     {
         public async Task ApproveAsync(Guid id)
@@ -776,10 +903,14 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             if (!scope.IsAdmin) throw new ValidationException("scope", "Only HR can approve salary revisions.");
 
             // Direct approval only when no workflow governs it (otherwise approve via the workflow).
+            // Sending for approval now REQUIRES an active definition, so in practice every revision is
+            // governed and this path is reachable only for records routed before that rule existed.
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.SalaryRevision, id);
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(SalaryRevision), id.ToString());
             entity.Approve();
+            await history.WriteAsync(SalaryRevisionHistory.EntityType, entity.Id, "Approved",
+                $"Approved — {entity.Name}.");
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
         }
@@ -790,6 +921,7 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
         IRepository<SalaryRevisionLine> lineRepository,
         IRepository<Employee> employeeRepository,
         IPerformanceVisibilityService visibility,
+        IPerformanceHistoryWriter history,
         ILogger<ApplySalaryRevision> logger) : IApplySalaryRevision
     {
         public async Task ApplyAsync(Guid id)
@@ -799,8 +931,9 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
 
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(SalaryRevision), id.ToString());
-            if (entity.Status != SalaryRevisionStatus.Approved)
-                throw new ValidationException(nameof(id), "Only an approved revision can be applied.");
+            if (entity.Status != SalaryRevisionStatus.Submitted)
+                throw new ValidationException(nameof(id),
+                    "Only a submitted revision can be applied. Approve it, then submit it, then apply.");
 
             var lines = await lineRepository.GetAll().AsNoTracking()
                 .Where(l => l.SalaryRevisionId == id)
@@ -833,6 +966,10 @@ namespace CyberErp.Hrms.App.Features.Core.Compensation
             }
 
             entity.MarkApplied(DateTime.UtcNow.Date);
+            await history.WriteAsync(SalaryRevisionHistory.EntityType, entity.Id, "Applied",
+                $"Applied to {applied} employee(s)"
+                + (promoted > 0 ? $", {promoted} promoted a grade" : "")
+                + (skipped > 0 ? $", {skipped} skipped as gone or terminated" : "") + ".");
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation(

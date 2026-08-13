@@ -34,14 +34,31 @@ public enum SalaryAdjustmentBasis
     Step = 2
 }
 
-/// <summary>Lifecycle of a salary revision plan.</summary>
+/// <summary>
+/// Lifecycle of a salary revision plan:
+/// <c>Draft → PendingApproval → Approved → Submitted → Applied</c> (or <c>Cancelled</c>).
+///
+/// <para><b>Approval precedes submission, deliberately.</b> The person who builds the revision may
+/// only SEND IT FOR APPROVAL; they can never submit their own pay decision. Submission is the act of
+/// committing an already-approved revision, and <see cref="Applied"/> then writes the new salaries.
+/// Keeping <see cref="Submitted"/> distinct from <see cref="Approved"/> is what makes "who approved"
+/// and "who submitted" two separate, separately-attributed facts in the history.</para>
+/// </summary>
 public enum SalaryRevisionStatus
 {
     Draft = 0,
+    /// <summary>Sent to the approval chain by its author; waiting on the approver.</summary>
     PendingApproval = 1,
+    /// <summary>The approver has approved it. Not yet committed — see <see cref="Submitted"/>.</summary>
     Approved = 2,
     Applied = 3,
-    Cancelled = 4
+    Cancelled = 4,
+    /// <summary>
+    /// Approved AND committed by HR, ready to apply. Appended (not inserted in lifecycle order) so the
+    /// existing numeric values keep their meaning; the column persists the NAME, so order is irrelevant
+    /// to storage and only the transition guards below define the sequence.
+    /// </summary>
+    Submitted = 5
 }
 
 /// <summary>
@@ -137,11 +154,14 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
-    /// <summary>Draft → PendingApproval when routed to the approval chain.</summary>
-    public void Submit()
+    /// <summary>
+    /// Draft → PendingApproval: the author hands the revision to the approval chain. This is the ONLY
+    /// forward move its author may make — it is not a submission, and it commits nothing.
+    /// </summary>
+    public void SendForApproval()
     {
         if (Status != SalaryRevisionStatus.Draft)
-            throw new InvalidOperationException("Only a draft revision can be submitted.");
+            throw new InvalidOperationException("Only a draft revision can be sent for approval.");
         Status = SalaryRevisionStatus.PendingApproval;
         base.Update();
     }
@@ -151,6 +171,19 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
         if (Status != SalaryRevisionStatus.PendingApproval)
             throw new InvalidOperationException("Only a pending revision can be approved.");
         Status = SalaryRevisionStatus.Approved;
+        base.Update();
+    }
+
+    /// <summary>
+    /// Approved → Submitted: HR commits an approved revision, which is what makes it applicable.
+    /// Submission cannot precede approval — that ordering is the point of the two states.
+    /// </summary>
+    public void Submit()
+    {
+        if (Status != SalaryRevisionStatus.Approved)
+            throw new InvalidOperationException(
+                "Only an approved revision can be submitted — it must be approved first.");
+        Status = SalaryRevisionStatus.Submitted;
         base.Update();
     }
 
@@ -164,8 +197,10 @@ public class SalaryRevision : BaseEntity, IAggregateRoot, IAuditable
 
     public void MarkApplied(DateTime appliedOn)
     {
-        if (Status != SalaryRevisionStatus.Approved)
-            throw new InvalidOperationException("Only an approved revision can be applied.");
+        // Applying pays people, so it follows SUBMISSION, not merely approval — an approved-but-not-yet
+        // submitted revision is a decision nobody has committed to yet.
+        if (Status != SalaryRevisionStatus.Submitted)
+            throw new InvalidOperationException("Only a submitted revision can be applied.");
         Status = SalaryRevisionStatus.Applied;
         AppliedOn = appliedOn;
         base.Update();

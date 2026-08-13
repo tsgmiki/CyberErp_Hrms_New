@@ -4,11 +4,13 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save } from "lucide-react";
 import type { OtherLeaveModel, OtherLeaveDetailModel } from "@/models";
+import { AttachmentPicker, AttachmentList } from "./attachments";
 import {
   getOtherLeave,
   getOtherLeaveBalances,
   getLumpSumEnd,
   submitOtherLeave,
+  fileToBase64,
 } from "@/services/admin/otherLeave";
 import getAllWorkWeekConfiguration from "@/services/admin/workWeekConfiguration/getAll";
 import getAllHoliday from "@/services/admin/holiday/getAll";
@@ -54,6 +56,8 @@ function OtherLeaveForm({
   const [details, setDetails] = useState<EditableDetail[]>([]);
   const [formState, setFormState] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const { data: record, isLoading } = useQuery({
     queryKey: ["otherLeave", id],
@@ -127,6 +131,11 @@ function OtherLeaveForm({
   const submitHandler = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    // Read the picked files to base64 BEFORE the request, so a read failure surfaces as a form
+    // error rather than a half-submitted request with its evidence missing.
+    const attachments = await Promise.all(
+      files.map(async (f) => ({ fileName: f.name, contentType: f.type, contentBase64: await fileToBase64(f) })),
+    );
     const res = await submitOtherLeave({
       employeeId,
       otherLeaveSettingId: meta.otherLeaveSettingId,
@@ -134,6 +143,7 @@ function OtherLeaveForm({
       details: details
         .filter((d) => d.startDate && d.endDate)
         .map((d) => ({ startDate: d.startDate, endDate: d.endDate })),
+      attachments,
     });
     setFormState(res.ok
       ? { status: "success", message: t("Leave request submitted for approval") }
@@ -181,6 +191,12 @@ function OtherLeaveForm({
             </p>
           ))}
         </div>
+        {/* The evidence sits with the request, on every screen that reads it — the requester's own
+            view, and (via the employee profile's Other Leave tab) the HR admin's. */}
+        <div className="rounded-lg border border-border bg-card p-4">
+          <h4 className="mb-2 text-sm font-semibold">{t("Supporting Document")}</h4>
+          <AttachmentList attachments={record.attachments} />
+        </div>
       </div>
     );
   }
@@ -219,6 +235,9 @@ function OtherLeaveForm({
           <div className="sm:col-span-2">
             <label className={LABEL}>{t("Remark")}</label>
             <input className={INPUT} value={meta.remark ?? ""} onChange={(e) => setMeta((p) => ({ ...p, remark: e.target.value }))} />
+          </div>
+          <div className="sm:col-span-2">
+            <AttachmentPicker files={files} setFiles={setFiles} error={fileError} setError={setFileError} />
           </div>
         </div>
       </div>

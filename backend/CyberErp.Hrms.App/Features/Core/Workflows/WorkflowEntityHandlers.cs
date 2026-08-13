@@ -351,9 +351,15 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         }
     }
 
-    /// <summary>HC228 — approval confirms a salary revision (ready to apply); rejection cancels it.</summary>
+    /// <summary>
+    /// HC228 — the APPROVER's decision on a salary revision. Approval moves it to Approved, which is
+    /// what makes submission possible; it does NOT submit or apply anything. Rejection cancels it.
+    /// This is the only path that reaches Approved in practice, since sending for approval now
+    /// requires an active definition — so the history row written here is the record of who approved.
+    /// </summary>
     public class SalaryRevisionWorkflowHandler(
-        IRepository<SalaryRevision> repository) : IWorkflowEntityHandler
+        IRepository<SalaryRevision> repository,
+        Performance.IPerformanceHistoryWriter history) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) =>
             string.Equals(entityType, WorkflowEntityTypes.SalaryRevision, StringComparison.OrdinalIgnoreCase);
@@ -366,6 +372,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(SalaryRevision), id.ToString());
             if (approve) entity.Approve(); else entity.Reject();
+            await history.WriteAsync(Compensation.SalaryRevisionHistory.EntityType, entity.Id,
+                approve ? "Approved" : "Rejected",
+                approve
+                    ? $"Approved by the approver — {entity.Name}. Ready to submit."
+                    : $"Rejected by the approver — {entity.Name}. The revision is cancelled.");
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
         }

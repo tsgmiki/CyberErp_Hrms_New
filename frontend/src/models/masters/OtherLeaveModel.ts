@@ -22,6 +22,16 @@ export interface OtherLeaveSettingModel extends AbstractModel {
   description?: string;
 }
 
+/** Supporting document attached to a request (metadata only; bytes are fetched on demand). */
+export interface OtherLeaveAttachmentModel {
+  id?: string;
+  fileName?: string;
+  contentType?: string;
+  fileSize?: number;
+  uploadedAt?: string;
+  uploadedBy?: string;
+}
+
 export interface OtherLeaveDetailModel {
   id?: string;
   startDate?: string;
@@ -43,6 +53,7 @@ export interface OtherLeaveModel extends AbstractModel {
   totalLeaveDays?: number;
   status?: string;
   details?: OtherLeaveDetailModel[];
+  attachments?: OtherLeaveAttachmentModel[];
 }
 
 /** One selectable entitlement on the request form (active fiscal year, gender-filtered). */

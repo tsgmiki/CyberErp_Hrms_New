@@ -98,9 +98,11 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 "DevelopmentPlan" => await FirstOwnerAsync(developmentPlans.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
                 "ImprovementPlan" => await FirstOwnerAsync(improvementPlans.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
                 "Recognition" => await FirstOwnerAsync(recognitions.GetAll().Where(x => x.Id == entityId).Select(x => (Guid?)x.EmployeeId)),
-                // "Calibration" is deliberately absent: its history rows carry a CalibrationSession id,
-                // and a session spans a COHORT rather than one employee — there is no individual owner
-                // to authorise against, so it stays HR-only via the fail-closed default below.
+                // "Calibration" and "SalaryRevision" are deliberately absent, for the same reason: their
+                // history rows describe a record that spans a COHORT (a calibration session, a revision
+                // covering many employees), so there is no individual owner to authorise against. They
+                // stay HR-only through the fail-closed default below — which is the intended access
+                // rule for both, not an oversight. Every other handler on those records is HR-only too.
                 _ => null,
             };
 

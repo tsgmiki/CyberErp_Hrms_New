@@ -71,6 +71,25 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public decimal LeaveDays { get; set; }
     }
 
+    /// <summary>Attachment METADATA only — the bytes are fetched separately, on demand.</summary>
+    public class OtherLeaveAttachmentMetaDto
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public DateTime UploadedAt { get; set; }
+        public string? UploadedBy { get; set; }
+    }
+
+    /// <summary>One uploaded file on the way in (base64, same shape medical claims use).</summary>
+    public class OtherLeaveAttachmentInput
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string? ContentType { get; set; }
+        public string ContentBase64 { get; set; } = string.Empty;
+    }
+
     public class OtherLeaveHeaderDto
     {
         public Guid Id { get; set; }
@@ -86,6 +105,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public decimal TotalLeaveDays { get; set; }
         public string Status { get; set; } = nameof(OtherLeaveStatus.Pending);
         public List<OtherLeaveDetailDto> Details { get; set; } = [];
+        public List<OtherLeaveAttachmentMetaDto> Attachments { get; set; } = [];
     }
 
     public class SaveOtherLeaveDetailDto
@@ -100,6 +120,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public Guid OtherLeaveSettingId { get; set; }
         public string? Remark { get; set; }
         public List<SaveOtherLeaveDetailDto> Details { get; set; } = [];
+        /// <summary>Supporting documents (medical/death certificate…). Optional.</summary>
+        public List<OtherLeaveAttachmentInput> Attachments { get; set; } = [];
     }
 
     public class SaveOtherLeaveDtoValidator : AbstractValidator<SaveOtherLeaveDto>
@@ -158,7 +180,23 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface ISubmitOtherLeave { Task<Guid> SubmitAsync(SaveOtherLeaveDto dto); }
     public interface ICancelOtherLeave { Task CancelAsync(CancelOtherLeaveDto dto); }
     public interface IGetOtherLeaveById { Task<OtherLeaveHeaderDto> GetAsync(Guid id); }
-    public interface IGetAllOtherLeaves { Task<PaginatedResponse<OtherLeaveHeaderDto>> GetAsync(GetAllRequest request); }
+    /// <summary>The request as its assigned APPROVER may read it (details + attachment metadata).</summary>
+    public interface IGetOtherLeaveForApproval { Task<OtherLeaveHeaderDto> GetAsync(Guid id); }
+    /// <summary>One attachment's bytes, for the requester, the approver, their manager chain or HR.</summary>
+    public interface IDownloadOtherLeaveAttachment { Task<OtherLeaveAttachmentDownload> GetAsync(Guid attachmentId); }
+
+    public class OtherLeaveAttachmentDownload
+    {
+        public string FileName { get; set; } = "";
+        public string ContentType { get; set; } = "";
+        public byte[] Content { get; set; } = [];
+    }
+    public interface IGetAllOtherLeaves
+    {
+        Task<PaginatedResponse<OtherLeaveHeaderDto>> GetAsync(GetAllRequest request);
+        /// <summary>Self-service list — strictly the signed-in employee's OWN requests (Home portal grid).</summary>
+        Task<PaginatedResponse<OtherLeaveHeaderDto>> GetMineAsync(GetAllRequest request);
+    }
 
     // ---- Setting CRUD -------------------------------------------------------
     public class SaveOtherLeaveSetting(
@@ -351,6 +389,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<AnnualLeaveDetail> annualDetails,
         IRepository<OtherLeaveSetting> settings,
         IRepository<Employee> employees,
+        IRepository<OtherLeaveAttachment> attachments,
         IRepository<WorkflowDefinition> workflowDefinitions,
         IWorkingCalendar calendar,
         IWorkflowService workflowService,
@@ -358,6 +397,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IValidator<SaveOtherLeaveDto> validator,
         ILogger<SubmitOtherLeave> logger) : ISubmitOtherLeave
     {
+        /// <summary>Per-file ceiling, matching the medical-claim uploader.</summary>
+        private const int MaxAttachmentBytes = 5 * 1024 * 1024;
+
         public async Task<Guid> SubmitAsync(SaveOtherLeaveDto dto)
         {
             var validation = await validator.ValidateAsync(dto);
@@ -491,6 +533,22 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             await repository.AddAsync(header);
             foreach (var d in header.Details)
                 if (string.IsNullOrEmpty(d.TenantId)) d.TenantId = header.TenantId;
+
+            // Supporting documents. Added through their OWN repository (not the aggregate) so each
+            // row is tenant-stamped by the interceptor the same way the medical-claim attachments are.
+            foreach (var a in dto.Attachments)
+            {
+                if (string.IsNullOrWhiteSpace(a.ContentBase64)) continue;
+                byte[] bytes;
+                try { bytes = Convert.FromBase64String(a.ContentBase64); }
+                catch { throw new ValidationException("attachments", $"'{a.FileName}' is not valid base64 content."); }
+                if (bytes.Length > MaxAttachmentBytes)
+                    throw new ValidationException("attachments", $"'{a.FileName}' exceeds the 5 MB limit.");
+                var attachment = OtherLeaveAttachment.Create(header.Id, a.FileName, a.ContentType, bytes);
+                if (string.IsNullOrEmpty(attachment.TenantId)) attachment.TenantId = header.TenantId;
+                await attachments.AddAsync(attachment);
+            }
+
             await repository.SaveChangesAsync();
 
             var name = $"{emp.First} {emp.Grand}".Trim();
@@ -542,22 +600,139 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         }
     }
 
+    /// <summary>
+    /// Shared "may this caller see this request" rule for the approver-facing endpoints.
+    ///
+    /// <para>An approver is routed the request by the WORKFLOW, which says nothing about whether they
+    /// manage the requester — a unit manager approving a colleague's mourning leave fails
+    /// <c>CanAccessEmployeeAsync</c> outright. Deciding on a request you are not allowed to read is
+    /// not a workable rule, so the assigned approver is granted access explicitly, and only while the
+    /// step is theirs: once the instance completes there is no current step and this falls back to the
+    /// normal visibility rule.</para>
+    /// </summary>
+    internal static class OtherLeaveAccess
+    {
+        public static async Task<bool> CanViewAsync(
+            Guid employeeId, Guid headerId,
+            Performance.IPerformanceVisibilityService visibility,
+            IWorkflowService workflowService,
+            IWorkflowApproverAuth approverAuth,
+            Common.Services.ICurrentUserService currentUser)
+        {
+            if (await visibility.CanAccessEmployeeAsync(employeeId)) return true;
+
+            var instance = await workflowService.GetRunningInstanceAsync(WorkflowEntityTypes.OtherLeave, headerId);
+            if (instance is null) return false;
+
+            var userId = currentUser.GetCurrentUserId();
+            if (userId is null) return false;
+
+            // NAMED approvers only — deliberately ResolveApproverUserIdsAsync, not EvaluateAsync.
+            // EvaluateAsync answers "may this person DECIDE", and for an OPEN step (one with no
+            // configured approvers) that is TRUE FOR EVERYONE by design. Routing read access through
+            // it would therefore hand a colleague's medical or death certificate to the whole tenant
+            // the moment a step is left unconfigured. This method returns an EMPTY set for an open
+            // step, so an unconfigured chain grants nobody extra sight of the document.
+            var approvers = await approverAuth.ResolveApproverUserIdsAsync(
+                instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId);
+            return approvers.Contains(userId.Value);
+        }
+    }
+
+    /// <summary>The request + its attachment metadata, as the assigned approver may read it.</summary>
+    public class GetOtherLeaveForApproval(
+        IRepository<OtherLeaveHeader> repository,
+        Performance.IPerformanceVisibilityService visibility,
+        IWorkflowService workflowService,
+        IWorkflowApproverAuth approverAuth,
+        Common.Services.ICurrentUserService currentUser) : IGetOtherLeaveForApproval
+    {
+        public async Task<OtherLeaveHeaderDto> GetAsync(Guid id)
+        {
+            var dto = await repository.GetAll().Where(r => r.Id == id)
+                .Select(OtherLeaveMapper.Projection).FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(OtherLeaveHeader), id.ToString());
+
+            if (!await OtherLeaveAccess.CanViewAsync(dto.EmployeeId, dto.Id, visibility, workflowService, approverAuth, currentUser))
+                throw new ValidationException("access", "You do not have access to this leave request.");
+            return dto;
+        }
+    }
+
+    /// <summary>
+    /// Streams one attachment. Same audience as the request itself: the employee, their manager
+    /// chain, HR, or the approver the request is currently routed to — checked against the OWNING
+    /// request, never against the attachment id alone, so a guessed id grants nothing.
+    /// </summary>
+    public class DownloadOtherLeaveAttachment(
+        IRepository<OtherLeaveAttachment> attachments,
+        IRepository<OtherLeaveHeader> headers,
+        Performance.IPerformanceVisibilityService visibility,
+        IWorkflowService workflowService,
+        IWorkflowApproverAuth approverAuth,
+        Common.Services.ICurrentUserService currentUser) : IDownloadOtherLeaveAttachment
+    {
+        public async Task<OtherLeaveAttachmentDownload> GetAsync(Guid attachmentId)
+        {
+            var att = await attachments.GetAll().AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == attachmentId)
+                ?? throw new NotFoundException(nameof(OtherLeaveAttachment), attachmentId.ToString());
+
+            var owner = await headers.GetAll().AsNoTracking()
+                .Where(h => h.Id == att.OtherLeaveHeaderId)
+                .Select(h => new { h.Id, h.EmployeeId }).FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(OtherLeaveHeader), att.OtherLeaveHeaderId.ToString());
+
+            if (!await OtherLeaveAccess.CanViewAsync(owner.EmployeeId, owner.Id, visibility, workflowService, approverAuth, currentUser))
+                throw new ValidationException("access", "You do not have access to this attachment.");
+
+            return new OtherLeaveAttachmentDownload
+            {
+                FileName = att.FileName,
+                ContentType = att.ContentType,
+                Content = att.Content
+            };
+        }
+    }
+
     public class GetAllOtherLeaves(
         IRepository<OtherLeaveHeader> repository,
         IRepository<Employee> employeeRepository,
         Performance.IPerformanceVisibilityService visibility) : IGetAllOtherLeaves
     {
-        public async Task<PaginatedResponse<OtherLeaveHeaderDto>> GetAsync(GetAllRequest request)
+        public Task<PaginatedResponse<OtherLeaveHeaderDto>> GetAsync(GetAllRequest request)
+            => QueryAsync(request, mineOnly: false);
+
+        public Task<PaginatedResponse<OtherLeaveHeaderDto>> GetMineAsync(GetAllRequest request)
+            => QueryAsync(request, mineOnly: true);
+
+        private async Task<PaginatedResponse<OtherLeaveHeaderDto>> QueryAsync(GetAllRequest request, bool mineOnly)
         {
             var skip = int.TryParse(request.Skip, out var s) ? s : 0;
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
-
-            // Role-based visibility: HR admin sees all, a manager their unit subtree, else own only.
             var scope = await visibility.GetScopeAsync();
-            if (!scope.IsAdmin)
+
+            if (mineOnly)
             {
+                // Self-service: ONLY the caller's own requests, with NO admin/manager widening.
+                //
+                // The widening below is not safe to rely on for a self-service grid. `IsAdmin`
+                // short-circuits on IsHeadOffice(), and in a single-branch tenant — where every
+                // employee sits in a branch flagged IsHeadOffice — that is true for effectively every
+                // employee-linked user, so the "HR admin sees all" arm applied to ordinary staff and
+                // the portal's Other Leave screen listed the whole organisation's leave. Annual Leave
+                // already avoided this with its own /mine endpoint; this is the same guarantee.
+                //
+                // An account with no linked employee sees NOTHING here (never a broader set).
+                if (scope.EmployeeId is not Guid myOwn)
+                    return new PaginatedResponse<OtherLeaveHeaderDto> { Total = 0, Data = [] };
+                query = query.Where(x => x.EmployeeId == myOwn);
+            }
+            else if (!scope.IsAdmin)
+            {
+                // Role-based visibility: a manager sees their unit subtree, everyone else own only.
                 var myEmp = scope.EmployeeId ?? Guid.Empty;
                 if (scope.IsManager)
                 {
@@ -626,6 +801,18 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     StartDate = d.StartDate,
                     EndDate = d.EndDate,
                     LeaveDays = d.LeaveDays
+                }).ToList(),
+                // METADATA only — never the bytes. Projecting Content here would load every
+                // attachment of every row on the list query, which is the difference between a few
+                // KB and tens of MB on a page of requests.
+                Attachments = r.Attachments.OrderBy(a => a.CreatedAt).Select(a => new OtherLeaveAttachmentMetaDto
+                {
+                    Id = a.Id,
+                    FileName = a.FileName,
+                    ContentType = a.ContentType,
+                    FileSize = a.FileSize,
+                    UploadedAt = a.CreatedAt.ToDateTimeUtc(),
+                    UploadedBy = a.CreatedBy
                 }).ToList()
             };
     }
@@ -633,6 +820,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     // ---- Workflow outcome handler (same mechanism as Annual Leave) ----------
     public class OtherLeaveWorkflowHandler(
         IRepository<OtherLeaveHeader> repository,
+        ILeaveNotifier notifier,
         ILogger<OtherLeaveWorkflowHandler> logger) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) =>
@@ -647,6 +835,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             header.Approve();
             await repository.SaveChangesAsync();
             logger.LogInformation("Other leave {Id} approved via workflow", header.Id);
+
+            // AFTER the commit, and never throwing: approval is the moment the request disappears
+            // from both the approver's inbox and the requester's pending list, so the requester has
+            // to be told. A mail failure must not undo an approval that has already happened.
+            await notifier.OtherLeaveApprovedAsync(header.Id);
         }
 
         public async Task OnRejectedAsync(string entityType, Guid entityId)
