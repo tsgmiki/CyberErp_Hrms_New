@@ -453,8 +453,15 @@ data is an empty template. Its *architecture* is what is worth taking. Phase 1 a
 tables to `Core` (`Organization`, `OrganizationSubscription`, `SubscriptionPlanModule`,
 `TenantSubscriptionAddOn`, `LoginTrail`, `Setting`, `UserPreference`) via `AddSrmsPlatformLayer` —
 applied to CERP, no alters or drops, auth untouched — and wired `LoginTrail` into sign-in, which is
-the system's FIRST login audit. ⚠️ `Organization` overlaps `CompanyProfile` and `Setting`'s SMTP
-columns overlap `appsettings.json:Email`; neither has been repointed. **Phase 2 STEP 1 DONE
+the system's FIRST login audit. **`CompanyProfile` CONSOLIDATED into `Organization` 2026-08-13**
+(handoff 0101, logic §12.11, migration `ConsolidateCompanyProfileIntoOrganization`): `Hrms.CompanyProfile`
+dropped, Organization owns the letterhead (`CompanyName`→`LegalName`, `ContactAddress`→`Address`,
+`ContactPhone`→`PhoneNumber`, `ContactEmail`→`Email`, `LogoContent`→`Logo`). ⚠️ **Organization was
+INVISIBLE to the repository** — it sits above the tenant and its row has an empty `TenantId`, so the
+filter matched nothing; it had to join `IsGlobalEntity`. The profile had ZERO rows so the letterhead
+rendered empty; it now resolves the real data that was already in Organization. Wire contract
+unchanged (`CompanyProfileDto` keeps its names). ⚠️ `Setting`'s SMTP columns still overlap
+`appsettings.json:Email` and have NOT been repointed. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

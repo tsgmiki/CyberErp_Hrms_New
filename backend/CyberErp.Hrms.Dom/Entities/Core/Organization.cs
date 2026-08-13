@@ -136,4 +136,24 @@ public class Organization : BaseEntity, IAggregateRoot
         IsActive = isActive;
         base.Update();
     }
+
+    /// <summary>
+    /// The letterhead subset that CompanyProfile used to own — the four fields generated
+    /// correspondence prints in its header. Kept as one method because that is exactly what the
+    /// company-profile screen posts; the wider identity/contact setters above are for the full form.
+    ///
+    /// <para><paramref name="companyName"/> maps to <see cref="LegalName"/>, which is REQUIRED here
+    /// though it was optional on the profile — so a blank one leaves the existing name alone rather
+    /// than putting the row into a state <see cref="Create"/> would have rejected.</para>
+    /// </summary>
+    public void SetLetterhead(string? companyName, string? address, string? phone, string? email)
+    {
+        if (!string.IsNullOrWhiteSpace(companyName))
+            LegalName = companyName.Trim();
+
+        Address = string.IsNullOrWhiteSpace(address) ? null : address.Trim();
+        PhoneNumber = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        Email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        base.Update();
+    }
 }

@@ -244,7 +244,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IRepository<Position> positionRepository,
         IRepository<EmployeeExperience> experienceRepository,
-        IRepository<CompanyProfile> companyRepository,
+        IRepository<Organization> companyRepository,
         IWorkflowGate workflowGate,
         IMovementNotifier notifier,
         ILogger<ExecuteEmployeeMovement> logger) : IExecuteEmployeeMovement
@@ -318,7 +318,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .FirstOrDefaultAsync()
                 : null;
             var companyName = await companyRepository.GetAll()
-                .Select(c => c.CompanyName)
+                .Select(o => o.LegalName)
                 .FirstOrDefaultAsync();
             // Start of the from-role = the previous completed movement's effective date, else hire date.
             var priorEffective = await repository.GetAll()

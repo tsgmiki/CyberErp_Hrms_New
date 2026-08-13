@@ -135,18 +135,22 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         }
     }
 
-    public class GetCompanyProfile(IRepository<CompanyProfile> repository) : IGetCompanyProfile
+    /// <summary>
+    /// Reads the letterhead from Core.Organization, which absorbed Hrms.CompanyProfile on 2026-08-13.
+    /// The DTO keeps the profile's field names, so the screen and its service are unchanged.
+    /// </summary>
+    public class GetCompanyProfile(IRepository<Organization> repository) : IGetCompanyProfile
     {
         public async Task<CompanyProfileDto> GetAsync()
         {
             var profile = await repository.GetAll()
-                .Select(p => new CompanyProfileDto
+                .Select(o => new CompanyProfileDto
                 {
-                    CompanyName = p.CompanyName,
-                    ContactAddress = p.ContactAddress,
-                    ContactPhone = p.ContactPhone,
-                    ContactEmail = p.ContactEmail,
-                    HasLogo = p.LogoContent != null
+                    CompanyName = o.LegalName,
+                    ContactAddress = o.Address,
+                    ContactPhone = o.PhoneNumber,
+                    ContactEmail = o.Email,
+                    HasLogo = o.Logo != null
                 })
                 .FirstOrDefaultAsync();
             return profile ?? new CompanyProfileDto();
@@ -154,7 +158,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     }
 
     public class SaveCompanyProfile(
-        IRepository<CompanyProfile> repository,
+        IRepository<Organization> repository,
         IValidator<SaveCompanyProfileDto> validator) : ISaveCompanyProfile
     {
         public async Task SaveAsync(SaveCompanyProfileDto dto)
@@ -162,17 +166,21 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
-            var profile = await repository.GetAll().FirstOrDefaultAsync();
-            if (profile is null)
+            var organization = await repository.GetAll().FirstOrDefaultAsync();
+            if (organization is null)
             {
-                profile = CompanyProfile.Create();
-                profile.SetIdentity(dto.CompanyName, dto.ContactAddress, dto.ContactPhone, dto.ContactEmail);
-                await repository.AddAsync(profile);
+                // Organization needs a Code and a LegalName; the profile screen supplies neither
+                // directly, so the company name doubles as the legal name and the code is a
+                // placeholder for the full organization form to correct.
+                organization = Organization.Create("DEFAULT",
+                    string.IsNullOrWhiteSpace(dto.CompanyName) ? "Organization" : dto.CompanyName.Trim());
+                organization.SetLetterhead(dto.CompanyName, dto.ContactAddress, dto.ContactPhone, dto.ContactEmail);
+                await repository.AddAsync(organization);
             }
             else
             {
-                profile.SetIdentity(dto.CompanyName, dto.ContactAddress, dto.ContactPhone, dto.ContactEmail);
-                repository.UpdateAsync(profile);
+                organization.SetLetterhead(dto.CompanyName, dto.ContactAddress, dto.ContactPhone, dto.ContactEmail);
+                repository.UpdateAsync(organization);
             }
             await repository.SaveChangesAsync();
         }
@@ -201,7 +209,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     /// before saving. Uses no offer/candidate data.
     /// </summary>
     public partial class PreviewOfferLetter(
-        IRepository<CompanyProfile> companyRepository,
+        IRepository<Organization> companyRepository,
         IPdfService pdfService) : IPreviewOfferLetter
     {
         [GeneratedRegex(@"\{\{\s*([\w.]+)\s*\}\}")]
@@ -210,7 +218,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public async Task<byte[]> PreviewAsync(SaveOfferLetterTemplateDto dto)
         {
             var company = await companyRepository.GetAll()
-                .Select(p => new { p.CompanyName, p.ContactAddress, p.ContactPhone, p.ContactEmail, p.LogoContent })
+                .Select(o => new { CompanyName = o.LegalName, ContactAddress = o.Address, ContactPhone = o.PhoneNumber, ContactEmail = o.Email, LogoContent = o.Logo })
                 .FirstOrDefaultAsync();
 
             var sample = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -254,7 +262,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<Candidate> candidateRepository,
         IRepository<JobRequisition> requisitionRepository,
         IRepository<OrganizationUnit> organizationUnitRepository,
-        IRepository<CompanyProfile> companyRepository,
+        IRepository<Organization> companyRepository,
         IRepository<OfferLetterTemplate> templateRepository) : IOfferLetterComposer
     {
         [GeneratedRegex(@"\{\{\s*([\w.]+)\s*\}\}")]
@@ -280,7 +288,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 : await organizationUnitRepository.GetAll()
                     .Where(u => u.Id == requisition.OrganizationUnitId).Select(u => u.Name).FirstOrDefaultAsync();
             var company = await companyRepository.GetAll()
-                .Select(p => new { p.CompanyName, p.ContactAddress, p.ContactPhone, p.ContactEmail, p.LogoContent })
+                .Select(o => new { CompanyName = o.LegalName, ContactAddress = o.Address, ContactPhone = o.PhoneNumber, ContactEmail = o.Email, LogoContent = o.Logo })
                 .FirstOrDefaultAsync();
             var template = await templateRepository.GetAll()
                 .Select(t => new { t.Body, t.SignatoryName, t.SignatoryTitle })
