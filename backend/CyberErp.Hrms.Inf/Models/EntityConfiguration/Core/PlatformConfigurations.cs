@@ -1,0 +1,194 @@
+using CyberErp.Hrms.Dom.Entities.Core;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
+{
+    /*
+     * Platform layer ported from the SRMS schema (Organization / subscription / operations).
+     *
+     * These tables live in the Core schema because they are shared-platform concerns, not HRMS ones.
+     * None of them is marked [MultiTenant]: an Organization spans tenants, plan-to-module mapping and
+     * add-ons are billing records ABOUT tenants that platform staff must read across all of them, and
+     * Setting is a deployment singleton. UserPreference and LoginTrail DO carry the BaseEntity tenant
+     * discriminator and are written per tenant.
+     */
+
+    public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
+    {
+        public void Configure(EntityTypeBuilder<Organization> builder)
+        {
+            builder.ToTable("Organization", "Core");
+            builder.HasKey(o => o.Id);
+
+            builder.Property(o => o.Code).IsRequired().HasMaxLength(50);
+            builder.Property(o => o.LegalName).IsRequired().HasMaxLength(300);
+            builder.Property(o => o.DisplayName).HasMaxLength(300);
+
+            builder.Property(o => o.Address).HasMaxLength(500);
+            builder.Property(o => o.PostalAddress).HasMaxLength(300);
+            builder.Property(o => o.PostalCode).HasMaxLength(50);
+            builder.Property(o => o.PhoneNumber).HasMaxLength(100);
+            builder.Property(o => o.Email).HasMaxLength(200);
+            builder.Property(o => o.Website).HasMaxLength(300);
+            builder.Property(o => o.City).HasMaxLength(150);
+            builder.Property(o => o.Region).HasMaxLength(150);
+            builder.Property(o => o.Country).HasMaxLength(150);
+
+            builder.Property(o => o.PrimaryContactName).HasMaxLength(200);
+            builder.Property(o => o.PrimaryContactTitle).HasMaxLength(150);
+            builder.Property(o => o.PrimaryContactEmail).HasMaxLength(200);
+            builder.Property(o => o.PrimaryContactPhone).HasMaxLength(100);
+
+            builder.Property(o => o.RegistrationNumber).HasMaxLength(100);
+            builder.Property(o => o.TaxNumber).HasMaxLength(100);
+            builder.Property(o => o.TINNumber).HasMaxLength(100);
+            builder.Property(o => o.RegulatoryIdentifiers).HasMaxLength(1000);
+            builder.Property(o => o.Industry).HasMaxLength(150);
+            builder.Property(o => o.OrganizationType).HasMaxLength(100);
+
+            // Fixed width in the source schema; ISO 4217 is always three characters.
+            builder.Property(o => o.Currency).HasColumnType("nchar(3)");
+            builder.Property(o => o.Timezone).HasMaxLength(100);
+            builder.Property(o => o.Locale).HasMaxLength(50);
+            builder.Property(o => o.DefaultLanguage).HasMaxLength(50);
+            builder.Property(o => o.DateFormat).HasMaxLength(50);
+
+            builder.Property(o => o.LogoContentType).HasMaxLength(150);
+            builder.Property(o => o.DataRetentionPolicy).HasMaxLength(1000);
+
+            // One organization per code — the code is how a deployment is identified.
+            builder.HasIndex(o => o.Code).IsUnique();
+        }
+    }
+
+    public class OrganizationSubscriptionConfiguration : IEntityTypeConfiguration<OrganizationSubscription>
+    {
+        public void Configure(EntityTypeBuilder<OrganizationSubscription> builder)
+        {
+            builder.ToTable("OrganizationSubscription", "Core");
+            builder.HasKey(s => s.Id);
+
+            builder.Property(s => s.Status).IsRequired().HasMaxLength(30);
+            builder.Property(s => s.Currency).IsRequired().HasColumnType("nchar(3)");
+
+            builder.HasOne<Organization>()
+                .WithMany()
+                .HasForeignKey(s => s.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<SubscriptionPlan>()
+                .WithMany()
+                .HasForeignKey(s => s.SubscriptionPlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasIndex(s => s.OrganizationId);
+            builder.HasIndex(s => s.Status);
+        }
+    }
+
+    public class SubscriptionPlanModuleConfiguration : IEntityTypeConfiguration<SubscriptionPlanModule>
+    {
+        public void Configure(EntityTypeBuilder<SubscriptionPlanModule> builder)
+        {
+            builder.ToTable("SubscriptionPlanModule", "Core");
+            builder.HasKey(m => m.Id);
+
+            builder.HasOne<SubscriptionPlan>()
+                .WithMany()
+                .HasForeignKey(m => m.SubscriptionPlanId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Module>()
+                .WithMany()
+                .HasForeignKey(m => m.ModuleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A module appears at most once in a plan.
+            builder.HasIndex(m => new { m.SubscriptionPlanId, m.ModuleId }).IsUnique();
+        }
+    }
+
+    public class TenantSubscriptionAddOnConfiguration : IEntityTypeConfiguration<TenantSubscriptionAddOn>
+    {
+        public void Configure(EntityTypeBuilder<TenantSubscriptionAddOn> builder)
+        {
+            builder.ToTable("TenantSubscriptionAddOn", "Core");
+            builder.HasKey(a => a.Id);
+
+            builder.Property(a => a.Status).IsRequired().HasMaxLength(30);
+            builder.Property(a => a.Currency).IsRequired().HasMaxLength(3);
+            builder.Property(a => a.Amount).HasPrecision(18, 2);
+
+            // SubscribedTenantId is a real FK to Core.Tenant, distinct from BaseEntity.TenantId.
+            builder.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(a => a.SubscribedTenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Module>()
+                .WithMany()
+                .HasForeignKey(a => a.ModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasIndex(a => new { a.SubscribedTenantId, a.Status });
+        }
+    }
+
+    public class LoginTrailConfiguration : IEntityTypeConfiguration<LoginTrail>
+    {
+        public void Configure(EntityTypeBuilder<LoginTrail> builder)
+        {
+            builder.ToTable("LoginTrail", "Core");
+            builder.HasKey(l => l.Id);
+
+            builder.Property(l => l.UserNameAttempted).IsRequired().HasMaxLength(200);
+            builder.Property(l => l.EventType).IsRequired().HasMaxLength(30);
+            builder.Property(l => l.IpAddress).IsRequired().HasMaxLength(45);
+            builder.Property(l => l.Status).HasMaxLength(50);
+            builder.Property(l => l.FailureReason).HasMaxLength(500);
+            builder.Property(l => l.UserAgent).HasMaxLength(1000);
+
+            // Deliberately NO foreign key to Core.User: a failed attempt against an unknown name has
+            // no user to point at, and the trail must outlive a deleted account — an audit row that
+            // disappears with its subject is not an audit row.
+            builder.HasIndex(l => l.UserId);
+            builder.HasIndex(l => l.Date);
+            builder.HasIndex(l => new { l.UserNameAttempted, l.EventType });
+        }
+    }
+
+    public class SettingConfiguration : IEntityTypeConfiguration<Setting>
+    {
+        public void Configure(EntityTypeBuilder<Setting> builder)
+        {
+            builder.ToTable("Setting", "Core");
+            builder.HasKey(s => s.Id);
+
+            builder.Property(s => s.SmtpHost).IsRequired().HasMaxLength(255);
+            builder.Property(s => s.SmtpUser).IsRequired().HasMaxLength(255);
+            builder.Property(s => s.BackupFrequency).IsRequired().HasMaxLength(20);
+        }
+    }
+
+    public class UserPreferenceConfiguration : IEntityTypeConfiguration<UserPreference>
+    {
+        public void Configure(EntityTypeBuilder<UserPreference> builder)
+        {
+            builder.ToTable("UserPreference", "Core");
+            builder.HasKey(p => p.Id);
+
+            builder.Property(p => p.Language).IsRequired().HasMaxLength(10);
+            builder.Property(p => p.TimeZone).HasMaxLength(100);
+            builder.Property(p => p.DateFormat).HasMaxLength(50);
+            builder.Property(p => p.NumberFormat).HasMaxLength(50);
+            builder.Property(p => p.LandingPage).HasMaxLength(200);
+            builder.Property(p => p.Theme).HasMaxLength(50);
+
+            builder.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One preference row per user per tenant.
+            builder.HasIndex(p => new { p.UserId, p.TenantId }).IsUnique();
+        }
+    }
+}

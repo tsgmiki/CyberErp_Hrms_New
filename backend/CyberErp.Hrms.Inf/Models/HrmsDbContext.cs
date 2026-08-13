@@ -49,6 +49,15 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<User> User { get; set; }
     public DbSet<Tenant> Tenant { get; set; }
     public DbSet<SubscriptionPlan> SubscriptionPlan { get; set; }
+
+    // ---- Platform layer ported from the SRMS schema ----
+    public DbSet<Organization> Organization { get; set; }
+    public DbSet<OrganizationSubscription> OrganizationSubscription { get; set; }
+    public DbSet<SubscriptionPlanModule> SubscriptionPlanModule { get; set; }
+    public DbSet<TenantSubscriptionAddOn> TenantSubscriptionAddOn { get; set; }
+    public DbSet<LoginTrail> LoginTrail { get; set; }
+    public DbSet<Setting> Setting { get; set; }
+    public DbSet<UserPreference> UserPreference { get; set; }
     public DbSet<TenantSubscription> TenantSubscription { get; set; }
 
     // Organizational Structure (HRMS §3.1)
@@ -320,6 +329,13 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new UserConfiguration());
         modelBuilder.ApplyConfiguration(new TenantConfiguration());
         modelBuilder.ApplyConfiguration(new SubscriptionPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new OrganizationConfiguration());
+        modelBuilder.ApplyConfiguration(new OrganizationSubscriptionConfiguration());
+        modelBuilder.ApplyConfiguration(new SubscriptionPlanModuleConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantSubscriptionAddOnConfiguration());
+        modelBuilder.ApplyConfiguration(new LoginTrailConfiguration());
+        modelBuilder.ApplyConfiguration(new SettingConfiguration());
+        modelBuilder.ApplyConfiguration(new UserPreferenceConfiguration());
         modelBuilder.ApplyConfiguration(new TenantSubscriptionConfiguration());
 
         // Organizational Structure (HRMS §3.1)
