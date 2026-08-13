@@ -68,21 +68,11 @@ JOIN Core.Tenant t ON CAST(t.Id AS nvarchar(64)) = o.TenantId
 WHERE NOT EXISTS (
     SELECT 1 FROM Core.TenantOperation topx WHERE topx.OwningTenantId = t.Id AND topx.OperationId = o.Id);
 
-/* ---- 3. Permissions ---------------------------------------------------------
-   Joined through the template ids, so each tenant's permissions land on that
-   tenant's own role and operation rows. CanExport starts false everywhere. */
-INSERT INTO Core.TenantRolePermission
-    (Id, TenantRoleId, TenantOperationId, CanView, CanAdd, CanEdit, CanDelete, CanApprove, CanExport,
-     TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), tr.Id, topx.Id, rp.CanView, rp.CanAdd, rp.CanEdit, rp.CanDelete, rp.CanApprove, 0,
-       tr.TenantId, SYSUTCDATETIME(), @rv
-FROM Core.RolePermission rp
-JOIN Core.TenantRole tr      ON tr.SourceTemplateId = rp.RoleId
-JOIN Core.TenantOperation topx ON topx.OperationId  = rp.OperationId
-                              AND topx.OwningTenantId = tr.OwningTenantId
-WHERE NOT EXISTS (
-    SELECT 1 FROM Core.TenantRolePermission x
-    WHERE x.TenantRoleId = tr.Id AND x.TenantOperationId = topx.Id);
+/* ---- 3. Permissions ----------------------------------------------------------
+   ⚠️ NOTHING TO DO. Core.RolePermission was RETIRED on 2026-08-13 (logic.md §12.7):
+   Core.TenantRolePermission is now the ONLY grant table, written directly by the
+   Role Permissions screen. There is no longer a source to seed it from, and this
+   script must never delete or overwrite what is there — it holds the real data. */
 
 /* ---- 4. Memberships ---------------------------------------------------------
    One row per (tenant, user) for users that actually hold a role in it, so the

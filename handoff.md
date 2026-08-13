@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+00FD. **Core.RolePermission RETIRED — TenantRolePermission is the only grant table (2026-08-13).**
+    Detail in logic.md §12.7. Migration `RetireCoreRolePermission`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-retire-rolepermission-*.bak`.
+    - It had had no reader since the flip (00FA); this removes the last writer. The Role Permissions
+      screen writes `TenantRolePermission` **directly**, so a save is live on commit.
+    - Proved redundant immediately before dropping: effective permissions compared across both
+      models in both directions — **70,852 rows each side, 0 lost, 0 gained**. The migration also
+      carries a `THROW` guard refusing to drop while `TenantRolePermission` is empty.
+    - The **wire contract is unchanged**: the screen still sends global `RoleId`/`OperationId`, which
+      the handler resolves to this tenant's instances. `CanExport` (no field on the screen) is never
+      set on create and **preserved** on edit.
+    - ⚠️ **`SyncPermissionsAsync` is DELETED, not disabled.** With no template table behind it, its
+      revocation sweep would treat every hand-edited grant as orphaned and delete the lot. Do not
+      reinstate it. Role/Operation/UserRole are still projected.
+    - `WorkflowApproverAuth` (open-step approvers) and Home's `GetMySubsystems` both moved to the
+      tenant chain; Home gained `TenantUser`/`TenantUserRole`/`TenantOperation`/`TenantRolePermission`
+      mappings. ⚠️ **Deploy both repos together.**
+    - Scripts: `seed-tenant-authorization-verify.sql` and `verify-tenant-auth-readers.sql` **deleted**
+      (they compared against the dropped table and could only fail now), replaced by
+      `verify-tenant-authorization.sql` — dangling refs, cross-tenant leakage, menu-tree integrity.
+      `seed-tenant-authorization.sql` no longer seeds permissions; `assign-employee-role.sql` writes
+      tenant grants.
+    - Verified end to end against the live API: GET returned 149 rows with template ids and parent
+      group names, POST flipped a grant on then back off with `CanExport` untouched, baseline back to
+      598 grants / 15369 viewable pairs; HRMS 34 links, Home 2/12/34, 0 errors in either log.
+
 00FC. **Core.Operation is now the menu TREE — parent/child, the SRMS topology (2026-08-13).**
     Detail in logic.md §12.6. Migration `OperationParentChildHierarchy`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-operation-hierarchy-*.bak`.

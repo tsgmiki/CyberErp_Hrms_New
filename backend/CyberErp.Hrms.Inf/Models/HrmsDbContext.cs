@@ -259,7 +259,6 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<Module> Module { get; set; }
     public DbSet<Operation> Operation { get; set; }
     public DbSet<Subsystem> Subsystem { get; set; }
-    public DbSet<RolePermission> RolePermission { get; set; }
     /// <summary>Core.Notification — Home-owned portal alerts; HRMS only writes (ExcludeFromMigrations).</summary>
     public DbSet<CoreNotification> CoreNotification { get; set; }
     public DbSet<WorkflowDefinition> WorkflowDefinition { get; set; }
@@ -539,7 +538,6 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new ModuleConfiguration());
         modelBuilder.ApplyConfiguration(new OperationConfiguration());
         modelBuilder.ApplyConfiguration(new SubsystemConfiguration());
-        modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
         modelBuilder.ApplyConfiguration(new CoreNotificationConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowDefinitionConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowStepConfiguration());

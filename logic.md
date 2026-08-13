@@ -1807,6 +1807,60 @@ round-trip  group + child created via the API, delete-with-children refused
             with a plain message, then both deleted — baseline back to 174/24/598
 ```
 
+### 12.7 Core.RolePermission retired
+
+Migration `RetireCoreRolePermission`. `Core.TenantRolePermission` is now the **only** grant table.
+
+The old table had had no reader since the phase-2 flip (§12.4); this change removes the last thing
+writing to it. The Role Permissions screen now writes the tenant table **directly**, so a save is
+live the moment it commits instead of going through a projection.
+
+**Proved redundant immediately before the drop** — every user's effective
+`(link, CanView, CanAdd, CanEdit, CanDelete, CanApprove)` compared across both models in both
+directions: **70,852 rows each side, 0 lost, 0 gained**. The migration also carries a `THROW` guard
+that refuses to drop while `TenantRolePermission` is empty, because that would destroy the only copy.
+
+#### What moved
+
+| | Now |
+|---|---|
+| `SaveRolePermissions` | writes `TenantRolePermission`; resolves the screen's global `RoleId`/`OperationId` to this tenant's instances, so **the wire contract is unchanged** |
+| `GetAllRolePermissions` | reads the tenant tables, reports TEMPLATE ids so the save call still round-trips |
+| `DeleteRolePermission` | deletes the tenant grant |
+| `WorkflowApproverAuth` | open-step approvers resolve through the tenant chain, still returning template role ids (it is compared against `Core.UserRole`) |
+| Home `GetMySubsystems` | walks `TenantUser → TenantUserRole → TenantRolePermission → TenantOperation` |
+
+`CanExport` has no field on the screen, so a **new** grant never sets it and an **edit preserves**
+whatever was there — silently clearing a privilege the UI cannot display would be worse than either.
+
+#### ⚠️ The projector no longer projects permissions
+
+`SyncPermissionsAsync` is **deleted, not disabled**. With no template table behind it, its revocation
+sweep would treat every hand-edited grant as orphaned and delete the lot. Do not reinstate it.
+`Role`, `Operation` and `UserRole` are still projected.
+
+#### Scripts
+
+`seed-tenant-authorization-verify.sql` and `verify-tenant-auth-readers.sql` are **deleted** — both
+existed to compare against `Core.RolePermission` and could now only fail with "invalid object name".
+Replaced by `verify-tenant-authorization.sql`, which checks the model's own consistency: dangling
+references, cross-tenant leakage (a grant whose role and operation belong to different tenants — the
+two FKs are independent, so nothing else asserts this), and menu-tree integrity.
+`seed-tenant-authorization.sql` no longer seeds permissions, and `assign-employee-role.sql` writes
+tenant grants.
+
+#### Verification
+
+```
+drop        Core.RolePermission gone | Role 8, UserRole 503, Operation 174 all kept
+grants      598 preserved | effective grant rows 70852, unchanged
+integrity   0 dangling refs | 0 cross-tenant grants | 0 orphan screens | 0 groups with a link
+live        HRMS 34 links | Home 2 subsystems / 12 modules / 34 ops | 0 errors in either log
+round-trip  the rewritten screen exercised end to end against the live API: GET returned 149 rows
+            with template ids and parent-group names; POST flipped one grant on, then back off;
+            CanExport untouched; baseline restored to 598 grants / 15369 viewable pairs
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

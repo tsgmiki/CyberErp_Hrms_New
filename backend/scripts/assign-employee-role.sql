@@ -31,7 +31,15 @@ BEGIN
     RETURN;
 END
 
-DECLARE @permTenant nvarchar(64) = (SELECT TOP 1 TenantId FROM Core.RolePermission WHERE RoleId = @role);
+-- Core.RolePermission was RETIRED 2026-08-13; grants live in Core.TenantRolePermission, reached
+-- through this role's per-tenant instance.
+DECLARE @tenantRole uniqueidentifier = (SELECT TOP 1 Id FROM Core.TenantRole WHERE SourceTemplateId = @role);
+IF @tenantRole IS NULL
+BEGIN
+    RAISERROR('No TenantRole instance for "UserRole" — run seed-tenant-authorization.sql first.', 16, 1);
+    RETURN;
+END
+DECLARE @permTenant nvarchar(64) = (SELECT TOP 1 TenantId FROM Core.TenantRole WHERE Id = @tenantRole);
 DECLARE @userTenant nvarchar(64) = (SELECT TOP 1 TenantId FROM Core.UserRole);
 DECLARE @rv varbinary(8) = 0x0000000000000001;
 
@@ -61,19 +69,21 @@ BEGIN TRAN;
 
 /* The role usually already has a row per operation sitting at CanView = 0, so this is normally an
    UPDATE rather than an INSERT. Both paths are covered because a fresh tenant may have neither. */
-INSERT INTO Core.RolePermission
-    (Id, RoleId, OperationId, CanView, CanAdd, CanEdit, CanDelete, CanApprove, TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), @role, o.Id, 1, 1, 1, 0, 0, @permTenant, SYSUTCDATETIME(), @rv
-FROM Core.Operation o
+INSERT INTO Core.TenantRolePermission
+    (Id, TenantRoleId, TenantOperationId, CanView, CanAdd, CanEdit, CanDelete, CanApprove, CanExport,
+     TenantId, CreatedAt, RowVersion)
+SELECT NEWID(), @tenantRole, o.Id, 1, 1, 1, 0, 0, 0, @permTenant, SYSUTCDATETIME(), @rv
+FROM Core.TenantOperation o
 WHERE o.Link IN (SELECT Link FROM @selfService)
-  AND NOT EXISTS (SELECT 1 FROM Core.RolePermission rp WHERE rp.RoleId = @role AND rp.OperationId = o.Id);
+  AND NOT EXISTS (SELECT 1 FROM Core.TenantRolePermission p
+                  WHERE p.TenantRoleId = @tenantRole AND p.TenantOperationId = o.Id);
 
-UPDATE rp SET rp.CanView = 1, rp.CanAdd = 1, rp.CanEdit = 1
-FROM Core.RolePermission rp
-JOIN Core.Operation o ON o.Id = rp.OperationId
-WHERE rp.RoleId = @role
+UPDATE p SET p.CanView = 1, p.CanAdd = 1, p.CanEdit = 1
+FROM Core.TenantRolePermission p
+JOIN Core.TenantOperation o ON o.Id = p.TenantOperationId
+WHERE p.TenantRoleId = @tenantRole
   AND o.Link IN (SELECT Link FROM @selfService)
-  AND rp.CanView = 0;
+  AND p.CanView = 0;
 
 /* ---------------------------------------------------------------------------
    2. Assign the role to employee-linked accounts that have none.

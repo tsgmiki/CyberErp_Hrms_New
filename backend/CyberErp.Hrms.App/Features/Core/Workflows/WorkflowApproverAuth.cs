@@ -58,7 +58,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<WorkflowDefinition> definitions,
         IRepository<UserRole> userRoles,
         IRepository<User> users,
-        IRepository<RolePermission> rolePermissions,
+        IRepository<TenantRolePermission> tenantRolePermissions,
+        IRepository<TenantOperation> tenantOperations,
+        IRepository<TenantRole> tenantRoles,
         IOrgManagerResolver managerResolver,
         ICurrentUserService currentUser) : IWorkflowApproverAuth
     {
@@ -272,11 +274,20 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             return mine.Overlaps(approveRoles);
         }
 
-        /// <summary>Roles granted approval rights on the Workflow Tracking operation.</summary>
+        /// <summary>
+        /// Roles granted approval rights on the Workflow Tracking operation.
+        ///
+        /// <para>Reads the tenant-scoped grants — Core.RolePermission was retired on 2026-08-13 — but
+        /// still returns TEMPLATE role ids, because that is what <see cref="GetCurrentUserRoleIdsAsync"/>
+        /// yields (it reads Core.UserRole) and the two sets are compared directly.</para>
+        /// </summary>
         private async Task<List<Guid>> WorkflowApproveRoleIdsAsync() =>
-            await rolePermissions.GetAll()
-                .Where(p => p.CanApprove && p.Operation.Link == WorkflowOperationLink)
-                .Select(p => p.RoleId)
+            await tenantRolePermissions.GetAll()
+                .Where(p => p.CanApprove)
+                .Join(tenantOperations.GetAll().Where(o => o.Link == WorkflowOperationLink && o.IsActive),
+                    p => p.TenantOperationId, o => o.Id, (p, o) => p.TenantRoleId)
+                .Join(tenantRoles.GetAll().Where(r => r.SourceTemplateId != null),
+                    roleId => roleId, r => r.Id, (roleId, r) => r.SourceTemplateId!.Value)
                 .Distinct()
                 .ToListAsync();
 

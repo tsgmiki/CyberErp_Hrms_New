@@ -485,7 +485,14 @@ by both seeders. ⚠️ `Core.Module` **must stay** (SubscriptionPlanModule + Te
 it just isn't what navigation reads. ⚠️ Self-FK is **NoAction** (SQL Server forbids a cascading
 self-reference) so deleting a group with children is refused in the handler. ⚠️ **Trap I hit:**
 `TenantOperation.ModuleId` holds the **template** id — matching it against the tenant copy's own `Id`
-returns an EMPTY menu; join on `OperationId`.
+returns an EMPTY menu; join on `OperationId`. **Core.RolePermission RETIRED 2026-08-13** (handoff
+00FD, logic §12.7, migration `RetireCoreRolePermission`): `TenantRolePermission` is now the ONLY grant
+table and the Role Permissions screen writes it DIRECTLY (wire contract unchanged — global ids are
+resolved to tenant instances in the handler). Proved redundant first: 70,852 effective grants each
+side, 0 lost/gained. ⚠️ **`SyncPermissionsAsync` is DELETED, not disabled** — with no template behind
+it, its revocation sweep would delete every hand-edited grant. ⚠️ `CanExport` is never set on create
+and **preserved** on edit (no field on the screen). Verify scripts that compared the two models are
+gone; use `verify-tenant-authorization.sql` (dangling refs / cross-tenant leakage / tree integrity).
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
