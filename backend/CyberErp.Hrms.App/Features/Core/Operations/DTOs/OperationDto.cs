@@ -54,7 +54,8 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.DTOs
     public class OperationDto
     {
         public Guid Id { get; set; }
-        public Guid ModuleId { get; set; }
+        /// <summary>The PARENT group, or null when this row IS a group.</summary>
+        public Guid? ModuleId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Module { get; set; } = string.Empty;
         /// <summary>Owning subsystem (via the module) — the System screens filter/group on it.</summary>
@@ -70,7 +71,8 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.DTOs
     public class UpdateOperationDto
     {
         public Guid Id { get; set; }
-        public Guid ModuleId { get; set; }
+        /// <summary>The PARENT group, or null when this row IS a group.</summary>
+        public Guid? ModuleId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Link { get; set; } = string.Empty;
         public string Filter { get; set; } = string.Empty;
@@ -81,7 +83,8 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.DTOs
     public class OperationResult
     {
         public Guid Id { get; set; }
-        public Guid ModuleId { get; set; }
+        /// <summary>The PARENT group, or null when this row IS a group.</summary>
+        public Guid? ModuleId { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Link { get; set; } = string.Empty;
         public string Filter { get; set; } = string.Empty;

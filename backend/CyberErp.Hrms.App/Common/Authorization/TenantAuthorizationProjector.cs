@@ -128,17 +128,14 @@ namespace CyberErp.Hrms.App.Common.Authorization
         {
             var templates = await operations.GetAll().ToListAsync(ct);
             var existing = await tenantOperations.GetAll().ToListAsync(ct);
-            var moduleSubsystems = await modules.GetAll()
-                .Select(m => new { m.Id, m.SubsystemId })
-                .ToDictionaryAsync(m => m.Id, m => m.SubsystemId, ct);
             var written = 0;
 
             foreach (var template in templates)
             {
-                // Since the SRMS alignment the template carries DisplayOrder and IsActive itself,
-                // so both copy straight across instead of being defaulted.
-                var subSystemId = moduleSubsystems.TryGetValue(template.ModuleId, out var ssId)
-                    ? ssId : Guid.Empty;
+                // The template now owns DisplayOrder, IsActive AND SubSystemId, so everything copies
+                // straight across — no lookup through Core.Module, which is no longer what the menu
+                // hierarchy is built from. ModuleId carries the PARENT link, null on a group row.
+                var subSystemId = template.SubSystemId;
 
                 var row = existing.FirstOrDefault(o => o.OperationId == template.Id);
                 if (row is null)

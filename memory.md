@@ -477,7 +477,15 @@ of 506 users have no e-mail); `Operation.ModuleId` still → `Core.Module` becau
 table** and its FK names don't match their columns; `IX_Role_Code` not unique (`TenantId` is
 nvarchar(max), can't be indexed). ⚠️ **EF's scaffold was not runnable** — 3 backfills had to be
 interleaved before the unique index, the FK and the NOT NULL. ⚠️ **Home shares this DB** and reads the
-password column — deploy both repos together.
+password column — deploy both repos together. **Core.Operation became the menu TREE 2026-08-13**
+(handoff 00FC, logic §12.6, migration `OperationParentChildHierarchy`): `ModuleId IS NULL` = PARENT
+(menu group), else the parent it hangs off; the 24 Modules were copied in as parents → **174 = 24+150**.
+⚠️ **Parents REUSE their Module's Id**, which is why no child needed repointing — invariant maintained
+by both seeders. ⚠️ `Core.Module` **must stay** (SubscriptionPlanModule + TenantSubscriptionAddOn FKs);
+it just isn't what navigation reads. ⚠️ Self-FK is **NoAction** (SQL Server forbids a cascading
+self-reference) so deleting a group with children is refused in the handler. ⚠️ **Trap I hit:**
+`TenantOperation.ModuleId` holds the **template** id — matching it against the tenant copy's own `Id`
+returns an EMPTY menu; join on `OperationId`.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

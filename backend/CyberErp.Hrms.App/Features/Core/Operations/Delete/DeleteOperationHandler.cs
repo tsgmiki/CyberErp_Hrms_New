@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Handlers;
+using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Operations.DTOs;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -28,6 +29,17 @@ public class DeleteOperationHandler(
         {
             logger.LogWarning("Operation with ID: {Id} not found", request.Id);
             return null;
+        }
+
+        // A group cannot be deleted while screens still hang off it. The self-referencing foreign key
+        // is NoAction — SQL Server will not allow a cascading one — so the database would simply
+        // refuse, with an error naming a constraint rather than the actual problem. Say it plainly.
+        if (operation.IsParent)
+        {
+            var childCount = await repository.GetAll().CountAsync(o => o.ModuleId == request.Id, ct);
+            if (childCount > 0)
+                throw new ValidationException(nameof(request.Id),
+                    $"This menu group still contains {childCount} screen(s). Move or delete them first.");
         }
 
         // TenantOperation -> Operation is Restrict, so the tenant copy and its grants must go FIRST

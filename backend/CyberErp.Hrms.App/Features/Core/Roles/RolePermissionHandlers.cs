@@ -125,7 +125,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                 query = query.Where(rp =>
                     rp.Role.Name.Contains(request.SearchText) ||
                     rp.Operation.Name.Contains(request.SearchText) ||
-                    rp.Operation.Module.Name.Contains(request.SearchText));
+                    (rp.Operation.Parent != null && rp.Operation.Parent.Name.Contains(request.SearchText)));
 
             var total = await query.CountAsync();
 
@@ -134,7 +134,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
 
             var data = await query
                 .OrderBy(rp => rp.Role.Name)
-                .ThenBy(rp => rp.Operation.Module.SortOrder)
+                .ThenBy(rp => rp.Operation.Parent != null ? rp.Operation.Parent.DisplayOrder : 0)
                 .ThenBy(rp => rp.Operation.DisplayOrder)
                 .Skip(skip).Take(take)
                 .Select(rp => new RolePermissionDto
@@ -144,7 +144,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                     Role = rp.Role.Name,
                     OperationId = rp.OperationId,
                     Operation = rp.Operation.Name,
-                    Module = rp.Operation.Module.Name,
+                    // The parent group's name; blank when the operation IS a group.
+                    Module = rp.Operation.Parent != null ? rp.Operation.Parent.Name : string.Empty,
                     CanView = rp.CanView,
                     CanAdd = rp.CanAdd,
                     CanEdit = rp.CanEdit,

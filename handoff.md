@@ -123,6 +123,39 @@
 
 ## 1. Most recent changes (latest first)
 
+00FC. **Core.Operation is now the menu TREE — parent/child, the SRMS topology (2026-08-13).**
+    Detail in logic.md §12.6. Migration `OperationParentChildHierarchy`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-operation-hierarchy-*.bak`.
+    - `ModuleId IS NULL` = a PARENT (menu group); any other value names the parent it hangs off. The
+      column keeps its name because that is what SRMS calls it. The 24 `Core.Module` rows were copied
+      in as those parents: **174 = 24 + 150**.
+    - ⚠️ **Each parent REUSES ITS MODULE'S Id** (checked first: zero collisions). That is why **not
+      one of the 150 children needed repointing**, and it establishes the invariant the entity and
+      both seeders maintain: a parent operation and its module share an Id.
+    - ⚠️ **`Core.Module` is NOT dropped and must not be** — `SubscriptionPlanModule` and
+      `TenantSubscriptionAddOn` have FKs into it. It just stops being what navigation reads;
+      `Module.Operations` is gone.
+    - ⚠️ **The scaffold added the self-FK BEFORE the parents existed**, so all 150 children pointed at
+      absent keys and the constraint could not be created — the copy had to be interleaved. `Down()`
+      also has to delete the parents (and their `Restrict`-guarded tenant copies) before `ModuleId`
+      can be `NOT NULL` again. The FK is `NoAction`: SQL Server rejects a cascading self-reference, so
+      `DeleteOperationHandler` refuses to delete a group that still has children.
+    - ⚠️ **Bug I introduced and caught:** the first sidebar build returned an EMPTY menu.
+      `TenantOperation.ModuleId` carries the TEMPLATE id, but the grouping matched it against the
+      tenant copy's own `Id`, which never joins. Match on `OperationId`. Remember this — the tenant
+      tables hold template ids in their parent link, not tenant-row ids.
+    - Creating a group is now possible through the API: `moduleId: null` + `subsystemId`. A screen is
+      rejected as a parent (the sidebar only descends one level).
+    - ⚠️ **Home was repointed too.** Its `Core.Module` join would still have worked via the shared-Id
+      invariant, but only for groups predating the change — a group created through the HRMS screen
+      writes no module row and every screen under it would have vanished from the portal.
+    - Wire contract unchanged (the feed still says "modules"), so **neither SPA needed a change**;
+      `OperationDto.ModuleId` is nullable now.
+    - Verified: 0 orphan children, 0 parents disagreeing with their module, 0 parents carrying a link;
+      TenantOperation 174 = 24 + 150; readers still MATCH (gate 15369, menu 17409, also re-checked
+      with the join rewritten to the hierarchy); HRMS 34 links under 12 groups and Home 2/12/34, both
+      identical to before; group+child round-tripped through the API and the delete guard fired.
+
 00FB. **Core.User / Core.Role / Core.Operation aligned with the cybererp_srms schema
     (2026-08-13).** Detail in logic.md §12.5. Migration `AlignCoreTablesWithSrms`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-srms-table-align-*.bak`.

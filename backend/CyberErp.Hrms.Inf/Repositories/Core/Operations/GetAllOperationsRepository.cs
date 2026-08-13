@@ -11,9 +11,11 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Operations;
 
 public class GetAllOperationsRepository(
     IRepository<Operation> operationsRepository,
+    IRepository<Subsystem> subsystems,
     ILogger<GetAllOperationsRepository> logger) : IGetAllOperationsRepository
 {
     private readonly IRepository<Operation> _operationsRepository = operationsRepository;
+    private readonly IRepository<Subsystem> _subsystems = subsystems;
     private readonly ILogger<GetAllOperationsRepository> _logger = logger;
 
     public async Task<PaginatedResponse<OperationDto>> GetAllAsync(GetAllOperationsRequest request, CancellationToken ct = default)
@@ -27,18 +29,20 @@ public class GetAllOperationsRepository(
             query = query.Where(x => x.Name.Contains(request.SearchText) || x.Link.Contains(request.SearchText));
         }
 
-        // Cascading central-administration filters: Subsystem → Module (both optional).
+        // Cascading central-administration filters: Subsystem → parent group (both optional).
+        // SubSystemId is carried on the row itself now, so this no longer joins through Core.Module.
         if (request.SubsystemId.HasValue)
-            query = query.Where(x => x.Module.SubsystemId == request.SubsystemId.Value);
+            query = query.Where(x => x.SubSystemId == request.SubsystemId.Value);
         if (request.ModuleId.HasValue)
             query = query.Where(x => x.ModuleId == request.ModuleId.Value);
 
         var totalCount = await query.CountAsync(ct);
 
-        // Natural menu order: subsystem → module → operation.
+        // Natural menu order: group, then screen within it. A group sorts with its own children by
+        // falling back to its own DisplayOrder when it has no parent.
         query = query
-            .OrderBy(x => x.Module.Subsystem.SortOrder)
-            .ThenBy(x => x.Module.SortOrder)
+            .OrderBy(x => x.Parent != null ? x.Parent.DisplayOrder : x.DisplayOrder)
+            .ThenBy(x => x.ModuleId == null ? 0 : 1)   // the group itself leads its children
             .ThenBy(x => x.DisplayOrder)
             .ThenBy(x => x.Name);
 
@@ -53,9 +57,10 @@ public class GetAllOperationsRepository(
                 Id = x.Id,
                 ModuleId = x.ModuleId,
                 Name = x.Name,
-                Module = x.Module.Name,
-                SubsystemId = x.Module.SubsystemId,
-                SubSystem = x.Module.Subsystem.Name,
+                Module = x.Parent != null ? x.Parent.Name : string.Empty,
+                SubsystemId = x.SubSystemId,
+                SubSystem = _subsystems.GetAll().Where(s => s.Id == x.SubSystemId)
+                    .Select(s => s.Name).FirstOrDefault() ?? string.Empty,
                 Link = x.Link,
                 Filter = x.Filter,
                 Icon = x.Icon,

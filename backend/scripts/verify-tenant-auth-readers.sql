@@ -66,12 +66,15 @@ WITH old_menu AS (
     JOIN Core.Module m          ON m.Id = o.ModuleId
 ),
 new_menu AS (
-    SELECT DISTINCT tu.UserId, m.Id AS ModuleId, topx.OperationId, topx.Link, topx.Name
+    SELECT DISTINCT tu.UserId, g.OperationId AS ModuleId, topx.OperationId, topx.Link, topx.Name
     FROM Core.TenantUser tu
     JOIN Core.TenantUserRole tur       ON tur.TenantUserId = tu.Id
     JOIN Core.TenantRolePermission trp ON trp.TenantRoleId = tur.TenantRoleId AND trp.CanView = 1
     JOIN Core.TenantOperation topx     ON topx.Id = trp.TenantOperationId AND topx.IsActive = 1
-    JOIN Core.Module m                 ON m.Id = topx.ModuleId
+    -- The GROUP is the PARENT OPERATION now, not a Core.Module row (2026-08-13). Joining Core.Module
+    -- would still pass, because a parent shares its module's Id, but only by relying on that
+    -- invariant — a group created since would not be in Core.Module at all.
+    JOIN Core.TenantOperation g        ON g.OperationId = topx.ModuleId AND g.ModuleId IS NULL
     WHERE tu.Status = 'Active'
 )
 SELECT
@@ -99,7 +102,7 @@ new_n AS (
     JOIN Core.TenantUserRole tur ON tur.TenantUserId = tu.Id
     JOIN Core.TenantRolePermission trp ON trp.TenantRoleId = tur.TenantRoleId AND trp.CanView = 1
     JOIN Core.TenantOperation topx ON topx.Id = trp.TenantOperationId AND topx.IsActive = 1
-    JOIN Core.Module m ON m.Id = topx.ModuleId
+    JOIN Core.TenantOperation g ON g.OperationId = topx.ModuleId AND g.ModuleId IS NULL
     WHERE tu.Status = 'Active'
     GROUP BY tu.UserId
 )

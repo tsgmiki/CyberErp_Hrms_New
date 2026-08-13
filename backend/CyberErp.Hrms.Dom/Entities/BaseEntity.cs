@@ -7,6 +7,20 @@ namespace CyberErp.Hrms.Dom.Entities;
 public abstract class BaseEntity : ITenantEntity
 {
     public Guid Id { get; private set; }
+
+    /// <summary>
+    /// Adopts a caller-chosen Id, for the rare case where a row must MIRROR another table's key
+    /// (Core.Module mirrors its parent Core.Operation). Deliberately protected and one-shot: it
+    /// throws once an Id is set, so nothing can re-key a persisted row.
+    /// </summary>
+    protected void AssignId(Guid id)
+    {
+        if (id == Guid.Empty)
+            throw new ArgumentException("Id cannot be empty.", nameof(id));
+        if (Id != Guid.Empty && Id != id)
+            throw new InvalidOperationException("This entity already has an Id.");
+        Id = id;
+    }
     public string TenantId { get; set; } = string.Empty;
     public Instant CreatedAt { get; private set; }
     public Instant? UpdatedAt { get; private set; }
