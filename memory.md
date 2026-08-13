@@ -468,7 +468,12 @@ path calls `ITenantAuthorizationProjector.SyncAsync()` — without it a permissi
 nobody reads. ⚠️ `User`/`Operation`/`Role` deletes must clear the tenant rows INLINE (NoAction /
 Restrict fail; `Role` is SetNull, which succeeds and leaves an invisible role still granting
 permissions). ⚠️ Found while testing, unfixed: `Subsystem`/`Module`/`Operation` controllers have **no
-`[RequirePermission]`** — any authenticated user can edit the menu. **Core.User/Role/Operation ALIGNED
+`[RequirePermission]`** — any authenticated user can edit the menu. **FIXED 2026-08-13** (handoff
+00FE, logic §12.8): gates added to the MUTATING ACTIONS only (Create/Update/Delete + seed-defaults),
+links `subsystem`/`module`/`operation`. ⚠️ **Do NOT gate these controllers at class level** — `GET
+Operation` is what `permissionGate.tsx` builds its catalogSet from, and an empty catalog reads as "no
+route is gated", so every route would fall through UNGATED; gating `Module/WithOperations` would leave
+everyone with no sidebar. **Core.User/Role/Operation ALIGNED
 with cybererp_srms 2026-08-13** (handoff 00FB, logic §12.5, migration `AlignCoreTablesWithSrms`):
 `User.Password`→**`PasswordHash`**+9 cols, `Role.Code` NOT NULL+3 cols, `Operation.SortOrder`→
 **`DisplayOrder`**+`SubSystemId`(FK)+`IsActive`. ⚠️ **`TenantId` KEPT** (SRMS has none) — dropping it

@@ -123,6 +123,24 @@
 
 ## 1. Most recent changes (latest first)
 
+00FE. **The ungated navigation controllers are closed (2026-08-13).** Detail in logic.md §12.8.
+    No migration, no data change.
+    - `Subsystem` / `Module` / `Operation` controllers had **no `[RequirePermission]` at all** — any
+      authenticated user could create, rename or delete menu entries. (Flagged in 00FA; it is how the
+      throwaway probes were created under a non-admin account.)
+    - ⚠️ **The attributes are on the ACTIONS, not the controllers, and that is deliberate.** A
+      class-level gate would have been *worse than the hole*: `GET Operation` is what
+      `permissionGate.tsx` builds its catalogSet from, and the gate treats "not in the catalog" as
+      "not a gated page" — so a 403 there would empty the catalog and let **every route through
+      ungated**. Gating `Module/WithOperations` would leave every user with no sidebar at all.
+    - Gated: `Create` / `Update` / `Delete` on all three, plus `Module/seed-defaults` (it rewrites the
+      whole tree). Links `subsystem` / `module` / `operation`; Administrator and HR Admin already hold
+      CanView on all three, so no role lost anything.
+    - Verified both directions live: a non-admin gets 200 on all four reads and 403 on all four
+      writes, sidebar still 34 links; with the permission temporarily granted, POST returns 200 and a
+      throwaway operation round-tripped. Grant restored to `000000`; baseline 174 operations / 598
+      grants / 0 leftovers.
+
 00FD. **Core.RolePermission RETIRED — TenantRolePermission is the only grant table (2026-08-13).**
     Detail in logic.md §12.7. Migration `RetireCoreRolePermission`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-retire-rolepermission-*.bak`.

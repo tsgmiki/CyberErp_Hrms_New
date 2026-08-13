@@ -22,7 +22,28 @@ using UpdateModuleRequest = CyberErp.Hrms.App.Features.Core.Modules.Update.Updat
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     // Dynamic navigation — the sidebar menu is read from coreSubsystem / Module / Operation
-    // instead of a hardcoded frontend array. RolePermission rows drive per-role visibility.
+    // instead of a hardcoded frontend array. TenantRolePermission rows drive per-role visibility.
+
+    /*
+     * ⚠️ WHY THE GATES ARE ON THE ACTIONS AND NOT THE CONTROLLERS (2026-08-13).
+     *
+     * These three used to carry no [RequirePermission] at all, so ANY authenticated user could
+     * create, rename or delete menu entries. Gating the whole controller looks like the obvious fix
+     * and is wrong: the READS here are infrastructure every signed-in user depends on.
+     *
+     *   GET Module/WithOperations  -> the sidebar feed itself
+     *   GET Module, GET Subsystem  -> useMenuModules, the landing page, the menu filters
+     *   GET Operation              -> permissionGate.tsx builds its catalogSet from this, and
+     *                                 globalSearch.tsx filters results with it
+     *
+     * The last one is the trap. PermissionGate treats "not in the catalog" as "not a gated page", so
+     * a 403 on this read would empty the catalog and every route would fall through UNGATED — the
+     * fix would open a bigger hole than the one it closed.
+     *
+     * The reads expose menu metadata (names, links, icons, order), not anyone's data, and
+     * WithOperations is already filtered to the caller's own grants. So: writes are gated, reads are
+     * not, and that is deliberate.
+     */
 
     /// <summary>Master list of ERP subsystems (Core.Subsystem); modules reference one by name.</summary>
     public class SubsystemController(
@@ -30,16 +51,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllSubsystems getAllHandler,
         IDeleteSubsystem deleteHandler) : BaseController
     {
+        /// <summary>Open read: the module/operation forms and the menu filters populate from this.</summary>
         [HttpGet]
         public Task<PaginatedResponse<SubsystemDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
 
         [HttpPost]
+        [RequirePermission("subsystem")]
         public async Task<IActionResult> Create([FromBody] SubsystemDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
 
         [HttpPut]
+        [RequirePermission("subsystem")]
         public async Task<IActionResult> Update([FromBody] SubsystemDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
 
         [HttpDelete("{id:guid}")]
+        [RequirePermission("subsystem")]
         public async Task<IActionResult> Delete(Guid id)
         { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
     }
@@ -58,7 +83,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<PaginatedResponse<GetModuleDto>> GetAll([FromQuery] GetAllModulesRequest request) =>
             getAllHandler.Handle(request);
 
-        /// <summary>The navigation feed: the caller's modules + operations with role permissions applied.</summary>
+        /// <summary>
+        /// The navigation feed: the caller's modules + operations with role permissions applied.
+        /// Deliberately UNGATED — it IS the sidebar, and it already returns only what the caller may
+        /// see. Gating it would leave every user with no menu at all.
+        /// </summary>
         [HttpGet("WithOperations")]
         public Task<IEnumerable<GetModuleWithOperationResult>> WithOperations([FromQuery] GetModuleWithOperationsRequest request) =>
             withOperationsHandler.Handle(request);
@@ -67,19 +96,26 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<GetModuleDto?> GetById(Guid id) => getByIdHandler.Handle(new GetModuleByIdRequest(id));
 
         [HttpPost]
+        [RequirePermission("module")]
         public async Task<IActionResult> Create([FromBody] CreateModuleRequest request) =>
             Ok(await createHandler.Handle(request));
 
         [HttpPut]
+        [RequirePermission("module")]
         public async Task<IActionResult> Update([FromBody] UpdateModuleRequest request) =>
             Ok(await updateHandler.Handle(request));
 
         [HttpDelete("{id:guid}")]
+        [RequirePermission("module")]
         public async Task<IActionResult> Delete(Guid id)
         { await deleteHandler.Handle(new DeleteModuleRequest(id)); return Ok(new { message = "Deleted successfully" }); }
 
-        /// <summary>Seeds the default HRMS menu (subsystem, modules, operations) for the current tenant.</summary>
+        /// <summary>
+        /// Seeds the default HRMS menu (subsystem, modules, operations) for the current tenant.
+        /// Rewrites the whole navigation tree, so it is gated the same as editing it by hand.
+        /// </summary>
         [HttpPost("seed-defaults")]
+        [RequirePermission("module")]
         public async Task<IActionResult> SeedDefaults()
         {
             var created = await seedHandler.SeedAsync();
@@ -95,6 +131,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IFeatureHandler<GetAllOperationsRequest, PaginatedResponse<OperationDto>> getAllHandler,
         IFeatureHandler<GetOperationByIdRequest, OperationDto?> getByIdHandler) : BaseController
     {
+        /// <summary>
+        /// Open read — and it must stay open. <c>permissionGate.tsx</c> builds its catalog of gated
+        /// routes from this, and a 403 here would empty that catalog, which the gate reads as "no
+        /// route is gated" and lets everything through.
+        /// </summary>
         [HttpGet]
         public Task<PaginatedResponse<OperationDto>> GetAll([FromQuery] GetAllOperationsRequest request) =>
             getAllHandler.Handle(request);
@@ -108,14 +149,17 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<OperationDto?> GetById(Guid id) => getByIdHandler.Handle(new GetOperationByIdRequest(id));
 
         [HttpPost]
+        [RequirePermission("operation")]
         public async Task<IActionResult> Create([FromBody] CreateOperationRequest request) =>
             Ok(await createHandler.Handle(request));
 
         [HttpPut]
+        [RequirePermission("operation")]
         public async Task<IActionResult> Update([FromBody] UpdateOperationRequest request) =>
             Ok(await updateHandler.Handle(request));
 
         [HttpDelete("{id:guid}")]
+        [RequirePermission("operation")]
         public async Task<IActionResult> Delete(Guid id)
         { await deleteHandler.Handle(new DeleteOperationRequest(id)); return Ok(new { message = "Deleted successfully" }); }
     }

@@ -1861,6 +1861,51 @@ round-trip  the rewritten screen exercised end to end against the live API: GET 
             CanExport untouched; baseline restored to 598 grants / 15369 viewable pairs
 ```
 
+### 12.8 The ungated navigation controllers, closed
+
+`SubsystemController`, `ModuleController` and `OperationController` carried **no
+`[RequirePermission]` at all**, so any authenticated user could create, rename or delete menu
+entries. Found while testing the phase-2 flip — that is how a throwaway operation was created under a
+non-admin account (§12.4).
+
+#### ⚠️ Gating the CONTROLLERS would have been worse than the hole
+
+The obvious fix is a class-level attribute. It is wrong, because the **reads** here are infrastructure
+every signed-in user depends on:
+
+| Read | Consumer |
+|---|---|
+| `GET Module/WithOperations` | the sidebar feed itself |
+| `GET Module`, `GET Subsystem` | `useMenuModules`, the landing page, the menu filters |
+| `GET Operation` | `permissionGate.tsx` builds its **catalogSet**, `globalSearch.tsx` filters results |
+
+The last is the trap. `PermissionGate` treats "not in the catalog" as "not a gated page", so a 403 on
+that read would empty the catalog and **every route would fall through ungated** — the fix would open
+a strictly bigger hole than the one it closed. Gating `WithOperations` would simply leave everyone
+with no menu.
+
+So the attributes go on the **mutating actions only** — `Create`, `Update`, `Delete` on all three, plus
+`Module/seed-defaults`, which rewrites the whole tree and is gated like editing it by hand. The reads
+expose menu metadata (names, links, icons, order), never anyone's data, and `WithOperations` is
+already filtered to the caller's own grants.
+
+Links used: `subsystem`, `module`, `operation`. Administrator and HR Admin already hold `CanView` on
+all three, so no role lost anything.
+
+#### Verification
+
+Both directions, live:
+
+```
+non-admin (UserRole)   GET Operation/Module/WithOperations/Subsystem  200 200 200 200
+                       POST Operation / Module / Subsystem / seed-defaults  403 403 403 403
+                       sidebar 34 links, unchanged
+
+with the permission    POST Operation 200, throwaway created and deleted
+                       (granted temporarily, then restored to 000000)
+baseline               174 operations | 598 grants | 0 leftover probe rows
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
