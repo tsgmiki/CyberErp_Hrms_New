@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -50,6 +51,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
         IRepository<Role> roleRepository,
         IRepository<Operation> operationRepository,
         IUnitOfWork unitOfWork,
+        ITenantAuthorizationProjector projector,
         ILogger<SaveRolePermissions> logger) : ISaveRolePermissions
     {
         public async Task<int> SaveAsync(SaveRolePermissionsDto dto)
@@ -95,6 +97,9 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             }
 
             await unitOfWork.SaveChangesAsync();
+            // The runtime reads permissions from the tenant-scoped tables, so a save that stopped here
+            // would update a table nobody reads and appear to do nothing.
+            await projector.SyncAsync();
             logger.LogInformation("Saved {Count} permission rows for role {RoleId}", touched, dto.RoleId);
             return touched;
         }
@@ -158,7 +163,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
 
     public class DeleteRolePermission(
         IRepository<RolePermission> repository,
-        IUnitOfWork unitOfWork) : IDeleteRolePermission
+        IUnitOfWork unitOfWork,
+        ITenantAuthorizationProjector projector) : IDeleteRolePermission
     {
         public async Task DeleteAsync(Guid id)
         {
@@ -166,6 +172,8 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                 ?? throw new ValidationException(nameof(id), "Permission row not found.");
             repository.Delete(entity);
             await unitOfWork.SaveChangesAsync();
+            // Revoking has to reach the tenant-scoped grant too, or the access stays live.
+            await projector.SyncAsync();
         }
     }
 }

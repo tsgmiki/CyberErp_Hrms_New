@@ -15,20 +15,34 @@ namespace CyberErp.Hrms.App.Common.Authorization
         /// An empty required set is treated as "no restriction" (true).
         /// </summary>
         Task<bool> HasAnyAsync(IReadOnlyList<string> operationLinks);
+
+        /// <summary>
+        /// Drops every cached granted-link set, so the next request re-reads from the database.
+        /// Called whenever permissions change, so an admin's own save takes effect immediately
+        /// instead of after the cache window.
+        /// </summary>
+        void InvalidateAll();
     }
 
     public class EndpointPermissionService(
         ICurrentUserService currentUser,
-        IRepository<UserRole> userRoles,
-        IRepository<RolePermission> rolePermissions,
-        IRepository<Operation> operations,
+        IRepository<TenantUser> tenantUsers,
+        IRepository<TenantUserRole> tenantUserRoles,
+        IRepository<TenantRolePermission> tenantRolePermissions,
+        IRepository<TenantOperation> tenantOperations,
         IMemoryCache cache) : IEndpointPermissionService
     {
         // PERFORMANCE: this service runs on EVERY [RequirePermission]-gated request, so the caller's
         // granted-link set is cached for a short window instead of hitting the database each time.
-        // Permission changes therefore take up to this long to affect API access (menu/UI refetches
-        // separately); the window is deliberately short.
+        // Permission changes made through the admin screens bust the cache outright (InvalidateAll);
+        // the TTL only bounds changes made behind the application's back, e.g. directly in SQL.
         private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
+
+        // Cache keys carry a generation number because IMemoryCache cannot enumerate or clear by
+        // prefix. Bumping it orphans every existing entry at once — they then expire on their own.
+        private static int _generation;
+
+        public void InvalidateAll() => Interlocked.Increment(ref _generation);
 
         public async Task<bool> HasAnyAsync(IReadOnlyList<string> operationLinks)
         {
@@ -38,7 +52,8 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var userId = currentUser.GetCurrentUserId();
             if (userId is null) return false;
 
-            var granted = await cache.GetOrCreateAsync($"perm-links:{userId.Value}", async entry =>
+            var generation = Volatile.Read(ref _generation);
+            var granted = await cache.GetOrCreateAsync($"perm-links:{generation}:{userId.Value}", async entry =>
             {
                 entry.AbsoluteExpirationRelativeToNow = CacheTtl;
                 return await LoadGrantedLinksAsync(userId.Value);
@@ -48,15 +63,27 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return operationLinks.Any(l => granted.Contains(Normalize(l)));
         }
 
-        /// <summary>One round-trip: the caller's roles → CanView permissions → operation links.</summary>
+        /// <summary>
+        /// One round-trip through the TENANT-SCOPED model: the caller's membership of this tenant →
+        /// the roles they hold in it → CanView grants → the tenant's own copy of each operation link.
+        ///
+        /// <para>Every repository call is already filtered to the current tenant by the Finbuckle
+        /// discriminator, so a user who belongs to several tenants gets only the links for the one
+        /// they are signed in to — which the previous global <c>UserRole</c> join could not express.</para>
+        ///
+        /// <para><c>IsActive</c> is honoured here: a tenant that hides a screen revokes access to it,
+        /// not merely its sidebar entry.</para>
+        /// </summary>
         private async Task<HashSet<string>> LoadGrantedLinksAsync(Guid userId)
         {
-            var links = await userRoles.GetAll()
-                .Where(ur => ur.UserId == userId)
-                .Join(rolePermissions.GetAll().Where(rp => rp.CanView),
-                    ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.OperationId)
-                .Join(operations.GetAll().Where(o => o.Link != null),
-                    opId => opId, o => o.Id, (opId, o) => o.Link!)
+            var links = await tenantUsers.GetAll()
+                .Where(tu => tu.UserId == userId && tu.Status == TenantUserStatuses.Active)
+                .Join(tenantUserRoles.GetAll(),
+                    tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
+                .Join(tenantRolePermissions.GetAll().Where(p => p.CanView),
+                    roleId => roleId, p => p.TenantRoleId, (roleId, p) => p.TenantOperationId)
+                .Join(tenantOperations.GetAll().Where(o => o.IsActive && o.Link != ""),
+                    opId => opId, o => o.Id, (opId, o) => o.Link)
                 .Distinct()
                 .ToListAsync();
 

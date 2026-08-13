@@ -459,8 +459,16 @@ columns overlap `appsettings.json:Email`; neither has been repointed. **Phase 2 
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:
 the live model is already tenant-scoped via the discriminator so do NOT cross join Role × Tenant
-(506 users → 1500 memberships), and `SELECT DISTINCT NEWID()` never dedupes. **Step 2 = flipping the
-readers; re-run the verify script immediately before.**
+(506 users → 1500 memberships), and `SELECT DISTINCT NEWID()` never dedupes. **Phase 2 STEP 2 — THE
+FLIP — DONE 2026-08-13** (handoff 00FA, logic §12.4): the permission gate and the sidebar feed now
+read `TenantUser → TenantUserRole → TenantRolePermission → TenantOperation`; both runtime queries
+verified MATCH against the old ones across the whole population
+(`verify-tenant-auth-readers.sql`). ⚠️ The admin screens still EDIT the global tables, so every write
+path calls `ITenantAuthorizationProjector.SyncAsync()` — without it a permission save updates a table
+nobody reads. ⚠️ `User`/`Operation`/`Role` deletes must clear the tenant rows INLINE (NoAction /
+Restrict fail; `Role` is SetNull, which succeeds and leaves an invisible role still granting
+permissions). ⚠️ Found while testing, unfixed: `Subsystem`/`Module`/`Operation` controllers have **no
+`[RequirePermission]`** — any authenticated user can edit the menu.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

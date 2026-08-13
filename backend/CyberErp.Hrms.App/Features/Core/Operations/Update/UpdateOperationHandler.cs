@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Handlers;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Exceptions;
@@ -12,6 +13,7 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.Update;
 public class UpdateOperationHandler(
     IRepository<Operation> repository,
     IUnitOfWork unitOfWork,
+    ITenantAuthorizationProjector projector,
     IValidator<UpdateOperationRequest> validator,
     ILogger<UpdateOperationHandler> logger)
     : IFeatureHandler<UpdateOperationRequest, OperationResult>
@@ -32,6 +34,9 @@ public class UpdateOperationHandler(
 
         repository.UpdateAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);
+        // Menu operations are the unit of permission, so the tenant copy has to follow the template
+        // immediately: a screen the runtime cannot resolve is a screen nobody can reach.
+        await projector.SyncAsync(ct);
 
         logger.LogInformation("Operation updated with Id: {Id}", operation.Id);
 

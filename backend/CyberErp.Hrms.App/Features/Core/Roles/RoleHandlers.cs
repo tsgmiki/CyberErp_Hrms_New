@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -73,6 +74,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
     public class SaveRole(
         IRepository<Role> repository,
         IValidator<SaveRoleDto> validator,
+        ITenantAuthorizationProjector projector,
         ILogger<SaveRole> logger) : ISaveRole
     {
         public async Task<Guid> SaveAsync(SaveRoleDto dto)
@@ -90,12 +92,15 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                 entity.Update(dto.Name, dto.Code);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
+                await projector.SyncAsync();
                 return entity.Id;
             }
 
             var created = Role.Create(dto.Name, dto.Code);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
+            // A new role needs its tenant instance before any permission can be granted against it.
+            await projector.SyncAsync();
             logger.LogInformation("Created Role {Id} ({Name})", created.Id, created.Name);
             return created.Id;
         }
@@ -126,6 +131,9 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
     public class DeleteRole(
         IRepository<Role> repository,
         IRepository<UserRole> userRoleRepository,
+        IRepository<TenantRole> tenantRoleRepository,
+        IRepository<TenantRolePermission> tenantRolePermissionRepository,
+        ITenantAuthorizationProjector projector,
         ILogger<DeleteRole> logger) : IDeleteRole
     {
         public async Task DeleteAsync(Guid id)
@@ -135,9 +143,24 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             if (await userRoleRepository.GetAll().AnyAsync(u => u.RoleId == id))
                 throw new ValidationException(nameof(id), "Users are assigned to this role. Remove the assignments first.");
 
+            // The tenant instance has to be removed HERE, not left to the projector. TenantRole ->
+            // Role is SetNull, so deleting the template would blank SourceTemplateId instead of
+            // failing — and a null source reads as a bespoke role, which the projector deliberately
+            // never touches. The role would live on, invisible, still granting its permissions.
+            var instances = await tenantRoleRepository.GetAll().Where(r => r.SourceTemplateId == id).ToListAsync();
+            foreach (var instance in instances)
+            {
+                var grants = await tenantRolePermissionRepository.GetAll()
+                    .Where(p => p.TenantRoleId == instance.Id).ToListAsync();
+                foreach (var grant in grants)
+                    tenantRolePermissionRepository.Delete(grant);
+                tenantRoleRepository.Delete(instance);
+            }
+
             repository.Delete(entity);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Deleted Role {Id}", id);
+            await projector.SyncAsync();
+            logger.LogInformation("Deleted Role {Id} ({Count} tenant instance(s) removed)", id, instances.Count);
         }
     }
 
@@ -146,6 +169,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
         IRepository<UserRole> repository,
         IRepository<User> userRepository,
         IRepository<Role> roleRepository,
+        ITenantAuthorizationProjector projector,
         ILogger<SaveUserRole> logger) : ISaveUserRole
     {
         public async Task<Guid> SaveAsync(SaveUserRoleDto dto)
@@ -171,12 +195,15 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                     entity.Update(dto.RoleId, dto.UserId);
                     repository.UpdateAsync(entity);
                     await repository.SaveChangesAsync();
+                    await projector.SyncAsync();
                     return entity.Id;
                 }
 
                 var created = UserRole.Create(dto.RoleId, dto.UserId);
                 await repository.AddAsync(created);
                 await repository.SaveChangesAsync();
+                // Creates the tenant membership as well — without it the user has no access at all.
+                await projector.SyncAsync();
                 logger.LogInformation("Assigned Role {RoleId} to User {UserId}", dto.RoleId, dto.UserId);
                 return created.Id;
             }
@@ -226,6 +253,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
 
     public class DeleteUserRole(
         IRepository<UserRole> repository,
+        ITenantAuthorizationProjector projector,
         ILogger<DeleteUserRole> logger) : IDeleteUserRole
     {
         public async Task DeleteAsync(Guid id)
@@ -234,6 +262,7 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
                 ?? throw new NotFoundException(nameof(UserRole), id.ToString());
             repository.Delete(entity);
             await repository.SaveChangesAsync();
+            await projector.SyncAsync();
             logger.LogInformation("Deleted UserRole {Id}", id);
         }
     }
