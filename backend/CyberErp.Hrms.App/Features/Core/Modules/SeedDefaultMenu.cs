@@ -226,24 +226,36 @@ public class SeedDefaultMenu(
         for (var mi = 0; mi < Menu.Length; mi++)
         {
             var def = Menu[mi];
-            var module = existingModules.FirstOrDefault(m => m.Name == def.Name);
-            if (module is null)
+
+            // The menu group is an OPERATION with no parent. A Core.Module row is still written
+            // alongside it, sharing the SAME Id: SubscriptionPlanModule and TenantSubscriptionAddOn
+            // have foreign keys into that table, and the migration established parent-Id == Module-Id
+            // as an invariant. Navigation itself reads only the operation hierarchy.
+            var group = existingOperations.FirstOrDefault(o => o.ModuleId == null && o.Name == def.Name);
+            if (group is null)
             {
-                module = Module.Create(hrms.Id, def.Name, def.Icon, (mi + 1) * 10);
-                await moduleRepository.AddAsync(module);
+                group = Operation.CreateParent(hrms.Id, def.Name, def.Icon, (mi + 1) * 10);
+                await operationRepository.AddAsync(group);
+                created++;
+            }
+
+            if (!existingModules.Any(m => m.Name == def.Name))
+            {
+                await moduleRepository.AddAsync(
+                    Module.CreateWithId(group.Id, hrms.Id, def.Name, def.Icon, (mi + 1) * 10));
                 created++;
             }
 
             for (var oi = 0; oi < def.Operations.Length; oi++)
             {
                 var op = def.Operations[oi];
-                var exists = existingOperations.Any(o => o.ModuleId == module.Id && o.Link == op.Link);
+                var exists = existingOperations.Any(o => o.ModuleId == group.Id && o.Link == op.Link);
                 if (exists) continue;
 
-                // hrms.Id is the subsystem every seeded module hangs off, so the denormalised
+                // hrms.Id is the subsystem every seeded group hangs off, so the denormalised
                 // SubSystemId is known here without a lookup.
                 await operationRepository.AddAsync(
-                    Operation.Create(module.Id, op.Name, op.Link, string.Empty, op.Icon,
+                    Operation.Create(group.Id, op.Name, op.Link, string.Empty, op.Icon,
                         (oi + 1) * 10, hrms.Id));
                 created++;
             }

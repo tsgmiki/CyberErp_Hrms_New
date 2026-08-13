@@ -9,6 +9,7 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.GetById;
 
 public class GetOperationByIdHandler(
     IRepository<Operation> repository,
+    IRepository<Subsystem> subsystems,
     ILogger<GetOperationByIdHandler> logger)
     : IFeatureHandler<GetOperationByIdRequest, OperationDto?>
 {
@@ -17,16 +18,18 @@ public class GetOperationByIdHandler(
         logger.LogInformation("Getting Operation with ID: {Id}", request.Id);
 
         var operation = await repository.GetAll()
-            .Include(x => x.Module)
+            .Include(x => x.Parent)
             .Where(x => x.Id == request.Id)
             .Select(x => new OperationDto
             {
                 Id = x.Id,
                 ModuleId = x.ModuleId,
                 Name = x.Name,
-                Module = x.Module.Name,
-                SubsystemId = x.Module.SubsystemId,
-                SubSystem = x.Module.Subsystem.Name,
+                // "Module" is the PARENT group now, and is empty when this row IS one.
+                Module = x.Parent != null ? x.Parent.Name : string.Empty,
+                SubsystemId = x.SubSystemId,
+                SubSystem = subsystems.GetAll().Where(s => s.Id == x.SubSystemId)
+                    .Select(s => s.Name).FirstOrDefault() ?? string.Empty,
                 Link = x.Link,
                 Filter = x.Filter,
                 Icon = x.Icon,

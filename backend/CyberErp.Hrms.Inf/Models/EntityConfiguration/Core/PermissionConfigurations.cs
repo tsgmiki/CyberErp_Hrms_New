@@ -29,7 +29,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Navigation(m => m.Subsystem).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             builder.HasIndex(m => m.SubsystemId);
-            builder.Navigation(m => m.Operations).UsePropertyAccessMode(PropertyAccessMode.Field);
+            // No Operations collection any more — the menu tree lives inside Core.Operation itself.
         }
     }
 
@@ -71,13 +71,16 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.DisplayOrder).HasDefaultValue(0);   // was SortOrder
             builder.Property(o => o.IsActive).IsRequired().HasDefaultValue(true);
 
-            // ⚠️ ModuleId keeps pointing at Core.Module. In SRMS the same-named column is a self-FK
-            // to Operation.Id and there is no Module table at all — see the note on the entity.
-            builder.HasOne(o => o.Module)
-                .WithMany(m => m.Operations)
+            // ModuleId is the PARENT LINK — a self-reference, not a foreign key to Core.Module.
+            // NoAction is not a preference: SQL Server rejects a cascading self-referencing foreign
+            // key outright (it cannot prove the chain terminates). Deleting a parent therefore has to
+            // clear its children first, which DeleteOperationHandler does.
+            builder.HasOne(o => o.Parent)
+                .WithMany(o => o.Children)
                 .HasForeignKey(o => o.ModuleId)
-                .OnDelete(DeleteBehavior.Cascade);
-            builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
+                .OnDelete(DeleteBehavior.NoAction);
+            builder.Navigation(o => o.Parent).UsePropertyAccessMode(PropertyAccessMode.Field);
+            builder.Navigation(o => o.Children).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             // Denormalised subsystem. Restrict, not Cascade: deleting a subsystem must not silently
             // take the menu with it, and Module already cascades.

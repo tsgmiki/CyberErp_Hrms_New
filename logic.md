@@ -1735,6 +1735,78 @@ projector: throwaway operation created (SubSystemId resolved from module, tenant
            and deleted cleanly
 ```
 
+### 12.6 Core.Operation becomes the menu TREE (parent–child, SRMS topology)
+
+Migration `OperationParentChildHierarchy`. `Core.Operation` is now self-referencing:
+
+```
+ModuleId IS NULL      -> a PARENT: a menu group (the row a Module used to be)
+ModuleId IS NOT NULL  -> a CHILD:  a screen, hanging off the parent with that Id
+```
+
+The column keeps its name — that is what SRMS calls it. The 24 `Core.Module` rows were copied in as
+those parents, giving **174 = 24 + 150**.
+
+#### ⚠️ Each parent REUSES ITS MODULE'S Id
+
+Verified beforehand: zero collisions with existing operation ids. This is what made the migration
+cheap — the 150 children already held those values in `ModuleId`, so **not one needed repointing**.
+It also establishes the invariant the entity and both seeders rely on: **a parent operation and its
+module share an Id.**
+
+`Core.Module` is NOT dropped and must not be: `SubscriptionPlanModule` and `TenantSubscriptionAddOn`
+have foreign keys into it. It simply stops being what navigation reads. `Module.Operations` is gone.
+
+#### ⚠️ The scaffold added the self-FK before the parents existed
+
+EF drops the old FK, widens the column, then adds the self-reference — but adds it while all 150
+children still point at keys not yet in the table, so the constraint cannot be created. The copy has
+to happen in between. `Down()` also has to delete the parent rows (and their tenant copies, which are
+`Restrict`) before `ModuleId` can be `NOT NULL` again.
+
+`NoAction`, not `Cascade`: SQL Server rejects a cascading self-referencing foreign key outright.
+`DeleteOperationHandler` therefore refuses to delete a group that still has children, with a message
+naming the count rather than an FK error.
+
+#### ⚠️ The bug this introduced, and how it showed up
+
+The first sidebar build returned **an empty menu**. `TenantOperation.ModuleId` is copied straight from
+the template, so it names a **`Core.Operation`** — but the grouping matched it against the *tenant
+copy's own* `Id`, which never joins. Fixed by matching on `OperationId`. Worth remembering: the
+tenant tables carry template ids in their parent link, not tenant-row ids.
+
+#### What reads the hierarchy now
+
+| Reader | Change |
+|---|---|
+| `GetModuleWithOperationsRepository` (sidebar) | groups are `TenantOperation` rows with a null `ModuleId`; one query returns the whole tree |
+| `GetAllOperationsRepository` | filters on the row's own `SubSystemId`; orders group-then-children |
+| `GetOperationByIdHandler`, `RolePermissionHandlers` | "Module" is the parent's name, blank when the row IS a group |
+| `CreateOperationHandler` | a null `ModuleId` creates a GROUP (requires `SubsystemId`); a child takes its parent's subsystem, and a screen is rejected as a parent |
+| `SeedDefaultMenu` | creates the group as an operation **and** a `Core.Module` sharing its Id |
+| Home `GetMySubsystems` | self-joins to the parent instead of `Core.Module` |
+
+Home's `Core.Module` join would still have *worked* — via the shared-Id invariant — but only for
+groups predating the change: a group created through the HRMS screen writes no module row, and every
+screen under it would have vanished from the portal.
+
+The **wire contract is unchanged** — the feed still calls the outer objects "modules" — so neither SPA
+needed a change. `OperationDto.ModuleId` is now nullable.
+
+#### Verification
+
+```
+tree        174 operations = 24 parents + 150 children
+            0 children without a parent | 0 parents disagreeing with their module
+            0 parents carrying a link (a group must grant nothing)
+projection  TenantOperation 174 = 24 groups + 150 screens
+readers     gate MATCH 15369 | menu MATCH 17409 | 0 users differing
+live        HRMS 34 links under 12 groups (identical to before)
+            Home 2 subsystems / 12 modules / 34 operations
+round-trip  group + child created via the API, delete-with-children refused
+            with a plain message, then both deleted — baseline back to 174/24/598
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
