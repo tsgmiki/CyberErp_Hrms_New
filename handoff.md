@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+00EZ. **SRMS phase 2, STEP 1: the tenant-scoped auth model exists and is mirrored — nothing reads it
+    yet (2026-08-13).** Detail in logic.md §12.3.
+    - Migration `AddTenantScopedAuthorization` (6 CreateTable + 13 indexes, no alters/drops), APPLIED
+      to CERP. Entities in `Dom/Entities/Core/TenantAuthorization.cs`.
+      Backup: `D:\Backups\CERP_before-tenant-auth-20260813-*.bak`.
+    - ⚠️ **`OwningTenantId`, not `TenantId`**: BaseEntity already has a STRING `TenantId` (the
+      Finbuckle discriminator). These tables also need a real Guid FK to `Core.Tenant`, so it is named
+      separately rather than shadowing it. None is `[MultiTenant]` — they DEFINE tenant scoping, and
+      sign-in must read memberships before a tenant context exists.
+    - **`backend/scripts/seed-tenant-authorization.sql`** fills them from CERP's own data (idempotent).
+      Result is 1:1 with the live model: roles 8, operations 150, permissions 598, tenant users 500,
+      user-roles 503, subsystems 7.
+    - ⚠️ **TWO TRAPS, both hit on the first attempt.** (1) The live model is ALREADY tenant-scoped via
+      the discriminator (3 roles demo / 5 headoffice; all ops+perms headoffice) — **do NOT cross join
+      Role × Tenant**, it makes every user a member of every tenant (506 users → 1500 memberships).
+      (2) `SELECT DISTINCT NEWID(), …` does not dedupe, because NEWID() makes each row unique; resolve
+      distinct pairs in a subquery first.
+    - **ACCEPTANCE TEST PASSED** (`seed-tenant-authorization-verify.sql`, read-only): effective
+      permissions per user compared both directions — `old 70852 / new 70852 / lost 0 / gained 0`,
+      `users whose viewable link count differs = 0`, verdict **MATCH**.
+    - Runtime unchanged, as expected since no reader was switched: Administrator 345 employees /144
+      sidebar links, employee 1/34, manager 2/34 — all identical to 00EY.
+    - **STEP 2 = the flip** (IEndpointPermissionService, login, sidebar, Role Permissions screens).
+      **Re-run the verify script immediately before flipping** — it must still say MATCH, or the live
+      model has drifted since the seed.
+
 00EY. **`IsAdmin` repointed — categories B and C fixed at the root; the audit is CLOSED (2026-08-13,
     ONE file).** Detail in logic.md §11.8.
     - `IsAdminAsync` no longer short-circuits on `IsHeadOffice()`; it checks the `/employee` menu

@@ -58,6 +58,14 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<LoginTrail> LoginTrail { get; set; }
     public DbSet<Setting> Setting { get; set; }
     public DbSet<UserPreference> UserPreference { get; set; }
+
+    // ---- Tenant-scoped authorization (SRMS phase 2) ----
+    public DbSet<TenantRole> TenantRole { get; set; }
+    public DbSet<TenantOperation> TenantOperation { get; set; }
+    public DbSet<TenantRolePermission> TenantRolePermission { get; set; }
+    public DbSet<TenantUser> TenantUser { get; set; }
+    public DbSet<TenantUserRole> TenantUserRole { get; set; }
+    public DbSet<TenantSubSystem> TenantSubSystem { get; set; }
     public DbSet<TenantSubscription> TenantSubscription { get; set; }
 
     // Organizational Structure (HRMS §3.1)
@@ -336,6 +344,12 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new LoginTrailConfiguration());
         modelBuilder.ApplyConfiguration(new SettingConfiguration());
         modelBuilder.ApplyConfiguration(new UserPreferenceConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantRoleConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantOperationConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantRolePermissionConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantUserConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantUserRoleConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantSubSystemConfiguration());
         modelBuilder.ApplyConfiguration(new TenantSubscriptionConfiguration());
 
         // Organizational Structure (HRMS §3.1)

@@ -1,0 +1,135 @@
+using CyberErp.Hrms.Dom.Entities.Core;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
+namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
+{
+    /*
+     * Tenant-scoped authorization (SRMS phase 2).
+     *
+     * None of these is marked [MultiTenant]. They are the tables that DEFINE tenant scoping, so they
+     * cannot themselves be filtered by the ambient tenant without a chicken-and-egg problem: sign-in
+     * has to read a user's tenant memberships BEFORE a tenant context exists. Scoping is explicit,
+     * through OwningTenantId.
+     */
+
+    public class TenantRoleConfiguration : IEntityTypeConfiguration<TenantRole>
+    {
+        public void Configure(EntityTypeBuilder<TenantRole> builder)
+        {
+            builder.ToTable("TenantRole", "Core");
+            builder.HasKey(r => r.Id);
+
+            builder.Property(r => r.Code).IsRequired().HasMaxLength(100);
+            builder.Property(r => r.Name).IsRequired().HasMaxLength(200);
+            builder.Property(r => r.Description).HasMaxLength(500);
+
+            builder.HasOne<Tenant>().WithMany()
+                .HasForeignKey(r => r.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
+            // The template is a soft link: deleting a global Role must not delete tenants' instances,
+            // which may since have been customised.
+            builder.HasOne<Role>().WithMany()
+                .HasForeignKey(r => r.SourceTemplateId).OnDelete(DeleteBehavior.SetNull);
+
+            builder.HasIndex(r => new { r.OwningTenantId, r.Code }).IsUnique();
+        }
+    }
+
+    public class TenantOperationConfiguration : IEntityTypeConfiguration<TenantOperation>
+    {
+        public void Configure(EntityTypeBuilder<TenantOperation> builder)
+        {
+            builder.ToTable("TenantOperation", "Core");
+            builder.HasKey(o => o.Id);
+
+            builder.Property(o => o.Name).IsRequired().HasMaxLength(200);
+            builder.Property(o => o.Link).IsRequired().HasMaxLength(300);
+            builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
+            builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
+
+            builder.HasOne<Tenant>().WithMany()
+                .HasForeignKey(o => o.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Operation>().WithMany()
+                .HasForeignKey(o => o.OperationId).OnDelete(DeleteBehavior.Restrict);
+
+            // One instance per (tenant, source operation).
+            builder.HasIndex(o => new { o.OwningTenantId, o.OperationId }).IsUnique();
+            // The permission check resolves by LINK, so that lookup gets its own index.
+            builder.HasIndex(o => new { o.OwningTenantId, o.Link });
+        }
+    }
+
+    public class TenantRolePermissionConfiguration : IEntityTypeConfiguration<TenantRolePermission>
+    {
+        public void Configure(EntityTypeBuilder<TenantRolePermission> builder)
+        {
+            builder.ToTable("TenantRolePermission", "Core");
+            builder.HasKey(p => p.Id);
+
+            builder.HasOne<TenantRole>().WithMany()
+                .HasForeignKey(p => p.TenantRoleId).OnDelete(DeleteBehavior.Cascade);
+            // NoAction on the second leg: two cascade paths into the same table is a multiple-cascade
+            // -path error in SQL Server, and the role side is the one that should cascade.
+            builder.HasOne<TenantOperation>().WithMany()
+                .HasForeignKey(p => p.TenantOperationId).OnDelete(DeleteBehavior.NoAction);
+
+            builder.HasIndex(p => new { p.TenantRoleId, p.TenantOperationId }).IsUnique();
+        }
+    }
+
+    public class TenantUserConfiguration : IEntityTypeConfiguration<TenantUser>
+    {
+        public void Configure(EntityTypeBuilder<TenantUser> builder)
+        {
+            builder.ToTable("TenantUser", "Core");
+            builder.HasKey(u => u.Id);
+
+            builder.Property(u => u.Status).IsRequired().HasMaxLength(30);
+
+            builder.HasOne<Tenant>().WithMany()
+                .HasForeignKey(u => u.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<User>().WithMany()
+                .HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.NoAction);
+
+            builder.HasIndex(u => new { u.OwningTenantId, u.UserId }).IsUnique();
+            builder.HasIndex(u => u.UserId);
+        }
+    }
+
+    public class TenantUserRoleConfiguration : IEntityTypeConfiguration<TenantUserRole>
+    {
+        public void Configure(EntityTypeBuilder<TenantUserRole> builder)
+        {
+            builder.ToTable("TenantUserRole", "Core");
+            builder.HasKey(r => r.Id);
+
+            builder.Property(r => r.AssignedBy).HasMaxLength(200);
+
+            builder.HasOne<TenantUser>().WithMany()
+                .HasForeignKey(r => r.TenantUserId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<TenantRole>().WithMany()
+                .HasForeignKey(r => r.TenantRoleId).OnDelete(DeleteBehavior.NoAction);
+
+            builder.HasIndex(r => new { r.TenantUserId, r.TenantRoleId }).IsUnique();
+        }
+    }
+
+    public class TenantSubSystemConfiguration : IEntityTypeConfiguration<TenantSubSystem>
+    {
+        public void Configure(EntityTypeBuilder<TenantSubSystem> builder)
+        {
+            builder.ToTable("TenantSubSystem", "Core");
+            builder.HasKey(s => s.Id);
+
+            builder.Property(s => s.SourceType).IsRequired().HasMaxLength(30);
+            builder.Property(s => s.Status).IsRequired().HasMaxLength(30);
+
+            builder.HasOne<Tenant>().WithMany()
+                .HasForeignKey(s => s.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Subsystem>().WithMany()
+                .HasForeignKey(s => s.SubSystemId).OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasIndex(s => new { s.OwningTenantId, s.SubSystemId }).IsUnique();
+        }
+    }
+}
