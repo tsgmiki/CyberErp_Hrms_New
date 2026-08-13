@@ -12,6 +12,7 @@ namespace CyberErp.Hrms.App.Features.Core.Operations.Update;
 
 public class UpdateOperationHandler(
     IRepository<Operation> repository,
+    IRepository<Module> moduleRepository,
     IUnitOfWork unitOfWork,
     ITenantAuthorizationProjector projector,
     IValidator<UpdateOperationRequest> validator,
@@ -30,7 +31,11 @@ public class UpdateOperationHandler(
         if (operation == null)
             throw new NotFoundException(nameof(Operation), request.Id.ToString());
 
-        operation.Update(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon, request.SortOrder);
+        // Keep the denormalised subsystem in step when the operation is moved to another module.
+        var subSystemId = await Create.CreateOperationHandler.ResolveSubSystemAsync(moduleRepository, request.ModuleId, ct);
+
+        operation.Update(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon,
+            request.SortOrder, subSystemId);
 
         repository.UpdateAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);

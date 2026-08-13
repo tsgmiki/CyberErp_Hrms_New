@@ -468,7 +468,16 @@ path calls `ITenantAuthorizationProjector.SyncAsync()` — without it a permissi
 nobody reads. ⚠️ `User`/`Operation`/`Role` deletes must clear the tenant rows INLINE (NoAction /
 Restrict fail; `Role` is SetNull, which succeeds and leaves an invisible role still granting
 permissions). ⚠️ Found while testing, unfixed: `Subsystem`/`Module`/`Operation` controllers have **no
-`[RequirePermission]`** — any authenticated user can edit the menu.
+`[RequirePermission]`** — any authenticated user can edit the menu. **Core.User/Role/Operation ALIGNED
+with cybererp_srms 2026-08-13** (handoff 00FB, logic §12.5, migration `AlignCoreTablesWithSrms`):
+`User.Password`→**`PasswordHash`**+9 cols, `Role.Code` NOT NULL+3 cols, `Operation.SortOrder`→
+**`DisplayOrder`**+`SubSystemId`(FK)+`IsActive`. ⚠️ **`TenantId` KEPT** (SRMS has none) — dropping it
+would unscope every User/Role query. ⚠️ Forced departures: NormalizedEmail index is **filtered** (489
+of 506 users have no e-mail); `Operation.ModuleId` still → `Core.Module` because **SRMS has no Module
+table** and its FK names don't match their columns; `IX_Role_Code` not unique (`TenantId` is
+nvarchar(max), can't be indexed). ⚠️ **EF's scaffold was not runnable** — 3 backfills had to be
+interleaved before the unique index, the FK and the NOT NULL. ⚠️ **Home shares this DB** and reads the
+password column — deploy both repos together.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

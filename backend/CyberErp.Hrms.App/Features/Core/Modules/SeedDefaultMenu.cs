@@ -240,8 +240,11 @@ public class SeedDefaultMenu(
                 var exists = existingOperations.Any(o => o.ModuleId == module.Id && o.Link == op.Link);
                 if (exists) continue;
 
+                // hrms.Id is the subsystem every seeded module hangs off, so the denormalised
+                // SubSystemId is known here without a lookup.
                 await operationRepository.AddAsync(
-                    Operation.Create(module.Id, op.Name, op.Link, string.Empty, op.Icon, (oi + 1) * 10));
+                    Operation.Create(module.Id, op.Name, op.Link, string.Empty, op.Icon,
+                        (oi + 1) * 10, hrms.Id));
                 created++;
             }
         }

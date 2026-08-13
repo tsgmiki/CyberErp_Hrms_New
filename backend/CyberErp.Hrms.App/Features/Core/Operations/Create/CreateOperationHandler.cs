@@ -5,12 +5,14 @@ using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Features.Core.Operations.DTOs;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace CyberErp.Hrms.App.Features.Core.Operations.Create;
 
 public class CreateOperationHandler(
     IRepository<Operation> repository,
+    IRepository<Module> moduleRepository,
     IUnitOfWork unitOfWork,
     ITenantAuthorizationProjector projector,
     IValidator<CreateOperationRequest> validator,
@@ -23,7 +25,12 @@ public class CreateOperationHandler(
         if (!validationResult.IsValid)
             throw new AppValidationException(validationResult.Errors);
 
-        var operation = Operation.Create(request.ModuleId, request.Name, request.Link, request.Filter, request.Icon, request.SortOrder);
+        // SubSystemId is denormalised from the module and backed by a real FK, so it must resolve to
+        // a live subsystem — an unset Guid would be rejected by the database, not silently stored.
+        var subSystemId = await ResolveSubSystemAsync(moduleRepository, request.ModuleId, ct);
+
+        var operation = Operation.Create(request.ModuleId, request.Name, request.Link, request.Filter,
+            request.Icon, request.SortOrder, subSystemId);
 
         await repository.AddAsync(operation);
         await unitOfWork.SaveChangesAsync(ct);
@@ -40,5 +47,18 @@ public class CreateOperationHandler(
             Link = operation.Link,
             Icon = operation.Icon
         };
+    }
+
+    /// <summary>The module's subsystem, or a clean validation error when the module is unknown.</summary>
+    internal static async Task<Guid> ResolveSubSystemAsync(
+        IRepository<Module> modules, Guid moduleId, CancellationToken ct)
+    {
+        var subSystemId = await modules.GetAll()
+            .Where(m => m.Id == moduleId)
+            .Select(m => (Guid?)m.SubsystemId)
+            .FirstOrDefaultAsync(ct);
+
+        return subSystemId
+            ?? throw new NotFoundException(nameof(Module), moduleId.ToString());
     }
 }

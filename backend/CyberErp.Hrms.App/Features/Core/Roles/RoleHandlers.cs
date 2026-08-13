@@ -85,6 +85,14 @@ namespace CyberErp.Hrms.App.Features.Core.Roles
             if (await repository.GetAll().AnyAsync(r => r.Name == dto.Name && r.Id != dto.Id))
                 throw new DuplicateException(nameof(Role), nameof(dto.Name), dto.Name);
 
+            // Code is required and identifies the role template. It is enforced here rather than by a
+            // unique index: CERP keeps TenantId, so two tenants may each hold an "Administrator", and
+            // the index cannot be scoped to (TenantId, Code) because TenantId is nvarchar(max).
+            // GetAll() is tenant-filtered, so this check is per-tenant.
+            var code = string.IsNullOrWhiteSpace(dto.Code) ? null : dto.Code.Trim();
+            if (code is not null && await repository.GetAll().AnyAsync(r => r.Code == code && r.Id != dto.Id))
+                throw new DuplicateException(nameof(Role), nameof(dto.Code), code);
+
             if (dto.Id.HasValue && dto.Id.Value != Guid.Empty)
             {
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value)

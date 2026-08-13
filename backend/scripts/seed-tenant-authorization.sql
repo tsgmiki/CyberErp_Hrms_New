@@ -54,11 +54,13 @@ WHERE NOT EXISTS (
 INSERT INTO Core.TenantOperation
     (Id, OwningTenantId, SubSystemId, OperationId, ModuleId, Name, Link, Icon, DisplayOrder, IsActive,
      Filter, TenantId, CreatedAt, RowVersion)
--- CERP's Operation names the ordering column SortOrder and has no IsActive, so DisplayOrder maps
--- from SortOrder and every copied operation starts active. Filter carries across as-is.
-SELECT NEWID(), t.Id, ISNULL(m.SubsystemId, '00000000-0000-0000-0000-000000000000'), o.Id, o.ModuleId,
+-- Since the 2026-08 SRMS alignment the template carries DisplayOrder, IsActive and its own
+-- SubSystemId, so all three copy straight across instead of being derived or defaulted.
+SELECT NEWID(), t.Id, ISNULL(NULLIF(o.SubSystemId, '00000000-0000-0000-0000-000000000000'),
+                             ISNULL(m.SubsystemId, '00000000-0000-0000-0000-000000000000')),
+       o.Id, o.ModuleId,
        LEFT(ISNULL(o.Name, ''), 200), LEFT(ISNULL(o.Link, ''), 300), LEFT(ISNULL(o.Icon, ''), 100),
-       ISNULL(o.SortOrder, 0), 1, LEFT(ISNULL(o.Filter, ''), 500),
+       ISNULL(o.DisplayOrder, 0), o.IsActive, LEFT(ISNULL(o.Filter, ''), 500),
        CAST(t.Id AS nvarchar(64)), SYSUTCDATETIME(), @rv
 FROM Core.Operation o
 LEFT JOIN Core.Module m ON m.Id = o.ModuleId

@@ -1658,6 +1658,83 @@ and `Role`, 200 on `OtherLeave`, 401 unauthenticated. The projector was exercise
 operation**: create → tenant copy appeared; rename → copy followed (`/zzFlipProbe2`, order 8888);
 delete → both rows gone and all six baseline counts back to 150 / 8 / 598 / 500 / 503.
 
+### 12.5 Aligning Core.User / Core.Role / Core.Operation with the SRMS schema
+
+Migration `AlignCoreTablesWithSrms`. The three tables now carry **exactly** SRMS's column set — verified
+by diffing `INFORMATION_SCHEMA.COLUMNS` between the two databases in both directions — with **one
+deliberate extra: `TenantId`**.
+
+| Table | Change |
+|---|---|
+| `User` | `Password` → **`PasswordHash`**; + `AccountStatus`, `FailedLoginAttempts`, `LockoutEndUtc`, `TwoFactorEnabled`, `ProfilePicture`(+`ContentType`), `IsPlatformAdministrator`, `NormalizedEmail`, `NormalizedUserName` |
+| `Role` | `Code` → `nvarchar(80) NOT NULL`; `Name` 200→100; + `Description`, `IsPlatformRole`, `IsActive` |
+| `Operation` | `SortOrder` → **`DisplayOrder`**; + `SubSystemId` (FK), `IsActive`; four columns narrowed to the SRMS caps |
+
+#### ⚠️ Why TenantId was KEPT
+
+SRMS has no such column: there, a user is a global identity and tenancy lives entirely in `TenantUser`.
+`Repository<T>` filters *every* query on `TenantId`, so dropping it would stop scoping users, roles and
+operations and the User/Role screens would show all tenants at once. That is a separate, deliberate
+change requiring those screens to be refactored onto `TenantUser`/`TenantRole` — not a side effect of a
+column alignment.
+
+#### ⚠️ Three departures from SRMS, each forced by real data or a real dependency
+
+1. **`IX_User_NormalizedEmail` is FILTERED** (`WHERE NormalizedEmail <> ''`), not a plain `UNIQUE`.
+   **489 of 506 accounts have no e-mail address on file** — a plain unique index cannot be created
+   because they all collide on `''`. SRMS gets away with it on 3 users.
+2. **`Operation.ModuleId` still points at `Core.Module`.** SRMS has **no Module table**: its operations
+   nest into each other, and the column it calls `ModuleId` actually carries an FK back to
+   `Operation.Id` — a renamed `ParentOperationId` whose constraint name was never updated (the one
+   named `FK_Operation_Module_ModuleId` in fact sits on `SubSystemId`). CERP groups 150 operations
+   under 24 modules and the sidebar depends on it. `SubSystemId` was added as a real FK to
+   `Core.Subsystem`, denormalised from the module — the same value `TenantOperation` already stores.
+3. **`IX_Role_Code` is NOT unique**, unlike SRMS's `IX_StandardRoleTemplate_Code`. Two tenants may each
+   define an "Administrator", and the index cannot be scoped to `(TenantId, Code)` because `TenantId`
+   is `nvarchar(max)`, which SQL Server will not index. Uniqueness is enforced **per tenant in
+   `SaveRole`**, the way the role name already was.
+
+#### ⚠️ The scaffolded migration was not runnable as generated
+
+EF orders operations by dependency, not by data, so three would have failed or corrupted:
+
+| Scaffolded | Why it breaks | Fix |
+|---|---|---|
+| `UNIQUE IX_User_NormalizedUserName` | created while all 506 rows hold `''` — every one collides | backfill `UPPER(LTRIM(RTRIM(...)))` first |
+| FK `Operation → Subsystem` | `SubSystemId` defaults to an empty Guid, which matches no subsystem | backfill from `Module.SubsystemId` first |
+| `Role.Code` → `NOT NULL DEFAULT ''` | silently blanks the 5 roles that had no code | backfill `UPPER(REPLACE(Name,' ','-'))` first |
+
+#### ⚠️ The Home portal shares this database
+
+`D:\Workspace\CyberErp\Home` maps the same three tables (`Navigation.cs`) and reads the password column
+directly in `LoginUser.cs` / `ChangePassword.cs`. Its entity, its portal feed and `SeedHomeMenu` were
+updated in the same pass — **the two repos must be deployed together**, the same trap as
+`Core.Notification`. All shared tables are `ExcludeFromMigrations` there, so Home will not fight the
+schema.
+
+#### What did NOT change
+
+The **API/DTO wire contract still says `sortOrder`**, mapped to the entity's `DisplayOrder`. `Module`
+still has a genuine `SortOrder`, so renaming only the operation half would have made two adjacent
+screens inconsistent for no schema benefit — and it keeps both SPAs working untouched.
+`Core.RolePermission` (598 rows) and `Core.Module` (24 rows) **do not exist in SRMS** at all;
+RolePermission is already superseded at runtime by `TenantRolePermission` (§12.4), but removing either
+is its own decision, not part of a column alignment.
+
+#### Verification
+
+```
+column-set diff vs SRMS:  0 missing, 0 type/length mismatches,
+                          3 extras (the deliberate TenantId columns)
+backfills: 506 hashes intact, 0 blank normalised usernames, 0 blank role codes,
+           150 operations resolved, 0 subsystem mismatches
+readers:   gate MATCH 15369=15369, menu MATCH 17409=17409, 0 users differing
+model:     MATCH 70852=70852, 0 lost, 0 gained
+live:      HRMS login 200 + 34 links; Home login 200 + portal feed correct; 0 errors in either log
+projector: throwaway operation created (SubSystemId resolved from module, tenant copy order 7777)
+           and deleted cleanly
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
