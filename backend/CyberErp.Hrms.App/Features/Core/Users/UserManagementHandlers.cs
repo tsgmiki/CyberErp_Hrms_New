@@ -112,6 +112,8 @@ namespace CyberErp.Hrms.App.Features.Core.Users
     public class DeleteUser(
         IRepository<User> repository,
         IRepository<UserRole> userRoleRepository,
+        IRepository<TenantUser> tenantUserRepository,
+        IRepository<TenantUserRole> tenantUserRoleRepository,
         ILogger<DeleteUser> logger) : IDeleteUser
     {
         public async Task DeleteAsync(Guid id)
@@ -124,9 +126,23 @@ namespace CyberErp.Hrms.App.Features.Core.Users
             foreach (var assignment in assignments)
                 userRoleRepository.Delete(assignment);
 
+            // Same for the tenant membership: TenantUser -> User is NoAction (it has to be, or two
+            // cascade paths meet in the same table), so the row must be cleared HERE. Leaving it to
+            // the projector, which runs after the save, would mean the delete never gets that far.
+            var memberships = await tenantUserRepository.GetAll().Where(tu => tu.UserId == id).ToListAsync();
+            foreach (var membership in memberships)
+            {
+                var held = await tenantUserRoleRepository.GetAll()
+                    .Where(tur => tur.TenantUserId == membership.Id).ToListAsync();
+                foreach (var row in held)
+                    tenantUserRoleRepository.Delete(row);
+                tenantUserRepository.Delete(membership);
+            }
+
             repository.Delete(entity);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Deleted User {Id} ({Count} role assignment(s) removed)", id, assignments.Count);
+            logger.LogInformation("Deleted User {Id} ({Count} role assignment(s), {Memberships} membership(s) removed)",
+                id, assignments.Count, memberships.Count);
         }
     }
 }

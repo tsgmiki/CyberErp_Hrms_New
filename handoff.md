@@ -123,6 +123,37 @@
 
 ## 1. Most recent changes (latest first)
 
+00FA. **SRMS phase 2, STEP 2 — THE FLIP: the runtime now reads the tenant-scoped tables
+    (2026-08-13).** Detail in logic.md §12.4.
+    - `EndpointPermissionService` and `GetModuleWithOperationsRepository` resolve through
+      `TenantUser`(Active) → `TenantUserRole` → `TenantRolePermission` → `TenantOperation`(IsActive).
+      A multi-tenant user now sees only the tenant they signed in to, and `IsActive = 0` really
+      revokes a screen. `OperationRecord.Id` still reports the TEMPLATE id — that is what the
+      role-permission screen sends back.
+    - ⚠️ **The admin screens still EDIT the global tables**, so every write path calls the new
+      `ITenantAuthorizationProjector.SyncAsync()`. Without it a permission save would update a table
+      nobody reads and appear to do nothing. Full reconcile, not surgical — cheap at this size and
+      self-healing if a path is missed. It skips bespoke (`SourceTemplateId` null) roles and
+      `IsCustomized` tenant roles so a projection never strips local customisation.
+    - ⚠️ **Three delete paths clean up inline, BEFORE the save** — the projector runs after it, too
+      late. `User` (NoAction) and `Operation` (Restrict) would fail outright; `Role` is worse, since
+      SetNull SUCCEEDS and blanks `SourceTemplateId`, leaving an invisible role that still grants its
+      permissions.
+    - Permission-cache keys carry a generation number now (`IMemoryCache` can't clear by prefix);
+      `InvalidateAll()` bumps it so an admin's own save is not stuck behind the 60s window.
+    - Verified: `verify-tenant-auth-readers.sql` transcribes both runtime queries and reports MATCH on
+      each (gate 15369 = 15369, menu 17409 = 17409, 0 lost, 0 gained, 0 users differing); the model
+      test still says MATCH; `hoadmin` got 34 links, 403 / 200 / 401 as expected; and the projector was
+      exercised with a **throwaway operation** (create → copy appeared, rename → copy followed, delete
+      → both gone, all six counts back to 150/8/598/500/503).
+    - ⚠️ **Found while testing, NOT fixed:** `SubsystemController`, `ModuleController` and
+      `OperationController` carry no `[RequirePermission]`, so **any authenticated user can create,
+      rename or delete menu operations** — that is how the throwaway probe ran under a non-admin
+      account. Pre-existing, unrelated to the flip, and worth its own change.
+    - ⚠️ Not verified live: an **admin** session (`admin`'s password is not the documented
+      `Passw0rd!`/`password`), so the Role Permissions screen save → projection round trip was proven
+      through the Operation endpoints rather than the permission grid itself.
+
 00EZ. **SRMS phase 2, STEP 1: the tenant-scoped auth model exists and is mirrored — nothing reads it
     yet (2026-08-13).** Detail in logic.md §12.3.
     - Migration `AddTenantScopedAuthorization` (6 CreateTable + 13 indexes, no alters/drops), APPLIED

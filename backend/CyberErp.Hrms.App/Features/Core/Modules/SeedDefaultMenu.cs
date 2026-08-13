@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class SeedDefaultMenu(
     IRepository<Module> moduleRepository,
     IRepository<Operation> operationRepository,
     IUnitOfWork unitOfWork,
+    ITenantAuthorizationProjector projector,
     ILogger<SeedDefaultMenu> logger) : ISeedDefaultMenu
 {
     private const string HrmsSubsystem = "HRMS";
@@ -247,6 +249,8 @@ public class SeedDefaultMenu(
         if (created > 0)
         {
             await unitOfWork.SaveChangesAsync();
+            // Newly seeded operations need their tenant copies before any role can be granted them.
+            await projector.SyncAsync();
             logger.LogInformation("Seeded {Count} navigation rows (subsystem/modules/operations)", created);
         }
 

@@ -1582,9 +1582,81 @@ verdict: MATCH - effective permissions identical in both models
 `CanExport` is seeded FALSE everywhere: the old model has no such column, so granting it would invent
 access nobody assigned.
 
-**Step 2 (not started) is the flip** — pointing `IEndpointPermissionService`, login, the DB-driven
-sidebar and the Role Permissions screens at the new tables. Re-run the verify script immediately
-before flipping: it must still say MATCH, or the live model has drifted since the seed.
+**Step 2 is the flip** — see §12.4.
+
+### 12.4 Phase 2 step 2 — the flip: the runtime now READS the tenant-scoped tables
+
+The two readers moved:
+
+| Reader | Now resolves through |
+|---|---|
+| `EndpointPermissionService.LoadGrantedLinksAsync` (the `[RequirePermission]` gate) | `TenantUser`(Active) → `TenantUserRole` → `TenantRolePermission`(CanView) → `TenantOperation`(IsActive) |
+| `GetModuleWithOperationsRepository` (the sidebar feed) | the same chain; `Name`/`Link`/`Icon`/order come from the tenant's OWN copy |
+
+Two capabilities the old global join could not express are now live: a user belonging to several
+tenants sees only the tenant they signed in to, and `IsActive = 0` genuinely revokes a screen rather
+than merely hiding its menu entry. `OperationRecord.Id` still reports the TEMPLATE id, because that
+is what the role-permission screen sends back.
+
+#### ⚠️ Why a projector, and why every admin write calls it
+
+The runtime READS the tenant tables; the admin screens still EDIT the global ones. Without something
+in between, saving a permission would update a table nobody reads and **appear to do nothing**.
+`ITenantAuthorizationProjector.SyncAsync()` closes that gap and is called from every write path:
+role save/delete, user-role save/delete, role-permission save/delete, operation create/update/delete,
+and `SeedDefaultMenu`.
+
+It is a FULL reconcile, not a surgical per-row update. One tenant is ~150 operations, 8 roles and
+~600 grants — trivial for an action a human performs a few times a day — and in exchange it is
+*self-healing*: a write path that forgets to call it is corrected by the next sync. What it cannot
+see is a change made directly in SQL; that needs a manual (idempotent) run of
+`seed-tenant-authorization.sql`.
+
+It deliberately does **not** touch anything the global model cannot express: grants and assignments
+belonging to a role with no `SourceTemplateId` (a bespoke tenant role) are skipped by the revocation
+sweep, and `TenantRole.SyncFromTemplate` is a no-op once `IsCustomized` is set. Otherwise the next
+admin save would silently strip local customisation.
+
+#### ⚠️ Three FK traps — deletes that must clean up BEFORE the save, not via the projector
+
+The projector runs *after* `SaveChangesAsync`, so anything the database would reject has to be
+handled inline:
+
+| Delete | FK | Consequence if left to the projector |
+|---|---|---|
+| `User` | `TenantUser → User` is **NoAction** | the delete FAILS outright |
+| `Operation` | `TenantOperation → Operation` is **Restrict** | the delete FAILS outright |
+| `Role` | `TenantRole → Role` is **SetNull** | worse — it SUCCEEDS, blanking `SourceTemplateId`. A null source reads as a *bespoke* role, which the projector never touches, so the role lives on invisibly, still granting its permissions |
+
+`DeleteUser`, `DeleteOperationHandler` and `DeleteRole` therefore each clear the tenant rows (and
+their dependent grants) explicitly first.
+
+#### Cache invalidation
+
+The granted-link set is cached 60s per user. Cache keys now carry a **generation number** because
+`IMemoryCache` cannot enumerate or clear by prefix; `InvalidateAll()` bumps it, orphaning every entry
+at once, and the projector calls it whenever it writes. The TTL now only bounds changes made behind
+the application's back.
+
+#### Verification
+
+`backend/scripts/verify-tenant-auth-readers.sql` (read-only) transcribes both runtime queries,
+predicate for predicate, and compares old against new across the whole population:
+
+```
+memberships_not_active 0 | operations_hidden 0 | users_with_a_role_but_no_membership 0
+old_gate_rows 15369 | new_gate_rows 15369 | gate_lost 0 | gate_gained 0  -> MATCH
+old_menu_rows 17409 | new_menu_rows 17409 | menu_lost 0 | menu_gained 0  -> MATCH
+users_whose_sidebar_size_differs 0
+```
+
+The first line matters most: those three counts are the ONLY way the readers can diverge while the
+model test still passes, since `Status` and `IsActive` have no counterpart in the old model.
+
+Live: `hoadmin` (UserRole) got 34 links — matching the old model exactly — 403 on `RolePermission`
+and `Role`, 200 on `OtherLeave`, 401 unauthenticated. The projector was exercised with a **throwaway
+operation**: create → tenant copy appeared; rename → copy followed (`/zzFlipProbe2`, order 8888);
+delete → both rows gone and all six baseline counts back to 150 / 8 / 598 / 500 / 503.
 
 ### 12.2 What phase 2 is, and its one hard rule
 

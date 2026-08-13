@@ -92,6 +92,27 @@ public class TenantRole : BaseEntity, IAggregateRoot
         IsCustomized = true;
         base.Update();
     }
+
+    /// <summary>
+    /// Re-applies the template's name/code. NO-OP once the tenant has customised the role — that is
+    /// the whole point of <see cref="IsCustomized"/>: a refresh must never silently discard a local
+    /// rename. Returns true when something actually changed.
+    /// </summary>
+    public bool SyncFromTemplate(string name, string? code, string? description)
+    {
+        if (IsCustomized) return false;
+
+        var newName = (name ?? string.Empty).Trim();
+        var newCode = string.IsNullOrWhiteSpace(code) ? newName : code.Trim();
+        var newDescription = description?.Trim();
+        if (Name == newName && Code == newCode && Description == newDescription) return false;
+
+        Name = newName;
+        Code = newCode;
+        Description = newDescription;
+        base.Update();
+        return true;
+    }
 }
 
 /// <summary>
@@ -139,6 +160,45 @@ public class TenantOperation : BaseEntity
             DisplayOrder = displayOrder,
             IsActive = isActive,
         };
+    }
+
+    /// <summary>
+    /// Re-applies the template's presentation fields. Returns true when something actually changed,
+    /// so the projector can skip a write.
+    ///
+    /// <para>Unlike <see cref="TenantRole"/> there is no customised guard yet: nothing in the UI can
+    /// rename a tenant's copy of a screen, so there is no local edit to protect. Add one here the
+    /// moment such a screen exists, or the first template edit will overwrite it.</para>
+    /// </summary>
+    public bool SyncFromTemplate(Guid subSystemId, Guid? moduleId, string name, string link,
+        string? icon, int displayOrder, string? filter)
+    {
+        var newName = (name ?? string.Empty).Trim();
+        var newLink = (link ?? string.Empty).Trim();
+        var newIcon = (icon ?? string.Empty).Trim();
+        var newFilter = (filter ?? string.Empty).Trim();
+
+        if (SubSystemId == subSystemId && ModuleId == moduleId && Name == newName && Link == newLink
+            && Icon == newIcon && DisplayOrder == displayOrder && Filter == newFilter)
+            return false;
+
+        SubSystemId = subSystemId;
+        ModuleId = moduleId;
+        Name = newName;
+        Link = newLink;
+        Icon = newIcon;
+        DisplayOrder = displayOrder;
+        Filter = newFilter;
+        base.Update();
+        return true;
+    }
+
+    /// <summary>Hides or restores this screen for the tenant, without deleting the grant rows.</summary>
+    public void SetActive(bool isActive)
+    {
+        if (IsActive == isActive) return;
+        IsActive = isActive;
+        base.Update();
     }
 }
 
