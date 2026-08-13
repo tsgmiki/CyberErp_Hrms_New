@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Features.Core.Workflows;
@@ -26,7 +27,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     /// Role-based visibility for performance data (appraisals, goals, employee pickers). PERFORMANCE:
     /// the scope is resolved once per request (memoized — 2-3 small queries + an in-memory unit-tree BFS)
     /// and every consumer turns it into a single SQL predicate — no per-row org-tree climbs.
-    /// HR admin = head-office user OR an explicit User/Role approver on the Appraisal workflow's HrSignOff step.
+    /// <b>HR admin = holder of the HR employee-register permission, OR an explicit User/Role approver
+    /// on the Appraisal workflow's HrSignOff step.</b>
     /// </summary>
     public interface IPerformanceVisibilityService
     {
@@ -41,6 +43,7 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Employee> employees,
         IRepository<OrganizationUnit> units,
         IRepository<WorkflowDefinition> definitions,
+        IEndpointPermissionService permissions,
         IWorkflowApproverAuth approverAuth) : IPerformanceVisibilityService
     {
         private VisibilityScope? _scope;                              // scoped service — one computation per request
@@ -92,8 +95,21 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         /// definition's HrSignOff step (an OPEN step does NOT make everyone an admin).</summary>
         private async Task<bool> IsAdminAsync(Guid? userId)
         {
-            if (currentUser.IsHeadOffice()) return true;
             if (userId is null) return false;
+
+            // HR admin is a PERMISSION, not head-office status.
+            //
+            // This used to read `if (currentUser.IsHeadOffice()) return true;`. That flag is set from
+            // the employee's branch, and in a single-branch tenant — where the one branch is flagged
+            // IsHeadOffice — it is true for EVERY employee-linked user. The result was that the 73
+            // scoping checks written as `if (!scope.IsAdmin) narrow(...)` never narrowed anything:
+            // ordinary staff saw the whole organisation's employees, appraisals, goals and leave
+            // (logic.md §11). The employee register is held only by Administrator and HR Admin, so it
+            // says what this method always meant to say.
+            //
+            // Head-office status still drives BRANCH scoping elsewhere (ICurrentUserService); it just
+            // no longer doubles as "this person is HR".
+            if (await permissions.HasAnyAsync(HrScreens.EmployeeRegister)) return true;
 
             var approvers = await definitions.GetAll()
                 .Where(d => d.EntityType == WorkflowEntityTypes.Appraisal && d.IsActive)

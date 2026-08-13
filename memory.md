@@ -417,12 +417,14 @@ it correctly in the targeted `["x", formState.id]` form. ⚠️ Derive the key f
 sweep produces both false positives and keys that match nothing. Same session: branch reassignment on
 `OrganizationUnit` used to be discarded SILENTLY with a 200 for non-head-office callers (see §10.2).
 
-**⚠️ `IsAdmin` grants EVERYONE in this deployment (2026-08-13 — logic.md §11, handoff 00ET).**
-`PerformanceVisibilityService.IsAdminAsync` short-circuits on `IsHeadOffice()`, which is true when the
-employee's branch has `IsHeadOffice = 1`. CERP has ONE branch, so flagged — every one of the 490
-employee-linked users is `IsAdmin`. Any *"if IsAdmin show everything"* check therefore applies to
-ordinary staff; it caused the portal to list the whole organisation's Other Leave. Use the menu
-permission (`IEndpointPermissionService`), a `/mine` endpoint, or the resolved approver instead.
+**`IsAdmin` = an HR PERMISSION (fixed 2026-08-13 — logic.md §11, handoff 00EY).** It USED to
+short-circuit on `IsHeadOffice()`, true for every employee in this single-branch tenant, so every
+*"if IsAdmin show everything"* check applied to ordinary staff — that is what leaked the whole
+organisation's Other Leave. `IsAdminAsync` now checks the `/employee` menu permission
+(Administrator + HR Admin only). Effective visibility after: HR 345 employees, manager 2–5 (their
+subtree), employee 1 (self). ⚠️ **Only survivable because every employee now holds a role
+(`assign-employee-role.sql`) — never port it to an environment where that has not run.** For new
+gates still prefer the explicit tool: menu permission, a `/mine` endpoint, or the resolved approver.
 **AUDITED 2026-08-13 (handoff 00EV, logic §11.5): 143 no-op checks in 60 files** — 16 cross-employee
 guards, 54 HR-only gates, 73 query-scoping sites, with the exposure measured against a live API.
 31 pure HR/master-data controllers were gated (safe: 403-for-roleless is correct there);

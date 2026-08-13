@@ -1355,8 +1355,8 @@ Three shapes, worst first:
 | | Pattern | Count | Effect | Status |
 |---|---|---|---|---|
 | A | `!IsAdmin && notMine → throw` | 16 | Guard unreachable — any employee could act on ANOTHER's loan / trip / guarantee | **FIXED (§11.7)** |
-| B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff | partly covered by §11.5's 31 gated controllers |
-| C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect | OPEN |
+| B | `IsAdmin → throw "Only HR…"` | 54 | HR-only operations open to all staff | **FIXED at the root (§11.8)** |
+| C | `if (!IsAdmin) narrow query` | 73 | Row scoping skipped — this is the Other Leave defect | **FIXED at the root (§11.8)** |
 
 > ⚠️ **THE BLOCKER (now CLEARED — see §11.6): 480 of the 490 employee accounts had NO ROLE AT ALL.**
 > `HasAnyAsync` needs a role carrying `CanView`, so every `[RequirePermission]` added returned 403 for
@@ -1428,8 +1428,51 @@ HR                     : "This record is awaiting workflow approval…"    <- ov
 ```
 
 > ⚠️ `RewardNominationHandlers` also contains `if (!scope.IsAdmin && !scope.IsManager)` — an
-> HR-or-manager gate, NOT an ownership guard. It is left as-is (it belongs to category B) and is
-> still broken: any employee can currently raise a nomination.
+> HR-or-manager gate, NOT an ownership guard. It was left as-is here (it belongs to category B) and is
+> now fixed by §11.8 along with the rest of that category.
+
+### 11.8 `IsAdmin` means a PERMISSION — categories B and C fixed at the root
+
+`IsAdminAsync` no longer short-circuits on `IsHeadOffice()`. It now reads:
+
+```csharp
+if (await permissions.HasAnyAsync(HrScreens.EmployeeRegister)) return true;   // /employee
+// …then the existing fallback: an explicit User/Role approver on the Appraisal HrSignOff step
+```
+
+**One line closes both remaining categories.** The 73 scoping sites and the 54 `"Only HR…"` gates were
+never wrong in themselves — they ask `scope.IsAdmin`, which was simply answering "yes" for everyone.
+None of those 73/54 sites was edited; they started working the moment the answer became correct.
+
+`/employee` is held only by Administrator and HR Admin, so it says what the method always meant.
+Head-office status still drives BRANCH scoping through `ICurrentUserService` — it just no longer
+doubles as "this person is HR".
+
+> ⚠️ **This depends on §11.6.** It is only survivable because every employee now holds a role: before
+> that, removing the head-office short-circuit would have left 480 accounts with no permissions at
+> all. Do not port this change to an environment where `assign-employee-role.sql` has not run.
+
+**Acceptance test — effective visibility per user, same endpoints before and after:**
+
+```
+                        Emp   Appr  OthL  AnnL  Goal
+BEFORE  Administrator   345    1     1     1     3
+        employee        345    1     1     1     3     <- saw the whole organisation
+        employee        345    1     1     1     3
+
+AFTER   Administrator   345    1     1     1     3     <- HR unchanged
+        employee          1    0     0     0     0     <- self only
+        employee          1    0     1     0     0     <- keeps their OWN leave request
+```
+
+The last row is the useful signal: that employee retains exactly one other-leave row because it is
+theirs, while the employee with none sees zero — per-owner scoping, not a blanket zero. The manager
+tier resolves in between: two managerial employees see **2** and **5** employees (their unit
+subtrees) against HR's 345.
+
+Verified with no 500s across twelve modules, self-service unaffected, and the portal's News Feed
+still working — it reads `Announcement/feed`, which is open to staff, while the admin `Announcement`
+list now correctly refuses them.
 
 ### 11.1 Approval precedes submission (salary revision)
 
