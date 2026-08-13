@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.JobCategories;
 using CyberErp.Hrms.App.Features.Core.JobCategories.DTOs;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("jobCategory")]
     public class JobCategoryController(
         ICreateJobCategory createHandler,
         IUpdateJobCategory updateHandler,

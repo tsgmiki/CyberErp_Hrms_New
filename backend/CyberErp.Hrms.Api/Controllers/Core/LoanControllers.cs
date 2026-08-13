@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Loans;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.4 Employee Loan Management — L1: loan types + requests + guarantors + schedule + workflow.
 
     /// <summary>Configurable loan products with limits and interest (HC251).</summary>
+    [RequirePermission("loanType")]
     public class LoanTypeController(
         ISaveLoanType saveHandler,
         IGetAllLoanTypes getAllHandler,

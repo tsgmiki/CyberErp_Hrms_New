@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Leaves;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Fiscal years (Core.FiscalYear) — anchor for leave balances, accrual and rollover.</summary>
+    [RequirePermission("fiscalYear")]
     public class FiscalYearController(
         ISaveFiscalYear saveHandler,
         IGetFiscalYearById getByIdHandler,
@@ -55,6 +57,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Annual-leave accrual policy per fiscal year (successor of legacy hrmsAnnualLeaveSetting).</summary>
+    [RequirePermission("annualLeaveSetting")]
     public class AnnualLeaveSettingController(
         ISaveAnnualLeaveSetting saveHandler,
         IGetAnnualLeaveSettingById getByIdHandler,

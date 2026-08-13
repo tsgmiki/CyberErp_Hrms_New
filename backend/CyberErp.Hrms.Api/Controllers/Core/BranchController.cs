@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Branches;
 using CyberErp.Hrms.App.Features.Core.Branches.DTOs;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("branch")]
     public class BranchController(
         ICreateBranch createHandler,
         IUpdateBranch updateHandler,

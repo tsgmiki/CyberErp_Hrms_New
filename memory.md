@@ -422,8 +422,14 @@ sweep produces both false positives and keys that match nothing. Same session: b
 employee's branch has `IsHeadOffice = 1`. CERP has ONE branch, so flagged — every one of the 490
 employee-linked users is `IsAdmin`. Any *"if IsAdmin show everything"* check therefore applies to
 ordinary staff; it caused the portal to list the whole organisation's Other Leave. Use the menu
-permission (`IEndpointPermissionService`), a `/mine` endpoint, or the resolved approver instead. **A
-full audit of the remaining `IsAdmin` call sites is outstanding.**
+permission (`IEndpointPermissionService`), a `/mine` endpoint, or the resolved approver instead.
+**AUDITED 2026-08-13 (handoff 00EV, logic §11.5): 143 no-op checks in 60 files** — 16 cross-employee
+guards, 54 HR-only gates, 73 query-scoping sites, with the exposure measured against a live API.
+⚠️ **The blocker: 480 of the 490 employee accounts hold NO ROLE**, so adding `[RequirePermission]` —
+or fixing `IsAdminAsync` at the root — 403s them; they can use the system today only because of the
+bug. 31 pure HR/master-data controllers were gated (safe: 403-for-roleless is correct there);
+`EmployeeController` deliberately excluded because it carries `Employee/me`. **Assigning roles to the
+480 is the prerequisite for everything else.**
 
 **Leave + salary-revision workflow rules (2026-08-13).** Salary revision now goes
 Draft → PendingApproval → **Approved → Submitted** → Applied (the author may only *send for

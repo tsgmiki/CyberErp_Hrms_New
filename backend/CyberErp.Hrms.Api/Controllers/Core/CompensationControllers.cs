@@ -8,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.1 Compensation & Benefit — Phase CB1: allowance catalogue + per-employee allowances.
 
     /// <summary>Allowance/earning catalogue (HC226): transport, housing, meal, etc.</summary>
+    [RequirePermission("allowanceType")]
     public class AllowanceTypeController(
         ISaveAllowanceType saveHandler,
         IGetAllAllowanceTypes getAllHandler,
@@ -169,6 +170,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.1 CB3 — benefit plans, enrollment, tax config, deductions preview.
 
     /// <summary>Benefit plan catalogue (HC230): health, life, pension, etc.</summary>
+    [RequirePermission("benefitPlan")]
     public class BenefitPlanController(
         ISaveBenefitPlan saveHandler,
         IGetAllBenefitPlans getAllHandler,
@@ -216,6 +218,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Progressive income-tax table + the deductions/contributions preview (HC231/HC232).</summary>
+    [RequirePermission("taxBracket")]
     public class TaxBracketController(
         ISaveTaxBracket saveHandler,
         IGetAllTaxBrackets getAllHandler,

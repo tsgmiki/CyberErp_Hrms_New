@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Leaves;
 using Microsoft.AspNetCore.Mvc;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Leave type configuration (HC030).</summary>
+    [RequirePermission("leaveType")]
     public class LeaveTypeController(
         ISaveLeaveType saveHandler,
         IGetLeaveTypeById getByIdHandler,
@@ -37,6 +39,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Public/holiday calendar (HC040), including the working-day calculator.</summary>
+    [RequirePermission("holiday")]
     public class HolidayController(
         ISaveHoliday saveHandler,
         IGetHolidayById getByIdHandler,
@@ -75,6 +78,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Client work-week configuration (Full/Half/Rest per weekday) driving the leave/attendance day count.</summary>
+    [RequirePermission("workWeekConfiguration")]
     public class WorkWeekConfigurationController(
         ISaveWorkWeekConfiguration saveHandler,
         IDeleteWorkWeekConfiguration deleteHandler,

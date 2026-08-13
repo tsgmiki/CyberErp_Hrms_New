@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.ClearanceDepartments;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// clearance checklist, each with its authorized approvers (users and/or roles). Any single
     /// authorized user's approval clears the department.
     /// </summary>
+    [RequirePermission("clearanceDepartment")]
     public class ClearanceDepartmentController(
         ISaveClearanceDepartment saveHandler,
         IGetAllClearanceDepartments getAllHandler,

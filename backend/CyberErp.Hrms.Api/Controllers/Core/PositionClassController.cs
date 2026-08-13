@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.PositionClasses;
 using CyberErp.Hrms.App.Features.Core.PositionClasses.DTOs;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("positionClass")]
     public class PositionClassController(
         ICreatePositionClass createHandler,
         IUpdatePositionClass updateHandler,

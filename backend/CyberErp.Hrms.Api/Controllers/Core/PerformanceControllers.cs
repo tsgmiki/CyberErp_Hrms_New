@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Performance;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Performance Management (HC118–HC147) — Phase A configuration endpoints.
 
     /// <summary>Rating scales / scoring frameworks (HC138) with their level bands.</summary>
+    [RequirePermission("ratingScale")]
     public class RatingScaleController(
         ISaveRatingScale saveHandler,
         IDeleteRatingScale deleteHandler,
@@ -30,6 +32,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Configurable competency categories (HC125).</summary>
+    [RequirePermission("competencyCategory")]
     public class CompetencyCategoryController(
         ICreateCompetencyCategory createHandler,
         IUpdateCompetencyCategory updateHandler,
@@ -54,6 +57,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Competency library (HC123–HC125).</summary>
+    [RequirePermission("competency")]
     public class CompetencyController(
         ICreateCompetency createHandler,
         IUpdateCompetency updateHandler,
@@ -90,6 +94,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Configurable appraisal cycles (HC126–HC128).</summary>
+    [RequirePermission("reviewCycle")]
     public class ReviewCycleController(
         ISaveReviewCycle saveHandler,
         IDeleteReviewCycle deleteHandler,
@@ -268,6 +273,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Calibration &amp; moderation sessions (HC128–HC129).</summary>
+    [RequirePermission("calibration")]
     public class CalibrationSessionController(
         ICreateCalibrationSession createHandler,
         ISaveCalibrationItem saveItemHandler,
@@ -390,6 +396,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Recognition badge / award catalog (HC141).</summary>
+    [RequirePermission("recognitionBadge")]
     public class RecognitionBadgeController(
         ICreateRecognitionBadge createHandler,
         IUpdateRecognitionBadge updateHandler,
@@ -437,6 +444,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Appraisal form templates — goals/competencies weight split (HC138).</summary>
+    [RequirePermission("appraisalTemplate")]
     public class AppraisalTemplateController(
         ICreateAppraisalTemplate createHandler,
         IUpdateAppraisalTemplate updateHandler,

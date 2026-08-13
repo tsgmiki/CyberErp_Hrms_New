@@ -123,6 +123,38 @@
 
 ## 1. Most recent changes (latest first)
 
+00EV. **`IsAdmin` audit + partial hardening (2026-08-13, HRMS Api). ⚠️ FINDS A BLOCKER — read this
+    before any further permission work.** Full detail in logic.md §11.5.
+    - **Measured, not inferred.** As an ordinary employee: `GET CalibrationSession` (gated *"Only HR
+      can view calibration sessions"*) → **200**; five HR-only POSTs (`LoanType`, `MedicalPlan`,
+      `InsurancePolicy`, `PerDiemRate`, `BenefitPlan`) reached FIELD VALIDATION with empty bodies,
+      proving the gate never fired (empty payloads deliberately, so nothing could be created).
+      Contrast: `POST SalaryRevision` → 403, because that controller has `[RequirePermission]`.
+    - **143 no-op checks in 60 files**, in three shapes: **A** `!IsAdmin && notMine → throw` (16 —
+      any employee can cancel ANOTHER's loan/trip/guarantee; reasoned from measured IsAdmin=true +
+      boolean logic, NOT executed, because executing it would cancel a real record), **B**
+      `IsAdmin → throw "Only HR…"` (54), **C** `if (!IsAdmin) narrow query` (73 — the Other Leave bug).
+    - **⚠️ THE BLOCKER: 480 of the 490 employee accounts have NO ROLE** (only 20 users hold any).
+      `HasAnyAsync` needs a role with `CanView`, so gating a controller 403s those 480 — they can use
+      the system today ONLY BECAUSE of the bug. Gating all 109 ungated controllers (what "option 2"
+      literally meant) would have locked out 96% of users. Verified with roleless `abaynesha`:
+      ungated `MedicalPlan` 200, gated `SalaryRevision` 403.
+    - **Applied narrowly instead: 31 pure HR/master-data controllers** where 403-for-roleless is
+      CORRECT — allowanceType, annualLeaveSetting, appraisalTemplate, benefitPlan, branch,
+      calibration, clearanceDepartment, competency, competencyCategory, documentTemplate,
+      employeeField, fiscalYear, holiday, insurancePolicy, jobCategory, jobGrade, leaveType, loanType,
+      medicalContract, medicalPlan, medicalProvider, otherLeaveSetting, perDiemRate, positionClass,
+      ratingScale, recognitionBadge, reviewCycle, taxBracket, tripBudget, workLocation,
+      workWeekConfiguration. **Checked first that none exposes `/me` `/mine` `/my*`, and deliberately
+      EXCLUDED `EmployeeController` (it carries `Employee/me` — gating it breaks every portal user).**
+    - Verified 15 endpoints roleless-403 / Administrator-200, and self-service still 200
+      (`Employee/me`, `OtherLeave/mine`, `AnnualLeave/mine`, `my-balance`, `Workflow/my-approvals`,
+      `AppraisalPeer/mine`, portal Loan/TripRequest/MedicalClaim feeds).
+    - **NEXT, and everything is blocked on it: assign the ordinary role to the 480 roleless accounts.**
+      Then categories A and C can be fixed and `IsAdminAsync` repointed off `IsHeadOffice()`. Note the
+      `UserRole` role is itself incomplete for self-service (missing `/myGuarantees`, `/myTraining`,
+      `/myInsuranceClaims`) and needs filling out first.
+
 00EU. **SRMS platform layer ported into CERP — PHASE 1 of 2, additive only (2026-08-13, HRMS backend).**
     Asked to "improve the schema" by copying tables from `cybererp_srms`, excluding
     `Core.LookUpCategory` / `Core.LookUpCategoryList`. **The user chose the additive scope after I
