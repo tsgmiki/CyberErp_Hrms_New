@@ -460,8 +460,17 @@ dropped, Organization owns the letterhead (`CompanyName`→`LegalName`, `Contact
 INVISIBLE to the repository** — it sits above the tenant and its row has an empty `TenantId`, so the
 filter matched nothing; it had to join `IsGlobalEntity`. The profile had ZERO rows so the letterhead
 rendered empty; it now resolves the real data that was already in Organization. Wire contract
-unchanged (`CompanyProfileDto` keeps its names). ⚠️ `Setting`'s SMTP columns still overlap
-`appsettings.json:Email` and have NOT been repointed. **Phase 2 STEP 1 DONE
+unchanged (`CompanyProfileDto` keeps its names). **`Core.Setting` SMTP columns REPOINTED 2026-08-13**
+(handoff 0102, logic §12.12, no migration): they are the source of truth now — nothing had read OR
+written them before (no handler/controller/screen), so they were inert. ⚠️ Resolved **in-request**
+(`ISmtpSettingsResolver`), never inside `EmailDispatchJob` — that job has no tenant context and would
+silently fall back to config. ⚠️ **The password never enters the job payload — Hangfire PERSISTS job
+arguments**; it is read from config inside the send, which is why the table has no password column.
+⚠️ `Setting` was invisible (empty `TenantId`) and had to join `IsGlobalEntity`, same as `Organization`.
+⚠️ The seeded row held `smtp.cyber.com` and would have redirected live mail →
+`clear-seeded-smtp-placeholders.sql`. Added `GET/PUT /Setting` + `POST /Setting/test-email`, gated on
+`setting` (no role holds it yet). **Mail DOES work** — `Email:Password` comes from user-secrets, not
+appsettings. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

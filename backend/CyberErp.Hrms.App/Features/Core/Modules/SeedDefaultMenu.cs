@@ -196,6 +196,10 @@ public class SeedDefaultMenu(
         [
             new("Workflow Tracking", "/workflow", "GitPullRequestArrow"),
             new("Workflow Definitions", "/workflowDefinition", "GitBranch"),
+            // Operations settings: the SMTP relay and backup schedule. Gated on this link, so a
+            // deployment without it cannot reach the endpoints at all — deliberate for a screen that
+            // redirects the organisation's mail.
+            new("Settings", "/setting", "Settings"),
             new("Clearance Departments", "/clearanceDepartment", "ClipboardCheck"),
             new("Form Builder", "/formBuilder", "LayoutGrid"),
             new("Users", "/user", "UserCog"),

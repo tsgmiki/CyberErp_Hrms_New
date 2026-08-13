@@ -42,10 +42,19 @@ namespace CyberErp.Hrms.Inf.Repositories
         /// the tenant — one organization may hold several — and the row that exists carries an empty
         /// TenantId, so the filter matched nothing and the whole table was invisible: the logo and
         /// letterhead silently read as "not configured".
+        ///
+        /// <para><b>Setting</b> joined the same day and for the same reason. It holds
+        /// DEPLOYMENT-level operations — the SMTP relay, the backup schedule, password and session
+        /// policy — as a single row that was seeded with no tenant. Filtered, it was equally
+        /// invisible, which is why the stored SMTP host had never taken effect.</para>
+        ///
+        /// <para>If per-tenant settings are ever wanted, this is the line to revisit: the row would
+        /// need stamping with a tenant and this entry removing, and every deployment-level field
+        /// (backup, relay) would have to be reconsidered at that point.</para>
         /// </remarks>
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
-                   or "User" or "Role" or "Operation" or "Organization";
+                   or "User" or "Role" or "Operation" or "Organization" or "Setting";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {

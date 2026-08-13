@@ -19,29 +19,37 @@ namespace CyberErp.Hrms.Inf.Common
     /// </summary>
     public class QueuedEmailService(
         IBackgroundJobClient jobs,
+        ISmtpSettingsResolver smtpSettings,
         IConfiguration configuration,
         ILogger<QueuedEmailService> logger) : IEmailService
     {
-        public Task<bool> SendAsync(string to, string subject, string body,
+        public async Task<bool> SendAsync(string to, string subject, string body,
             IReadOnlyList<EmailAttachment>? attachments = null)
         {
             if (string.IsNullOrWhiteSpace(to))
             {
                 logger.LogInformation("Email '{Subject}' skipped — no recipient address", subject);
-                return Task.FromResult(false);
+                return false;
             }
             if (!configuration.GetSection("Email").GetValue("Enabled", false))
             {
                 logger.LogInformation("Email disabled — skipped '{Subject}' → {To}", subject, to);
-                return Task.FromResult(false);
+                return false;
             }
+
+            // ⚠️ The relay settings are resolved HERE, in-request, for the same reason the payload is
+            // materialized here: Core.Setting is tenant-scoped and the job has no tenant context.
+            // Resolving inside the job would silently fall back to configuration and the tenant's
+            // stored host would be ignored — the exact bug this change fixes.
+            var relay = await smtpSettings.ResolveAsync();
 
             // The payload is fully materialized here (attachments included) so the job carries no
             // tenant-scoped dependencies; List<> keeps the Hangfire argument serialization simple.
             var payload = attachments?.ToList();
-            var jobId = jobs.Enqueue<EmailDispatchJob>(j => j.SendAsync(to, subject, body, payload));
-            logger.LogInformation("Email queued (job {JobId}): '{Subject}' → {To}", jobId, subject, to);
-            return Task.FromResult(true);
+            var jobId = jobs.Enqueue<EmailDispatchJob>(j => j.SendAsync(to, subject, body, payload, relay));
+            logger.LogInformation("Email queued (job {JobId}) via {Host}: '{Subject}' → {To}",
+                jobId, relay.Host ?? "<no host>", subject, to);
+            return true;
         }
     }
 }

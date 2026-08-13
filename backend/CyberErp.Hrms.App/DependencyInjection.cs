@@ -717,6 +717,9 @@ namespace CyberErp.Hrms.App
             // Per-operation endpoint authorization (enforces RolePermission.CanView on [RequirePermission] actions)
             services.AddScoped<Common.Authorization.IEndpointPermissionService, Common.Authorization.EndpointPermissionService>();
             services.AddScoped<Common.Authorization.ITenantAuthorizationProjector, Common.Authorization.TenantAuthorizationProjector>();
+            services.AddScoped<Features.Core.Settings.IGetSetting, Features.Core.Settings.GetSetting>();
+            services.AddScoped<Features.Core.Settings.ISaveSetting, Features.Core.Settings.SaveSetting>();
+            services.AddScoped<Features.Core.Settings.ISendTestEmail, Features.Core.Settings.SendTestEmail>();
             services.AddScoped<Features.Core.Compensation.IGetPayrollDeductions, Features.Core.Compensation.GetPayrollDeductions>();
             // CB4 — employee self-service (HC233/234)
             services.AddScoped<Features.Core.Compensation.IGetMyCompensation, Features.Core.Compensation.GetMyCompensation>();

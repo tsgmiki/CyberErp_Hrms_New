@@ -34,6 +34,8 @@ namespace CyberErp.Hrms.Inf
             // guards, returns immediately); the Hangfire EmailDispatchJob performs the SMTP send
             // off the request path via SmtpEmailService, with automatic retries on failure.
             services.AddScoped<SmtpEmailService>();
+            services.AddScoped<ISmtpSettingsResolver, SmtpSettingsResolver>();
+            services.AddScoped<IEmailConfiguration, EmailConfiguration>();
             services.AddScoped<EmailDispatchJob>();
             services.AddScoped<IEmailService, QueuedEmailService>();
             // PDF letter rendering (QuestPDF) — stateless, safe as a singleton
