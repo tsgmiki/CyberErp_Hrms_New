@@ -425,11 +425,15 @@ ordinary staff; it caused the portal to list the whole organisation's Other Leav
 permission (`IEndpointPermissionService`), a `/mine` endpoint, or the resolved approver instead.
 **AUDITED 2026-08-13 (handoff 00EV, logic §11.5): 143 no-op checks in 60 files** — 16 cross-employee
 guards, 54 HR-only gates, 73 query-scoping sites, with the exposure measured against a live API.
-⚠️ **The blocker: 480 of the 490 employee accounts hold NO ROLE**, so adding `[RequirePermission]` —
-or fixing `IsAdminAsync` at the root — 403s them; they can use the system today only because of the
-bug. 31 pure HR/master-data controllers were gated (safe: 403-for-roleless is correct there);
-`EmployeeController` deliberately excluded because it carries `Employee/me`. **Assigning roles to the
-480 is the prerequisite for everything else.**
+31 pure HR/master-data controllers were gated (safe: 403-for-roleless is correct there);
+`EmployeeController` deliberately excluded because it carries `Employee/me`.
+**BLOCKER CLEARED 2026-08-13 (handoff 00EW, logic §11.6):** 480 employee accounts held NO role at all
+— they worked only because the bug granted them everything. `backend/scripts/assign-employee-role.sql`
+(idempotent; **run on every other environment**) fills the ordinary role's missing self-service grants
+and assigns it — 480 assigned, 0 roleless employees left, sidebar 34 links vs an admin's 144.
+⚠️ The operation catalog has DUPLICATE rows per link (150/132), so permission audits must aggregate by
+`Link`. Categories A (16 cross-employee guards) and C (73 scoping sites) and repointing `IsAdminAsync`
+are now unblocked.
 
 **Leave + salary-revision workflow rules (2026-08-13).** Salary revision now goes
 Draft → PendingApproval → **Approved → Submitted** → Applied (the author may only *send for

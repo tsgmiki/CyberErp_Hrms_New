@@ -123,6 +123,30 @@
 
 ## 1. Most recent changes (latest first)
 
+00EW. **Employee role assignment — the 00EV blocker is CLEARED (2026-08-13, DATA change to CERP +
+    a reusable script). No application code changed.** Detail in logic.md §11.6.
+    - **`backend/scripts/assign-employee-role.sql`** (idempotent — RUN IT ON EVERY OTHER ENVIRONMENT):
+      grants the ordinary `UserRole` the employee screens it lacked, then assigns that role to every
+      employee-linked account with none. **480 assigned; 0 roleless employees remain; 495 users now
+      hold the role.** Backup first: `D:\Backups\CERP_before-role-assignment-20260813-141931.bak`.
+    - Grants added: `/myGuarantees`, `/myInsuranceClaims`, `/myTraining`, `/notifications`,
+      `/workflow`, `/surveyTake`, `/recognitionWall`, `/learningCommunity`, `/appraisalAppeal`.
+      **Deliberately NOT granted** (they look self-service but are not): `/employeeGuarantee` (HR
+      register), `/transferRequest` (Manager Requests module), `/exitQuestionnaire` (Personnel/HR),
+      `/compensationRequest`.
+    - Only ADDS access, so it cannot lock anyone out. It flipped existing `CanView=0` rows rather
+      than inserting — the role already had a row per operation — which is why the permission-row
+      count stayed at **598**.
+    - ⚠️ **The operation catalog has DUPLICATE rows per link** (150 rows / 132 distinct links). A link
+      is granted if ANY of its rows grants it, so audit queries MUST aggregate by `Link`; my first gap
+      query checked rows and reported 24 false gaps against the real 13.
+    - Verified: a previously-roleless account now reaches `Employee/me`, `OtherLeave/mine`,
+      `AnnualLeave/mine`, `Workflow/my-approvals`, `AppraisalPeer/mine` + portal feeds (200); still
+      403 on every HR master screen; sidebar resolves **34 links vs an Administrator's 144**. Five
+      randomly sampled accounts identical. Users 506 / employees 490 / permission rows 598 unchanged.
+    - **NOW UNBLOCKED:** category A (16 cross-employee guards), category C (73 scoping sites), and
+      repointing `IsAdminAsync` off `IsHeadOffice()`.
+
 00EV. **`IsAdmin` audit + partial hardening (2026-08-13, HRMS Api). ⚠️ FINDS A BLOCKER — read this
     before any further permission work.** Full detail in logic.md §11.5.
     - **Measured, not inferred.** As an ordinary employee: `GET CalibrationSession` (gated *"Only HR
