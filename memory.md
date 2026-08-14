@@ -489,8 +489,15 @@ shadows it with its own Guid) → use `entityType.FindProperty`; EF scaffolds 40
 index handling** while **141 indexes + PK_NumberSequence** depend on the column → hand-written
 discovery SQL in ONE `XACT_ABORT` transaction; blanks must become the empty GUID first. ⚠️ **SRMS is
 itself inconsistent** — nvarchar on `LoginTrail`/`UserPreference` — and we deliberately match that.
-⚠️ Home needs the same converter or its query filters won't translate. Left: `User.CreatedAt`
-(BaseEntity non-nullable `Instant` on 202 tables). **Phase 2 STEP 1 DONE
+⚠️ Home needs the same converter or its query filters won't translate. **`User.CreatedAt` FIXED IN
+SRMS 2026-08-14** (handoff 0105, logic §12.15) — it was **drift, not design**: SRMS's own BaseEntity,
+snapshot and initial migration all say NOT NULL, and no migration ever made it nullable. ⚠️ Applied as
+`srms-fix-user-createdat-notnull.sql` because **SRMS's `dotnet ef` is broken** by a pre-existing model
+error (`TenantOperation.OperationId` has no CLR property); ⚠️ **the SRMS tree is NOT a git repo** so a
+copy lives in `backend/scripts/`. **Shared surface now has ZERO SRMS→CERP differences.** ⚠️ But that
+diff is ONE-DIRECTIONAL — the reverse shows **19 columns CERP has that SRMS lacks** (TenantId ×9 from
+BaseEntity, OwningTenantId ×4, Setting audit cols, Subsystem.Url/SortOrder): supersets, not
+mismatches. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:
