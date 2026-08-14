@@ -2289,6 +2289,69 @@ live       HRMS  3 identities: login 200, 34 links, employee counts unchanged
            0 errors in either log
 ```
 
+### 12.15 The last difference, fixed in SRMS rather than CERP
+
+`User.CreatedAt` was nullable in `cybererp_srms` and NOT NULL in CERP — the one column left after
+§12.14. Fixed **in SRMS**, because investigating showed the stricter side was right.
+
+#### It was drift, not a design decision
+
+SRMS's own model says the column is required, in two independent places:
+
+- `BaseEntity.CreatedAt` is a non-nullable NodaTime `Instant`, assigned in the constructor
+- `SrmsDbContextModelSnapshot` declares `b.Property<DateTime>("CreatedAt")` — non-nullable — and the
+  initial migration created it `nullable: false`
+
+**No migration in that project ever made it nullable**, and 20 of its 23 `CreatedAt` columns are
+already NOT NULL. The database had drifted away from its own model outside of migrations. So CERP was
+not diverging from SRMS; it was matching what SRMS intends.
+
+#### ⚠️ Applied as a script, because SRMS's EF tooling is broken
+
+`dotnet ef migrations add` fails in that project before reaching anything related to this:
+
+```
+The property 'OperationId' cannot be added to the type
+'CyberErp.Srms.Dom.Entities.Core.TenantOperation (Dictionary<string, object>)' because no property
+type was specified and there is no corresponding CLR property or field.
+```
+
+A pre-existing model error, unrelated, which blocks the tooling entirely. Hand-forging snapshot files
+against a model that will not load would be worse than a script, so the fix is
+`fix-user-createdat-notnull.sql` — guarded, re-runnable, and it **refuses rather than inventing
+timestamps** if any row is NULL (a fabricated creation date is worse than a missing one, because
+afterwards it is indistinguishable from a real one). It belongs in a migration once their model error
+is resolved.
+
+⚠️ **The SRMS tree is not a git repository**, so a copy lives at
+`backend/scripts/srms-fix-user-createdat-notnull.sql` — otherwise the only record of this would be an
+untracked file on one machine.
+
+#### ⚠️ Two more tables carry the same drift, deliberately left
+
+`Core.LookUpCategory` and `Core.LookUpCategoryList` are also nullable in SRMS. They were not the ask
+and are not part of the CERP comparison, so they were left alone; the one-liners are noted at the
+bottom of the script.
+
+#### The shared surface is now identical — with one honest qualification
+
+**Every column SRMS has, CERP now has with the same type and nullability.** Zero differences.
+
+Diffing the OTHER direction shows **19 columns CERP has that SRMS does not**, and these are supersets
+rather than mismatches:
+
+| | Why |
+|---|---|
+| `TenantId` ×9 | CERP's `BaseEntity` adds it universally; SRMS carries it only where a table is genuinely tenant-scoped |
+| `OwningTenantId` ×4 | CERP's separate Guid FK — SRMS overloads `TenantId` for that job (§12.1) |
+| `CreatedBy` / `UpdatedBy` / `RowVersion` on `Setting` | `BaseEntity` audit columns |
+| `Subsystem.Url`, `Subsystem.SortOrder` | CERP features — `Url` is what the Home launcher deep-links to |
+| `TenantSubscriptionAddOn.SubscribedTenantId` | CERP's model |
+
+Worth stating plainly because the earlier reports in this series diffed **one direction only**
+(SRMS → CERP) and described the result as a single remaining difference. That was true of that
+direction and is now zero, but it was never the whole picture.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

@@ -123,6 +123,30 @@
 
 ## 1. Most recent changes (latest first)
 
+0105. **The last schema difference, fixed in cybererp_srms rather than CERP (2026-08-14).** Detail in
+    logic.md §12.15. **No CERP change at all** — no migration, no code.
+    Backup: `D:\Backups\cybererp_srms_before-createdat-fix-*.bak`.
+    - `User.CreatedAt` was nullable in SRMS, NOT NULL in CERP. **It was DRIFT, not design**: SRMS's
+      own `BaseEntity.CreatedAt` is a non-nullable `Instant`, its snapshot declares
+      `b.Property<DateTime>("CreatedAt")`, its initial migration created it `nullable: false`, and
+      **no migration ever made it nullable**. 20 of its 23 CreatedAt columns are already NOT NULL.
+      CERP was matching what SRMS intends.
+    - ⚠️ **Applied as a SCRIPT because SRMS's EF tooling is broken.** `dotnet ef migrations add` fails
+      there with a **pre-existing, unrelated** model error: *'OperationId' cannot be added to the type
+      TenantOperation … no corresponding CLR property or field*. Hand-forging snapshot files against a
+      model that will not load would be worse. It belongs in a migration once that is fixed.
+    - The script refuses rather than inventing timestamps if any row is NULL — a fabricated creation
+      date is worse than a missing one, being indistinguishable from a real one afterwards.
+    - ⚠️ **The SRMS tree is NOT a git repo**, so a copy is kept at
+      `backend/scripts/srms-fix-user-createdat-notnull.sql`.
+    - ⚠️ Same drift on `Core.LookUpCategory` and `Core.LookUpCategoryList` — left alone (not the ask,
+      not in the CERP comparison); one-liners noted in the script.
+    - **Shared surface: every column SRMS has, CERP now has identically — ZERO differences.**
+      ⚠️ But the earlier reports in this series diffed **one direction only**. The reverse shows **19
+      columns CERP has that SRMS lacks** — supersets, not mismatches: `TenantId` ×9 (BaseEntity adds
+      it universally), `OwningTenantId` ×4 (CERP's separate FK), `Setting`'s audit columns,
+      `Subsystem.Url`/`SortOrder`, `TenantSubscriptionAddOn.SubscribedTenantId`.
+
 0104. **TenantId RE-KEYED to uniqueidentifier — 201 columns (2026-08-14).** Detail in logic.md
     §12.14. Migrations `TenantIdToUniqueidentifier` + `MatchSrmsTenantIdExceptions`, both APPLIED.
     Backup: `D:\Backups\CERP_before-tenantid-rekey-*.bak`. **The shared surface with SRMS now differs
