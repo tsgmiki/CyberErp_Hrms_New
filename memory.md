@@ -506,7 +506,24 @@ the write site first); `Subsystem` **has HOME/HRMS duplicated per tenant** so go
 + repointing 4 tables, and SortOrder(0–5)→DisplayOrder(all 0); `Setting` audit trio; 6 mechanical.
 ⚠️ **PROCESS TRAP:** `git commit … | tail -1 && git push` **masks a rejected commit** — `tail` exits 0
 so `&&` proceeds and prints success. The pre-commit doc hook rejected a commit this way and the DB was
-briefly ahead of the code. **Verify with `git log`, not a printed message.** **Phase 2 STEP 1 DONE
+briefly ahead of the code. **Verify with `git log`, not a printed message.**
+**The 7 identity MODULES removed from HRMS 2026-08-14** (handoff 0107, logic §12.17) — Users, Roles,
+User Roles, Role Permissions, SubSystems, Menu Modules, Menu Operations. **No migration, no schema
+change:** SRMS points at the SAME `CERP` database, so only the MANAGEMENT SURFACE goes (screens,
+write endpoints, CRUD handlers, `SeedDefaultMenu`, and the 7 menu entries via
+`remove-identity-menu-operations.sql`). **The tables stay** — login reads `Core.User`, the sidebar
+reads `Module`/`Operation`, gates read `TenantRolePermission`, and Home reads all of them directly.
+⚠️ **A deleted menu operation makes its `[RequirePermission]` key PERMANENTLY UNGRANTABLE** — the
+service matches required links against granted ones, so `user`/`role` gates would have been 403 for
+everyone forever, silently emptying the approver pickers; re-gated on the consuming screens
+(`workflowDefinition`/`clearanceDepartment`/`reports`). **Grep the link before deleting an operation.**
+⚠️ **The navigation READS must survive a cleanup like this:** `GET Operation` feeds
+`permissionGate.tsx`'s catalog and the gate reads "not in catalog" as "not gated", so removing it
+would leave EVERY route unguarded. ⚠️ Permission changes are no longer instant (the handlers that
+called `InvalidateAll()` are gone) — SRMS grants land after the **60s TTL**.
+⚠️ **Only tenant `aadb4e82` (NVI) has authorization data at all** — 168 TenantOperations, 570 grants.
+Tenant `demo` has ZERO, so signing in as `demo` gives an empty sidebar and 403 everywhere. Data, not
+a bug. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

@@ -2395,6 +2395,65 @@ committed code.
 **Check that the commit exists (`git log`), not that the command printed something.** Piping a
 command through `tail`/`head` discards its exit status.
 
+### 12.17 Removing the seven identity modules from HRMS
+
+SRMS manages users, roles and the menu catalogue now, so HRMS stops offering its own screens for
+them: **Users, Roles, User Roles, Role Permissions, SubSystems, Menu Modules, Menu Operations**.
+
+#### What "remove the module" means here, and what it deliberately does not mean
+
+Two facts set the scope. **SRMS's connection string points at `CERP` — the same database.** And HRMS
+logs in against `Core.User`, renders its sidebar from `Core.Module`/`Operation`, and gates every
+`[RequirePermission]` on `TenantRolePermission`.
+
+So the tables stay and the **management surface** goes: the screens, the write endpoints, the CRUD
+handlers, and the menu entries that led to them. Dropping the tables instead would break login here,
+in Home, and in SRMS itself.
+
+| Layer | Removed | Kept, and why |
+|---|---|---|
+| Frontend | 7 component modules, 7 pages, every `save`/`delete` service, `module/seedDefaults`, the route entries, and `common/menuFilters` (its only consumers were these screens) | `user/getAll`, `role/getAll` (approver pickers), `subsystem/getAll`, `module/{get,getAll,getAllWithOperation}`, `operation/{get,getAll,getAllByRole}` |
+| API | Every create/update/delete action, `Module/seed-defaults`, and the `UserRole` and `RolePermission` controllers outright | `GET Module/WithOperations`, `GET Module`, `GET Subsystem`, `GET Operation`, plus one `GET` each on `User` and `Role` |
+| App | `SaveRole`/`DeleteRole`, `SaveUserRole`/`DeleteUserRole`, `SaveUser`/`DeleteUser`, `SaveRolePermissions`/`DeleteRolePermission`, `SaveSubsystem`/`DeleteSubsystem`, the Module and Operation Create/Update/Delete slices, and `SeedDefaultMenu` | `GetAllRoles`, `GetAllUsers`, `GetAllSubsystems`, and the Module/Operation read handlers |
+| Database | The 7 `Core.Operation` rows, their 7 `TenantOperation` copies and 28 `TenantRolePermission` grants (`backend/scripts/remove-identity-menu-operations.sql`) | Every table. `Core.User`, `Role`, `UserRole`, `SubSystem`, `Module`, `Operation` are untouched |
+
+#### ⚠️ The reads are infrastructure — removing them would have been a security regression
+
+`GET Operation` is the trap. `permissionGate.tsx` builds its catalog of gated routes from it, and
+treats "not in the catalog" as "not a gated page". Take that read away and the catalog is empty, so
+**every route falls through unguarded** — a bigger hole than the one being closed. `Module/
+WithOperations` is the sidebar feed itself. Both stay open, and both only ever return menu metadata
+already filtered to the caller.
+
+#### ⚠️ Deleting a menu operation makes its permission key permanently ungrantable
+
+`UserController` and `RoleController` were gated `[RequirePermission("user", "userRole")]` and
+`[RequirePermission("role", …)]`. Those operations no longer exist, and
+`EndpointPermissionService` resolves a required link by matching it against the caller's **granted
+operation links** — so a key with no operation behind it can never be granted by anyone. The gates
+would have returned **403 to every user, forever**, silently emptying the approver pickers on
+workflow definitions, clearance departments and the report viewer.
+
+The fix is to name the screens that actually consume the data:
+
+```csharp
+[RequirePermission("workflowDefinition", "clearanceDepartment", "reports")]
+public class RoleController(IGetAllRoles getAllHandler) : BaseController
+```
+
+Verified against the data: all three links exist and carry `CanView` for Administrator and HR Admin,
+whereas `user` and `role` now match zero rows anywhere.
+
+**The general rule: before deleting a menu operation, grep for its link in `[RequirePermission]`.**
+A gate outlives the screen it was named after, and it fails closed and silently.
+
+#### One more consequence: permission changes are no longer instant
+
+`SaveRolePermissions` and `DeleteRolePermission` called `IEndpointPermissionService.InvalidateAll()`,
+so an admin's own save took effect immediately. Nothing in HRMS busts that cache any more, so a grant
+made in SRMS appears here when the **60-second TTL** expires. That is what the TTL was always for
+(§ the service's own comment: it bounds changes made behind the application's back).
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

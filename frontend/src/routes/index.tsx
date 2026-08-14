@@ -13,9 +13,6 @@ const RegisterPage = memo(lazy(() => import("@/pages/auth/register/page")));
 const LandingPage = memo(lazy(() => import("@/pages/home/landingPage")));
 const HomePage = memo(lazy(() => import("@/pages/home/homePage")));
 const Dashboard = memo(lazy(() => import("@/pages/home/dashboard.tsx")));
-const RolePermissionPage = memo(
-  lazy(() => import("@/pages/admin/rolePermission")),
-);
 // Organizational Structure (HRMS §3.1)
 const ReportViewerPage = memo(lazy(() => import("@/pages/admin/reportViewer")));
 const ReportResultPage = memo(lazy(() => import("@/pages/admin/reportResult")));
@@ -101,7 +98,6 @@ export default function AppRoutes() {
             from the registry in ./entityRoutes. Any flat routes remaining below are screens
             with no single-record concept; both styles are gated identically. */}
         {renderEntityRoutes(ENTITY_ROUTES)}
-        <Route path="rolePermission" element={<RolePermissionPage />} />
         {/* Organizational Structure (HRMS §3.1) */}
         <Route path="reports" element={<ReportViewerPage />} />
         <Route path="auditLog" element={<AuditLogPage />} />

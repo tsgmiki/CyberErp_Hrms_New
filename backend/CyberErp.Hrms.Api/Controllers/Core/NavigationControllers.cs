@@ -1,83 +1,59 @@
-using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Handlers;
 using CyberErp.Hrms.App.Features.Core.Modules;
-using CyberErp.Hrms.App.Features.Core.Modules.Create;
-using CyberErp.Hrms.App.Features.Core.Modules.Delete;
 using CyberErp.Hrms.App.Features.Core.Modules.DTOs;
 using CyberErp.Hrms.App.Features.Core.Modules.GetAll;
 using CyberErp.Hrms.App.Features.Core.Modules.GetById;
 using CyberErp.Hrms.App.Features.Core.Modules.GetOperations;
-using CyberErp.Hrms.App.Features.Core.Operations.Create;
-using CyberErp.Hrms.App.Features.Core.Operations.Delete;
 using CyberErp.Hrms.App.Features.Core.Operations.DTOs;
 using CyberErp.Hrms.App.Features.Core.Operations.GetAll;
 using CyberErp.Hrms.App.Features.Core.Operations.GetById;
-using CyberErp.Hrms.App.Features.Core.Operations.Update;
-using CyberErp.Hrms.App.Features.Core.Roles;
 using CyberErp.Hrms.App.Features.Core.Subsystems;
 using Microsoft.AspNetCore.Mvc;
-using UpdateModuleRequest = CyberErp.Hrms.App.Features.Core.Modules.Update.UpdateModuleRequest;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
-    // Dynamic navigation — the sidebar menu is read from coreSubsystem / Module / Operation
-    // instead of a hardcoded frontend array. TenantRolePermission rows drive per-role visibility.
-
     /*
-     * ⚠️ WHY THE GATES ARE ON THE ACTIONS AND NOT THE CONTROLLERS (2026-08-13).
+     * Dynamic navigation — the sidebar is read from Core.Subsystem / Module / Operation rather than a
+     * hardcoded frontend array, with TenantRolePermission driving per-role visibility.
      *
-     * These three used to carry no [RequirePermission] at all, so ANY authenticated user could
-     * create, rename or delete menu entries. Gating the whole controller looks like the obvious fix
-     * and is wrong: the READS here are infrastructure every signed-in user depends on.
+     * ⚠️ READ-ONLY SINCE 2026-08-14. Subsystems, Menu Modules, Menu Operations and Role Permissions
+     * are MANAGED BY SRMS now, which runs against this same CERP database — the HRMS screens for them
+     * were removed (handoff 0107). Every create/update/delete action went with them, including
+     * Module/seed-defaults, which rewrote the whole tree.
+     *
+     * ⚠️ THE READS MUST STAY. They are not management; they are infrastructure every signed-in user
+     * depends on:
      *
      *   GET Module/WithOperations  -> the sidebar feed itself
      *   GET Module, GET Subsystem  -> useMenuModules, the landing page, the menu filters
      *   GET Operation              -> permissionGate.tsx builds its catalogSet from this, and
      *                                 globalSearch.tsx filters results with it
      *
-     * The last one is the trap. PermissionGate treats "not in the catalog" as "not a gated page", so
-     * a 403 on this read would empty the catalog and every route would fall through UNGATED — the
-     * fix would open a bigger hole than the one it closed.
+     * That last one is the trap worth remembering: PermissionGate treats "not in the catalog" as "not
+     * a gated page", so losing this read would empty the catalog and let EVERY route through
+     * unguarded. Removing the reads alongside the writes would have been a security regression, not a
+     * cleanup.
      *
-     * The reads expose menu metadata (names, links, icons, order), not anyone's data, and
-     * WithOperations is already filtered to the caller's own grants. So: writes are gated, reads are
-     * not, and that is deliberate.
+     * Do not add write actions back here. Menu changes are a request to SRMS, not a second writer
+     * against a shared table.
      */
 
-    /// <summary>Master list of ERP subsystems (Core.Subsystem); modules reference one by name.</summary>
-    public class SubsystemController(
-        ISaveSubsystem saveHandler,
-        IGetAllSubsystems getAllHandler,
-        IDeleteSubsystem deleteHandler) : BaseController
+    /// <summary>Master list of ERP subsystems (Core.Subsystem). Read-only; SRMS owns the catalogue.</summary>
+    public class SubsystemController(IGetAllSubsystems getAllHandler) : BaseController
     {
-        /// <summary>Open read: the module/operation forms and the menu filters populate from this.</summary>
+        /// <summary>Open read: the menu filters and the operation pickers populate from this.</summary>
         [HttpGet]
-        public Task<PaginatedResponse<SubsystemDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
-
-        [HttpPost]
-        [RequirePermission("subsystem")]
-        public async Task<IActionResult> Create([FromBody] SubsystemDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
-
-        [HttpPut]
-        [RequirePermission("subsystem")]
-        public async Task<IActionResult> Update([FromBody] SubsystemDto dto) => Ok(new { id = await saveHandler.SaveAsync(dto) });
-
-        [HttpDelete("{id:guid}")]
-        [RequirePermission("subsystem")]
-        public async Task<IActionResult> Delete(Guid id)
-        { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
+        public Task<PaginatedResponse<SubsystemDto>> GetAll([FromQuery] GetAllRequest request)
+            => getAllHandler.GetAsync(request);
     }
 
-    /// <summary>Menu modules (Core.Module) — the collapsible sidebar groups.</summary>
+    /// <summary>Menu modules (Core.Module) — the collapsible sidebar groups. Read-only.</summary>
     public class ModuleController(
-        IFeatureHandler<CreateModuleRequest, ModuleResult> createHandler,
-        IFeatureHandler<UpdateModuleRequest, ModuleResult> updateHandler,
-        IFeatureHandler<DeleteModuleRequest, ModuleResult?> deleteHandler,
         IFeatureHandler<GetAllModulesRequest, PaginatedResponse<GetModuleDto>> getAllHandler,
         IFeatureHandler<GetModuleByIdRequest, GetModuleDto?> getByIdHandler,
-        IFeatureHandler<GetModuleWithOperationsRequest, IEnumerable<GetModuleWithOperationResult>> withOperationsHandler,
-        ISeedDefaultMenu seedHandler) : BaseController
+        IFeatureHandler<GetModuleWithOperationsRequest, IEnumerable<GetModuleWithOperationResult>> withOperationsHandler)
+        : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<GetModuleDto>> GetAll([FromQuery] GetAllModulesRequest request) =>
@@ -94,40 +70,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         [HttpGet("{id:guid}")]
         public Task<GetModuleDto?> GetById(Guid id) => getByIdHandler.Handle(new GetModuleByIdRequest(id));
-
-        [HttpPost]
-        [RequirePermission("module")]
-        public async Task<IActionResult> Create([FromBody] CreateModuleRequest request) =>
-            Ok(await createHandler.Handle(request));
-
-        [HttpPut]
-        [RequirePermission("module")]
-        public async Task<IActionResult> Update([FromBody] UpdateModuleRequest request) =>
-            Ok(await updateHandler.Handle(request));
-
-        [HttpDelete("{id:guid}")]
-        [RequirePermission("module")]
-        public async Task<IActionResult> Delete(Guid id)
-        { await deleteHandler.Handle(new DeleteModuleRequest(id)); return Ok(new { message = "Deleted successfully" }); }
-
-        /// <summary>
-        /// Seeds the default HRMS menu (subsystem, modules, operations) for the current tenant.
-        /// Rewrites the whole navigation tree, so it is gated the same as editing it by hand.
-        /// </summary>
-        [HttpPost("seed-defaults")]
-        [RequirePermission("module")]
-        public async Task<IActionResult> SeedDefaults()
-        {
-            var created = await seedHandler.SeedAsync();
-            return Ok(new { created, message = created > 0 ? $"{created} navigation entries created" : "Menu already seeded" });
-        }
     }
 
-    /// <summary>Menu operations (Core.Operation) — the sidebar links under each module.</summary>
+    /// <summary>Menu operations (Core.Operation) — the sidebar links. Read-only.</summary>
     public class OperationController(
-        IFeatureHandler<CreateOperationRequest, OperationResult> createHandler,
-        IFeatureHandler<UpdateOperationRequest, OperationResult> updateHandler,
-        IFeatureHandler<DeleteOperationRequest, OperationResult?> deleteHandler,
         IFeatureHandler<GetAllOperationsRequest, PaginatedResponse<OperationDto>> getAllHandler,
         IFeatureHandler<GetOperationByIdRequest, OperationDto?> getByIdHandler) : BaseController
     {
@@ -147,40 +93,5 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         [HttpGet("{id:guid}")]
         public Task<OperationDto?> GetById(Guid id) => getByIdHandler.Handle(new GetOperationByIdRequest(id));
-
-        [HttpPost]
-        [RequirePermission("operation")]
-        public async Task<IActionResult> Create([FromBody] CreateOperationRequest request) =>
-            Ok(await createHandler.Handle(request));
-
-        [HttpPut]
-        [RequirePermission("operation")]
-        public async Task<IActionResult> Update([FromBody] UpdateOperationRequest request) =>
-            Ok(await updateHandler.Handle(request));
-
-        [HttpDelete("{id:guid}")]
-        [RequirePermission("operation")]
-        public async Task<IActionResult> Delete(Guid id)
-        { await deleteHandler.Handle(new DeleteOperationRequest(id)); return Ok(new { message = "Deleted successfully" }); }
-    }
-
-    /// <summary>Per-role operation permissions (Core.RolePermission) — drives menu visibility.</summary>
-    [RequirePermission("rolePermission")]
-    public class RolePermissionController(
-        ISaveRolePermissions saveHandler,
-        IGetAllRolePermissions getAllHandler,
-        IDeleteRolePermission deleteHandler) : BaseController
-    {
-        [HttpGet]
-        public Task<PaginatedResponse<RolePermissionDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
-
-        /// <summary>Bulk upsert — carries one role's whole permission grid.</summary>
-        [HttpPost]
-        public async Task<IActionResult> Save([FromBody] SaveRolePermissionsDto dto) =>
-            Ok(new { saved = await saveHandler.SaveAsync(dto), message = "Permissions saved" });
-
-        [HttpDelete("{id:guid}")]
-        public async Task<IActionResult> Delete(Guid id)
-        { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
     }
 }

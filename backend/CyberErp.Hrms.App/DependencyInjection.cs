@@ -248,19 +248,11 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetClearanceDepartmentById, GetClearanceDepartmentById>();
             services.AddScoped<IDeleteClearanceDepartment, DeleteClearanceDepartment>();
 
-            // Roles & user-role assignment (workflow approver authorization, HC025 groundwork)
-            services.AddScoped<ISaveRole, SaveRole>();
+            // Identity LOOKUP only — SRMS owns users, roles and assignments (2026-08-14). These back the
+            // approver pickers on workflow definitions and clearance departments; there are no
+            // save/delete registrations here any more because those handlers no longer exist.
             services.AddScoped<IGetAllRoles, GetAllRoles>();
-            services.AddScoped<IDeleteRole, DeleteRole>();
-            services.AddScoped<ISaveUserRole, SaveUserRole>();
-            services.AddScoped<IGetAllUserRoles, GetAllUserRoles>();
-            services.AddScoped<IDeleteUserRole, DeleteUserRole>();
             services.AddScoped<IGetAllUsers, GetAllUsers>();
-
-            // User administration (System > Users): create / edit / delete
-            services.AddScoped<Features.Core.Users.ISaveUser, Features.Core.Users.SaveUser>();
-            services.AddScoped<Features.Core.Users.IGetUserById, Features.Core.Users.GetUserById>();
-            services.AddScoped<Features.Core.Users.IDeleteUser, Features.Core.Users.DeleteUser>();
 
             // Generic workflow engine + per-module outcome handlers
             services.AddScoped<IWorkflowService, WorkflowService>();
@@ -969,24 +961,11 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Engagement.ISubmitSurveyResponse, Features.Core.Engagement.SubmitSurveyResponse>();
             services.AddScoped<Features.Core.Engagement.IGetSurveyResults, Features.Core.Engagement.GetSurveyResults>();
 
-            // Dynamic navigation — subsystem master list + menu seeding, plus the template-era
-            // Module/Operation feature handlers (IFeatureHandler style) now exposed via controllers.
-            services.AddScoped<Features.Core.Roles.ISaveRolePermissions, Features.Core.Roles.SaveRolePermissions>();
-            services.AddScoped<Features.Core.Roles.IGetAllRolePermissions, Features.Core.Roles.GetAllRolePermissions>();
-            services.AddScoped<Features.Core.Roles.IDeleteRolePermission, Features.Core.Roles.DeleteRolePermission>();
-            services.AddScoped<Features.Core.Subsystems.ISaveSubsystem, Features.Core.Subsystems.SaveSubsystem>();
+            // Dynamic navigation — READ ONLY since 2026-08-14. SRMS owns subsystems, menu modules, menu
+            // operations and role permissions; the create/update/delete handlers and the menu seeder
+            // were removed with their screens. What is left is what renders the sidebar and resolves
+            // the permission catalog, which every signed-in user needs.
             services.AddScoped<Features.Core.Subsystems.IGetAllSubsystems, Features.Core.Subsystems.GetAllSubsystems>();
-            services.AddScoped<Features.Core.Subsystems.IDeleteSubsystem, Features.Core.Subsystems.DeleteSubsystem>();
-            services.AddScoped<Features.Core.Modules.ISeedDefaultMenu, Features.Core.Modules.SeedDefaultMenu>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Modules.Create.CreateModuleRequest, Features.Core.Modules.DTOs.ModuleResult>,
-                Features.Core.Modules.Create.CreateModuleHandler>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Modules.Update.UpdateModuleRequest, Features.Core.Modules.DTOs.ModuleResult>,
-                Features.Core.Modules.Update.UpdateModuleHandler>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Modules.Delete.DeleteModuleRequest, Features.Core.Modules.DTOs.ModuleResult?>,
-                Features.Core.Modules.Delete.DeleteModuleHandler>();
             services.AddScoped<
                 Common.Handlers.IFeatureHandler<Features.Core.Modules.GetAll.GetAllModulesRequest, Common.DTOs.PaginatedResponse<Features.Core.Modules.DTOs.GetModuleDto>>,
                 Features.Core.Modules.GetAll.GetAllModulesHandler>();
@@ -996,15 +975,6 @@ namespace CyberErp.Hrms.App
             services.AddScoped<
                 Common.Handlers.IFeatureHandler<Features.Core.Modules.GetOperations.GetModuleWithOperationsRequest, IEnumerable<Features.Core.Modules.DTOs.GetModuleWithOperationResult>>,
                 Features.Core.Modules.GetOperations.GetModuleWithOperationsHandler>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Operations.Create.CreateOperationRequest, Features.Core.Operations.DTOs.OperationResult>,
-                Features.Core.Operations.Create.CreateOperationHandler>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Operations.Update.UpdateOperationRequest, Features.Core.Operations.DTOs.OperationResult>,
-                Features.Core.Operations.Update.UpdateOperationHandler>();
-            services.AddScoped<
-                Common.Handlers.IFeatureHandler<Features.Core.Operations.Delete.DeleteOperationRequest, Features.Core.Operations.DTOs.OperationResult?>,
-                Features.Core.Operations.Delete.DeleteOperationHandler>();
             services.AddScoped<
                 Common.Handlers.IFeatureHandler<Features.Core.Operations.GetAll.GetAllOperationsRequest, Common.DTOs.PaginatedResponse<Features.Core.Operations.DTOs.OperationDto>>,
                 Features.Core.Operations.GetAll.GetAllOperationsHandler>();
