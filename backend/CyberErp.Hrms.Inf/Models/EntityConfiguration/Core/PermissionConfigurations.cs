@@ -64,7 +64,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(s => s.Id);
 
             builder.Property(s => s.Name).IsRequired().HasMaxLength(100);
-            builder.Property(s => s.Code).IsRequired().HasMaxLength(50);
+            builder.Property(s => s.Code).IsRequired().HasMaxLength(50).HasDefaultValue(string.Empty);
             builder.Property(s => s.SortOrder).HasDefaultValue(0);
             // Where the subsystem's app lives — the Home portal's launcher tiles deep-link here.
             builder.Property(s => s.Url).HasMaxLength(400);

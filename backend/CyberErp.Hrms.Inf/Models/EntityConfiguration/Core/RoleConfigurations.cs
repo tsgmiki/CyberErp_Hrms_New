@@ -21,9 +21,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             // SRMS alignment: Code identifies the role TEMPLATE, so it is required and unique.
             builder.Property(r => r.Code).IsRequired().HasMaxLength(80);
-            builder.Property(r => r.Description).IsRequired().HasMaxLength(500).HasDefaultValue(string.Empty);
+            builder.Property(r => r.Description).IsRequired().HasMaxLength(500);
             builder.Property(r => r.IsPlatformRole).IsRequired().HasDefaultValue(false);
-            builder.Property(r => r.IsActive).IsRequired().HasDefaultValue(true);
+            builder.Property(r => r.IsActive).IsRequired();
 
             // Still NOT unique, even though SRMS's IX_StandardRoleTemplate_Code is. The 8 rows here
             // came from two tenants and were only ever distinct by accident; making it unique now

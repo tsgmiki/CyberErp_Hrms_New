@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0115. **The 28 default constraints aligned — 50 → 23 (2026-08-15).** Detail in logic.md §12.20.
+    Migrations `SharedTableDefaultConstraintParity` + `SharedDefaultsFinalThree`, APPLIED.
+    - Four kinds: 8 CERP-only defaults REMOVED (Organization ×5, Role ×3), 9 SRMS defaults ADDED
+      (LoginTrail ×2, `Organization.FiscalYearStartMonth`, `Subsystem.Code`, `CanExport`,
+      UserPreference ×4), 6 CHANGED to SRMS's real values (`'en'`, `'dd/MM/yyyy'`, `'/'`,
+      `'1,234.56'`, `'system'`, `'Africa/Nairobi'`), 5 RESPELLED.
+    - ⚠️ **Three needed hand-written SQL because EF cannot express them:**
+      `Role.Code` carried an `(N'')` default from an **older migration the model never declared**, so
+      EF neither knew about it nor dropped it; `Subsystem.Code` is a spelling difference (EF always
+      emits `N''`, SRMS stores `''`); and `TenantRolePermission.CanExport` is the opposite —
+      `HasDefaultValue(false)` produces **nothing**, because `false` is the CLR default and EF
+      optimises it away. Written as a migration with an explicit `[Migration]` attribute, since a
+      hand-authored one is otherwise not discovered.
+    - Note: these defaults are effectively decorative — EF supplies every value on insert, so they
+      only matter to raw SQL. Aligned because the requirement is an identical catalog.
+    - **REMAINING 23, all load-bearing** (see logic.md §12.20): 14 `TenantId`, `Setting`'s audit
+      columns, `Subsystem.Url`/`SortOrder`, `SubscribedTenantId`, `User.CreatedAt`. None is safe to
+      apply without its own analysis.
+    - Verified: sidebar 12 groups / 34 screens, employee/subsystem/operation reads 200, no errors.
+
 0114. **`Core.TenantRole` matched + a database-wide schema audit (2026-08-15).** Detail in logic.md
     §12.20. Migration `TenantRoleRoleIdAndUpdatedAtPrecision`, APPLIED.
     Backup: `D:/Backups/CERP_before-timestamp-precision-20260815-020238.bak`.

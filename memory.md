@@ -596,7 +596,7 @@ replaced with an explicit 17-entity list. **Verify the target's shape before gen
 ⚠️ **The remaining 50 are NOT a to-do list:** 10 `TenantId`-absent tables are load-bearing isolation
 (each needs the TenantOperation treatment), 5 `TenantId`-nvarchar would **REVERSE** the §12.14 re-key,
 dropping `Subsystem.Url` would **break the Home launcher**, and `User.CreatedAt` **REGRESSED in SRMS**
-(I made it NOT NULL 08-14 — fix there). Only the ~25 default-constraint diffs are mechanical.
+(I made it NOT NULL 08-14 — fix there). **The ~28 default-constraint diffs are DONE 2026-08-15** (handoff 0115) ⇒ **65 → 23**. ⚠️ Three needed HAND-WRITTEN SQL: `Role.Code` had an `(N'')` default from an older migration the MODEL NEVER DECLARED (EF cannot drop what it did not declare), `Subsystem.Code` was pure spelling (EF emits `N''`, SRMS stores `''`), and `CanExport` the reverse — **`HasDefaultValue(false)` emits NOTHING** because false is the CLR default. A hand-authored migration also needs an explicit `[Migration("id")]` attribute or EF never finds it. NOTE: these defaults are DECORATIVE — EF supplies every value on insert. **All 23 remaining diffs are load-bearing.**
 **Older notes**: the 2 template links (`TenantOperation.OperationId`,
 `TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
 needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE

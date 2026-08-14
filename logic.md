@@ -2719,7 +2719,7 @@ inconsistent here; the ugly list mirrors its migration history because there is 
 
 | Group | Count | Verdict |
 |---|---|---|
-| Default constraints (Organization, Role, Subsystem, UserPreference, LoginTrail, TenantRolePermission) | ~25 | **Safe, mechanical.** Mostly `(N'')` vs none, plus real values SRMS sets (`'en'`, `'dd/MM/yyyy'`, `'Africa/Nairobi'`) and pure spelling (`CONVERT([bit],(1))` vs `((1))`) |
+| ~~Default constraints~~ | ~~28~~ | ✅ **DONE** — see below |
 | `TenantId` **absent** in SRMS (10 tables incl. UserRole, TenantRolePermission, TenantUserRole, Setting, Subsystem) | 10 | ⚠️ **Load-bearing.** Each removes tenant isolation from a table the runtime filters on. `TenantOperation` took a full stage to do safely — every one of these needs the same treatment |
 | `TenantId` **typed nvarchar** in SRMS (FiscalYear, Notification, Person, SalaryScale, Step) | 5 | ⚠️ **Would go backwards.** CERP re-keyed these to `uniqueidentifier` in §12.14. SRMS simply has not caught up |
 | `Subsystem.Url` + `SortOrder` absent in SRMS | 2 | ⚠️ **Would break the Home launcher**, which deep-links through `Url` — built this session |
@@ -2728,7 +2728,29 @@ inconsistent here; the ugly list mirrors its migration history because there is 
 
 So "identical" is not simply achievable in one direction any more: **CERP is ahead of SRMS on some
 columns and behind on others**, and three of the differences exist because CERP has features SRMS
-does not. The defaults group is the only part that is purely mechanical.
+does not.
+
+#### The defaults (done) — and three EF could not express
+
+28 constraints, in four kinds: 8 CERP-only ones removed, 9 of SRMS's added, 6 changed to SRMS's real
+values (`'en'`, `'dd/MM/yyyy'`, `'/'`, `'1,234.56'`, `'system'`, `'Africa/Nairobi'`), 5 respelled.
+That took the total from **50 to 23**.
+
+⚠️ **Three had to be hand-written SQL**, each for a different reason, and each worth recognising
+again:
+
+| Column | Why EF could not do it |
+|---|---|
+| `Role.Code` | carried an `(N'')` default from an **older migration the model never declared**. EF neither knows about it nor drops it — the same class of problem as the raw-SQL FK in §12.19 |
+| `Subsystem.Code` | pure spelling: EF always emits `N''` for a string default, SRMS stores `''` |
+| `TenantRolePermission.CanExport` | the opposite — `HasDefaultValue(false)` produces **nothing**, because `false` is the CLR default and EF optimises the constraint away |
+
+A hand-authored migration also needs an explicit `[Migration("id")]` attribute, or EF does not
+discover it at all.
+
+**These defaults are decorative.** EF supplies every value on insert, so they only ever apply to raw
+SQL. They were aligned because the requirement is an identical catalog, not because behaviour
+depended on them — worth knowing before spending effort defending them.
 
 ### 12.2 What phase 2 is, and its one hard rule
 

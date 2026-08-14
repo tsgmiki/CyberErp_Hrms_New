@@ -23,7 +23,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(o => o.Code).IsRequired().HasMaxLength(80);
             builder.Property(o => o.LegalName).IsRequired().HasMaxLength(200);
-            builder.Property(o => o.DisplayName).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
+            builder.Property(o => o.DisplayName).IsRequired().HasMaxLength(200);
 
             builder.Property(o => o.Address).HasMaxLength(500);
             builder.Property(o => o.PostalAddress).HasMaxLength(500);
@@ -48,11 +48,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.OrganizationType).HasMaxLength(100);
 
             // Fixed width in the source schema; ISO 4217 is always three characters.
-            builder.Property(o => o.Currency).IsRequired().HasColumnType("nchar(3)").HasDefaultValue(string.Empty);
-            builder.Property(o => o.Timezone).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
-            builder.Property(o => o.Locale).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
-            builder.Property(o => o.DefaultLanguage).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
-            builder.Property(o => o.DateFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
+            builder.Property(o => o.Currency).IsRequired().HasColumnType("nchar(3)");
+            builder.Property(o => o.Timezone).IsRequired().HasMaxLength(100);
+            builder.Property(o => o.Locale).IsRequired().HasMaxLength(20);
+            builder.Property(o => o.DefaultLanguage).IsRequired().HasMaxLength(20).HasDefaultValue("en");
+            builder.Property(o => o.DateFormat).IsRequired().HasMaxLength(30);
+            builder.Property(o => o.FiscalYearStartMonth).HasDefaultValue(1);
 
             builder.Property(o => o.LogoContentType).HasMaxLength(100);
             builder.Property(o => o.DataRetentionPolicy).HasMaxLength(1000);
@@ -139,8 +140,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("LoginTrail", "Core");
             builder.HasKey(l => l.Id);
 
-            builder.Property(l => l.UserNameAttempted).IsRequired().HasMaxLength(200);
-            builder.Property(l => l.EventType).IsRequired().HasMaxLength(30);
+            builder.Property(l => l.UserNameAttempted).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
+            builder.Property(l => l.EventType).IsRequired().HasMaxLength(30).HasDefaultValue("Login");
             builder.Property(l => l.IpAddress).IsRequired().HasMaxLength(45);
             builder.Property(l => l.Status).HasMaxLength(50);
             builder.Property(l => l.FailureReason).HasMaxLength(500);
@@ -181,14 +182,17 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("UserPreference", "Core");
             builder.HasKey(p => p.Id);
 
-            builder.Property(p => p.Language).IsRequired().HasMaxLength(10);
+            builder.Property(p => p.Language).IsRequired().HasMaxLength(10).HasDefaultValue("en");
             // SRMS alignment (2026-08-14): required and narrower. The table is empty, so the
             // conversion costs nothing; defaults keep inserts working without a value.
-            builder.Property(p => p.TimeZone).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
-            builder.Property(p => p.DateFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
-            builder.Property(p => p.NumberFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
-            builder.Property(p => p.LandingPage).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
-            builder.Property(p => p.Theme).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
+            builder.Property(p => p.TimeZone).IsRequired().HasMaxLength(100).HasDefaultValue("Africa/Nairobi");
+            builder.Property(p => p.DateFormat).IsRequired().HasMaxLength(30).HasDefaultValue("dd/MM/yyyy");
+            builder.Property(p => p.NumberFormat).IsRequired().HasMaxLength(30).HasDefaultValue("1,234.56");
+            builder.Property(p => p.LandingPage).IsRequired().HasMaxLength(200).HasDefaultValue("/");
+            builder.Property(p => p.Theme).IsRequired().HasMaxLength(20).HasDefaultValue("system");
+            builder.Property(p => p.EmailNotifications).HasDefaultValue(true);
+            builder.Property(p => p.InAppNotifications).HasDefaultValue(true);
+            builder.Property(p => p.ApprovalNotifications).HasDefaultValue(true);
 
             builder.HasOne<User>()
                 .WithMany()
