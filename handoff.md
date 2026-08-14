@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0109. **`Operation.ModuleId` repointed at `Core.Module` — SRMS re-alignment STAGE 1 (2026-08-15).**
+    Detail in logic.md §12.19. Migration `OperationModuleForeignKey`, APPLIED to CERP.
+    - SRMS was **corrected by the user**: its `ModuleId` genuinely FKs to `Core.Module`, and it now
+      has a `Core.TenantModule` table. The 2026-08-13 self-referencing hierarchy (a group = an
+      Operation with a null `ModuleId`) mirrored what SRMS looked like *then*; this follows it back.
+    - **Zero data change.** The 2026-08-13 migration copied the 24 modules across USING THEIR OWN
+      Ids, so every parent operation's Id already equalled its module's — all **144 of 144** child
+      `ModuleId` values already pointed at a valid `Core.Module` row (0 missing). Verified first.
+    - ⚠️ Both constraint names are **SRMS's verbatim**: `FK_NavigationOperation_Module_ModuleId`
+      (ModuleId) and `FK_Operation_Module_ModuleId` — which constrains **SubSystemId**, a misnomer
+      left over from a rename in SRMS. Its **CASCADE** is SRMS's too: deleting a subsystem now takes
+      its menu with it, where CERP previously refused with `Restrict`. Do not "fix" either without
+      changing SRMS first.
+    - Entity `Parent`/`Children` self-navigation → a `Module` navigation; the two read sites that
+      showed the group name (`GetOperationByIdHandler`, `GetAllOperationsRepository`) follow it.
+    - Non-breaking, and verified so: login 200, sidebar **12 groups / 34 screens** (unchanged),
+      `Operation` list 168. The 24 group rows still exist with a null `ModuleId`, so the tenant-side
+      reads are untouched.
+    - **REMAINING to reach identical (not yet done):** `Core.Module` (−TenantId, SortOrder→
+      DisplayOrder, +Filter, +IsActive, narrow Name/Icon to 200, Icon NOT NULL); drop the 24 group
+      rows + `ModuleId` NOT NULL; **new `Core.TenantModule` table**; `TenantOperation` (−OperationId,
+      ModuleId NOT NULL → TenantModule); `UpdatedAt` datetime2(7)→(3) throughout; column order.
+      ⚠️ **`TenantOperation.OperationId` is the blocker** — SRMS has no template link at all (0 of
+      220 tenant rows share an Id with a template), but both apps use it as the stable id the UI and
+      the permission gate work with. Needs a decision before proceeding.
+
 0108. **The static menu leftovers cleared out of both SPAs (2026-08-14).** Detail in logic.md §12.18.
     **No migration.** Data: `Home/backend/scripts/seed-subsystem-icons.sql`, RUN (8 rows).
     - Started as a Home-portal question ("why is the menu static?"). The Home sidebar was already

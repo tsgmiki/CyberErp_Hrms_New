@@ -2514,6 +2514,57 @@ Fianance, Report` — typo included).
 None of it rendered. All of it made the codebase *read* as though the menu were hardcoded, which is
 exactly the impression that prompted the question.
 
+### 12.19 Following SRMS back to a real Module foreign key
+
+SRMS was **changed by the user**: `Core.Operation.ModuleId` now genuinely constrains to
+`Core.Module`, and a `Core.TenantModule` table exists. The 2026-08-13 self-referencing hierarchy
+(§12.10 era) was built because SRMS looked self-referencing *then* — the entity comment even recorded
+that reading. It is superseded.
+
+#### Stage 1 (done): the foreign key, at zero data cost
+
+The repoint needed **no data migration at all**, and that is not luck. The 2026-08-13 migration
+copied the 24 modules into `Operation` **using their own Ids**, precisely so the existing children
+would not need repointing. That invariant now pays off in the opposite direction: every child's
+`ModuleId` was already a valid `Core.Module.Id`. Verified before applying — **144 of 144 present, 0
+missing**, and all 24 group rows share an Id with a module.
+
+⚠️ **Both constraint names are SRMS's, verbatim.** `FK_NavigationOperation_Module_ModuleId` is the
+ModuleId one; `FK_Operation_Module_ModuleId` constrains **`SubSystemId`** — a misnomer left in SRMS by
+a rename. Its `CASCADE` is SRMS's as well, so deleting a subsystem now deletes its menu, where CERP
+deliberately used `Restrict`. Both were copied because the requirement is *identical structure*; both
+are things to change in SRMS first if they should change at all.
+
+The 24 group rows still exist with a null `ModuleId`, so nothing that reads the menu changed: login
+200, sidebar 12 groups / 34 screens, `Operation` list 168.
+
+#### What is still different, and why the rest is not mechanical
+
+| Object | Delta | Note |
+|---|---|---|
+| `Core.Module` | −`TenantId`, `SortOrder`→`DisplayOrder`, +`Filter`, +`IsActive`, `Name`/`Icon` 400→200, `Icon` NOT NULL | safe: all 24 rows are one tenant, no name exceeds 200, **1 row has a blank Icon** and needs a value first |
+| `Core.Operation` | drop the 24 group rows, `ModuleId` NOT NULL | the groups hold **zero grants**, so removing them costs no permissions — but the tenant-side reads must move to modules in the same change |
+| `Core.TenantModule` | **does not exist in CERP** | a new tenant-scoped table the projector has to populate |
+| `Core.TenantOperation` | −`OperationId`, `ModuleId` NOT NULL → `TenantModule` | ⚠️ see below |
+| both | `UpdatedAt` datetime2(7)→(3), column order | order needs a table rebuild; cosmetic but part of "identical" |
+
+#### ⚠️ The blocker: `TenantOperation.OperationId`
+
+SRMS's tenant copies are **standalone** — verified: **0 of 220** `TenantOperation` rows share an Id
+with any `Operation`, and there is no template column. A tenant's menu, once copied, has no link back.
+
+CERP's copies do carry `OperationId`, and both applications depend on it:
+
+- the sidebar and portal feeds report **the template id** as each item's id, because that is the
+  stable identifier the UI and the role-permission screen work against;
+- `permissionGate.tsx` builds its catalog from the **global** `GET Operation` while grants live on
+  **tenant** rows — `OperationId` is the join between the two.
+
+Dropping it means re-establishing that link some other way (matching on `Link`, or making the tenant
+copy's Id equal the template's — which cannot survive a second tenant). That is an architectural
+change to the permission layer of two applications, not a schema tweak, so it is a decision rather
+than a mechanical step.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

@@ -537,7 +537,21 @@ configured on live rows but missing from both `lucideIconMap`s → silently rend
 the data. ⚠️ Wiring a column to the UI is half the job when the column was never populated.
 Also deleted the PSMS-template dead menu layer from both SPAs (`menu/icons/`, `getModuleIcon`,
 `buildSidebarNavigation` — computed every render, never consumed — `menuTypes`, `modules`/
-`moduleDetail`/`menuItem`, `quickAdd`, 4 unreachable sidebar subcomponents, `constants/subSystem.ts`). **Phase 2 STEP 1 DONE
+`moduleDetail`/`menuItem`, `quickAdd`, 4 unreachable sidebar subcomponents, `constants/subSystem.ts`).
+**SRMS re-alignment STAGE 1 DONE 2026-08-15** (handoff 0109, logic §12.19, migration
+`OperationModuleForeignKey`) — ⚠️ **the user CHANGED SRMS**: `Operation.ModuleId` now really FKs to
+`Core.Module` and a `Core.TenantModule` table exists, so the 2026-08-13 self-referencing hierarchy is
+**superseded**. Repoint cost **ZERO data change** because that migration had copied the 24 modules in
+**using their own Ids** (144/144 children already valid) — the invariant paid off in reverse.
+⚠️ Constraint names + CASCADE copied from SRMS **verbatim**: `FK_Operation_Module_ModuleId` actually
+constrains **SubSystemId** (misnomer in SRMS) and cascades, so deleting a subsystem now deletes its
+menu (CERP used Restrict). Fix in SRMS first or they diverge. Non-breaking: sidebar still 12 groups/
+34 screens. ⚠️ **REMAINING blocker: `TenantOperation.OperationId`** — SRMS tenant copies are
+STANDALONE (0/220 share a template Id, no template column) but BOTH apps use OperationId as the
+stable UI id AND as the join between `permissionGate`'s global catalog and tenant-row grants;
+dropping it is a permission-layer redesign, not a schema tweak. Also pending: Module (−TenantId,
+SortOrder→DisplayOrder, +Filter/+IsActive, narrow to 200, Icon NOT NULL — 1 blank row), drop the 24
+group rows (they hold **0 grants**), new `Core.TenantModule`, datetime2(7)→(3), column order. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

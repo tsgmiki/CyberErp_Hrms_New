@@ -87,23 +87,26 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.DisplayOrder).HasDefaultValue(0);   // was SortOrder
             builder.Property(o => o.IsActive).IsRequired().HasDefaultValue(true);
 
-            // ModuleId is the PARENT LINK — a self-reference, not a foreign key to Core.Module.
-            // NoAction is not a preference: SQL Server rejects a cascading self-referencing foreign
-            // key outright (it cannot prove the chain terminates). Deleting a parent therefore has to
-            // clear its children first, which DeleteOperationHandler does.
-            builder.HasOne(o => o.Parent)
-                .WithMany(o => o.Children)
+            // ModuleId is a FOREIGN KEY to Core.Module again (2026-08-15) — SRMS was corrected, and
+            // this follows it. The constraint NAME is SRMS's, not EF's convention.
+            builder.HasOne(o => o.Module)
+                .WithMany()
                 .HasForeignKey(o => o.ModuleId)
+                .HasConstraintName("FK_NavigationOperation_Module_ModuleId")
                 .OnDelete(DeleteBehavior.NoAction);
-            builder.Navigation(o => o.Parent).UsePropertyAccessMode(PropertyAccessMode.Field);
-            builder.Navigation(o => o.Children).UsePropertyAccessMode(PropertyAccessMode.Field);
+            builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-            // Denormalised subsystem. Restrict, not Cascade: deleting a subsystem must not silently
-            // take the menu with it, and Module already cascades.
+            // ⚠️ The subsystem FK is CASCADE and is called FK_Operation_Module_ModuleId — both
+            // copied from SRMS verbatim, per the "identical structure" requirement. The name is a
+            // MISNOMER there (a leftover from a rename; it constrains SubSystemId, not ModuleId) and
+            // the cascade means deleting a subsystem takes its whole menu with it, which CERP
+            // previously refused with Restrict. Kept identical deliberately — do not "fix" either
+            // without changing SRMS first, or the databases diverge again.
             builder.HasOne<Subsystem>()
                 .WithMany()
                 .HasForeignKey(o => o.SubSystemId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .HasConstraintName("FK_Operation_Module_ModuleId")
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.HasIndex(o => o.ModuleId);
             builder.HasIndex(o => o.SubSystemId);

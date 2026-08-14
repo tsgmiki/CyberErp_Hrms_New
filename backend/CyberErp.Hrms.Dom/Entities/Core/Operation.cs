@@ -1,29 +1,29 @@
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
 /*
- * The menu tree, in ONE self-referencing table — the SRMS topology, adopted 2026-08-13.
+ * A menu screen. `ModuleId` is a FOREIGN KEY to Core.Module — the menu GROUP it hangs off.
  *
- * `ModuleId` is the PARENT LINK, not a foreign key to Core.Module:
+ * ⚠️ HISTORY, because the column has meant two different things (2026-08-15).
  *
- *     ModuleId IS NULL      -> a PARENT: a menu group, the row a module used to be
- *     ModuleId IS NOT NULL  -> a CHILD:  a screen, hanging off the parent with that Id
+ * On 2026-08-13 this was made SELF-REFERENCING: a group was an Operation with ModuleId NULL, and
+ * screens pointed at that parent row. That mirrored what cybererp_srms looked like at the time.
+ * SRMS has since been corrected — its ModuleId genuinely constrains to Core.Module — so CERP
+ * follows it back.
  *
- * The column keeps its name because that is what SRMS calls it (there it is a renamed
- * ParentOperationId whose constraint name was never updated). A parent carries no Link, so it grants
- * nothing: the permission gate skips rows with an empty Link, which is what makes a group a group.
+ * The repoint needed NO data change, because the 2026-08-13 migration deliberately copied the 24
+ * modules across USING THEIR OWN Ids: every parent operation's Id already equalled its module's, so
+ * all 144 children were already pointing at a valid Core.Module row.
  *
- * ⚠️ INVARIANT — a parent's Id EQUALS the Core.Module row it came from. The migration copied the 24
- * modules across using their own Ids, which is why the 150 existing children needed no repointing at
- * all, and SeedDefaultMenu maintains it. Core.Module still exists and must: SubscriptionPlanModule
- * and TenantSubscriptionAddOn have foreign keys into it. It is no longer what navigation reads.
+ * The 24 parent rows still exist here with ModuleId NULL. They are what Core.Module now expresses,
+ * and removing them is a separate step — the sidebar still reads groups from the tenant copies.
  *
  * `TenantId` is KEPT, unlike SRMS — see the note on User.
  */
 public class Operation : BaseEntity
 {
     /// <summary>
-    /// The PARENT operation's Id, or null when this row IS a parent. Not a link to Core.Module,
-    /// despite the name — see the note above.
+    /// The Core.Module this screen belongs to. Nullable only until the 24 legacy group rows are
+    /// removed; SRMS has it NOT NULL and no group rows at all.
     /// </summary>
     public Guid? ModuleId { get; private set; }
 
@@ -39,9 +39,8 @@ public class Operation : BaseEntity
     /// <summary>False hides the screen everywhere — it is a template-level kill switch.</summary>
     public bool IsActive { get; private set; } = true;
 
-    public Operation? Parent { get; private set; }
-    private readonly List<Operation> _children = new();
-    public IReadOnlyCollection<Operation> Children => _children.AsReadOnly();
+    /// <summary>The menu group this screen belongs to (Core.Module). Null on a legacy group row.</summary>
+    public Module? Module { get; private set; }
 
     /// <summary>True when this row is a menu group rather than a screen.</summary>
     public bool IsParent => ModuleId is null;
