@@ -307,6 +307,55 @@ public class HrmsDbContext : MultiTenantDbContext
             }
         }
 
+        /*
+         * TenantId is stored as a uniqueidentifier — the SRMS platform type — while staying a string
+         * in the CLR (2026-08-14, logic.md §12.14).
+         *
+         * WHY A CONVERTER RATHER THAN RETYPING THE PROPERTY
+         * -------------------------------------------------
+         * `TenantId` is declared once on BaseEntity and carried by 202 tables. It is also the
+         * Finbuckle discriminator, and Finbuckle's own ITenantInfo.Id is a STRING — so retyping it to
+         * Guid would mean converting at that boundary anyway, plus touching the repository filter,
+         * every aggregate-child propagation, the Home portal's IHasTenant and every SQL script. The
+         * column type is what had to match; the CLR type never did.
+         *
+         * Every query use of TenantId is a simple equality (checked: the repository filter, Home's
+         * query filters, PortalNotifier, LoginRepository), which a value converter translates
+         * cleanly. The `string.IsNullOrEmpty(x.TenantId)` checks scattered through the aggregate
+         * handlers all run IN MEMORY, so they are unaffected.
+         *
+         * ⚠️ The empty string maps to Guid.Empty, and back. Nineteen rows legitimately carry a blank
+         * TenantId — the global lookup tables, Organization, Setting — and Guid.Parse would throw on
+         * every one of them. Round-tripping through Guid.Empty keeps `IsNullOrEmpty` checks working
+         * exactly as before.
+         */
+        var tenantIdConverter = new ValueConverter<string, Guid>(
+            v => string.IsNullOrWhiteSpace(v) ? Guid.Empty : Guid.Parse(v),
+            v => v == Guid.Empty ? string.Empty : v.ToString());
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            // ⚠️ Ask EF what it MAPPED, not reflection. TenantSubscription declares its own
+            // `Guid TenantId` — a real foreign key — which SHADOWS BaseEntity's string one, so
+            // Type.GetProperty("TenantId") finds two and throws "Ambiguous match found". Its column
+            // is already a uniqueidentifier and must not be converted twice.
+            // ⚠️ LoginTrail and UserPreference stay nvarchar — because SRMS itself types them that
+            // way. It has TenantId as uniqueidentifier on seven tables and nvarchar on these two;
+            // the inconsistency is in the source schema, not here, and matching it is the point of
+            // this exercise. If SRMS is ever made consistent, delete this exclusion and the
+            // companion migration rather than working around it.
+            var tenantId = entityType.FindProperty("TenantId");
+            var name = entityType.ClrType.Name;
+            if (tenantId is not null && tenantId.ClrType == typeof(string)
+                && name is not ("LoginTrail" or "UserPreference"))
+            {
+                modelBuilder.Entity(entityType.ClrType)
+                    .Property("TenantId")
+                    .HasConversion(tenantIdConverter)
+                    .HasColumnType("uniqueidentifier");
+            }
+        }
+
         var instantConverter = new ValueConverter<Instant, DateTime>(
             v => v.ToDateTimeUtc(),
             v => Instant.FromDateTimeUtc(DateTime.SpecifyKind(v, DateTimeKind.Utc)));

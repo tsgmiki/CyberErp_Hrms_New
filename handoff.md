@@ -123,6 +123,39 @@
 
 ## 1. Most recent changes (latest first)
 
+0104. **TenantId RE-KEYED to uniqueidentifier — 201 columns (2026-08-14).** Detail in logic.md
+    §12.14. Migrations `TenantIdToUniqueidentifier` + `MatchSrmsTenantIdExceptions`, both APPLIED.
+    Backup: `D:\Backups\CERP_before-tenantid-rekey-*.bak`. **The shared surface with SRMS now differs
+    by ONE column.**
+    - ⚠️ **A VALUE CONVERTER, not a retyped property.** The CLR property stays `string`; a global
+      converter in `OnModelCreating` maps it to Guid, so the COLUMN is uniqueidentifier and **no
+      entity, no repository filter, no handler changed**. `TenantId` is on `BaseEntity` (202 tables)
+      AND is the Finbuckle discriminator, whose `ITenantInfo.Id` is a **string** — retyping would
+      have needed a conversion at that boundary anyway. **The column type had to match; the CLR type
+      never did.** Safe because every query use is a simple equality (verified both repos); the
+      `IsNullOrEmpty` checks run in memory. `""` ↔ `Guid.Empty` round-trips (19 rows carry blanks).
+    - ⚠️ **Four traps.** (a) `Type.GetProperty("TenantId")` throws *Ambiguous match* —
+      `TenantSubscription` declares its own Guid `TenantId` shadowing the base one; use
+      `entityType.FindProperty`. (b) EF scaffolded **400 AlterColumn and NO index handling**, but
+      **141 indexes include TenantId** — hand-written discovery-driven SQL instead. (c) A **PRIMARY
+      KEY** (`PK_NumberSequence`) also blocks it and is not DROP INDEX-able — the first attempt
+      failed on exactly that. (d) Blank values cannot implicitly convert → empty GUID first.
+    - One transaction with `XACT_ABORT`, which earned its keep: the failed first attempt rolled back
+      cleanly, leaving all 201 columns untouched rather than half-converted.
+    - ⚠️ **SRMS is internally inconsistent and we now match it**: it uses uniqueidentifier on 7
+      tables and **nvarchar on LoginTrail and UserPreference**. `MatchSrmsTenantIdExceptions` reverts
+      those two. The oddity is SRMS's — if fixed there, delete that migration AND the exclusion in
+      `HrmsDbContext`.
+    - **Home needed the same converter** or its nine query filters would not translate; its
+      `Core.Notification` was converted by the HRMS script (it scans every table), so Home's own
+      migration is a **guarded no-op** that keeps its snapshot honest. ⚠️ **Deploy together.**
+    - Remaining: `User.CreatedAt` (nullable in SRMS) — `BaseEntity.CreatedAt` is a non-nullable
+      `Instant` on 202 tables; EF cannot make it optional for one entity and doing it globally drops
+      a guarantee every audited row has.
+    - Verified: 141 indexes + 1 PK rebuilt; data intact (506 users, 490 employees, 598 grants, 175
+      operations, 60 login-trail rows); 3 HRMS identities 200/34 links; write path stamps a real
+      Guid; Home 2/12/34 + notifications 200; 0 errors either log.
+
 0103. **Remaining platform tables aligned with cybererp_srms (2026-08-14).** Detail in logic.md
     §12.13. Migrations `AlignPlatformTablesWithSrms` + `AlignAssignedByAndSettingUpdatedAt`, both
     APPLIED to CERP. Backup: `D:\Backups\CERP_before-platform-align-*.bak`.
