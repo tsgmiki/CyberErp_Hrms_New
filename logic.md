@@ -2692,6 +2692,44 @@ copy's Id equal the template's — which cannot survive a second tenant). That i
 change to the permission layer of two applications, not a schema tweak, so it is a decision rather
 than a mechanical step.
 
+### 12.20 The database-wide schema audit
+
+All 30 tables SRMS has exist in CERP. Comparing **every column** on name, type, size, nullability and
+default found **65 differences**; `TenantRole` and the timestamp work took it to **50**.
+
+`TenantRole` was a plain rename: `SourceTemplateId` is SRMS's `RoleId`. Mapped with
+`HasColumnName` rather than renamed in C#, because "RoleId" on a table whose rows *are* roles reads
+like the primary key.
+
+#### ⚠️ The blanket timestamp fix that had to be rolled back
+
+The convention gave every **nullable** timestamp `datetime2(7)` and every non-nullable one `(3)` —
+an accident of nullability rather than a design, and the cause of 14 differences. Changing it to
+`(3)` everywhere looked like the one-line root-cause fix.
+
+It was not. **It fixed 16 columns and broke 13**, because SRMS keeps `UpdatedAt` at `(7)` on Person,
+SalaryScale, Step, SubscriptionPlan, Tenant, TenantSubscription and UserPreference — a net gain of
+three across a **594-column migration**. Rolled back and replaced with an explicit list of the 17
+entities SRMS actually has at `(3)`.
+
+**The lesson: verify the shape of the target before generalising about it.** SRMS is internally
+inconsistent here; the ugly list mirrors its migration history because there is no rule to mirror.
+
+#### The remaining 50, and why they are not a to-do list
+
+| Group | Count | Verdict |
+|---|---|---|
+| Default constraints (Organization, Role, Subsystem, UserPreference, LoginTrail, TenantRolePermission) | ~25 | **Safe, mechanical.** Mostly `(N'')` vs none, plus real values SRMS sets (`'en'`, `'dd/MM/yyyy'`, `'Africa/Nairobi'`) and pure spelling (`CONVERT([bit],(1))` vs `((1))`) |
+| `TenantId` **absent** in SRMS (10 tables incl. UserRole, TenantRolePermission, TenantUserRole, Setting, Subsystem) | 10 | ⚠️ **Load-bearing.** Each removes tenant isolation from a table the runtime filters on. `TenantOperation` took a full stage to do safely — every one of these needs the same treatment |
+| `TenantId` **typed nvarchar** in SRMS (FiscalYear, Notification, Person, SalaryScale, Step) | 5 | ⚠️ **Would go backwards.** CERP re-keyed these to `uniqueidentifier` in §12.14. SRMS simply has not caught up |
+| `Subsystem.Url` + `SortOrder` absent in SRMS | 2 | ⚠️ **Would break the Home launcher**, which deep-links through `Url` — built this session |
+| `Setting` audit columns + `TenantSubscriptionAddOn.SubscribedTenantId` | 5 | The known BaseEntity superset |
+| `User.CreatedAt` nullable in SRMS | 1 | ⚠️ **SRMS regressed.** I made it NOT NULL on 2026-08-14 (§12.15). Fix there, not here |
+
+So "identical" is not simply achievable in one direction any more: **CERP is ahead of SRMS on some
+columns and behind on others**, and three of the differences exist because CERP has features SRMS
+does not. The defaults group is the only part that is purely mechanical.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

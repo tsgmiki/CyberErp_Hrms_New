@@ -32,6 +32,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasOne<Role>().WithMany()
                 .HasForeignKey(r => r.SourceTemplateId).OnDelete(DeleteBehavior.SetNull);
 
+            // SRMS names this column RoleId; the property stays SourceTemplateId because "RoleId" on
+            // a table of roles reads like a primary key. Mapped, not renamed (2026-08-15).
+            builder.Property(r => r.SourceTemplateId).HasColumnName("RoleId");
+
             builder.HasIndex(r => new { r.TenantId, r.Code }).IsUnique();
         }
     }

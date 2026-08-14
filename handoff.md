@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0114. **`Core.TenantRole` matched + a database-wide schema audit (2026-08-15).** Detail in logic.md
+    §12.20. Migration `TenantRoleRoleIdAndUpdatedAtPrecision`, APPLIED.
+    Backup: `D:/Backups/CERP_before-timestamp-precision-20260815-020238.bak`.
+    - `TenantRole.SourceTemplateId` → column **`RoleId`** (SRMS's name), mapped with
+      `HasColumnName` so the property keeps the clearer name — "RoleId" on a table of roles reads
+      like a primary key. **`Core.TenantRole` now diffs to ZERO.**
+    - **Audit:** all 30 SRMS tables exist in CERP; comparing every column on name/type/size/
+      nullability/default found **65 differences**. Now **50**.
+    - ⚠️ **A blanket fix made it worse and was rolled back.** The convention gave nullable timestamps
+      `datetime2(7)` and non-nullable `(3)` — an accident of nullability. Changing it to `(3)`
+      everywhere fixed 16 columns and **broke 13** that SRMS keeps at `(7)`, net gain of 3 across a
+      **594-column** migration. Reverted; replaced with an explicit 17-entity list (32 columns).
+      SRMS is internally inconsistent here — the list mirrors its migration history, not a rule.
+    - **The remaining 50 are NOT safe to apply blindly** — see logic.md §12.20 for the breakdown.
+      Three would actively break things: dropping `Subsystem.Url` kills the Home launcher (built this
+      session), dropping `TenantId` from 10 tables removes isolation the runtime filters on, and
+      re-typing `TenantId` back to nvarchar on 5 tables would REVERSE the re-key from §12.14.
+    - ⚠️ **`Core.User.CreatedAt` has regressed in SRMS** — it is nullable there again. I made it NOT
+      NULL on 2026-08-14 (handoff 0105, `srms-fix-user-createdat-notnull.sql`). Fix in SRMS, not here.
+
 0113. **All four navigation tables now diff to ZERO — STAGE 2d (2026-08-15).** Detail in logic.md
     §12.19. Migrations `OperationSubSystemIdAndDefaults` + `TenantModuleDropTemplateLink`, APPLIED.
     - ⚠️ **My earlier "zero differences" check was incomplete** — it compared name/type/length/

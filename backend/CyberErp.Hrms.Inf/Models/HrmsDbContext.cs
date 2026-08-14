@@ -309,6 +309,35 @@ public class HrmsDbContext : MultiTenantDbContext
         }
 
         /*
+         * ⚠️ UpdatedAt precision, per table, to match cybererp_srms exactly (2026-08-15).
+         *
+         * The convention above gives every NULLABLE timestamp datetime2(7) and every non-nullable one
+         * datetime2(3) — an accident of nullability, not a design. SRMS uses (3) for UpdatedAt on the
+         * tables below and (7) on the rest (Person, SalaryScale, Step, SubscriptionPlan, Tenant,
+         * TenantSubscription, UserPreference), which is its own migration history showing through
+         * rather than a rule.
+         *
+         * ⚠️ DO NOT "simplify" this by changing the convention to (3) for everything. That was tried:
+         * it fixed 16 columns and broke 13 others that SRMS keeps at (7), for a net gain of three
+         * across a 594-column migration. The list is ugly because the thing it mirrors is.
+         *
+         * Module / Operation / TenantModule / TenantOperation set theirs in their own configurations.
+         */
+        foreach (var clrType in new[]
+                 {
+                     typeof(FiscalYear), typeof(LoginTrail), typeof(LookupCategory),
+                     typeof(LookupCategoryList), typeof(Organization), typeof(OrganizationSubscription),
+                     typeof(Role), typeof(SubscriptionPlanModule), typeof(Subsystem),
+                     typeof(TenantRole), typeof(TenantRolePermission), typeof(TenantSubscriptionAddOn),
+                     typeof(TenantSubSystem), typeof(TenantUser), typeof(TenantUserRole),
+                     typeof(User), typeof(UserRole),
+                 })
+        {
+            if (modelBuilder.Model.FindEntityType(clrType)?.FindProperty("UpdatedAt") is not null)
+                modelBuilder.Entity(clrType).Property("UpdatedAt").HasColumnType("datetime2(3)");
+        }
+
+        /*
          * TenantId is stored as a uniqueidentifier — the SRMS platform type — while staying a string
          * in the CLR (2026-08-14, logic.md §12.14).
          *

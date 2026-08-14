@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
  * Today `Role`, `Operation` and `RolePermission` are single global tables. In this model the global
  * rows become TEMPLATES and each tenant gets its own instances:
  *
- *     Role      -> TenantRole        (SourceTemplateId points back at the template)
+ *     Role      -> TenantRole        (SourceTemplateId -> the RoleId column, points at the template)
  *     Operation -> TenantOperation   (a per-tenant COPY: own Name/Link/Icon/DisplayOrder/IsActive)
  *     RolePermission -> TenantRolePermission (+ CanExport, which the old model lacks)
  *     UserRole  -> TenantUser + TenantUserRole (a user can belong to several tenants)
@@ -49,7 +49,12 @@ public static class TenantSubSystemSources
 /// </summary>
 public class TenantRole : BaseEntity, IAggregateRoot
 {
-    /// <summary>The global <see cref="Role"/> this was instantiated from; null for a bespoke role.</summary>
+    /// <summary>
+    /// The global <see cref="Role"/> this was instantiated from; null for a bespoke role.
+    ///
+    /// <para>Mapped to the column <c>RoleId</c>, which is what cybererp_srms calls it. The property
+    /// keeps the clearer name — "RoleId" on a table whose rows ARE roles reads like the primary key.</para>
+    /// </summary>
     public Guid? SourceTemplateId { get; private set; }
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
