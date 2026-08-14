@@ -40,19 +40,19 @@ BEGIN TRAN;
    tenant, and the membership insert downstream then makes each user a member of
    ALL tenants: 506 users became 1500 memberships on the first attempt. */
 INSERT INTO Core.TenantRole
-    (Id, OwningTenantId, SourceTemplateId, Code, Name, Description, IsCustomized, TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), t.Id, r.Id, LEFT(r.Name, 100), LEFT(r.Name, 200), NULL, 0,
-       CAST(t.Id AS nvarchar(64)), SYSUTCDATETIME(), @rv
+    (Id, SourceTemplateId, Code, Name, Description, IsCustomized, TenantId, CreatedAt, RowVersion)
+SELECT NEWID(), r.Id, LEFT(r.Name, 100), LEFT(r.Name, 200), NULL, 0,
+       t.Id, SYSUTCDATETIME(), @rv
 FROM Core.Role r
-JOIN Core.Tenant t ON CAST(t.Id AS nvarchar(64)) = r.TenantId
+JOIN Core.Tenant t ON t.Id = r.TenantId
 WHERE NOT EXISTS (
-    SELECT 1 FROM Core.TenantRole tr WHERE tr.OwningTenantId = t.Id AND tr.SourceTemplateId = r.Id);
+    SELECT 1 FROM Core.TenantRole tr WHERE tr.TenantId = t.Id AND tr.SourceTemplateId = r.Id);
 
 /* ---- 2. Operations ----------------------------------------------------------
    A per-tenant COPY: the tenant may later rename or hide a screen without
    affecting anyone else. Link is what the permission check matches on. */
 INSERT INTO Core.TenantOperation
-    (Id, OwningTenantId, SubSystemId, OperationId, ModuleId, Name, Link, Icon, DisplayOrder, IsActive,
+    (Id, SubSystemId, OperationId, ModuleId, Name, Link, Icon, DisplayOrder, IsActive,
      Filter, TenantId, CreatedAt, RowVersion)
 -- Since the 2026-08 SRMS alignment the template carries DisplayOrder, IsActive and its own
 -- SubSystemId, so all three copy straight across instead of being derived or defaulted.
@@ -61,12 +61,12 @@ SELECT NEWID(), t.Id, ISNULL(NULLIF(o.SubSystemId, '00000000-0000-0000-0000-0000
        o.Id, o.ModuleId,
        LEFT(ISNULL(o.Name, ''), 200), LEFT(ISNULL(o.Link, ''), 300), LEFT(ISNULL(o.Icon, ''), 100),
        ISNULL(o.DisplayOrder, 0), o.IsActive, LEFT(ISNULL(o.Filter, ''), 500),
-       CAST(t.Id AS nvarchar(64)), SYSUTCDATETIME(), @rv
+       t.Id, SYSUTCDATETIME(), @rv
 FROM Core.Operation o
 LEFT JOIN Core.Module m ON m.Id = o.ModuleId
-JOIN Core.Tenant t ON CAST(t.Id AS nvarchar(64)) = o.TenantId
+JOIN Core.Tenant t ON t.Id = o.TenantId
 WHERE NOT EXISTS (
-    SELECT 1 FROM Core.TenantOperation topx WHERE topx.OwningTenantId = t.Id AND topx.OperationId = o.Id);
+    SELECT 1 FROM Core.TenantOperation topx WHERE topx.TenantId = t.Id AND topx.OperationId = o.Id);
 
 /* ---- 3. Permissions ----------------------------------------------------------
    ⚠️ NOTHING TO DO. Core.RolePermission was RETIRED on 2026-08-13 (logic.md §12.7):
@@ -81,15 +81,15 @@ WHERE NOT EXISTS (
 -- `DISTINCT NEWID(), …` would not dedupe at all — NEWID() makes every row unique, so a user
 -- holding two roles in one tenant would produce two membership rows and hit the unique index.
 INSERT INTO Core.TenantUser
-    (Id, OwningTenantId, UserId, Status, IsDefaultTenant, TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), m.OwningTenantId, m.UserId, 'Active', 1, m.TenantId, SYSUTCDATETIME(), @rv
+    (Id, UserId, Status, IsDefaultTenant, TenantId, CreatedAt, RowVersion)
+SELECT NEWID(), m.UserId, 'Active', 1, m.TenantId, SYSUTCDATETIME(), @rv
 FROM (
-    SELECT DISTINCT tr.OwningTenantId, ur.UserId, tr.TenantId
+    SELECT DISTINCT ur.UserId, tr.TenantId
     FROM Core.UserRole ur
     JOIN Core.TenantRole tr ON tr.SourceTemplateId = ur.RoleId
 ) m
 WHERE NOT EXISTS (
-    SELECT 1 FROM Core.TenantUser tu WHERE tu.OwningTenantId = m.OwningTenantId AND tu.UserId = m.UserId);
+    SELECT 1 FROM Core.TenantUser tu WHERE tu.TenantId = m.TenantId AND tu.UserId = m.UserId);
 
 INSERT INTO Core.TenantUserRole
     (Id, TenantUserId, TenantRoleId, AssignedAt, AssignedBy, TenantId, CreatedAt, RowVersion)
@@ -97,7 +97,7 @@ SELECT NEWID(), tu.Id, tr.Id, SYSUTCDATETIME(), 'seed-tenant-authorization',
        tu.TenantId, SYSUTCDATETIME(), @rv
 FROM Core.UserRole ur
 JOIN Core.TenantRole tr ON tr.SourceTemplateId = ur.RoleId
-JOIN Core.TenantUser tu ON tu.UserId = ur.UserId AND tu.OwningTenantId = tr.OwningTenantId
+JOIN Core.TenantUser tu ON tu.UserId = ur.UserId AND tu.TenantId = tr.TenantId
 WHERE NOT EXISTS (
     SELECT 1 FROM Core.TenantUserRole x WHERE x.TenantUserId = tu.Id AND x.TenantRoleId = tr.Id);
 
@@ -105,14 +105,14 @@ WHERE NOT EXISTS (
    Every tenant keeps exactly the subsystems it can reach today; the term fields
    exist so a trial or lapse can be expressed later, not to restrict anything now. */
 INSERT INTO Core.TenantSubSystem
-    (Id, OwningTenantId, SubSystemId, SourceType, Status, StartDate, EndDate, TrialEndDate,
+    (Id, SubSystemId, SourceType, Status, StartDate, EndDate, TrialEndDate,
      TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), t.Id, ss.Id, 'Plan', 'Active', CAST(SYSUTCDATETIME() AS date), NULL, NULL,
-       CAST(t.Id AS nvarchar(64)), SYSUTCDATETIME(), @rv
+SELECT NEWID(), ss.Id, 'Plan', 'Active', CAST(SYSUTCDATETIME() AS date), NULL, NULL,
+       t.Id, SYSUTCDATETIME(), @rv
 FROM Core.Subsystem ss
-JOIN Core.Tenant t ON CAST(t.Id AS nvarchar(64)) = ss.TenantId
+JOIN Core.Tenant t ON t.Id = ss.TenantId
 WHERE NOT EXISTS (
-    SELECT 1 FROM Core.TenantSubSystem ts WHERE ts.OwningTenantId = t.Id AND ts.SubSystemId = ss.Id);
+    SELECT 1 FROM Core.TenantSubSystem ts WHERE ts.TenantId = t.Id AND ts.SubSystemId = ss.Id);
 
 COMMIT;
 

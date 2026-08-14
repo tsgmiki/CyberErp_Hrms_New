@@ -36,12 +36,12 @@ SELECT
     (SELECT COUNT(*) FROM Core.TenantRolePermission p
      JOIN Core.TenantRole r      ON r.Id = p.TenantRoleId
      JOIN Core.TenantOperation o ON o.Id = p.TenantOperationId
-     WHERE r.OwningTenantId <> o.OwningTenantId)
+     WHERE r.TenantId <> o.TenantId)
         AS grants_spanning_two_tenants,
     (SELECT COUNT(*) FROM Core.TenantUserRole tur
      JOIN Core.TenantUser tu ON tu.Id = tur.TenantUserId
      JOIN Core.TenantRole r  ON r.Id = tur.TenantRoleId
-     WHERE tu.OwningTenantId <> r.OwningTenantId)
+     WHERE tu.TenantId <> r.TenantId)
         AS assignments_spanning_two_tenants;
 
 PRINT '--- 3. The menu tree (each must be 0) ---';
@@ -50,7 +50,7 @@ SELECT
        WHERE c.ModuleId IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM Core.TenantOperation p
                          WHERE p.OperationId = c.ModuleId AND p.ModuleId IS NULL
-                           AND p.OwningTenantId = c.OwningTenantId))
+                           AND p.TenantId = c.TenantId))
         AS screens_whose_group_is_missing,   /* they would vanish from the sidebar */
     (SELECT COUNT(*) FROM Core.TenantOperation WHERE ModuleId IS NULL AND Link <> '')
         AS groups_carrying_a_link;           /* a group must grant nothing */

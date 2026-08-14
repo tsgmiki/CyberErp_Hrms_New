@@ -8,12 +8,6 @@ const OrganizationUnitPage = memo(lazy(() => import("@/pages/admin/organizationU
 const PositionPage = memo(lazy(() => import("@/pages/admin/position")));
 const BranchPage = memo(lazy(() => import("@/pages/admin/branch")));
 const JobCategoryPage = memo(lazy(() => import("@/pages/admin/jobCategory")));
-const ModulePage = memo(lazy(() => import("@/pages/admin/module")));
-const OperationPage = memo(lazy(() => import("@/pages/admin/operation")));
-const SubsystemPage = memo(lazy(() => import("@/pages/admin/subsystem")));
-const RolePage = memo(lazy(() => import("@/pages/admin/role")));
-const UserPage = memo(lazy(() => import("@/pages/admin/user")));
-const UserRolePage = memo(lazy(() => import("@/pages/admin/userRole")));
 const PositionClassPage = memo(lazy(() => import("@/pages/admin/positionClass")));
 const JobGradePage = memo(lazy(() => import("@/pages/admin/jobGrade")));
 const SalaryScalePage = memo(lazy(() => import("@/pages/admin/salaryScale")));
@@ -115,12 +109,6 @@ export const ENTITY_ROUTES: EntityRouteDef[] = [
   // Organizational Structure (HRMS §3.1)
   { path: "branch", Page: BranchPage },
   { path: "jobCategory", Page: JobCategoryPage },
-  { path: "module", Page: ModulePage },
-  { path: "operation", Page: OperationPage },
-  { path: "subsystem", Page: SubsystemPage },
-  { path: "role", Page: RolePage },
-  { path: "user", Page: UserPage },
-  { path: "userRole", Page: UserRolePage },
   // Organizational Structure (HRMS §3.1)
   { path: "positionClass", Page: PositionClassPage },
   { path: "jobGrade", Page: JobGradePage },

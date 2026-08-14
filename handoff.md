@@ -123,6 +123,56 @@
 
 ## 1. Most recent changes (latest first)
 
+0107. **The seven identity modules removed from HRMS (2026-08-14).** Detail in logic.md §12.17.
+    **No migration** — no schema change at all.
+    - Users, Roles, User Roles, Role Permissions, SubSystems, Menu Modules, Menu Operations. SRMS
+      manages them, and **SRMS runs against this same `CERP` database**, so what goes is the
+      management surface: screens, write endpoints, CRUD handlers, and the 7 menu entries. **The
+      tables stay** — HRMS logs in against `Core.User`, draws its sidebar from `Module`/`Operation`,
+      and gates on `TenantRolePermission`; Home reads the same tables directly.
+    - Data: `backend/scripts/remove-identity-menu-operations.sql`, RUN against CERP — 7 `Operation`
+      rows, 7 `TenantOperation` copies, 28 `TenantRolePermission` grants. Re-runnable; verification
+      selects came back empty.
+    - ⚠️ **A deleted menu operation makes its `[RequirePermission]` key permanently ungrantable.**
+      `UserController`/`RoleController` were gated on `user`/`role`, which no longer exist — that
+      would have been **403 for everyone, forever**, silently emptying the approver pickers on
+      workflow definitions, clearance departments and the report viewer. Re-gated on the consuming
+      screens (`workflowDefinition`, `clearanceDepartment`, `reports`), which are granted to
+      Administrator and HR Admin. **Grep a link in `[RequirePermission]` before deleting its
+      operation.**
+    - ⚠️ **The navigation READS had to stay.** `GET Operation` feeds `permissionGate.tsx`'s catalog,
+      and the gate treats "not in the catalog" as "not gated" — losing it would have let **every
+      route through unguarded**. `Module/WithOperations` is the sidebar itself.
+    - `UserRole` and `RolePermission` controllers deleted outright (no frontend consumer left);
+      `User`/`Role` keep one `GET` each for the pickers.
+    - Permission changes are no longer instant: the save handlers that called `InvalidateAll()` are
+      gone, so a grant made in SRMS lands here after the **60s cache TTL**.
+    - Verified: backend build clean, `tsc -b` + `eslint --quiet` clean, endpoint probe —
+      writes 404/405 everywhere, `Subsystem`/`Module`/`Operation`/`WithOperations` GET 200,
+      `UserRole`/`RolePermission` 404, `User`/`Role` GET 403 for an ungranted user (deny-by-default).
+
+0106. **Dropping CERP's extra columns — STAGE 1 of 4 (2026-08-14).** Detail in logic.md §12.16.
+    Migration `DropOwningTenantIdUseTenantId`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-drop-cerp-extras-*.bak`.
+    - **5 of the 19 extras gone**: `OwningTenantId` on TenantRole/TenantOperation/TenantUser/
+      TenantSubSystem. They were **provably redundant** — the re-key made them duplicates of
+      `TenantId`, confirmed at **zero mismatches across all 695 rows**. SRMS uses `TenantId` for this.
+    - ⚠️ FKs added in **raw SQL**, not the EF model — EF cannot model a relationship on a
+      value-converted property. Three added, matching exactly what SRMS constrains.
+    - ⚠️ Removing the column from the seed script's TenantSubSystem insert left the **SELECT list
+      misaligned** (would have written the tenant id into SubSystemId). Fixed, along with the
+      now-obsolete nvarchar casts.
+    - **REMAINING 14, each its own piece:** ⚠️ `UserRole.TenantId` carries which tenant an assignment
+      was made in and the projector derives every membership from it — needs creation moved to the
+      write site first. ⚠️ `Subsystem` (TenantId/SortOrder/Url) — **HOME and HRMS are duplicated per
+      tenant**, so going global needs dedup + repointing Module/Operation/TenantOperation/
+      TenantSubSystem, and SortOrder(0–5) must migrate into DisplayOrder(all 0). `Setting` audit trio
+      needs a BaseEntity exclusion. The other 6 are mechanical (0 rows or already global).
+    - ⚠️ **PROCESS FAILURE:** this was first reported as pushed when it **had not committed** — the
+      pre-commit doc hook rejected it and `git commit … | tail -1 && git push` masked the failure
+      (`tail` exits 0). The migration was already applied, so the DB was briefly ahead of the code.
+      **Verify with `git log`, never with a printed success message.**
+
 0105. **The last schema difference, fixed in cybererp_srms rather than CERP (2026-08-14).** Detail in
     logic.md §12.15. **No CERP change at all** — no migration, no code.
     Backup: `D:\Backups\cybererp_srms_before-createdat-fix-*.bak`.
@@ -2918,6 +2968,14 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 
 ## 4. Gotchas that will bite (hard-won)
 
+- **Before deleting a menu operation, grep its link in `[RequirePermission]`.** `EndpointPermissionService`
+  matches a required link against the caller's GRANTED operation links, so a key whose operation no
+  longer exists can never be granted — the gate returns **403 to everyone, forever**, and fails
+  closed and silently (handoff 0107).
+- **Only the NVI tenant `aadb4e82` has authorization data.** All 168 `TenantOperation` rows and 570
+  `TenantRolePermission` grants are its. The `demo` tenant (`0af6866e`) has **none** — its roles are
+  Portal/HOME roles with zero grants — so signing in as `demo` yields an **empty sidebar and 403 on
+  every gated endpoint**. That is data, not a bug; do not go hunting for a regression.
 - **Rebuild after `dotnet ef migrations add`** before `database update` (else "No migrations were found").
 - **Migration history table is `dbo.__EFMigrationsHistory`**, but `HasDefaultSchema("Core")` — fine on
   fresh CERP; on the abandoned `CyberErp` DB it makes `database update` replay everything ("SubscriptionPlan

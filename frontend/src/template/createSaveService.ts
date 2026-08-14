@@ -28,8 +28,8 @@ export interface SaveResult {
 
 /**
  * Factory for the standard create/update service (POST/PUT to `/{resource}`, id in body).
- * Mirrors the hand-written `admin/module/save.ts` but coerces booleans and drops empty
- * optional fields so nullable numeric/guid columns bind correctly on the .NET side.
+ * Coerces booleans and drops empty optional fields so nullable numeric/guid columns bind
+ * correctly on the .NET side.
  */
 export function createSaveService(
   resource: string,

@@ -1,14 +1,17 @@
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
-using FluentValidation;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationException;
 
 namespace CyberErp.Hrms.App.Features.Core.Subsystems
 {
-    // ---- DTOs ---------------------------------------------------------------
+    /*
+     * ⚠️ READ-ONLY SINCE 2026-08-14 — the SubSystems module was removed from HRMS; SRMS owns the
+     * subsystem catalogue in this same CERP database. SaveSubsystem and DeleteSubsystem are gone.
+     *
+     * The read stays because the catalogue is shared infrastructure: the Home portal deep-links through
+     * Subsystem.Url, and the HRMS menu filters group modules by subsystem.
+     */
 
     public class SubsystemDto
     {
@@ -19,57 +22,6 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
         /// <summary>Where the subsystem's app lives — the Home portal launcher deep-links here.</summary>
         public string? Url { get; set; }
     }
-
-    public class SubsystemDtoValidator : AbstractValidator<SubsystemDto>
-    {
-        public SubsystemDtoValidator()
-        {
-            RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-            RuleFor(x => x.Code).NotEmpty().MaximumLength(50);
-            RuleFor(x => x.Url).MaximumLength(400);
-        }
-    }
-
-    // ---- Save (create or update) -------------------------------------------
-
-    public interface ISaveSubsystem { Task<Guid> SaveAsync(SubsystemDto dto); }
-
-    public class SaveSubsystem(
-        IRepository<Subsystem> repository,
-        IUnitOfWork unitOfWork,
-        IValidator<SubsystemDto> validator,
-        ILogger<SaveSubsystem> logger) : ISaveSubsystem
-    {
-        public async Task<Guid> SaveAsync(SubsystemDto dto)
-        {
-            var validation = await validator.ValidateAsync(dto);
-            if (!validation.IsValid)
-                throw new FluentValidation.ValidationException(validation.Errors);
-
-            var duplicate = await repository.GetAll()
-                .AnyAsync(s => s.Id != dto.Id && s.Name == dto.Name.Trim());
-            if (duplicate)
-                throw new ValidationException(nameof(dto.Name), $"A subsystem named '{dto.Name}' already exists.");
-
-            if (dto.Id != Guid.Empty)
-            {
-                var entity = await repository.GetAll().FirstOrDefaultAsync(s => s.Id == dto.Id)
-                    ?? throw new ValidationException(nameof(dto.Id), "Subsystem not found.");
-                entity.Update(dto.Name, dto.Code, dto.SortOrder, dto.Url);
-                repository.UpdateAsync(entity);
-                await unitOfWork.SaveChangesAsync();
-                return entity.Id;
-            }
-
-            var subsystem = Subsystem.Create(dto.Name, dto.Code, dto.SortOrder, dto.Url);
-            await repository.AddAsync(subsystem);
-            await unitOfWork.SaveChangesAsync();
-            logger.LogInformation("Subsystem {Name} created", subsystem.Name);
-            return subsystem.Id;
-        }
-    }
-
-    // ---- GetAll (paged) -----------------------------------------------------
 
     public interface IGetAllSubsystems { Task<PaginatedResponse<SubsystemDto>> GetAsync(GetAllRequest request); }
 
@@ -101,30 +53,6 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
                 .ToListAsync();
 
             return new PaginatedResponse<SubsystemDto> { Total = total, Data = data };
-        }
-    }
-
-    // ---- Delete -------------------------------------------------------------
-
-    public interface IDeleteSubsystem { Task DeleteAsync(Guid id); }
-
-    public class DeleteSubsystem(
-        IRepository<Subsystem> repository,
-        IRepository<Module> moduleRepository,
-        IUnitOfWork unitOfWork) : IDeleteSubsystem
-    {
-        public async Task DeleteAsync(Guid id)
-        {
-            var entity = await repository.GetAll().FirstOrDefaultAsync(s => s.Id == id)
-                ?? throw new ValidationException(nameof(id), "Subsystem not found.");
-
-            // Block deleting a subsystem that still owns menu modules.
-            var inUse = await moduleRepository.GetAll().AnyAsync(m => m.SubsystemId == entity.Id);
-            if (inUse)
-                throw new ValidationException(nameof(id), "This subsystem still has modules — move or delete them first.");
-
-            repository.Delete(entity);
-            await unitOfWork.SaveChangesAsync();
         }
     }
 }

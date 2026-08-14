@@ -2352,6 +2352,108 @@ Worth stating plainly because the earlier reports in this series diffed **one di
 (SRMS → CERP) and described the result as a single remaining difference. That was true of that
 direction and is now zero, but it was never the whole picture.
 
+### 12.16 Dropping the columns CERP has that SRMS does not
+
+§12.15 established the shared surface matches in one direction, and that CERP carries **19 columns
+SRMS does not**. Removing them is being done in stages, because they are not one kind of thing.
+
+#### Stage 1 (done): OwningTenantId ×4 — the provably redundant ones
+
+`TenantRole`, `TenantOperation`, `TenantUser`, `TenantSubSystem`.
+
+They existed for a reason that expired. When those tables were created `TenantId` was an nvarchar
+discriminator, so a real Guid FK to `Core.Tenant` needed somewhere else to live — hence a
+deliberately differently-named column (§12.1). The re-key (§12.14) made `TenantId` a uniqueidentifier
+holding the same value, and the two have been duplicates since: **zero mismatches across all 695
+rows**. SRMS uses `TenantId` for this job.
+
+⚠️ The FKs are added in **raw SQL**, not the EF model: EF cannot model a relationship on a
+value-converted property. Three are added — exactly the three SRMS constrains (`TenantOperation`,
+`TenantRole`, `TenantUser`); `TenantSubSystem` has none there and gets none here.
+
+⚠️ Removing the column from the seed script's `TenantSubSystem` insert left the **SELECT list
+misaligned** — it would have written the tenant id into `SubSystemId`. The nvarchar casts those
+scripts used to join on `TenantId` are gone too, now that the column is a Guid.
+
+#### Remaining, and why each is its own piece
+
+| | Columns | Why not yet |
+|---|---|---|
+| `UserRole.TenantId` | 1 | ⚠️ **It carries information nothing else holds** — which tenant an assignment was made in. The projector derives every `TenantUser` membership from it, so going global leaves that derivation unable to tell one tenant's assignments from another's. Needs creation moved to the write site first, as Role and Operation got in §12.14. |
+| `Subsystem` `TenantId` / `SortOrder` / `Url` | 3 | ⚠️ **HOME and HRMS are duplicated per tenant** (7 rows, 5 codes). Going global surfaces duplicates in the launcher, so it needs deduplication and repointing of `Module`, `Operation`, `TenantOperation` and `TenantSubSystem`. `SortOrder` also has real values (0–5) while `DisplayOrder` is all 0, so one must be migrated into the other. |
+| `Setting` audit trio + `TenantId` | 4 | Needs an explicit `BaseEntity` exclusion for that entity. |
+| The rest | 6 | `Organization`, `OrganizationSubscription`, `SubscriptionPlan`, `SubscriptionPlanModule`, `Tenant`, `TenantRolePermission` — all either 0 rows or already in `IsGlobalEntity`; mechanical. |
+
+#### ⚠️ A process failure worth recording
+
+The Stage 1 commit was reported as pushed when it **had not been committed at all**. The pre-commit
+hook rejected it for not updating these docs, and the shell chain
+`git commit … 2>&1 | tail -1 && git push` masked the failure — `tail` exits 0, so `&&` proceeded and
+printed a success message. The migration was already applied, so the database was briefly ahead of
+committed code.
+
+**Check that the commit exists (`git log`), not that the command printed something.** Piping a
+command through `tail`/`head` discards its exit status.
+
+### 12.17 Removing the seven identity modules from HRMS
+
+SRMS manages users, roles and the menu catalogue now, so HRMS stops offering its own screens for
+them: **Users, Roles, User Roles, Role Permissions, SubSystems, Menu Modules, Menu Operations**.
+
+#### What "remove the module" means here, and what it deliberately does not mean
+
+Two facts set the scope. **SRMS's connection string points at `CERP` — the same database.** And HRMS
+logs in against `Core.User`, renders its sidebar from `Core.Module`/`Operation`, and gates every
+`[RequirePermission]` on `TenantRolePermission`.
+
+So the tables stay and the **management surface** goes: the screens, the write endpoints, the CRUD
+handlers, and the menu entries that led to them. Dropping the tables instead would break login here,
+in Home, and in SRMS itself.
+
+| Layer | Removed | Kept, and why |
+|---|---|---|
+| Frontend | 7 component modules, 7 pages, every `save`/`delete` service, `module/seedDefaults`, the route entries, and `common/menuFilters` (its only consumers were these screens) | `user/getAll`, `role/getAll` (approver pickers), `subsystem/getAll`, `module/{get,getAll,getAllWithOperation}`, `operation/{get,getAll,getAllByRole}` |
+| API | Every create/update/delete action, `Module/seed-defaults`, and the `UserRole` and `RolePermission` controllers outright | `GET Module/WithOperations`, `GET Module`, `GET Subsystem`, `GET Operation`, plus one `GET` each on `User` and `Role` |
+| App | `SaveRole`/`DeleteRole`, `SaveUserRole`/`DeleteUserRole`, `SaveUser`/`DeleteUser`, `SaveRolePermissions`/`DeleteRolePermission`, `SaveSubsystem`/`DeleteSubsystem`, the Module and Operation Create/Update/Delete slices, and `SeedDefaultMenu` | `GetAllRoles`, `GetAllUsers`, `GetAllSubsystems`, and the Module/Operation read handlers |
+| Database | The 7 `Core.Operation` rows, their 7 `TenantOperation` copies and 28 `TenantRolePermission` grants (`backend/scripts/remove-identity-menu-operations.sql`) | Every table. `Core.User`, `Role`, `UserRole`, `SubSystem`, `Module`, `Operation` are untouched |
+
+#### ⚠️ The reads are infrastructure — removing them would have been a security regression
+
+`GET Operation` is the trap. `permissionGate.tsx` builds its catalog of gated routes from it, and
+treats "not in the catalog" as "not a gated page". Take that read away and the catalog is empty, so
+**every route falls through unguarded** — a bigger hole than the one being closed. `Module/
+WithOperations` is the sidebar feed itself. Both stay open, and both only ever return menu metadata
+already filtered to the caller.
+
+#### ⚠️ Deleting a menu operation makes its permission key permanently ungrantable
+
+`UserController` and `RoleController` were gated `[RequirePermission("user", "userRole")]` and
+`[RequirePermission("role", …)]`. Those operations no longer exist, and
+`EndpointPermissionService` resolves a required link by matching it against the caller's **granted
+operation links** — so a key with no operation behind it can never be granted by anyone. The gates
+would have returned **403 to every user, forever**, silently emptying the approver pickers on
+workflow definitions, clearance departments and the report viewer.
+
+The fix is to name the screens that actually consume the data:
+
+```csharp
+[RequirePermission("workflowDefinition", "clearanceDepartment", "reports")]
+public class RoleController(IGetAllRoles getAllHandler) : BaseController
+```
+
+Verified against the data: all three links exist and carry `CanView` for Administrator and HR Admin,
+whereas `user` and `role` now match zero rows anywhere.
+
+**The general rule: before deleting a menu operation, grep for its link in `[RequirePermission]`.**
+A gate outlives the screen it was named after, and it fails closed and silently.
+
+#### One more consequence: permission changes are no longer instant
+
+`SaveRolePermissions` and `DeleteRolePermission` called `IEndpointPermissionService.InvalidateAll()`,
+so an admin's own save took effect immediately. Nothing in HRMS busts that cache any more, so a grant
+made in SRMS appears here when the **60-second TTL** expires. That is what the TTL was always for
+(§ the service's own comment: it bounds changes made behind the application's back).
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

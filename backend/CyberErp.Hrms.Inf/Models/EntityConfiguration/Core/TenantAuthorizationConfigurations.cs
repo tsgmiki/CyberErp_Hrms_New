@@ -10,7 +10,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
      * None of these is marked [MultiTenant]. They are the tables that DEFINE tenant scoping, so they
      * cannot themselves be filtered by the ambient tenant without a chicken-and-egg problem: sign-in
      * has to read a user's tenant memberships BEFORE a tenant context exists. Scoping is explicit,
-     * through OwningTenantId.
+     * through TenantId, a uniqueidentifier since the 2026-08-14 re-key. It doubles as the foreign key
+     * to Core.Tenant, added at the DATABASE level because EF cannot model a relationship on a
+     * value-converted property. That is how SRMS models it, and why the separate OwningTenantId
+     * column that used to duplicate it was dropped.
      */
 
     public class TenantRoleConfiguration : IEntityTypeConfiguration<TenantRole>
@@ -24,14 +27,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
             builder.Property(r => r.Description);   // nvarchar(max), as in SRMS
 
-            builder.HasOne<Tenant>().WithMany()
-                .HasForeignKey(r => r.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
             // The template is a soft link: deleting a global Role must not delete tenants' instances,
             // which may since have been customised.
             builder.HasOne<Role>().WithMany()
                 .HasForeignKey(r => r.SourceTemplateId).OnDelete(DeleteBehavior.SetNull);
 
-            builder.HasIndex(r => new { r.OwningTenantId, r.Code }).IsUnique();
+            builder.HasIndex(r => new { r.TenantId, r.Code }).IsUnique();
         }
     }
 
@@ -47,15 +48,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
             builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
 
-            builder.HasOne<Tenant>().WithMany()
-                .HasForeignKey(o => o.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<Operation>().WithMany()
                 .HasForeignKey(o => o.OperationId).OnDelete(DeleteBehavior.Restrict);
 
             // One instance per (tenant, source operation).
-            builder.HasIndex(o => new { o.OwningTenantId, o.OperationId }).IsUnique();
+            builder.HasIndex(o => new { o.TenantId, o.OperationId }).IsUnique();
             // The permission check resolves by LINK, so that lookup gets its own index.
-            builder.HasIndex(o => new { o.OwningTenantId, o.Link });
+            builder.HasIndex(o => new { o.TenantId, o.Link });
         }
     }
 
@@ -86,12 +85,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(u => u.Status).IsRequired().HasMaxLength(30);
 
-            builder.HasOne<Tenant>().WithMany()
-                .HasForeignKey(u => u.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<User>().WithMany()
                 .HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.NoAction);
 
-            builder.HasIndex(u => new { u.OwningTenantId, u.UserId }).IsUnique();
+            builder.HasIndex(u => new { u.TenantId, u.UserId }).IsUnique();
             builder.HasIndex(u => u.UserId);
         }
     }
@@ -124,12 +121,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(s => s.SourceType).IsRequired().HasMaxLength(30);
             builder.Property(s => s.Status).IsRequired().HasMaxLength(30);
 
-            builder.HasOne<Tenant>().WithMany()
-                .HasForeignKey(s => s.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
             builder.HasOne<Subsystem>().WithMany()
                 .HasForeignKey(s => s.SubSystemId).OnDelete(DeleteBehavior.Restrict);
 
-            builder.HasIndex(s => new { s.OwningTenantId, s.SubSystemId }).IsUnique();
+            builder.HasIndex(s => new { s.TenantId, s.SubSystemId }).IsUnique();
         }
     }
 }

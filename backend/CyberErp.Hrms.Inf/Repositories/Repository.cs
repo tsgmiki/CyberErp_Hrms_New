@@ -52,6 +52,7 @@ namespace CyberErp.Hrms.Inf.Repositories
         /// need stamping with a tenant and this entry removing, and every deployment-level field
         /// (backup, relay) would have to be reconsidered at that point.</para>
         /// </remarks>
+        /// <remarks>
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
                    or "User" or "Role" or "Operation" or "Organization" or "Setting";
