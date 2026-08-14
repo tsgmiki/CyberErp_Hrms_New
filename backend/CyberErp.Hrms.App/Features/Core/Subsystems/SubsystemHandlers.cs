@@ -18,6 +18,8 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
+        /// <summary>lucide-react icon name — the landing-page cards resolve it (2026-08-14).</summary>
+        public string? Icon { get; set; }
         public int SortOrder { get; set; }
         /// <summary>Where the subsystem's app lives — the Home portal launcher deep-links here.</summary>
         public string? Url { get; set; }
@@ -47,6 +49,7 @@ namespace CyberErp.Hrms.App.Features.Core.Subsystems
                     Id = x.Id,
                     Name = x.Name,
                     Code = x.Code,
+                    Icon = x.Icon,
                     SortOrder = x.SortOrder,
                     Url = x.Url
                 })

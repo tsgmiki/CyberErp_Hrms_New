@@ -123,6 +123,31 @@
 
 ## 1. Most recent changes (latest first)
 
+0108. **The static menu leftovers cleared out of both SPAs (2026-08-14).** Detail in logic.md §12.18.
+    **No migration.** Data: `Home/backend/scripts/seed-subsystem-icons.sql`, RUN (8 rows).
+    - Started as a Home-portal question ("why is the menu static?"). The Home sidebar was already
+      dynamic; the static thing was **`SeedHomeMenu.cs`**, which declared the whole portal menu as a
+      compiled C# array and wrote it into `Core.Operation` via `POST Portal/seed-defaults`. That made
+      the array a **second source of truth** — a screen renamed or removed in the DB could be
+      re-created by the next seed run. Deleted, with its endpoint, DI registration and the
+      `Portal:SubsystemUrls` config binding that only existed to backfill `Core.Subsystem.Url`.
+    - ⚠️ **The launcher/landing tiles WERE static in both apps**: they resolved icons through
+      `getModuleIcon(name)`, a PSMS-template name→icon table (Purchases, Inventory, Container…) that
+      matched almost nothing, so HOME/HRMS/PSMS/SRMS all drew a grey circle and the icon could not be
+      configured. `Core.Subsystem.Icon` is now mapped (Home's entity never had the property), exposed
+      on both DTOs, and resolved through `lucideIconMap`. The column was **never populated** — hence
+      the seed script.
+    - ⚠️ **`lucideIconMap` is where an icon silently degrades.** `Inbox`, `Bell` and
+      `MessageSquareQuote` were configured on real rows but missing from BOTH maps, so they rendered
+      as circles with no error. Added to both.
+    - Dead PSMS-template code deleted from both SPAs: `menu/icons/`, `getModuleIcon`,
+      `buildSidebarNavigation` (its output was computed in `useMenuModules` and **never consumed**),
+      `menuTypes`, `modules`/`moduleDetail`/`menuItem`, `quickAdd` (18 hardcoded links), four
+      unreachable sidebar subcomponents, and Home's `constants/subSystem.ts`.
+    - Verified live on both APIs: `Portal/seed-defaults` 404; `my-subsystems` 200 with
+      HOME(LayoutDashboard, 21 screens) / HRMS(UsersRound, 13); HRMS `Subsystem` returns all 6 icons;
+      **zero unresolvable icon names** in either app.
+
 0107. **The seven identity modules removed from HRMS (2026-08-14).** Detail in logic.md §12.17.
     **No migration** — no schema change at all.
     - Users, Roles, User Roles, Role Permissions, SubSystems, Menu Modules, Menu Operations. SRMS

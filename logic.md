@@ -2454,6 +2454,66 @@ so an admin's own save took effect immediately. Nothing in HRMS busts that cache
 made in SRMS appears here when the **60-second TTL** expires. That is what the TTL was always for
 (§ the service's own comment: it bounds changes made behind the application's back).
 
+### 12.18 The menu is data — removing the last places it wasn't
+
+The question that started this was about the **Home portal**: why is the menu static? The sidebar
+turned out to be fully dynamic already. Three other things were not.
+
+#### 1. A compiled menu that wrote itself into the database
+
+`SeedHomeMenu.cs` declared the portal's whole menu as a C# array — three groups, ~25 screens with
+their links and icons — and `POST Portal/seed-defaults` inserted it into `Core.Operation`.
+
+That is worse than a hardcoded menu, because it is a **second source of truth that writes to the
+first**. A screen renamed, re-ordered, re-iconed or deleted in the database could be re-created by
+the next seed run, and the menu could not be changed at all without a deployment. Deleted — along
+with the endpoint, the DI registration, and the `Portal:SubsystemUrls` options binding whose only
+job was to backfill `Core.Subsystem.Url` from `appsettings.json`.
+
+HRMS's equivalent (`SeedDefaultMenu` + `Module/seed-defaults`) went in §12.17. Neither app writes the
+navigation tables now; SRMS owns the catalogue.
+
+#### 2. Launcher tiles that looked up their icon by name
+
+Both SPAs resolved subsystem-tile icons through `getModuleIcon(subsystem.name)` — a PSMS-template
+lookup table of `Purchases`, `Inventory`, `Container`, `Expense`… It matched almost nothing real, so
+HOME, HRMS, PSMS and SRMS every one of them drew a neutral circle, and there was **no way to
+configure the icon at all**.
+
+`Core.Subsystem.Icon` already existed (HRMS owns the migration for it). What was missing:
+
+| | Fix |
+|---|---|
+| Home's `Subsystem` entity had no `Icon` property | added — the table is `ExcludeFromMigrations` there, so it maps by convention |
+| Neither `PortalSubsystemDto` nor HRMS's `SubsystemDto` exposed it | added to both |
+| The tiles resolved by name | now `resolveNavIcon(row.icon)`, the same resolver the sidebar uses |
+| **The column was NULL on every row** | `Home/backend/scripts/seed-subsystem-icons.sql` (idempotent — only fills blanks, so a hand-picked icon is never overwritten) |
+
+That last row matters: without the seed, making the tiles data-driven would have turned *every* tile
+into a circle. Wiring a column to the UI is only half the job when the column has never been written.
+
+#### 3. ⚠️ `lucideIconMap` is where an icon degrades silently
+
+`resolveNavIcon` falls back to `Circle` for any name it doesn't know, and nothing logs. Three real
+lucide names — **`Inbox`** (the portal's main "My Requests" group), **`Bell`** and
+**`MessageSquareQuote`** — were configured on live rows but absent from *both* apps' maps, so they
+had always rendered blank.
+
+**If a newly configured icon shows up as a circle, check the map before suspecting the data.** The
+check is cheap: diff the icon names in the menu feed against the keys of `LUCIDE_ICONS`.
+
+#### What was deleted, and why it read as "static"
+
+Both SPAs still carried the PSMS template's menu layer, wired to nothing: `menu/icons/`,
+`getModuleIcon`, `buildSidebarNavigation` (its result was computed in `useMenuModules` on every
+render and **never consumed** — the sidebar builds its own groups), `menuTypes`,
+`modules`/`moduleDetail`/`menuItem`, `quickAdd` with 18 hardcoded links, four unreachable sidebar
+subcomponents, and Home's `constants/subSystem.ts` (`Administration, Purchases, Sales, Inventory,
+Fianance, Report` — typo included).
+
+None of it rendered. All of it made the codebase *read* as though the menu were hardcoded, which is
+exactly the impression that prompted the question.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

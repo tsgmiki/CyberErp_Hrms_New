@@ -523,7 +523,21 @@ would leave EVERY route unguarded. ⚠️ Permission changes are no longer insta
 called `InvalidateAll()` are gone) — SRMS grants land after the **60s TTL**.
 ⚠️ **Only tenant `aadb4e82` (NVI) has authorization data at all** — 168 TenantOperations, 570 grants.
 Tenant `demo` has ZERO, so signing in as `demo` gives an empty sidebar and 403 everywhere. Data, not
-a bug. **Phase 2 STEP 1 DONE
+a bug.
+**Menus fully data-driven in BOTH SPAs 2026-08-14** (handoff 0108, logic §12.18) — the Home question
+"why is the menu static?" found three real things: (a) **`SeedHomeMenu.cs`** declared the portal menu
+as a compiled C# array and WROTE IT INTO `Core.Operation` via `POST Portal/seed-defaults` — a second
+source of truth that overwrote the first; deleted with its endpoint + `Portal:SubsystemUrls` config;
+(b) launcher/landing **tiles in BOTH apps** resolved icons via `getModuleIcon(name)`, a
+PSMS-template name→icon table matching almost nothing → now `Core.Subsystem.Icon` (mapped on Home's
+entity for the first time, exposed on both DTOs, resolved via `lucideIconMap`) + `seed-subsystem-
+icons.sql` because the column was **NULL on every row**; (c) `Inbox`/`Bell`/`MessageSquareQuote` were
+configured on live rows but missing from both `lucideIconMap`s → silently rendered as circles.
+⚠️ **`lucideIconMap` is the one place an icon degrades with NO error** — check it before suspecting
+the data. ⚠️ Wiring a column to the UI is half the job when the column was never populated.
+Also deleted the PSMS-template dead menu layer from both SPAs (`menu/icons/`, `getModuleIcon`,
+`buildSidebarNavigation` — computed every render, never consumed — `menuTypes`, `modules`/
+`moduleDetail`/`menuItem`, `quickAdd`, 4 unreachable sidebar subcomponents, `constants/subSystem.ts`). **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:
