@@ -497,7 +497,16 @@ error (`TenantOperation.OperationId` has no CLR property); ⚠️ **the SRMS tre
 copy lives in `backend/scripts/`. **Shared surface now has ZERO SRMS→CERP differences.** ⚠️ But that
 diff is ONE-DIRECTIONAL — the reverse shows **19 columns CERP has that SRMS lacks** (TenantId ×9 from
 BaseEntity, OwningTenantId ×4, Setting audit cols, Subsystem.Url/SortOrder): supersets, not
-mismatches. **Phase 2 STEP 1 DONE
+mismatches. **Dropping those extras: STAGE 1 of 4 DONE 2026-08-14** (handoff 0106, logic §12.16,
+migration `DropOwningTenantIdUseTenantId`): `OwningTenantId` ×4 removed — provably redundant after the
+re-key (**0 mismatches across 695 rows**); FKs added in **raw SQL** since EF can't model a
+relationship on a value-converted property. ⚠️ Remaining 14: `UserRole.TenantId` **carries which
+tenant an assignment was made in** (the projector derives every membership from it — move creation to
+the write site first); `Subsystem` **has HOME/HRMS duplicated per tenant** so going global needs dedup
++ repointing 4 tables, and SortOrder(0–5)→DisplayOrder(all 0); `Setting` audit trio; 6 mechanical.
+⚠️ **PROCESS TRAP:** `git commit … | tail -1 && git push` **masks a rejected commit** — `tail` exits 0
+so `&&` proceeds and prints success. The pre-commit doc hook rejected a commit this way and the DB was
+briefly ahead of the code. **Verify with `git log`, not a printed message.** **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

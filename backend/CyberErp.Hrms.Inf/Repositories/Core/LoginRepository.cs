@@ -86,7 +86,7 @@ public class LoginRepository(
                 var membership = await _tenantUserRepository.GetAllWithoutTenantFilter().AsNoTracking()
                     .Where(tu => tu.UserId == user.Id && tu.Status == TenantUserStatuses.Active)
                     .OrderByDescending(tu => tu.IsDefaultTenant)
-                    .Select(tu => new { tu.OwningTenantId })
+                    .Select(tu => new { tu.TenantId })
                     .FirstOrDefaultAsync();
 
                 if (membership is null)
@@ -99,7 +99,10 @@ public class LoginRepository(
                     throw new UnauthorizedException("This account is not assigned to any organization.");
                 }
 
-                var tenantId = membership.OwningTenantId.ToString();
+                // TenantId IS the owning tenant now — the separate OwningTenantId column was dropped
+                // on 2026-08-14 once the re-key made the two hold the same Guid. It arrives here as a
+                // string because BaseEntity types it that way; the column itself is a uniqueidentifier.
+                var tenantId = membership.TenantId;
 
                 Guid? branchId = null;
                 var isBranchHeadOffice = false;
@@ -130,7 +133,7 @@ public class LoginRepository(
                     Email = user.Email,
                     PhoneNumber = user.PhoneNumber,
                     UserName = user.UserName,
-                    TenantId = membership.OwningTenantId,
+                    TenantId = Guid.Parse(tenantId),
                     BranchId = branchId,
                     IsHeadOffice = isHeadOffice
                 };

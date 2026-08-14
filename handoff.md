@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+0106. **Dropping CERP's extra columns — STAGE 1 of 4 (2026-08-14).** Detail in logic.md §12.16.
+    Migration `DropOwningTenantIdUseTenantId`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-drop-cerp-extras-*.bak`.
+    - **5 of the 19 extras gone**: `OwningTenantId` on TenantRole/TenantOperation/TenantUser/
+      TenantSubSystem. They were **provably redundant** — the re-key made them duplicates of
+      `TenantId`, confirmed at **zero mismatches across all 695 rows**. SRMS uses `TenantId` for this.
+    - ⚠️ FKs added in **raw SQL**, not the EF model — EF cannot model a relationship on a
+      value-converted property. Three added, matching exactly what SRMS constrains.
+    - ⚠️ Removing the column from the seed script's TenantSubSystem insert left the **SELECT list
+      misaligned** (would have written the tenant id into SubSystemId). Fixed, along with the
+      now-obsolete nvarchar casts.
+    - **REMAINING 14, each its own piece:** ⚠️ `UserRole.TenantId` carries which tenant an assignment
+      was made in and the projector derives every membership from it — needs creation moved to the
+      write site first. ⚠️ `Subsystem` (TenantId/SortOrder/Url) — **HOME and HRMS are duplicated per
+      tenant**, so going global needs dedup + repointing Module/Operation/TenantOperation/
+      TenantSubSystem, and SortOrder(0–5) must migrate into DisplayOrder(all 0). `Setting` audit trio
+      needs a BaseEntity exclusion. The other 6 are mechanical (0 rows or already global).
+    - ⚠️ **PROCESS FAILURE:** this was first reported as pushed when it **had not committed** — the
+      pre-commit doc hook rejected it and `git commit … | tail -1 && git push` masked the failure
+      (`tail` exits 0). The migration was already applied, so the DB was briefly ahead of the code.
+      **Verify with `git log`, never with a printed success message.**
+
 0105. **The last schema difference, fixed in cybererp_srms rather than CERP (2026-08-14).** Detail in
     logic.md §12.15. **No CERP change at all** — no migration, no code.
     Backup: `D:\Backups\cybererp_srms_before-createdat-fix-*.bak`.

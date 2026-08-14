@@ -2352,6 +2352,49 @@ Worth stating plainly because the earlier reports in this series diffed **one di
 (SRMS → CERP) and described the result as a single remaining difference. That was true of that
 direction and is now zero, but it was never the whole picture.
 
+### 12.16 Dropping the columns CERP has that SRMS does not
+
+§12.15 established the shared surface matches in one direction, and that CERP carries **19 columns
+SRMS does not**. Removing them is being done in stages, because they are not one kind of thing.
+
+#### Stage 1 (done): OwningTenantId ×4 — the provably redundant ones
+
+`TenantRole`, `TenantOperation`, `TenantUser`, `TenantSubSystem`.
+
+They existed for a reason that expired. When those tables were created `TenantId` was an nvarchar
+discriminator, so a real Guid FK to `Core.Tenant` needed somewhere else to live — hence a
+deliberately differently-named column (§12.1). The re-key (§12.14) made `TenantId` a uniqueidentifier
+holding the same value, and the two have been duplicates since: **zero mismatches across all 695
+rows**. SRMS uses `TenantId` for this job.
+
+⚠️ The FKs are added in **raw SQL**, not the EF model: EF cannot model a relationship on a
+value-converted property. Three are added — exactly the three SRMS constrains (`TenantOperation`,
+`TenantRole`, `TenantUser`); `TenantSubSystem` has none there and gets none here.
+
+⚠️ Removing the column from the seed script's `TenantSubSystem` insert left the **SELECT list
+misaligned** — it would have written the tenant id into `SubSystemId`. The nvarchar casts those
+scripts used to join on `TenantId` are gone too, now that the column is a Guid.
+
+#### Remaining, and why each is its own piece
+
+| | Columns | Why not yet |
+|---|---|---|
+| `UserRole.TenantId` | 1 | ⚠️ **It carries information nothing else holds** — which tenant an assignment was made in. The projector derives every `TenantUser` membership from it, so going global leaves that derivation unable to tell one tenant's assignments from another's. Needs creation moved to the write site first, as Role and Operation got in §12.14. |
+| `Subsystem` `TenantId` / `SortOrder` / `Url` | 3 | ⚠️ **HOME and HRMS are duplicated per tenant** (7 rows, 5 codes). Going global surfaces duplicates in the launcher, so it needs deduplication and repointing of `Module`, `Operation`, `TenantOperation` and `TenantSubSystem`. `SortOrder` also has real values (0–5) while `DisplayOrder` is all 0, so one must be migrated into the other. |
+| `Setting` audit trio + `TenantId` | 4 | Needs an explicit `BaseEntity` exclusion for that entity. |
+| The rest | 6 | `Organization`, `OrganizationSubscription`, `SubscriptionPlan`, `SubscriptionPlanModule`, `Tenant`, `TenantRolePermission` — all either 0 rows or already in `IsGlobalEntity`; mechanical. |
+
+#### ⚠️ A process failure worth recording
+
+The Stage 1 commit was reported as pushed when it **had not been committed at all**. The pre-commit
+hook rejected it for not updating these docs, and the shell chain
+`git commit … 2>&1 | tail -1 && git push` masked the failure — `tail` exits 0, so `&&` proceeded and
+printed a success message. The migration was already applied, so the database was briefly ahead of
+committed code.
+
+**Check that the commit exists (`git log`), not that the command printed something.** Piping a
+command through `tail`/`head` discards its exit status.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

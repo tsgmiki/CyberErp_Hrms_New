@@ -49,7 +49,6 @@ public static class TenantSubSystemSources
 /// </summary>
 public class TenantRole : BaseEntity, IAggregateRoot
 {
-    public Guid OwningTenantId { get; private set; }
     /// <summary>The global <see cref="Role"/> this was instantiated from; null for a bespoke role.</summary>
     public Guid? SourceTemplateId { get; private set; }
     public string Code { get; private set; } = string.Empty;
@@ -69,7 +68,7 @@ public class TenantRole : BaseEntity, IAggregateRoot
             throw new ArgumentException("Role name is required.", nameof(name));
         return new TenantRole
         {
-            OwningTenantId = owningTenantId,
+            TenantId = owningTenantId.ToString(),
             SourceTemplateId = sourceTemplateId,
             Code = string.IsNullOrWhiteSpace(code) ? name.Trim() : code.Trim(),
             Name = name.Trim(),
@@ -124,7 +123,6 @@ public class TenantRole : BaseEntity, IAggregateRoot
 /// </summary>
 public class TenantOperation : BaseEntity
 {
-    public Guid OwningTenantId { get; private set; }
     public Guid SubSystemId { get; private set; }
     /// <summary>The global <see cref="Operation"/> this mirrors.</summary>
     public Guid OperationId { get; private set; }
@@ -150,7 +148,7 @@ public class TenantOperation : BaseEntity
             throw new ArgumentException("Source operation is required.", nameof(operationId));
         return new TenantOperation
         {
-            OwningTenantId = owningTenantId,
+            TenantId = owningTenantId.ToString(),
             SubSystemId = subSystemId,
             OperationId = operationId,
             ModuleId = moduleId,
@@ -261,7 +259,6 @@ public class TenantRolePermission : BaseEntity
 /// </summary>
 public class TenantUser : BaseEntity
 {
-    public Guid OwningTenantId { get; private set; }
     public Guid UserId { get; private set; }
     public string Status { get; private set; } = TenantUserStatuses.Active;
     public bool IsDefaultTenant { get; private set; }
@@ -277,7 +274,7 @@ public class TenantUser : BaseEntity
             throw new ArgumentException("User is required.", nameof(userId));
         return new TenantUser
         {
-            OwningTenantId = owningTenantId,
+            TenantId = owningTenantId.ToString(),
             UserId = userId,
             Status = string.IsNullOrWhiteSpace(status) ? TenantUserStatuses.Active : status.Trim(),
             IsDefaultTenant = isDefaultTenant,
@@ -334,7 +331,6 @@ public class TenantUserRole : BaseEntity
 /// </summary>
 public class TenantSubSystem : BaseEntity
 {
-    public Guid OwningTenantId { get; private set; }
     public Guid SubSystemId { get; private set; }
     /// <summary>Plan | AddOn | Trial — see <see cref="TenantSubSystemSources"/>.</summary>
     public string SourceType { get; private set; } = TenantSubSystemSources.Plan;
@@ -356,7 +352,7 @@ public class TenantSubSystem : BaseEntity
             throw new ArgumentException("End date cannot be before the start date.", nameof(endDate));
         return new TenantSubSystem
         {
-            OwningTenantId = owningTenantId,
+            TenantId = owningTenantId.ToString(),
             SubSystemId = subSystemId,
             SourceType = string.IsNullOrWhiteSpace(sourceType) ? TenantSubSystemSources.Plan : sourceType.Trim(),
             Status = string.IsNullOrWhiteSpace(status) ? SubscriptionStatuses.Active : status.Trim(),
