@@ -78,7 +78,7 @@ function SubsystemCard({
     >
       <div className="flex items-start gap-4">
         <div className="w-11 h-11 rounded-xl bg-primary/5 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-200 shrink-0 shadow-sm [&>svg]:w-5 [&>svg]:h-5">
-          {card.icon}
+          <card.Icon />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
@@ -127,7 +127,9 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
         .filter((row) => (row.code ?? "").trim().toUpperCase() === "HOME")
         .map((row) => row.name ?? ""),
     );
-    return buildLandingSubsystems(modules).filter((card) => !portalNames.has(card.id));
+    return buildLandingSubsystems(modules, subsystemRows).filter(
+      (card) => !portalNames.has(card.id),
+    );
   }, [modules, subsystemRows]);
 
   const filteredSubsystems = useMemo(() => {

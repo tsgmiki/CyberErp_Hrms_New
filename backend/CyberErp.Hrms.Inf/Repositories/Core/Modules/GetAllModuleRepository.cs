@@ -59,7 +59,7 @@ public class GetAllModuleRepository(
             SubSystem = m.Subsystem.Name,
             Name = m.Name,
             Icon = m.Icon,
-            SortOrder = m.SortOrder
+            SortOrder = m.DisplayOrder
         }).ToListAsync(ct);
 
         return new PaginatedResponse<GetModuleDto>

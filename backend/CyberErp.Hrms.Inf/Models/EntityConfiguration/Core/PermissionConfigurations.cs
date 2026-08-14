@@ -16,11 +16,29 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("Module", "Core");
 
+            // TenantId is GONE (2026-08-15) — SRMS has none, and all 24 rows belonged to a single
+            // tenant, so unlike Subsystem this needed no deduplication. The per-tenant copy is
+            // Core.TenantModule.
+            builder.Ignore(m => m.TenantId);
+
             builder.HasKey(m => m.Id);
 
-            builder.Property(m => m.Name).IsRequired().HasMaxLength(200);
-            builder.Property(m => m.Icon).HasMaxLength(200);
-            builder.Property(m => m.SortOrder).HasDefaultValue(0);
+            // Lengths and nullability match cybererp_srms exactly (2026-08-15): nvarchar(100) /
+            // nvarchar(200) / nvarchar(100), all NOT NULL. The longest module name is 29 characters,
+            // so narrowing Name and Icon from 200 loses nothing.
+            builder.Property(m => m.Name).IsRequired().HasMaxLength(100);
+            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
+            builder.Property(m => m.Filter).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
+            builder.Property(m => m.DisplayOrder).HasDefaultValue(0);   // was SortOrder
+            builder.Property(m => m.IsActive).IsRequired().HasDefaultValue(true);
+
+            // SRMS spells the column SubSystemId (capital S), as Core.Operation already does here.
+            // Mapped rather than renamed so the C# property stays SubsystemId across the codebase.
+            builder.Property(m => m.SubsystemId).HasColumnName("SubSystemId");
+
+            // CreatedAt is datetime2(3) by the global convention but UpdatedAt defaulted to (7).
+            // SRMS has both at (3).
+            builder.Property(m => m.UpdatedAt).HasColumnType("datetime2(3)");
 
             builder.HasOne(m => m.Subsystem)
                 .WithMany()
@@ -29,7 +47,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Navigation(m => m.Subsystem).UsePropertyAccessMode(PropertyAccessMode.Field);
 
             builder.HasIndex(m => m.SubsystemId);
-            // No Operations collection any more — the menu tree lives inside Core.Operation itself.
+            // No Operations collection: Operation.ModuleId is the FK, and nothing needs the inverse.
         }
     }
 
@@ -87,23 +105,29 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.DisplayOrder).HasDefaultValue(0);   // was SortOrder
             builder.Property(o => o.IsActive).IsRequired().HasDefaultValue(true);
 
-            // ModuleId is the PARENT LINK — a self-reference, not a foreign key to Core.Module.
-            // NoAction is not a preference: SQL Server rejects a cascading self-referencing foreign
-            // key outright (it cannot prove the chain terminates). Deleting a parent therefore has to
-            // clear its children first, which DeleteOperationHandler does.
-            builder.HasOne(o => o.Parent)
-                .WithMany(o => o.Children)
-                .HasForeignKey(o => o.ModuleId)
-                .OnDelete(DeleteBehavior.NoAction);
-            builder.Navigation(o => o.Parent).UsePropertyAccessMode(PropertyAccessMode.Field);
-            builder.Navigation(o => o.Children).UsePropertyAccessMode(PropertyAccessMode.Field);
+            // Matches SRMS: both timestamps are datetime2(3). UpdatedAt otherwise defaults to (7).
+            builder.Property(o => o.UpdatedAt).HasColumnType("datetime2(3)");
 
-            // Denormalised subsystem. Restrict, not Cascade: deleting a subsystem must not silently
-            // take the menu with it, and Module already cascades.
+            // ModuleId is a FOREIGN KEY to Core.Module again (2026-08-15) — SRMS was corrected, and
+            // this follows it. The constraint NAME is SRMS's, not EF's convention.
+            builder.HasOne(o => o.Module)
+                .WithMany()
+                .HasForeignKey(o => o.ModuleId)
+                .HasConstraintName("FK_NavigationOperation_Module_ModuleId")
+                .OnDelete(DeleteBehavior.NoAction);
+            builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // ⚠️ The subsystem FK is CASCADE and is called FK_Operation_Module_ModuleId — both
+            // copied from SRMS verbatim, per the "identical structure" requirement. The name is a
+            // MISNOMER there (a leftover from a rename; it constrains SubSystemId, not ModuleId) and
+            // the cascade means deleting a subsystem takes its whole menu with it, which CERP
+            // previously refused with Restrict. Kept identical deliberately — do not "fix" either
+            // without changing SRMS first, or the databases diverge again.
             builder.HasOne<Subsystem>()
                 .WithMany()
                 .HasForeignKey(o => o.SubSystemId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .HasConstraintName("FK_Operation_Module_ModuleId")
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.HasIndex(o => o.ModuleId);
             builder.HasIndex(o => o.SubSystemId);

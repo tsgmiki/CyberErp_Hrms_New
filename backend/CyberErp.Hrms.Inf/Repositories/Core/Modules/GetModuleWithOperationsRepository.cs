@@ -25,6 +25,7 @@ public class GetModuleWithOperationsRepository(
     IRepository<TenantUser> tenantUserRepository,
     IRepository<TenantUserRole> tenantUserRoleRepository,
     IRepository<TenantRolePermission> tenantRolePermissionRepository,
+    IRepository<TenantModule> tenantModuleRepository,
     IRepository<TenantOperation> tenantOperationRepository,
     ILogger<GetModuleWithOperationsRepository> logger) : IGetModuleWithOperationsRepository
 {
@@ -52,33 +53,37 @@ public class GetModuleWithOperationsRepository(
             .Where(p => tenantRoleIds.Contains(p.TenantRoleId))
             .ToListAsync(ct);
 
-        // Only active operations: hiding a screen for a tenant removes it from the menu.
-        // One query brings back the whole tree — groups and screens are the same table now.
+        // Only active rows: hiding a screen or a group for a tenant removes it from the menu.
+        // Groups moved OUT of TenantOperation into TenantModule on 2026-08-15 (SRMS parity), so this
+        // is two reads again rather than one self-referencing one.
         var operations = await tenantOperationRepository.GetAll()
             .Where(o => o.IsActive)
+            .ToListAsync(ct);
+
+        var groups = await tenantModuleRepository.GetAll()
+            .Where(m => m.IsActive)
             .ToListAsync(ct);
 
         var subsystemNames = await subsystemRepository.GetAll()
             .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
 
-        // A group is a row with no parent; a screen is a row naming one.
-        var groups = operations.Where(o => o.ModuleId == null)
-            .OrderBy(o => o.DisplayOrder).ThenBy(o => o.Name);
-
         var result = groups
+            .OrderBy(m => m.DisplayOrder).ThenBy(m => m.Name)
             .Select(m => new GetModuleWithOperationResult
             {
-                // ⚠️ The TEMPLATE id, not the tenant row's. TenantOperation.ModuleId is copied
-                // straight from the template, so it names a Core.Operation — matching it against
-                // this tenant copy's own Id would never join and the menu would come back empty.
-                Id = m.OperationId,
+                // ⚠️ The TEMPLATE id, not the tenant row's — the wire contract both SPAs already
+                // work with. TenantModule.ModuleId is the CERP-only link back to Core.Module.
+                Id = m.ModuleId,
                 Name = m.Name ?? string.Empty,
                 SubsystemId = m.SubSystemId,
                 SubSystem = subsystemNames.TryGetValue(m.SubSystemId, out var ssName) ? ssName : string.Empty,
                 Icon = m.Icon,
                 SortOrder = m.DisplayOrder,
                 Operations = operations
-                    .Where(op => op.ModuleId == m.OperationId)
+                    // ⚠️ Matched on the TENANT row's Id now. TenantOperation.ModuleId names a
+                    // TenantModule, not a template — the old code matched it against the template id,
+                    // which is exactly the mistake that returned an empty menu in August.
+                    .Where(op => op.ModuleId == m.Id)
                     .OrderBy(op => op.DisplayOrder).ThenBy(op => op.Name)
                     .Select(op =>
                     {

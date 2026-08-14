@@ -1,11 +1,16 @@
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ModuleModel, UserPermissionModel } from "@/models";
 import GetAllModuleWithOperation from "@/services/admin/module/getAllWithOperation";
 import store from "@/store";
 import { useSignals } from "@preact/signals-react/runtime";
-import { buildSidebarNavigation } from "../utils/buildSidebarNavigation";
 
+/**
+ * The sidebar's menu source: GET Module/WithOperations, which returns this tenant's own operation
+ * tree filtered to the caller's grants. Names, links, icons and order are all columns on those
+ * rows — `sidebarNav.tsx` resolves the icon name through `lucideIconMap`. There is no hardcoded
+ * menu and no name→icon table.
+ */
 export function useMenuModules() {
   useSignals();
   const selectedSubsystem = store.ModuleData.value.name;
@@ -48,14 +53,8 @@ export function useMenuModules() {
     }
   }, [modules]);
 
-  const navigation = useMemo(
-    () => buildSidebarNavigation(modules?.data, selectedSubsystem),
-    [modules?.data, selectedSubsystem],
-  );
-
   return {
     isLoading,
-    navigation,
     selectedSubsystem,
     /** Raw menu feed (modules + role-visible operations) for the grouped sidebar. */
     modules: modules?.data as ModuleModel[] | undefined,

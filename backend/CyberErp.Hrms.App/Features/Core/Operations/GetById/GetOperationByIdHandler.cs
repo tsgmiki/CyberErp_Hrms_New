@@ -18,15 +18,15 @@ public class GetOperationByIdHandler(
         logger.LogInformation("Getting Operation with ID: {Id}", request.Id);
 
         var operation = await repository.GetAll()
-            .Include(x => x.Parent)
+            .Include(x => x.Module)
             .Where(x => x.Id == request.Id)
             .Select(x => new OperationDto
             {
                 Id = x.Id,
                 ModuleId = x.ModuleId,
                 Name = x.Name,
-                // "Module" is the PARENT group now, and is empty when this row IS one.
-                Module = x.Parent != null ? x.Parent.Name : string.Empty,
+                // The menu GROUP (Core.Module); empty on a legacy group row.
+                Module = x.Module != null ? x.Module.Name : string.Empty,
                 SubsystemId = x.SubSystemId,
                 SubSystem = subsystems.GetAll().Where(s => s.Id == x.SubSystemId)
                     .Select(s => s.Name).FirstOrDefault() ?? string.Empty,

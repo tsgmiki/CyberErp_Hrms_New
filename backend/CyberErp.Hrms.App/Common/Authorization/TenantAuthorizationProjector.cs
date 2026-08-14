@@ -48,6 +48,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
         IRepository<UserRole> userRoles,
         IRepository<Subsystem> subsystems,
         IRepository<TenantRole> tenantRoles,
+        IRepository<TenantModule> tenantModules,
         IRepository<TenantOperation> tenantOperations,
         IRepository<TenantRolePermission> tenantRolePermissions,
         IRepository<TenantUser> tenantUsers,
@@ -71,6 +72,9 @@ namespace CyberErp.Hrms.App.Common.Authorization
 
             var written = 0;
             written += await SyncRolesAsync(tenantId.Value, ct);
+            // Modules BEFORE operations: a screen's ModuleId now points at the tenant's group row,
+            // so the group has to exist first.
+            written += await SyncModulesAsync(tenantId.Value, ct);
             written += await SyncOperationsAsync(tenantId.Value, ct);
             // Permissions and memberships reference the rows created above, so they must be persisted
             // before those joins are resolved.
@@ -130,12 +134,63 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return written;
         }
 
+        /// <summary>
+        /// Module -> TenantModule, keyed by ModuleId. The tenant's copy of each menu GROUP.
+        ///
+        /// <para>Unlike roles and operations this DOES create rows. It can, because the link is
+        /// unambiguous: a tenant that holds a copy of a screen must hold its group, so the set is
+        /// derived rather than guessed. Without that, a screen projected into the tenant would have
+        /// nowhere to hang and the sidebar would lose the whole group.</para>
+        /// </summary>
+        private async Task<int> SyncModulesAsync(Guid tenantId, CancellationToken ct)
+        {
+            var templates = await modules.GetAll().ToListAsync(ct);
+            var existing = await tenantModules.GetAll().ToListAsync(ct);
+            var written = 0;
+
+            // The groups this tenant actually needs: the ones its own screens belong to.
+            var needed = await tenantOperations.GetAll()
+                .Join(operations.GetAll(), t => t.OperationId, o => o.Id, (t, o) => o.ModuleId)
+                .Distinct()
+                .ToListAsync(ct);
+
+            foreach (var moduleId in needed)
+            {
+                var template = templates.FirstOrDefault(m => m.Id == moduleId);
+                if (template is null) continue;
+
+                var row = existing.FirstOrDefault(m => m.ModuleId == moduleId);
+                if (row is null)
+                {
+                    await tenantModules.AddAsync(TenantModule.Create(
+                        tenantId, template.SubsystemId, template.Id, template.Name, template.Icon,
+                        template.DisplayOrder, template.IsActive, template.Filter));
+                    written++;
+                    continue;
+                }
+
+                if (row.SyncFromTemplate(template.SubsystemId, template.Name, template.Icon,
+                        template.DisplayOrder, template.Filter, template.IsActive))
+                {
+                    tenantModules.UpdateAsync(row);
+                    written++;
+                }
+            }
+
+            return written;
+        }
+
         /// <summary>Operation -> TenantOperation, keyed by OperationId. A copy, not a reference.</summary>
         private async Task<int> SyncOperationsAsync(Guid tenantId, CancellationToken ct)
         {
             var templates = await operations.GetAll().ToListAsync(ct);
             var existing = await tenantOperations.GetAll().ToListAsync(ct);
             var written = 0;
+
+            // Template module id -> THIS tenant's copy of that group. The screen's ModuleId points at
+            // the tenant row, not the template, so every projection has to go through this map.
+            var groupByTemplate = await tenantModules.GetAll()
+                .ToDictionaryAsync(m => m.ModuleId, m => m.Id, ct);
 
             // ⚠️ UPDATES ONLY, for the same reason as the roles above: Core.Operation lost its
             // TenantId, so `templates` spans every tenant. A copy is made where the operation is
@@ -146,8 +201,13 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 if (template is null) continue;
 
                 // The template owns DisplayOrder, IsActive and SubSystemId, so everything copies
-                // straight across. ModuleId carries the PARENT link, null on a group row.
-                var changed = row.SyncFromTemplate(template.SubSystemId, template.ModuleId,
+                // straight across. ModuleId is TRANSLATED: the template names a Core.Module, the copy
+                // must name this tenant's TenantModule. A screen whose group was never projected is
+                // skipped rather than repointed at nothing.
+                if (!groupByTemplate.TryGetValue(template.ModuleId, out var tenantModuleId))
+                    continue;
+
+                var changed = row.SyncFromTemplate(template.SubSystemId, tenantModuleId,
                     template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
                     template.DisplayOrder, template.Filter);
 

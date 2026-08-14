@@ -36,6 +36,35 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    /// <summary>
+    /// Core.TenantModule — the tenant's copy of a menu group (2026-08-15, SRMS parity). Column
+    /// lengths are SRMS's: Name nvarchar(200), Filter nvarchar(500), Icon nvarchar(100).
+    /// </summary>
+    public class TenantModuleConfiguration : IEntityTypeConfiguration<TenantModule>
+    {
+        public void Configure(EntityTypeBuilder<TenantModule> builder)
+        {
+            builder.ToTable("TenantModule", "Core");
+            builder.HasKey(m => m.Id);
+
+            builder.Property(m => m.Name).IsRequired().HasMaxLength(200);
+            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100);
+            builder.Property(m => m.Filter).IsRequired().HasMaxLength(500);
+            builder.Property(m => m.UpdatedAt).HasColumnType("datetime2(3)");
+
+            builder.HasOne<Subsystem>().WithMany()
+                .HasForeignKey(m => m.SubSystemId).OnDelete(DeleteBehavior.Restrict);
+
+            // ModuleId is the CERP-only template link (see the entity note). Restrict, so deleting a
+            // template module cannot silently orphan a tenant's group.
+            builder.HasOne<Module>().WithMany()
+                .HasForeignKey(m => m.ModuleId).OnDelete(DeleteBehavior.Restrict);
+
+            // One copy per (tenant, source module) — the same rule TenantOperation uses.
+            builder.HasIndex(m => new { m.TenantId, m.ModuleId }).IsUnique();
+        }
+    }
+
     public class TenantOperationConfiguration : IEntityTypeConfiguration<TenantOperation>
     {
         public void Configure(EntityTypeBuilder<TenantOperation> builder)
@@ -47,9 +76,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.Link).IsRequired().HasMaxLength(500);
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
             builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
+            builder.Property(o => o.UpdatedAt).HasColumnType("datetime2(3)");
 
             builder.HasOne<Operation>().WithMany()
                 .HasForeignKey(o => o.OperationId).OnDelete(DeleteBehavior.Restrict);
+
+            // ModuleId now points at the TENANT's group, not the global module, and is NOT NULL:
+            // every row here is a screen since groups moved to TenantModule (2026-08-15).
+            builder.HasOne<TenantModule>().WithMany()
+                .HasForeignKey(o => o.ModuleId).OnDelete(DeleteBehavior.NoAction);
 
             // One instance per (tenant, source operation).
             builder.HasIndex(o => new { o.TenantId, o.OperationId }).IsUnique();

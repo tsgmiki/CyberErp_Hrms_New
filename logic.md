@@ -2454,6 +2454,181 @@ so an admin's own save took effect immediately. Nothing in HRMS busts that cache
 made in SRMS appears here when the **60-second TTL** expires. That is what the TTL was always for
 (§ the service's own comment: it bounds changes made behind the application's back).
 
+### 12.18 The menu is data — removing the last places it wasn't
+
+The question that started this was about the **Home portal**: why is the menu static? The sidebar
+turned out to be fully dynamic already. Three other things were not.
+
+#### 1. A compiled menu that wrote itself into the database
+
+`SeedHomeMenu.cs` declared the portal's whole menu as a C# array — three groups, ~25 screens with
+their links and icons — and `POST Portal/seed-defaults` inserted it into `Core.Operation`.
+
+That is worse than a hardcoded menu, because it is a **second source of truth that writes to the
+first**. A screen renamed, re-ordered, re-iconed or deleted in the database could be re-created by
+the next seed run, and the menu could not be changed at all without a deployment. Deleted — along
+with the endpoint, the DI registration, and the `Portal:SubsystemUrls` options binding whose only
+job was to backfill `Core.Subsystem.Url` from `appsettings.json`.
+
+HRMS's equivalent (`SeedDefaultMenu` + `Module/seed-defaults`) went in §12.17. Neither app writes the
+navigation tables now; SRMS owns the catalogue.
+
+#### 2. Launcher tiles that looked up their icon by name
+
+Both SPAs resolved subsystem-tile icons through `getModuleIcon(subsystem.name)` — a PSMS-template
+lookup table of `Purchases`, `Inventory`, `Container`, `Expense`… It matched almost nothing real, so
+HOME, HRMS, PSMS and SRMS every one of them drew a neutral circle, and there was **no way to
+configure the icon at all**.
+
+`Core.Subsystem.Icon` already existed (HRMS owns the migration for it). What was missing:
+
+| | Fix |
+|---|---|
+| Home's `Subsystem` entity had no `Icon` property | added — the table is `ExcludeFromMigrations` there, so it maps by convention |
+| Neither `PortalSubsystemDto` nor HRMS's `SubsystemDto` exposed it | added to both |
+| The tiles resolved by name | now `resolveNavIcon(row.icon)`, the same resolver the sidebar uses |
+| **The column was NULL on every row** | `Home/backend/scripts/seed-subsystem-icons.sql` (idempotent — only fills blanks, so a hand-picked icon is never overwritten) |
+
+That last row matters: without the seed, making the tiles data-driven would have turned *every* tile
+into a circle. Wiring a column to the UI is only half the job when the column has never been written.
+
+#### 3. ⚠️ `lucideIconMap` is where an icon degrades silently
+
+`resolveNavIcon` falls back to `Circle` for any name it doesn't know, and nothing logs. Three real
+lucide names — **`Inbox`** (the portal's main "My Requests" group), **`Bell`** and
+**`MessageSquareQuote`** — were configured on live rows but absent from *both* apps' maps, so they
+had always rendered blank.
+
+**If a newly configured icon shows up as a circle, check the map before suspecting the data.** The
+check is cheap: diff the icon names in the menu feed against the keys of `LUCIDE_ICONS`.
+
+#### What was deleted, and why it read as "static"
+
+Both SPAs still carried the PSMS template's menu layer, wired to nothing: `menu/icons/`,
+`getModuleIcon`, `buildSidebarNavigation` (its result was computed in `useMenuModules` on every
+render and **never consumed** — the sidebar builds its own groups), `menuTypes`,
+`modules`/`moduleDetail`/`menuItem`, `quickAdd` with 18 hardcoded links, four unreachable sidebar
+subcomponents, and Home's `constants/subSystem.ts` (`Administration, Purchases, Sales, Inventory,
+Fianance, Report` — typo included).
+
+None of it rendered. All of it made the codebase *read* as though the menu were hardcoded, which is
+exactly the impression that prompted the question.
+
+### 12.19 Following SRMS back to a real Module foreign key
+
+SRMS was **changed by the user**: `Core.Operation.ModuleId` now genuinely constrains to
+`Core.Module`, and a `Core.TenantModule` table exists. The 2026-08-13 self-referencing hierarchy
+(§12.10 era) was built because SRMS looked self-referencing *then* — the entity comment even recorded
+that reading. It is superseded.
+
+#### Stage 1 (done): the foreign key, at zero data cost
+
+The repoint needed **no data migration at all**, and that is not luck. The 2026-08-13 migration
+copied the 24 modules into `Operation` **using their own Ids**, precisely so the existing children
+would not need repointing. That invariant now pays off in the opposite direction: every child's
+`ModuleId` was already a valid `Core.Module.Id`. Verified before applying — **144 of 144 present, 0
+missing**, and all 24 group rows share an Id with a module.
+
+⚠️ **Both constraint names are SRMS's, verbatim.** `FK_NavigationOperation_Module_ModuleId` is the
+ModuleId one; `FK_Operation_Module_ModuleId` constrains **`SubSystemId`** — a misnomer left in SRMS by
+a rename. Its `CASCADE` is SRMS's as well, so deleting a subsystem now deletes its menu, where CERP
+deliberately used `Restrict`. Both were copied because the requirement is *identical structure*; both
+are things to change in SRMS first if they should change at all.
+
+The 24 group rows still exist with a null `ModuleId`, so nothing that reads the menu changed: login
+200, sidebar 12 groups / 34 screens, `Operation` list 168.
+
+#### What is still different, and why the rest is not mechanical
+
+| Object | Delta | Note |
+|---|---|---|
+| `Core.Module` | −`TenantId`, `SortOrder`→`DisplayOrder`, +`Filter`, +`IsActive`, `Name`/`Icon` 400→200, `Icon` NOT NULL | safe: all 24 rows are one tenant, no name exceeds 200, **1 row has a blank Icon** and needs a value first |
+| `Core.Operation` | drop the 24 group rows, `ModuleId` NOT NULL | the groups hold **zero grants**, so removing them costs no permissions — but the tenant-side reads must move to modules in the same change |
+| `Core.TenantModule` | **does not exist in CERP** | a new tenant-scoped table the projector has to populate |
+| `Core.TenantOperation` | −`OperationId`, `ModuleId` NOT NULL → `TenantModule` | ⚠️ see below |
+| both | `UpdatedAt` datetime2(7)→(3), column order | order needs a table rebuild; cosmetic but part of "identical" |
+
+#### Stage 2a (done): Core.Module, and a 409 that was not a conflict
+
+`Core.Module` lost `TenantId`, renamed `SortOrder` to `DisplayOrder`, gained `Filter` and `IsActive`,
+narrowed `Name`/`Icon` to `nvarchar(100)` with `Icon` NOT NULL, took SRMS's `SubSystemId` spelling
+(via `HasColumnName`, so the C# property is untouched), and both tables moved `UpdatedAt` from
+`datetime2(7)` to `(3)`.
+
+**`Core.Module` and `Core.Operation` now diff to zero** against cybererp_srms on name, type, length
+and nullability. Each narrowing was checked against the data first: 24 modules all in one tenant (so
+none of the deduplication `Subsystem` will need), longest name 29 characters, and the one blank
+`Icon` holding `''` rather than NULL — so NOT NULL applied without touching a row.
+
+⚠️ **Dropping a TenantId breaks every read of that entity until it joins `IsGlobalEntity`.**
+`GET Module` started returning **409 — "The LINQ expression … could not be translated"**, because
+`Repository<T>` filters on `e.TenantId` and the member is now unmapped. The fix is one entry in the
+skip-list; the trap is the symptom. A **409 on a plain GET** reads like an optimistic-concurrency
+conflict, so the instinct is to look at `RowVersion`, which is nowhere near the problem. Any entity
+whose `TenantId` gets `Ignore()`d needs that entry in the same commit.
+
+#### Stage 2b (done): groups move to their own table, on both sides
+
+`Core.TenantModule` now exists, and the menu group is a row there rather than a `TenantOperation`
+with a null `ModuleId`. Both sets of group rows are gone, so **every row in `Operation` and
+`TenantOperation` is a screen** — as in SRMS.
+
+The data migration is inside the migration, and it leans on the same trick as Stage 1: each group
+row **keeps its own Id** when it becomes a `TenantModule`, so nothing else needed re-keying. Only the
+144 screens moved, from naming the template module to naming the tenant's group row.
+
+```
+1. group rows (ModuleId NULL)  -> Core.TenantModule, same Id, ModuleId = its OperationId
+2. screens: ModuleId = TEMPLATE module id  ->  the tenant's TenantModule.Id
+3. DELETE the group rows from TenantOperation
+4. DELETE the 24 group rows from Core.Operation   (must follow 3 — FK OperationId)
+5. THROW if any null ModuleId survives, before the NOT NULL lands
+```
+
+Step 5 matters more than it looks: without it a surviving orphan would be silently converted to an
+empty-Guid FK by the `NOT NULL` alter, and the failure would surface much later as a missing menu.
+
+Verified after applying: TenantModule 24, TenantOperation 144, Operation 144, **0** bad `ModuleId` in
+either table, and **570 grants intact with 0 orphaned**.
+
+**The projector had to learn a translation.** `SyncModulesAsync` runs *before* operations (a screen
+cannot be projected before its group exists) and, unlike roles and operations, it **creates** rows —
+it can, because the set it needs is derived, not guessed: a tenant that holds a screen must hold that
+screen's group. `SyncOperationsAsync` then maps the template's `ModuleId` through
+`TenantModule.ModuleId → TenantModule.Id` rather than copying it straight across, which is the whole
+point: template ids and tenant ids are different namespaces now.
+
+⚠️ **Home reads these tables directly, so the two repos deploy together.** It got the `TenantModule`
+entity, the DbContext mapping, and a rewritten join in `GetMySubsystems`. Both feeds still report
+TEMPLATE ids on the wire, so neither SPA needed a change — HRMS still renders 12 groups / 34 screens
+and the portal still renders HOME(21) / HRMS(13).
+
+#### What still differs from SRMS, and why each is deliberate
+
+| Difference | Why |
+|---|---|
+| `TenantOperation.OperationId` | the template link. Your call (2026-08-15) to keep it: both apps use it as the stable UI id and as the join between `permissionGate`'s global catalog and tenant grants |
+| `TenantModule.ModuleId` | the same link for groups — added for consistency, and the projector needs it to know which template a copy came from |
+| `Operation.ModuleId` NOT NULL vs nullable | CERP is the **stricter** side and can hold anything SRMS can. Matching exactly would force the CLR property to `Guid?`, because EF refuses to map a nullable column onto a non-nullable Guid, reintroducing null handling for no gain |
+| column ORDER | cosmetic; needs a full table rebuild |
+
+#### ⚠️ The original blocker: `TenantOperation.OperationId`
+
+SRMS's tenant copies are **standalone** — verified: **0 of 220** `TenantOperation` rows share an Id
+with any `Operation`, and there is no template column. A tenant's menu, once copied, has no link back.
+
+CERP's copies do carry `OperationId`, and both applications depend on it:
+
+- the sidebar and portal feeds report **the template id** as each item's id, because that is the
+  stable identifier the UI and the role-permission screen work against;
+- `permissionGate.tsx` builds its catalog from the **global** `GET Operation` while grants live on
+  **tenant** rows — `OperationId` is the join between the two.
+
+Dropping it means re-establishing that link some other way (matching on `Link`, or making the tenant
+copy's Id equal the template's — which cannot survive a second tenant). That is an architectural
+change to the permission layer of two applications, not a schema tweak, so it is a decision rather
+than a mechanical step.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

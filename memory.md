@@ -523,7 +523,53 @@ would leave EVERY route unguarded. ⚠️ Permission changes are no longer insta
 called `InvalidateAll()` are gone) — SRMS grants land after the **60s TTL**.
 ⚠️ **Only tenant `aadb4e82` (NVI) has authorization data at all** — 168 TenantOperations, 570 grants.
 Tenant `demo` has ZERO, so signing in as `demo` gives an empty sidebar and 403 everywhere. Data, not
-a bug. **Phase 2 STEP 1 DONE
+a bug.
+**Menus fully data-driven in BOTH SPAs 2026-08-14** (handoff 0108, logic §12.18) — the Home question
+"why is the menu static?" found three real things: (a) **`SeedHomeMenu.cs`** declared the portal menu
+as a compiled C# array and WROTE IT INTO `Core.Operation` via `POST Portal/seed-defaults` — a second
+source of truth that overwrote the first; deleted with its endpoint + `Portal:SubsystemUrls` config;
+(b) launcher/landing **tiles in BOTH apps** resolved icons via `getModuleIcon(name)`, a
+PSMS-template name→icon table matching almost nothing → now `Core.Subsystem.Icon` (mapped on Home's
+entity for the first time, exposed on both DTOs, resolved via `lucideIconMap`) + `seed-subsystem-
+icons.sql` because the column was **NULL on every row**; (c) `Inbox`/`Bell`/`MessageSquareQuote` were
+configured on live rows but missing from both `lucideIconMap`s → silently rendered as circles.
+⚠️ **`lucideIconMap` is the one place an icon degrades with NO error** — check it before suspecting
+the data. ⚠️ Wiring a column to the UI is half the job when the column was never populated.
+Also deleted the PSMS-template dead menu layer from both SPAs (`menu/icons/`, `getModuleIcon`,
+`buildSidebarNavigation` — computed every render, never consumed — `menuTypes`, `modules`/
+`moduleDetail`/`menuItem`, `quickAdd`, 4 unreachable sidebar subcomponents, `constants/subSystem.ts`).
+**SRMS re-alignment STAGE 1 DONE 2026-08-15** (handoff 0109, logic §12.19, migration
+`OperationModuleForeignKey`) — ⚠️ **the user CHANGED SRMS**: `Operation.ModuleId` now really FKs to
+`Core.Module` and a `Core.TenantModule` table exists, so the 2026-08-13 self-referencing hierarchy is
+**superseded**. Repoint cost **ZERO data change** because that migration had copied the 24 modules in
+**using their own Ids** (144/144 children already valid) — the invariant paid off in reverse.
+⚠️ Constraint names + CASCADE copied from SRMS **verbatim**: `FK_Operation_Module_ModuleId` actually
+constrains **SubSystemId** (misnomer in SRMS) and cascades, so deleting a subsystem now deletes its
+menu (CERP used Restrict). Fix in SRMS first or they diverge. Non-breaking: sidebar still 12 groups/
+34 screens. ⚠️ **REMAINING blocker: `TenantOperation.OperationId`** — SRMS tenant copies are
+STANDALONE (0/220 share a template Id, no template column) but BOTH apps use OperationId as the
+stable UI id AND as the join between `permissionGate`'s global catalog and tenant-row grants;
+dropping it is a permission-layer redesign, not a schema tweak — **user chose 2026-08-15 to KEEP it
+as a documented CERP extra** (lowest risk). **STAGE 2a DONE**: `Core.Module` −TenantId, SortOrder→
+DisplayOrder, +Filter/+IsActive, Name/Icon→nvarchar(100), Icon NOT NULL, SubsystemId→`SubSystemId`
+(via HasColumnName), UpdatedAt datetime2(7)→(3) on Module+Operation ⇒ **both tables now diff to ZERO
+vs SRMS**. ⚠️ **GOTCHA: dropping a TenantId breaks EVERY read of that entity until it is added to
+`Repository.IsGlobalEntity`** — the filter references an unmapped member and surfaces as **409 "LINQ
+expression could not be translated" on a plain GET**, which looks like a concurrency conflict and
+isn't. **STAGE 2b DONE** (handoff 0111, migration `TenantModuleAndOperationGroups`, backup
+`CERP_before-tenantmodule-*.bak`): `Core.TenantModule` created; groups MOVED out of TenantOperation
+into it (each **keeping its own Id**, so only the 144 screens were repointed); the 24 group rows
+deleted from BOTH `TenantOperation` and `Core.Operation` ⇒ every row in either is now a screen.
+Verified 24/144/144, 0 bad ModuleId, **570 grants intact 0 orphaned**; sidebar still 12 groups/34
+screens, portal still HOME(21)/HRMS(13). Projector gained `SyncModulesAsync` — runs BEFORE
+operations, is the only sync that CREATES rows (the set is derived: a tenant holding a screen must
+hold its group), and `SyncOperationsAsync` now **translates** template ModuleId → tenant group Id.
+⚠️ **HRMS + Home must deploy TOGETHER** (Home reads TenantOperation.ModuleId directly).
+⚠️ Migration data steps must run BETWEEN CreateTable and the NOT NULL alter — the EF scaffold orders
+them wrong — and end with a `THROW` guard, else a surviving orphan becomes an empty-Guid FK silently.
+**3 deliberate differences remain**: the 2 template links (`TenantOperation.OperationId`,
+`TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
+needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

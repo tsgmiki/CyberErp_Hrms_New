@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814205841_ModuleOperationColumnParity")]
+    partial class ModuleOperationColumnParity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -7256,7 +7259,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<Guid>("ModuleId")
+                    b.Property<Guid?>("ModuleId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Name")
@@ -11176,71 +11179,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("Tenant", "Core");
                 });
 
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantModule", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Filter")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("Icon")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid>("ModuleId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<Guid>("SubSystemId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ModuleId");
-
-                    b.HasIndex("SubSystemId");
-
-                    b.HasIndex("TenantId", "ModuleId")
-                        .IsUnique();
-
-                    b.ToTable("TenantModule", "Core");
-                });
-
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantOperation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11274,7 +11212,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
-                    b.Property<Guid>("ModuleId")
+                    b.Property<Guid?>("ModuleId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Name")
@@ -11297,14 +11235,12 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(3)");
+                        .HasColumnType("datetime2(7)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ModuleId");
 
                     b.HasIndex("OperationId");
 
@@ -14609,7 +14545,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .WithMany()
                         .HasForeignKey("ModuleId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("FK_NavigationOperation_Module_ModuleId");
 
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Subsystem", null)
@@ -15210,29 +15145,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantModule", b =>
-                {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Module", null)
-                        .WithMany()
-                        .HasForeignKey("ModuleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Subsystem", null)
-                        .WithMany()
-                        .HasForeignKey("SubSystemId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantOperation", b =>
                 {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TenantModule", null)
-                        .WithMany()
-                        .HasForeignKey("ModuleId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Operation", null)
                         .WithMany()
                         .HasForeignKey("OperationId")
