@@ -549,9 +549,15 @@ menu (CERP used Restrict). Fix in SRMS first or they diverge. Non-breaking: side
 34 screens. ⚠️ **REMAINING blocker: `TenantOperation.OperationId`** — SRMS tenant copies are
 STANDALONE (0/220 share a template Id, no template column) but BOTH apps use OperationId as the
 stable UI id AND as the join between `permissionGate`'s global catalog and tenant-row grants;
-dropping it is a permission-layer redesign, not a schema tweak. Also pending: Module (−TenantId,
-SortOrder→DisplayOrder, +Filter/+IsActive, narrow to 200, Icon NOT NULL — 1 blank row), drop the 24
-group rows (they hold **0 grants**), new `Core.TenantModule`, datetime2(7)→(3), column order. **Phase 2 STEP 1 DONE
+dropping it is a permission-layer redesign, not a schema tweak — **user chose 2026-08-15 to KEEP it
+as a documented CERP extra** (lowest risk). **STAGE 2a DONE**: `Core.Module` −TenantId, SortOrder→
+DisplayOrder, +Filter/+IsActive, Name/Icon→nvarchar(100), Icon NOT NULL, SubsystemId→`SubSystemId`
+(via HasColumnName), UpdatedAt datetime2(7)→(3) on Module+Operation ⇒ **both tables now diff to ZERO
+vs SRMS**. ⚠️ **GOTCHA: dropping a TenantId breaks EVERY read of that entity until it is added to
+`Repository.IsGlobalEntity`** — the filter references an unmapped member and surfaces as **409 "LINQ
+expression could not be translated" on a plain GET**, which looks like a concurrency conflict and
+isn't. Still pending: drop the 24 Operation group rows (they hold **0 grants**) + ModuleId NOT NULL,
+new `Core.TenantModule` + repoint TenantOperation.ModuleId, column ORDER (needs table rebuild). **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

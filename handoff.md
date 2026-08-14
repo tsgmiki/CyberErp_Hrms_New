@@ -123,6 +123,23 @@
 
 ## 1. Most recent changes (latest first)
 
+0110. **`Core.Module` aligned with SRMS — STAGE 2a (2026-08-15).** Detail in logic.md §12.19.
+    Migrations `ModuleSrmsAlignment` + `ModuleOperationColumnParity`, both APPLIED to CERP.
+    - `Core.Module`: −`TenantId`, `SortOrder`→`DisplayOrder`, +`Filter`, +`IsActive`, Name/Icon
+      narrowed to nvarchar(100), Icon NOT NULL, `SubsystemId`→`SubSystemId` (SRMS's casing, mapped
+      with `HasColumnName` so the C# property is unchanged), and `UpdatedAt` datetime2(7)→(3) on
+      **both** Module and Operation.
+    - **`Core.Module` and `Core.Operation` now diff to ZERO** against cybererp_srms on column name,
+      type, length and nullability.
+    - Safe because: all 24 modules belong to ONE tenant (none of the dedup Subsystem will need), the
+      longest name is 29 characters, and the single blank Icon held `''`, not NULL.
+    - ⚠️ **GOTCHA that cost a debugging round:** `GET Module` began returning **409** — "The LINQ
+      expression … could not be translated". Dropping TenantId leaves `Repository<T>`'s tenant filter
+      referencing an **unmapped member**. Any entity whose `TenantId` is `Ignore()`d MUST be added to
+      `IsGlobalEntity`, which now lists Module alongside Operation. A 409 on a plain GET looks like a
+      concurrency conflict and is not one.
+    - Verified: login 200, sidebar 12 groups / 34 screens, Module 24 rows, Operation + Subsystem 200.
+
 0109. **`Operation.ModuleId` repointed at `Core.Module` — SRMS re-alignment STAGE 1 (2026-08-15).**
     Detail in logic.md §12.19. Migration `OperationModuleForeignKey`, APPLIED to CERP.
     - SRMS was **corrected by the user**: its `ModuleId` genuinely FKs to `Core.Module`, and it now

@@ -2548,6 +2548,25 @@ The 24 group rows still exist with a null `ModuleId`, so nothing that reads the 
 | `Core.TenantOperation` | −`OperationId`, `ModuleId` NOT NULL → `TenantModule` | ⚠️ see below |
 | both | `UpdatedAt` datetime2(7)→(3), column order | order needs a table rebuild; cosmetic but part of "identical" |
 
+#### Stage 2a (done): Core.Module, and a 409 that was not a conflict
+
+`Core.Module` lost `TenantId`, renamed `SortOrder` to `DisplayOrder`, gained `Filter` and `IsActive`,
+narrowed `Name`/`Icon` to `nvarchar(100)` with `Icon` NOT NULL, took SRMS's `SubSystemId` spelling
+(via `HasColumnName`, so the C# property is untouched), and both tables moved `UpdatedAt` from
+`datetime2(7)` to `(3)`.
+
+**`Core.Module` and `Core.Operation` now diff to zero** against cybererp_srms on name, type, length
+and nullability. Each narrowing was checked against the data first: 24 modules all in one tenant (so
+none of the deduplication `Subsystem` will need), longest name 29 characters, and the one blank
+`Icon` holding `''` rather than NULL — so NOT NULL applied without touching a row.
+
+⚠️ **Dropping a TenantId breaks every read of that entity until it joins `IsGlobalEntity`.**
+`GET Module` started returning **409 — "The LINQ expression … could not be translated"**, because
+`Repository<T>` filters on `e.TenantId` and the member is now unmapped. The fix is one entry in the
+skip-list; the trap is the symptom. A **409 on a plain GET** reads like an optimistic-concurrency
+conflict, so the instinct is to look at `RowVersion`, which is nowhere near the problem. Any entity
+whose `TenantId` gets `Ignore()`d needs that entry in the same commit.
+
 #### ⚠️ The blocker: `TenantOperation.OperationId`
 
 SRMS's tenant copies are **standalone** — verified: **0 of 220** `TenantOperation` rows share an Id

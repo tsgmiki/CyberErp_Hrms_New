@@ -25,7 +25,7 @@ public class GetModuleByIdHandler(
                 SubSystem = x.Subsystem.Name,
                 Name = x.Name,
                 Icon = x.Icon,
-                SortOrder = x.SortOrder
+                SortOrder = x.DisplayOrder
             })
             .FirstOrDefaultAsync(ct);
 

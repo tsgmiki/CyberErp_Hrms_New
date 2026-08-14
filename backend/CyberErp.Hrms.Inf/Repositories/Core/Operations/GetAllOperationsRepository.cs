@@ -41,7 +41,7 @@ public class GetAllOperationsRepository(
         // Natural menu order: group, then screen within it. A group sorts with its own children by
         // falling back to its own DisplayOrder when it has no parent.
         query = query
-            .OrderBy(x => x.Module != null ? x.Module.SortOrder : x.DisplayOrder)
+            .OrderBy(x => x.Module != null ? x.Module.DisplayOrder : x.DisplayOrder)
             .ThenBy(x => x.ModuleId == null ? 0 : 1)   // the group itself leads its children
             .ThenBy(x => x.DisplayOrder)
             .ThenBy(x => x.Name);

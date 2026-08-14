@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814205513_ModuleSrmsAlignment")]
+    partial class ModuleSrmsAlignment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -7138,11 +7141,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("varbinary(8)");
 
                     b.Property<Guid>("SubsystemId")
-                        .HasColumnType("uniqueidentifier")
-                        .HasColumnName("SubSystemId");
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(3)");
+                        .HasColumnType("datetime2(7)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -7273,7 +7275,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(3)");
+                        .HasColumnType("datetime2(7)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");

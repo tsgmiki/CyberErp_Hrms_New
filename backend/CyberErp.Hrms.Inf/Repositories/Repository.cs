@@ -53,9 +53,14 @@ namespace CyberErp.Hrms.Inf.Repositories
         /// (backup, relay) would have to be reconsidered at that point.</para>
         /// </remarks>
         /// <remarks>
+        // ⚠️ An entity whose TenantId is Ignore()d in its EF configuration MUST be listed here, or
+        // every read through this repository fails at translation time: the filter below references
+        // an unmapped member. That surfaces as a 409 on a plain GET with "could not be translated",
+        // which reads like a concurrency conflict and is not one. "Module" joined the list on
+        // 2026-08-15 when it lost TenantId; "Operation" for the same reason on 2026-08-13.
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
-                   or "User" or "Role" or "Operation" or "Organization" or "Setting";
+                   or "User" or "Role" or "Operation" or "Module" or "Organization" or "Setting";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {
