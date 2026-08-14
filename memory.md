@@ -585,7 +585,19 @@ unique); removed 6 stray EF defaults + respelled IsActive default to SRMS's `((1
 drop a default it never declared** — use name-agnostic raw SQL. **RESULT: 0 DIFFERENCES across all 4
 navigation tables** (name/type/size/nullability/default); only ordinal ORDER differs. ⚠️ **Home
 read-models drift SILENTLY** — its `Operation.SubSystemId` and `TenantModule.ModuleId` still compiled
-and 500'd at runtime with "Invalid column name"; only running the query finds it. **Older notes**: the 2 template links (`TenantOperation.OperationId`,
+and 500'd at runtime with "Invalid column name"; only running the query finds it.
+**DATABASE-WIDE AUDIT 2026-08-15** (handoff 0114, logic §12.20): all 30 SRMS tables exist in CERP;
+full column diff (name/type/size/nullability/**default**) = **65 → 50**.
+`TenantRole.SourceTemplateId` → column **`RoleId`** via HasColumnName ⇒ **TenantRole ZERO**.
+⚠️ **A blanket fix made it WORSE:** changing the convention (nullable⇒datetime2(7)) to (3) everywhere
+fixed 16 columns and **broke 13** — SRMS keeps (7) on Person/SalaryScale/Step/SubscriptionPlan/
+Tenant/TenantSubscription/UserPreference. Net +3 across a **594-column** migration; rolled back,
+replaced with an explicit 17-entity list. **Verify the target's shape before generalising about it.**
+⚠️ **The remaining 50 are NOT a to-do list:** 10 `TenantId`-absent tables are load-bearing isolation
+(each needs the TenantOperation treatment), 5 `TenantId`-nvarchar would **REVERSE** the §12.14 re-key,
+dropping `Subsystem.Url` would **break the Home launcher**, and `User.CreatedAt` **REGRESSED in SRMS**
+(I made it NOT NULL 08-14 — fix there). Only the ~25 default-constraint diffs are mechanical.
+**Older notes**: the 2 template links (`TenantOperation.OperationId`,
 `TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
 needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
