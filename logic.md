@@ -2220,6 +2220,75 @@ live       HRMS login 200, 34 links, employee counts unchanged
            0 errors in either log
 ```
 
+### 12.14 TenantId re-keyed to uniqueidentifier
+
+Migrations `TenantIdToUniqueidentifier` and `MatchSrmsTenantIdExceptions`. **201 columns converted.**
+The shared surface with SRMS is now identical but for **one** column.
+
+#### ⚠️ A value converter, NOT a retyped property
+
+The CLR property stays a `string`; a global converter in `OnModelCreating` maps it to `Guid`, so the
+**column** is `uniqueidentifier` while **no entity, no repository filter and no handler changed**.
+
+That was the whole insight. `TenantId` is declared once on `BaseEntity` and carried by 202 tables, and
+it is also the Finbuckle discriminator — whose own `ITenantInfo.Id` is a **string**, so retyping to
+`Guid` would have needed a conversion at that boundary anyway, on top of touching the repository
+filter, ~20 aggregate-child propagations, Home's `IHasTenant` and every SQL script. **The column type
+is what had to match; the CLR type never did.**
+
+It is safe because every query use of `TenantId` is a **simple equality** — verified across both
+repos: the repository filter, Home's nine query filters, `PortalNotifier`, `LoginRepository`. The
+`string.IsNullOrEmpty(x.TenantId)` checks scattered through the aggregate handlers all run **in
+memory**, so the converter never sees them.
+
+`""` ↔ `Guid.Empty` round-trips. Nineteen rows legitimately carry a blank TenantId (the global lookup
+tables, Organization, Setting) and `Guid.Parse` would throw on every one.
+
+#### ⚠️ Four traps, three of which stopped the migration dead
+
+1. **`Type.GetProperty("TenantId")` throws `Ambiguous match found`.** `TenantSubscription` declares
+   its own `Guid TenantId` — a real FK — which *shadows* BaseEntity's string one. Ask EF what it
+   MAPPED (`entityType.FindProperty`), not reflection; that column was already correct.
+2. **EF scaffolded 400 `AlterColumn` calls and NO index handling**, but **141 indexes include
+   TenantId** and SQL Server refuses to alter a column an index depends on. The migration is
+   hand-written as discovery-driven SQL: capture index definitions, drop, convert, rebuild.
+3. **A PRIMARY KEY also blocked it** — `PK_NumberSequence`. Key constraints are not `DROP INDEX`-able
+   and were missed by the first attempt, which failed on exactly that. Captured and rebuilt as
+   constraints. (Checked: no foreign key references them.)
+4. **Blank values cannot implicitly convert.** Set to the empty GUID first.
+
+Everything runs in **one transaction with `XACT_ABORT`** — and that earned its keep: the first attempt
+failed on the primary key and rolled back cleanly, leaving all 201 columns untouched rather than the
+schema half-converted.
+
+#### ⚠️ SRMS is internally inconsistent, and we now match the inconsistency
+
+SRMS types `TenantId` as `uniqueidentifier` on seven tables and **nvarchar on `LoginTrail` and
+`UserPreference`**. The blanket conversion left CERP *more consistent than the thing it is supposed to
+match*, so `MatchSrmsTenantIdExceptions` reverts those two. **The oddity is SRMS's.** If it is ever
+tidied up there, delete that migration and the exclusion in `HrmsDbContext` rather than working around
+them.
+
+#### The last remaining difference
+
+`User.CreatedAt` — nullable in SRMS, NOT NULL here. `BaseEntity.CreatedAt` is a non-nullable `Instant`
+on 202 tables; EF cannot make it optional for one entity, and doing it globally would drop a guarantee
+every audited row has. SRMS being looser is not worth adopting.
+
+#### Verification
+
+```
+schema     202 TenantId columns -> uniqueidentifier, then 2 reverted to match SRMS
+           141 indexes + 1 primary key rebuilt
+diff       22 shared tables -> 1 remaining column (User.CreatedAt)
+data       506 users | 490 employees | 598 grants | 175 operations | 60 login-trail rows
+live       HRMS  3 identities: login 200, 34 links, employee counts unchanged
+                 gate RolePermission 403 | OtherLeave 200 | Position 200
+                 write path: throwaway operation created, TenantId stamped as a real Guid, deleted
+           Home  login 200, 2 subsystems / 12 modules / 34 operations, notifications 200
+           0 errors in either log
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

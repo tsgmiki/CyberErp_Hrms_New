@@ -478,8 +478,19 @@ TenantOperation widths, AssignedBy→Guid, Setting.UpdatedAt→NOT NULL. ⚠️ 
 an empty-Guid default; `AssignedBy` string→Guid **fails** on `'seed-tenant-authorization'` (TRY_CAST
 null it); `UpdatedAt` NOT NULL scaffolds a `0001-01-01` default. ⚠️ **The last 7 CANNOT be fixed** —
 `TenantId` (6 tables) and `User.CreatedAt` are **BaseEntity properties on 202 tables**: TenantId is
-the Finbuckle DISCRIMINATOR STRING here vs a Guid FK in SRMS (CERP models that as `OwningTenantId`),
-so matching = re-keying multi-tenancy app-wide. **Phase 2 STEP 1 DONE
+the Finbuckle DISCRIMINATOR STRING here vs a Guid FK in SRMS (CERP models that as `OwningTenantId`).
+**RE-KEYED 2026-08-14** (handoff 0104, logic §12.14, migrations `TenantIdToUniqueidentifier` +
+`MatchSrmsTenantIdExceptions`): 201 columns → uniqueidentifier; shared surface now differs by ONE
+column. ⚠️ **Done with a VALUE CONVERTER, not by retyping** — CLR property stays `string`, global
+converter in `OnModelCreating` makes the COLUMN a Guid, so **no entity/repository/handler changed**.
+Safe because every query use is simple equality; `IsNullOrEmpty` checks run in memory; `""` ↔
+`Guid.Empty`. ⚠️ Traps: `Type.GetProperty("TenantId")` throws *Ambiguous match* (TenantSubscription
+shadows it with its own Guid) → use `entityType.FindProperty`; EF scaffolds 400 AlterColumn with **NO
+index handling** while **141 indexes + PK_NumberSequence** depend on the column → hand-written
+discovery SQL in ONE `XACT_ABORT` transaction; blanks must become the empty GUID first. ⚠️ **SRMS is
+itself inconsistent** — nvarchar on `LoginTrail`/`UserPreference` — and we deliberately match that.
+⚠️ Home needs the same converter or its query filters won't translate. Left: `User.CreatedAt`
+(BaseEntity non-nullable `Instant` on 202 tables). **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

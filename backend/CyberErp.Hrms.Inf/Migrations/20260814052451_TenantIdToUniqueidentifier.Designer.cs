@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814052451_TenantIdToUniqueidentifier")]
+    partial class TenantIdToUniqueidentifier
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -6427,9 +6430,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2(7)");
@@ -12753,9 +12755,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<string>("TenantId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Theme")
                         .IsRequired()
