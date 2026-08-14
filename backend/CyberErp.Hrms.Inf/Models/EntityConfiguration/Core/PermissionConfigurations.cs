@@ -45,11 +45,20 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasKey(s => s.Id);
 
-            builder.Property(s => s.Name).IsRequired().HasMaxLength(200);
+            builder.Property(s => s.Name).IsRequired().HasMaxLength(100);
             builder.Property(s => s.Code).IsRequired().HasMaxLength(50);
             builder.Property(s => s.SortOrder).HasDefaultValue(0);
             // Where the subsystem's app lives — the Home portal's launcher tiles deep-link here.
             builder.Property(s => s.Url).HasMaxLength(400);
+
+            // SRMS platform alignment (2026-08-14, logic.md §12.13). The six columns SRMS carries
+            // that CERP lacked; defaults keep existing rows and new inserts valid without a value.
+            builder.Property(s => s.Abbreviation).HasMaxLength(50);
+            builder.Property(s => s.Icon).HasMaxLength(100);
+            builder.Property(s => s.Description).IsRequired().HasMaxLength(500).HasDefaultValue(string.Empty);
+            builder.Property(s => s.DisplayOrder).IsRequired().HasDefaultValue(0);
+            builder.Property(s => s.IsActive).IsRequired().HasDefaultValue(true);
+            builder.Property(s => s.LandingPath).IsRequired().HasMaxLength(250).HasDefaultValue(string.Empty);
 
             builder.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
         }

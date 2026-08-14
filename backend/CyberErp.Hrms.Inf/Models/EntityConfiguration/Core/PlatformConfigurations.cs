@@ -21,40 +21,40 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("Organization", "Core");
             builder.HasKey(o => o.Id);
 
-            builder.Property(o => o.Code).IsRequired().HasMaxLength(50);
-            builder.Property(o => o.LegalName).IsRequired().HasMaxLength(300);
-            builder.Property(o => o.DisplayName).HasMaxLength(300);
+            builder.Property(o => o.Code).IsRequired().HasMaxLength(80);
+            builder.Property(o => o.LegalName).IsRequired().HasMaxLength(200);
+            builder.Property(o => o.DisplayName).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
 
             builder.Property(o => o.Address).HasMaxLength(500);
-            builder.Property(o => o.PostalAddress).HasMaxLength(300);
-            builder.Property(o => o.PostalCode).HasMaxLength(50);
-            builder.Property(o => o.PhoneNumber).HasMaxLength(100);
+            builder.Property(o => o.PostalAddress).HasMaxLength(500);
+            builder.Property(o => o.PostalCode).HasMaxLength(30);
+            builder.Property(o => o.PhoneNumber).HasMaxLength(50);
             builder.Property(o => o.Email).HasMaxLength(200);
             builder.Property(o => o.Website).HasMaxLength(300);
-            builder.Property(o => o.City).HasMaxLength(150);
-            builder.Property(o => o.Region).HasMaxLength(150);
-            builder.Property(o => o.Country).HasMaxLength(150);
+            builder.Property(o => o.City).HasMaxLength(100);
+            builder.Property(o => o.Region).HasMaxLength(100);
+            builder.Property(o => o.Country).HasMaxLength(100);
 
-            builder.Property(o => o.PrimaryContactName).HasMaxLength(200);
-            builder.Property(o => o.PrimaryContactTitle).HasMaxLength(150);
+            builder.Property(o => o.PrimaryContactName).HasMaxLength(150);
+            builder.Property(o => o.PrimaryContactTitle).HasMaxLength(100);
             builder.Property(o => o.PrimaryContactEmail).HasMaxLength(200);
-            builder.Property(o => o.PrimaryContactPhone).HasMaxLength(100);
+            builder.Property(o => o.PrimaryContactPhone).HasMaxLength(50);
 
             builder.Property(o => o.RegistrationNumber).HasMaxLength(100);
             builder.Property(o => o.TaxNumber).HasMaxLength(100);
-            builder.Property(o => o.TINNumber).HasMaxLength(100);
+            builder.Property(o => o.TINNumber).HasMaxLength(50);
             builder.Property(o => o.RegulatoryIdentifiers).HasMaxLength(1000);
             builder.Property(o => o.Industry).HasMaxLength(150);
             builder.Property(o => o.OrganizationType).HasMaxLength(100);
 
             // Fixed width in the source schema; ISO 4217 is always three characters.
-            builder.Property(o => o.Currency).HasColumnType("nchar(3)");
-            builder.Property(o => o.Timezone).HasMaxLength(100);
-            builder.Property(o => o.Locale).HasMaxLength(50);
-            builder.Property(o => o.DefaultLanguage).HasMaxLength(50);
-            builder.Property(o => o.DateFormat).HasMaxLength(50);
+            builder.Property(o => o.Currency).IsRequired().HasColumnType("nchar(3)").HasDefaultValue(string.Empty);
+            builder.Property(o => o.Timezone).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
+            builder.Property(o => o.Locale).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
+            builder.Property(o => o.DefaultLanguage).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
+            builder.Property(o => o.DateFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
 
-            builder.Property(o => o.LogoContentType).HasMaxLength(150);
+            builder.Property(o => o.LogoContentType).HasMaxLength(100);
             builder.Property(o => o.DataRetentionPolicy).HasMaxLength(1000);
 
             // One organization per code — the code is how a deployment is identified.
@@ -165,6 +165,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(s => s.SmtpHost).IsRequired().HasMaxLength(255);
             builder.Property(s => s.SmtpUser).IsRequired().HasMaxLength(255);
             builder.Property(s => s.BackupFrequency).IsRequired().HasMaxLength(20);
+
+            // SRMS alignment (2026-08-14): UpdatedAt is NOT NULL here, unlike everywhere else.
+            // BaseEntity leaves it nullable in the CLR, which is right — a row that has never been
+            // updated has no update time — so the column is required at the database level only,
+            // and the migration seeds existing rows from CreatedAt.
+            builder.Property(s => s.UpdatedAt).IsRequired();
         }
     }
 
@@ -176,11 +182,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(p => p.Id);
 
             builder.Property(p => p.Language).IsRequired().HasMaxLength(10);
-            builder.Property(p => p.TimeZone).HasMaxLength(100);
-            builder.Property(p => p.DateFormat).HasMaxLength(50);
-            builder.Property(p => p.NumberFormat).HasMaxLength(50);
-            builder.Property(p => p.LandingPage).HasMaxLength(200);
-            builder.Property(p => p.Theme).HasMaxLength(50);
+            // SRMS alignment (2026-08-14): required and narrower. The table is empty, so the
+            // conversion costs nothing; defaults keep inserts working without a value.
+            builder.Property(p => p.TimeZone).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
+            builder.Property(p => p.DateFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
+            builder.Property(p => p.NumberFormat).IsRequired().HasMaxLength(30).HasDefaultValue(string.Empty);
+            builder.Property(p => p.LandingPage).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
+            builder.Property(p => p.Theme).IsRequired().HasMaxLength(20).HasDefaultValue(string.Empty);
 
             builder.HasOne<User>()
                 .WithMany()

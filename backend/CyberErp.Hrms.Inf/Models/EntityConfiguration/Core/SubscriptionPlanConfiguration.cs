@@ -10,6 +10,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.HasKey(p => p.Id);
 
+            // SRMS platform alignment (2026-08-14, logic.md §12.13).
+            builder.Property(p => p.Code)
+                .IsRequired()
+                .HasMaxLength(80)
+                .HasDefaultValue(string.Empty);
+
             builder.Property(p => p.Name)
                 .IsRequired()
                 .HasMaxLength(200);

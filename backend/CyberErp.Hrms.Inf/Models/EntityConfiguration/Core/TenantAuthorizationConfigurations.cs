@@ -20,9 +20,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantRole", "Core");
             builder.HasKey(r => r.Id);
 
-            builder.Property(r => r.Code).IsRequired().HasMaxLength(100);
-            builder.Property(r => r.Name).IsRequired().HasMaxLength(200);
-            builder.Property(r => r.Description).HasMaxLength(500);
+            builder.Property(r => r.Code).IsRequired().HasMaxLength(80);
+            builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
+            builder.Property(r => r.Description);   // nvarchar(max), as in SRMS
 
             builder.HasOne<Tenant>().WithMany()
                 .HasForeignKey(r => r.OwningTenantId).OnDelete(DeleteBehavior.Cascade);
@@ -43,7 +43,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(o => o.Id);
 
             builder.Property(o => o.Name).IsRequired().HasMaxLength(200);
-            builder.Property(o => o.Link).IsRequired().HasMaxLength(300);
+            builder.Property(o => o.Link).IsRequired().HasMaxLength(500);
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
             builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
 
@@ -103,7 +103,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantUserRole", "Core");
             builder.HasKey(r => r.Id);
 
-            builder.Property(r => r.AssignedBy).HasMaxLength(200);
+            builder.Property(r => r.AssignedBy);   // uniqueidentifier, as in SRMS
 
             builder.HasOne<TenantUser>().WithMany()
                 .HasForeignKey(r => r.TenantUserId).OnDelete(DeleteBehavior.Cascade);

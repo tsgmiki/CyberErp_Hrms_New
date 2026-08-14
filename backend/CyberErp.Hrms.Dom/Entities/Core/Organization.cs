@@ -20,7 +20,7 @@ public class Organization : BaseEntity, IAggregateRoot
 {
     public string Code { get; private set; } = string.Empty;
     public string LegalName { get; private set; } = string.Empty;
-    public string? DisplayName { get; private set; }
+    public string DisplayName { get; private set; } = string.Empty;
 
     // ---- Contact -----------------------------------------------------------
     public string? Address { get; private set; }
@@ -49,11 +49,11 @@ public class Organization : BaseEntity, IAggregateRoot
 
     // ---- Localisation ------------------------------------------------------
     /// <summary>ISO 4217, e.g. "ETB". Fixed width in the source schema (nchar).</summary>
-    public string? Currency { get; private set; }
-    public string? Timezone { get; private set; }
-    public string? Locale { get; private set; }
-    public string? DefaultLanguage { get; private set; }
-    public string? DateFormat { get; private set; }
+    public string Currency { get; private set; } = string.Empty;
+    public string Timezone { get; private set; } = string.Empty;
+    public string Locale { get; private set; } = string.Empty;
+    public string DefaultLanguage { get; private set; } = string.Empty;
+    public string DateFormat { get; private set; } = string.Empty;
     /// <summary>1–12. The fiscal year's opening month; 0/null means "not configured".</summary>
     public int FiscalYearStartMonth { get; private set; }
 
@@ -76,7 +76,7 @@ public class Organization : BaseEntity, IAggregateRoot
         {
             Code = code.Trim(),
             LegalName = legalName.Trim(),
-            DisplayName = string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim(),
+            DisplayName = displayName?.Trim() ?? string.Empty,
         };
     }
 
@@ -86,7 +86,7 @@ public class Organization : BaseEntity, IAggregateRoot
         if (string.IsNullOrWhiteSpace(legalName))
             throw new ArgumentException("Legal name is required.", nameof(legalName));
         LegalName = legalName.Trim();
-        DisplayName = displayName?.Trim();
+        DisplayName = displayName?.Trim() ?? string.Empty;
         RegistrationNumber = registrationNumber?.Trim();
         TaxNumber = taxNumber?.Trim();
         TINNumber = tinNumber?.Trim();
@@ -115,11 +115,11 @@ public class Organization : BaseEntity, IAggregateRoot
     {
         if (fiscalYearStartMonth is < 0 or > 12)
             throw new ArgumentException("Fiscal year start month must be between 1 and 12.", nameof(fiscalYearStartMonth));
-        Currency = currency?.Trim();
-        Timezone = timezone?.Trim();
-        Locale = locale?.Trim();
-        DefaultLanguage = defaultLanguage?.Trim();
-        DateFormat = dateFormat?.Trim();
+        Currency = currency?.Trim() ?? string.Empty;
+        Timezone = timezone?.Trim() ?? string.Empty;
+        Locale = locale?.Trim() ?? string.Empty;
+        DefaultLanguage = defaultLanguage?.Trim() ?? string.Empty;
+        DateFormat = dateFormat?.Trim() ?? string.Empty;
         FiscalYearStartMonth = fiscalYearStartMonth;
         base.Update();
     }
