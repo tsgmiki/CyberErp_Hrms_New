@@ -8,8 +8,14 @@ public class Module : BaseEntity
     /// <summary>FK to the subsystem master list (Core.Subsystem).</summary>
     public Guid SubsystemId { get; private set; }
     public string Name { get; private set; } = string.Empty;
-    public string? Icon { get; private set; }
-    public int SortOrder { get; private set; }
+    /// <summary>NOT NULL since the 2026-08-15 SRMS alignment — blank, never null.</summary>
+    public string Icon { get; private set; } = string.Empty;
+    /// <summary>Platform column (row-level filter expression) — SRMS has it; CERP seeds it empty.</summary>
+    public string Filter { get; private set; } = string.Empty;
+    /// <summary>Menu position. Named SortOrder before the 2026-08-15 SRMS alignment.</summary>
+    public int DisplayOrder { get; private set; }
+    /// <summary>False hides the whole group — a template-level kill switch, as on Operation.</summary>
+    public bool IsActive { get; private set; } = true;
     public Subsystem Subsystem { get; private set; } = null!;
 
     /*
@@ -60,8 +66,8 @@ public class Module : BaseEntity
         {
             SubsystemId = subsystemId,
             Name = name,
-            Icon = icon,
-            SortOrder = sortOrder
+            Icon = icon ?? string.Empty,
+            DisplayOrder = sortOrder
             // TenantId, CreatedBy will be set by Repository.AddAsync()
         };
     }
@@ -85,14 +91,15 @@ public class Module : BaseEntity
         if (icon != null)
             Icon = icon;
 
+
         if (sortOrder.HasValue)
-            SortOrder = sortOrder.Value;
+            DisplayOrder = sortOrder.Value;
 
         base.Update();
     }
     public void UpdateIcon(string? icon)
     {
-        Icon = icon;
+        Icon = icon ?? string.Empty;
         base.Update();
     }
 

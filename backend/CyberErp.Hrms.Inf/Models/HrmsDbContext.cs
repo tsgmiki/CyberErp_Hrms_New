@@ -61,6 +61,7 @@ public class HrmsDbContext : MultiTenantDbContext
 
     // ---- Tenant-scoped authorization (SRMS phase 2) ----
     public DbSet<TenantRole> TenantRole { get; set; }
+    public DbSet<TenantModule> TenantModule { get; set; }
     public DbSet<TenantOperation> TenantOperation { get; set; }
     public DbSet<TenantRolePermission> TenantRolePermission { get; set; }
     public DbSet<TenantUser> TenantUser { get; set; }
@@ -392,6 +393,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new SettingConfiguration());
         modelBuilder.ApplyConfiguration(new UserPreferenceConfiguration());
         modelBuilder.ApplyConfiguration(new TenantRoleConfiguration());
+        modelBuilder.ApplyConfiguration(new TenantModuleConfiguration());
         modelBuilder.ApplyConfiguration(new TenantOperationConfiguration());
         modelBuilder.ApplyConfiguration(new TenantRolePermissionConfiguration());
         modelBuilder.ApplyConfiguration(new TenantUserConfiguration());
