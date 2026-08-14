@@ -75,21 +75,23 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.Name).IsRequired().HasMaxLength(200);
             builder.Property(o => o.Link).IsRequired().HasMaxLength(500);
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
-            builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
+            builder.Property(o => o.Filter).IsRequired().HasMaxLength(500).HasDefaultValue(string.Empty);
             builder.Property(o => o.UpdatedAt).HasColumnType("datetime2(3)");
 
-            builder.HasOne<Operation>().WithMany()
-                .HasForeignKey(o => o.OperationId).OnDelete(DeleteBehavior.Restrict);
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: the tenant lives on the GROUP, and a
+            // screen's tenant is its module's. Nothing here can be filtered by tenant directly —
+            // see the warning in Repository.IsGlobalEntity.
+            builder.Ignore(o => o.TenantId);
 
             // ModuleId now points at the TENANT's group, not the global module, and is NOT NULL:
             // every row here is a screen since groups moved to TenantModule (2026-08-15).
             builder.HasOne<TenantModule>().WithMany()
                 .HasForeignKey(o => o.ModuleId).OnDelete(DeleteBehavior.NoAction);
 
-            // One instance per (tenant, source operation).
-            builder.HasIndex(o => new { o.TenantId, o.OperationId }).IsUnique();
+            // One copy per (module, link) — the natural key now that OperationId is gone.
+            builder.HasIndex(o => new { o.ModuleId, o.Link }).IsUnique();
             // The permission check resolves by LINK, so that lookup gets its own index.
-            builder.HasIndex(o => new { o.TenantId, o.Link });
+            builder.HasIndex(o => o.Link);
         }
     }
 

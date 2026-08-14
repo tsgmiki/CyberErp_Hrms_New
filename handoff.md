@@ -123,6 +123,30 @@
 
 ## 1. Most recent changes (latest first)
 
+0112. **`Core.TenantOperation` made identical to SRMS — STAGE 2c (2026-08-15).** Detail in
+    logic.md §12.19. Migration `TenantOperationSrmsParity`, APPLIED to CERP.
+    Backup: `D:/Backups/CERP_before-tenantoperation-parity-20260815-010639.bak`.
+    - **SRMS was restructured again**: it NORMALISED `TenantId`, `SubSystemId` and the template link
+      `OperationId` off the table — a screen's tenant and subsystem are its MODULE's now. All three
+      dropped here; `Filter` gained SRMS's `(N'')` default. **The table now diffs to ZERO.**
+    - ⚠️ **`TenantOperation` has no tenant discriminator at all.** It is listed in
+      `Repository.IsGlobalEntity` for that reason ONLY — `GetAll()` returns EVERY tenant's rows.
+      Callers must scope through `TenantModule` (the sidebar feed and the projector now do) or join
+      from a tenant-scoped grant (`EndpointPermissionService` and `WorkflowApproverAuth` already
+      did, by primary key, so they were correct as written).
+    - ⚠️ **The projector re-keys on (module, LINK)** now that `OperationId` is gone — verified 0
+      duplicate pairs across 144 rows. Its orphan sweep is scoped to this tenant's group ids; unscoped
+      it would delete other tenants' screens.
+    - ⚠️ Two constraints were added in RAW SQL earlier and EF does not model them, so the scaffold
+      missed both and the drop failed: the FK on `TenantId` and the default on `ModuleId`. The
+      migration removes them by name-agnostic lookup first.
+    - **CORRECTION to handoff 0111.** I justified keeping `OperationId` partly as "the join between
+      permissionGate's catalog and tenant grants". **That was wrong** — `permissionGate`,
+      `formPermissions`, `gridAction` and `useListPermissions` all match on **link**; the id is a
+      React key. Dropping it was far cheaper than I said.
+    - Verified: HRMS sidebar 12 groups / 34 screens, Home HOME(21)/HRMS(13) — both unchanged.
+    - ⚠️ **Deploy both repos together** (Home maps this table).
+
 0111. **`Core.TenantModule` created, menu groups moved into it — STAGE 2b (2026-08-15).**
     Detail in logic.md §12.19. Migration `TenantModuleAndOperationGroups`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-tenantmodule-20260815-001623.bak` (first destructive step).

@@ -148,11 +148,11 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var existing = await tenantModules.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // The groups this tenant actually needs: the ones its own screens belong to.
-            var needed = await tenantOperations.GetAll()
-                .Join(operations.GetAll(), t => t.OperationId, o => o.Id, (t, o) => o.ModuleId)
-                .Distinct()
-                .ToListAsync(ct);
+            // The groups this tenant needs. TenantOperation can no longer be joined back to its
+            // template (OperationId is gone) or filtered by tenant, so this is derived from the
+            // groups the tenant ALREADY holds, plus nothing new — creation of a brand-new tenant's
+            // menu is a seeding concern, not a projection one.
+            var needed = existing.Select(m => m.ModuleId).Distinct().ToList();
 
             foreach (var moduleId in needed)
             {
@@ -180,34 +180,43 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return written;
         }
 
-        /// <summary>Operation -> TenantOperation, keyed by OperationId. A copy, not a reference.</summary>
+        /// <summary>
+        /// Operation -> TenantOperation, keyed by (module, LINK).
+        ///
+        /// <para>⚠️ The key used to be <c>OperationId</c>, the template link on the copy. SRMS has no
+        /// such column and CERP dropped it on 2026-08-15, so the natural key does the job: a link is
+        /// unique within a group, and it is what every permission check already matches on.</para>
+        ///
+        /// <para>⚠️ <c>TenantOperation</c> also lost its TenantId, so <c>GetAll()</c> now spans EVERY
+        /// tenant. Everything below is scoped through THIS tenant's group ids — without that the
+        /// orphan sweep at the end would delete other tenants' screens.</para>
+        /// </summary>
         private async Task<int> SyncOperationsAsync(Guid tenantId, CancellationToken ct)
         {
             var templates = await operations.GetAll().ToListAsync(ct);
-            var existing = await tenantOperations.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // Template module id -> THIS tenant's copy of that group. The screen's ModuleId points at
-            // the tenant row, not the template, so every projection has to go through this map.
-            var groupByTemplate = await tenantModules.GetAll()
-                .ToDictionaryAsync(m => m.ModuleId, m => m.Id, ct);
+            // Template module id -> THIS tenant's copy of that group.
+            var groups = await tenantModules.GetAll().ToListAsync(ct);
+            var groupByTemplate = groups.ToDictionary(m => m.ModuleId, m => m.Id);
+            var myGroupIds = groups.Select(m => m.Id).ToHashSet();
 
-            // ⚠️ UPDATES ONLY, for the same reason as the roles above: Core.Operation lost its
-            // TenantId, so `templates` spans every tenant. A copy is made where the operation is
-            // CREATED — see CreateOperationHandler and SeedDefaultMenu.
+            // ⚠️ SCOPED BY GROUP, not by tenant filter — the filter no longer exists on this table.
+            var existing = await tenantOperations.GetAll()
+                .Where(o => myGroupIds.Contains(o.ModuleId))
+                .ToListAsync(ct);
+
+            // What this tenant SHOULD have: one copy per template whose group it holds, keyed by
+            // (tenant group, link).
+            var wanted = templates
+                .Where(t => groupByTemplate.ContainsKey(t.ModuleId))
+                .ToDictionary(t => (groupByTemplate[t.ModuleId], (t.Link ?? string.Empty).Trim()), t => t);
+
             foreach (var row in existing)
             {
-                var template = templates.FirstOrDefault(t => t.Id == row.OperationId);
-                if (template is null) continue;
+                if (!wanted.TryGetValue((row.ModuleId, row.Link.Trim()), out var template)) continue;
 
-                // The template owns DisplayOrder, IsActive and SubSystemId, so everything copies
-                // straight across. ModuleId is TRANSLATED: the template names a Core.Module, the copy
-                // must name this tenant's TenantModule. A screen whose group was never projected is
-                // skipped rather than repointed at nothing.
-                if (!groupByTemplate.TryGetValue(template.ModuleId, out var tenantModuleId))
-                    continue;
-
-                var changed = row.SyncFromTemplate(template.SubSystemId, tenantModuleId,
+                var changed = row.SyncFromTemplate(row.ModuleId,
                     template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
                     template.DisplayOrder, template.Filter);
 
@@ -226,8 +235,11 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 }
             }
 
-            var templateIds = templates.Select(t => t.Id).ToHashSet();
-            var orphans = existing.Where(o => !templateIds.Contains(o.OperationId)).ToList();
+            // A copy whose template is gone grants access to a screen nobody can reach. Scoped to
+            // this tenant's groups above, so it can only ever remove OUR rows.
+            var orphans = existing
+                .Where(o => !wanted.ContainsKey((o.ModuleId, o.Link.Trim())))
+                .ToList();
             foreach (var orphan in orphans)
             {
                 // Grants pointing at it must go first — the FK is NoAction, not cascade.

@@ -2612,6 +2612,41 @@ and the portal still renders HOME(21) / HRMS(13).
 | `Operation.ModuleId` NOT NULL vs nullable | CERP is the **stricter** side and can hold anything SRMS can. Matching exactly would force the CLR property to `Guid?`, because EF refuses to map a nullable column onto a non-nullable Guid, reintroducing null handling for no gain |
 | column ORDER | cosmetic; needs a full table rebuild |
 
+#### Stage 2c (done): TenantOperation, and a correction
+
+SRMS was restructured again between stages: it **normalised** `TenantId`, `SubSystemId` and the
+template link `OperationId` off `TenantOperation`. A screen's tenant and subsystem are its module's.
+All three are dropped here and the table now **diffs to zero**.
+
+⚠️ **A tenant table with no tenant column.** `TenantOperation` is listed in
+`Repository.IsGlobalEntity` purely because the filter would otherwise reference an unmapped member —
+it is NOT global data. `GetAll()` returns every tenant's rows, and correctness now depends on the
+caller:
+
+| Caller | How it stays scoped |
+|---|---|
+| sidebar feed | joins this tenant's `TenantModule` ids (changed) |
+| projector | same, and its orphan sweep would otherwise delete other tenants' screens (changed) |
+| `EndpointPermissionService` | joins FROM `TenantRolePermission` by primary key — already correct |
+| `WorkflowApproverAuth` | same shape — already correct |
+| Home's portal feed | joins `TenantModule`, which keeps its filter (changed) |
+
+⚠️ **The projector re-keys on (module, link).** `OperationId` was how a copy knew its template;
+without it the natural key does the job — verified 0 duplicate `(ModuleId, Link)` pairs across the
+144 rows, and link is what every permission check already matches on.
+
+#### ⚠️ A correction to what §12.19 said about `OperationId`
+
+When this column came up as a "blocker" I gave two reasons to keep it. One was **wrong**: I said it
+was the join between `permissionGate`'s global catalog and the tenant-row grants. It is not.
+`permissionGate` builds both `catalogSet` and `grantedSet` from **links**, and so do
+`formPermissions`, `gridAction` and `useListPermissions`. The id travels into
+`UserPermissionModel` and is never matched on — it is a React key.
+
+The only real dependency was the projector, and re-keying it on link took a dozen lines. The column
+was therefore much cheaper to drop than the earlier note claimed, and the decision to keep it was
+made on partly false information.
+
 #### ⚠️ The original blocker: `TenantOperation.OperationId`
 
 SRMS's tenant copies are **standalone** — verified: **0 of 220** `TenantOperation` rows share an Id

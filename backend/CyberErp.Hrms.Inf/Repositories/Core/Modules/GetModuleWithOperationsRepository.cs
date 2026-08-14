@@ -56,8 +56,11 @@ public class GetModuleWithOperationsRepository(
         // Only active rows: hiding a screen or a group for a tenant removes it from the menu.
         // Groups moved OUT of TenantOperation into TenantModule on 2026-08-15 (SRMS parity), so this
         // is two reads again rather than one self-referencing one.
+        // ⚠️ SCOPED BY GROUP. TenantOperation lost its TenantId on 2026-08-15, so an unscoped read
+        // here would pull every tenant's screens into memory before the join discarded them.
+        var groupIds = await tenantModuleRepository.GetAll().Select(m => m.Id).ToListAsync(ct);
         var operations = await tenantOperationRepository.GetAll()
-            .Where(o => o.IsActive)
+            .Where(o => o.IsActive && groupIds.Contains(o.ModuleId))
             .ToListAsync(ct);
 
         var groups = await tenantModuleRepository.GetAll()
@@ -90,7 +93,12 @@ public class GetModuleWithOperationsRepository(
                         var permission = grants.FirstOrDefault(p => p.TenantOperationId == op.Id);
                         return new OperationRecord
                         {
-                            Id = op.OperationId,           // the template id the UI already works with
+                            // The TENANT row's own id. It used to report the template id via
+                            // OperationId, which SRMS has no column for and CERP dropped on
+                            // 2026-08-15. Nothing joins on it: every permission consumer in both
+                            // SPAs matches on LINK (permissionGate, formPermissions, gridAction,
+                            // useListPermissions), so this is a React key and nothing more.
+                            Id = op.Id,
                             Name = op.Name,
                             Link = op.Link,
                             Icon = op.Icon,

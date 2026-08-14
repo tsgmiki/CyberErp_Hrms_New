@@ -567,7 +567,17 @@ hold its group), and `SyncOperationsAsync` now **translates** template ModuleId 
 ⚠️ **HRMS + Home must deploy TOGETHER** (Home reads TenantOperation.ModuleId directly).
 ⚠️ Migration data steps must run BETWEEN CreateTable and the NOT NULL alter — the EF scaffold orders
 them wrong — and end with a `THROW` guard, else a surviving orphan becomes an empty-Guid FK silently.
-**3 deliberate differences remain**: the 2 template links (`TenantOperation.OperationId`,
+**STAGE 2c DONE 2026-08-15** (handoff 0112): SRMS restructured AGAIN — it normalised `TenantId`,
+`SubSystemId` AND `OperationId` off `TenantOperation` (a screen's tenant/subsystem are its MODULE's);
+all three dropped ⇒ **TenantOperation diffs to ZERO**. ⚠️ **A TENANT TABLE WITH NO TENANT COLUMN** —
+it is in `IsGlobalEntity` for that reason only; `GetAll()` spans ALL tenants, so callers must scope
+via `TenantModule` (sidebar + projector, changed) or join from a tenant-scoped grant by PK
+(EndpointPermissionService, WorkflowApproverAuth — already correct). Projector re-keys on
+**(module, LINK)**; orphan sweep unscoped would delete OTHER tenants' screens. ⚠️ Raw-SQL FK on
+TenantId + default on ModuleId are invisible to EF scaffolding and block DROP COLUMN — remove by
+name-agnostic lookup. ⚠️ **CORRECTION:** I claimed OperationId was the join between permissionGate's
+catalog and tenant grants — **FALSE**; every frontend permission consumer matches on **link**, the id
+is a React key. Dropping it was cheap. **Older differences remain**: the 2 template links (`TenantOperation.OperationId`,
 `TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
 needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
