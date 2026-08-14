@@ -70,6 +70,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("OrganizationSubscription", "Core");
             builder.HasKey(s => s.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none, and this is PLATFORM data, not
+            // tenant data: a plan and its modules belong to the product, not to one customer. The
+            // table is empty, so nothing was lost. Added to Repository.IsGlobalEntity in the same
+            // change, WITHOUT which every read fails on the now-unmapped filter member.
+            builder.Ignore(s => s.TenantId);
+
+
             builder.Property(s => s.Status).IsRequired().HasMaxLength(30);
             builder.Property(s => s.Currency).IsRequired().HasColumnType("nchar(3)");
 
@@ -93,6 +100,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("SubscriptionPlanModule", "Core");
             builder.HasKey(m => m.Id);
+
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none, and this is PLATFORM data, not
+            // tenant data: a plan and its modules belong to the product, not to one customer. The
+            // table is empty, so nothing was lost. Added to Repository.IsGlobalEntity in the same
+            // change, WITHOUT which every read fails on the now-unmapped filter member.
+            builder.Ignore(m => m.TenantId);
+
 
             builder.HasOne<SubscriptionPlan>()
                 .WithMany()
@@ -160,6 +174,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     {
         public void Configure(EntityTypeBuilder<Setting> builder)
         {
+            // SRMS keeps this at datetime2(3); the convention gives non-nullable stamps (3) but
+            // Setting.UpdatedAt is non-nullable AND was (7) from an older explicit mapping.
+            builder.Property(x => x.UpdatedAt).HasColumnType("datetime2(3)");
+
             builder.ToTable("Setting", "Core");
             builder.HasKey(s => s.Id);
 

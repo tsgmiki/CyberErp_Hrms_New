@@ -2752,6 +2752,31 @@ discover it at all.
 SQL. They were aligned because the requirement is an identical catalog, not because behaviour
 depended on them — worth knowing before spending effort defending them.
 
+#### `Core.Tenant` and the safe platform drops (done) — 23 → 18
+
+`Core.Tenant`'s only difference was a `TenantId` column, and it was always meaningless: **the row IS
+the tenant.** `Core.Tenant` has been in `IsGlobalEntity` since the beginning, so nothing ever stamped
+or filtered it, and all three rows held the empty Guid. Gone.
+
+Three more went with it — `SubscriptionPlan`, `SubscriptionPlanModule` and `OrganizationSubscription`
+are **platform data, not tenant data** (a plan belongs to the product, not to a customer) and all
+three are **empty**, so there was nothing to lose. ⚠️ The latter two had to join `IsGlobalEntity` in
+the *same* change, or every read of them would have failed with the 409 "could not be translated"
+that cost a debugging round on `Module`.
+
+#### ⚠️ Two "extras" that are not extras
+
+Not everything CERP has and SRMS lacks is surplus. Two were deliberately left:
+
+- **`TenantSubscriptionAddOn.SubscribedTenantId`** — a real foreign key to `Core.Tenant`, recording
+  which tenant holds the add-on. The table is empty, so dropping it was *safe*; it would still have
+  been wrong. SRMS lacking it is a gap there.
+- **`Organization.TenantId`** — unlike `Tenant`'s, its single row holds a real value. Dropping it
+  discards data, which is a decision rather than a cleanup.
+
+The distinction that matters: a column is only surplus when it is both absent upstream **and**
+carrying nothing here.
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

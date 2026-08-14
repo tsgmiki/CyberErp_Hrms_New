@@ -123,6 +123,27 @@
 
 ## 1. Most recent changes (latest first)
 
+0116. **`Core.Tenant` matched + the safe platform drops — 23 → 18 (2026-08-15).** Detail in
+    logic.md §12.20. Migrations `TenantDropTenantIdDiscriminator` +
+    `PlatformTablesDropTenantIdAndSettingPrecision`, APPLIED.
+    - **`Core.Tenant`: dropped `TenantId`** — its only difference. A tenant row carrying a tenant
+      DISCRIMINATOR was always meaningless: the row IS the tenant. `Core.Tenant` has been in
+      `IsGlobalEntity` from the start so nothing ever stamped or filtered it, and **all 3 rows held
+      the empty Guid**. `Core.Tenant` now diffs to ZERO.
+    - **Three empty platform tables** lost theirs too — `SubscriptionPlan`, `SubscriptionPlanModule`,
+      `OrganizationSubscription`, all **0 rows**, all platform-level rather than tenant data. Added
+      the latter two to `IsGlobalEntity` **in the same change** — the 409 "could not be translated"
+      trap from handoff 0110.
+    - `Setting.UpdatedAt` datetime2(7)→(3).
+    - ⚠️ **NOT dropped, deliberately:** `TenantSubscriptionAddOn.SubscribedTenantId`. Despite the
+      table being empty, it is a **real FK to Core.Tenant** recording which tenant holds the add-on.
+      SRMS lacking it is a gap there, not an extra here — dropping it would delete modelling to match
+      a less complete schema.
+    - ⚠️ **`Organization.TenantId` left alone too** — unlike Tenant's, its single row holds a REAL
+      value. Dropping it would discard data, so it needs a decision rather than a silent drop.
+    - Verified: sidebar 12 groups / 34 screens, employee/subsystem reads 200, **no translation
+      errors** (the IsGlobalEntity additions took).
+
 0115. **The 28 default constraints aligned — 50 → 23 (2026-08-15).** Detail in logic.md §12.20.
     Migrations `SharedTableDefaultConstraintParity` + `SharedDefaultsFinalThree`, APPLIED.
     - Four kinds: 8 CERP-only defaults REMOVED (Organization ×5, Role ×3), 9 SRMS defaults ADDED

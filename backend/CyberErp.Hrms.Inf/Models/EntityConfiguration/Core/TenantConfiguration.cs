@@ -10,6 +10,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.HasKey(t => t.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15). A tenant row carrying a tenant DISCRIMINATOR was
+            // always meaningless — the row IS the tenant, and Core.Tenant has been in
+            // Repository.IsGlobalEntity from the start, so nothing ever stamped or filtered it. All
+            // three rows held the empty Guid. SRMS has no such column.
+            builder.Ignore(t => t.TenantId);
+
             builder.Property(t => t.Name)
                 .IsRequired()
                 .HasMaxLength(200);
