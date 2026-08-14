@@ -24,9 +24,26 @@ namespace CyberErp.Hrms.Inf.Common
     {
         /// <summary>Spread retries out: 1 min, 5 min, 15 min, 1 h, 2 h — then the job parks as Failed
         /// (visible on the /hangfire dashboard) instead of hammering a dead relay.</summary>
+        /// <summary>
+        /// ⚠️ KEPT so jobs enqueued before the relay settings were added still deserialize. Hangfire
+        /// resolves a job by its method signature, so removing this would strand every message
+        /// already in the queue at deploy time. It sends on configuration alone, exactly as before.
+        /// </summary>
         [AutomaticRetry(Attempts = 5, DelaysInSeconds = [60, 300, 900, 3600, 7200])]
         [DisplayName("E-mail: {1} → {0}")]
-        public async Task SendAsync(string to, string subject, string body, List<EmailAttachment>? attachments)
+        public Task SendAsync(string to, string subject, string body, List<EmailAttachment>? attachments) =>
+            SendAsync(to, subject, body, attachments, null);
+
+        /// <summary>
+        /// <paramref name="relay"/> is the tenant's stored Host/Port/User/TLS, resolved in-request by
+        /// <see cref="QueuedEmailService"/> — this job cannot read Core.Setting itself, having no
+        /// tenant context. It carries NO password: Hangfire persists these arguments, and the
+        /// credential is read from configuration inside the send.
+        /// </summary>
+        [AutomaticRetry(Attempts = 5, DelaysInSeconds = [60, 300, 900, 3600, 7200])]
+        [DisplayName("E-mail: {1} → {0}")]
+        public async Task SendAsync(string to, string subject, string body,
+            List<EmailAttachment>? attachments, SmtpSettings? relay)
         {
             // Config may have changed between enqueue and execution — a disabled mailer is a
             // deliberate no-op, not a failure to retry.
@@ -36,7 +53,7 @@ namespace CyberErp.Hrms.Inf.Common
                 return;
             }
 
-            var sent = await smtp.SendAsync(to, subject, body, attachments);
+            var sent = await smtp.SendAsync(to, subject, body, attachments, relay);
             if (!sent)
                 throw new InvalidOperationException(
                     $"SMTP send failed for '{subject}' → {to} — Hangfire will retry per the backoff schedule.");

@@ -18,8 +18,22 @@ namespace CyberErp.Hrms.Inf.Common
     /// </summary>
     public class SmtpEmailService(IConfiguration configuration, ILogger<SmtpEmailService> logger) : IEmailService
     {
+        public Task<bool> SendAsync(string to, string subject, string body,
+            IReadOnlyList<EmailAttachment>? attachments = null) =>
+            SendAsync(to, subject, body, attachments, null);
+
+        /// <summary>
+        /// <paramref name="relay"/> carries the tenant's stored Host/Port/User/TLS, resolved
+        /// IN-REQUEST (Core.Setting is tenant-scoped and this may run in a background job, which has
+        /// no tenant). Null means "configuration only", which is also what an older queued job
+        /// deserializes to.
+        ///
+        /// <para>⚠️ The PASSWORD is never carried in <paramref name="relay"/> — it is read from
+        /// configuration right here, keyed to whichever user name won. Hangfire persists job
+        /// arguments, so a password on that path would be written to disk in clear text.</para>
+        /// </summary>
         public async Task<bool> SendAsync(string to, string subject, string body,
-            IReadOnlyList<EmailAttachment>? attachments = null)
+            IReadOnlyList<EmailAttachment>? attachments, SmtpSettings? relay)
         {
             try
             {
@@ -38,7 +52,8 @@ namespace CyberErp.Hrms.Inf.Common
 
                 var configuredFrom = section["FromAddress"];
                 var fromName = section["FromName"] ?? "CyberErp HRMS";
-                var userName = section["UserName"];
+                // The tenant's stored relay wins over configuration; see the overload's remarks.
+                var userName = relay?.UserName ?? section["UserName"];
 
                 // Authenticated relays (Gmail, Microsoft 365, …) reject a From that is not the
                 // authenticated mailbox or a verified alias — the message silently fails to send.
@@ -77,18 +92,32 @@ namespace CyberErp.Hrms.Inf.Common
                 }
                 else
                 {
-                    var host = section["Host"];
+                    var host = relay?.Host ?? section["Host"];
                     if (string.IsNullOrWhiteSpace(host))
                     {
-                        logger.LogWarning("Email enabled but Email:Host is not configured — skipped '{Subject}'", subject);
+                        logger.LogWarning(
+                            "Email enabled but no SMTP host is configured (Core.Setting.SmtpHost or Email:Host) — skipped '{Subject}'",
+                            subject);
                         return false;
                     }
                     client.Host = host;
-                    client.Port = section.GetValue("Port", 587);
-                    client.EnableSsl = section.GetValue("EnableSsl", true);
+                    client.Port = relay?.Port > 0 ? relay.Port : section.GetValue("Port", 587);
+                    client.EnableSsl = relay?.UseTls ?? section.GetValue("EnableSsl", true);
                     client.Timeout = 15000;
-                    if (!string.IsNullOrEmpty(section["UserName"]))
-                        client.Credentials = new NetworkCredential(section["UserName"], section["Password"]);
+
+                    // ⚠️ The password comes from CONFIGURATION only, never from the database and never
+                    // from the job payload. Core.Setting has no password column by design, and
+                    // Hangfire persists job arguments — a credential on either path would end up
+                    // stored in clear text.
+                    if (!string.IsNullOrEmpty(userName))
+                    {
+                        var password = section["Password"];
+                        if (string.IsNullOrEmpty(password))
+                            logger.LogWarning(
+                                "SMTP user '{User}' is set but Email:Password is empty — the relay will almost certainly reject '{Subject}'",
+                                userName, subject);
+                        client.Credentials = new NetworkCredential(userName, password);
+                    }
                 }
 
                 await client.SendMailAsync(message);

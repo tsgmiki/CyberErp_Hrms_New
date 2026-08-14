@@ -123,6 +123,38 @@
 
 ## 1. Most recent changes (latest first)
 
+0102. **SMTP settings: Core.Setting is now the source of truth (2026-08-13).** Detail in
+    logic.md §12.12. No migration — code plus one data correction.
+    - `Core.Setting` has held SmtpHost/Port/User/UseTls all along and **nothing read or wrote them**:
+      no handler, no controller, no screen. `SmtpEmailService` went straight to configuration, so the
+      stored values were inert.
+    - ⚠️ **Resolved IN-REQUEST, never in the job.** `EmailDispatchJob` documents that it touches no
+      tenant-scoped data because background jobs have no tenant context. `Core.Setting` IS
+      tenant-scoped, so resolving inside the job would silently fall back to configuration — the very
+      bug being fixed, where nobody would look. `QueuedEmailService` resolves and passes it in.
+    - ⚠️ **The password never travels that path — Hangfire PERSISTS job arguments.** `SmtpSettings`
+      carries Host/Port/User/TLS only; the credential is read from configuration inside the send.
+      That is also why the table has no password column and `IEmailConfiguration` exposes only
+      `HasPassword`. The old 4-arg `SendAsync` is KEPT so already-queued jobs still deserialize.
+    - ⚠️ **Setting was invisible, exactly like Organization** — single row with an empty `TenantId`,
+      so the filter excluded it. It had to join `IsGlobalEntity` (deployment-level: relay, backup,
+      password/session policy).
+    - ⚠️ **The seeded row would have redirected live mail.** Once visible it won, and it held
+      `smtp.cyber.com` / `noreply@cybererp.com` — unverified seed data overriding a WORKING relay.
+      `scripts/clear-seeded-smtp-placeholders.sql` blanks just those two fields. Fallback is **field
+      by field**, so a host set alone still inherits the configured port.
+    - **Added, because settings you cannot edit are not settings:** `GET`/`PUT /api/v1/Setting` and
+      `POST /api/v1/Setting/test-email`. The test reports which host/user were ACTUALLY resolved and
+      refuses up front when mail is disabled, no host is set, or a user has no password.
+    - Gated on `setting`; a "Settings" entry was added to `SeedDefaultMenu`'s System group. **No role
+      holds that link**, so the endpoints are unreachable until one is granted deliberately.
+    - ⚠️ **Mail DOES work here** — `Email:Password` is empty in `appsettings.json` but supplied by
+      user-secrets locally (`hasSmtpPassword: true`). The earlier note that mail cannot send was true
+      of appsettings alone. A test send through the endpoint relayed successfully via Gmail.
+    - Verified: stored value wins → cleared → configuration fallback restored, with `autoBackup` still
+      coming from the DB (field-by-field confirmed); 403 without the link, 200 with it; sidebar 34
+      links, 598 grants, 175 operations.
+
 0101. **CompanyProfile consolidated into Organization (2026-08-13).** Detail in logic.md §12.11.
     Migration `ConsolidateCompanyProfileIntoOrganization`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-companyprofile-consolidation-*.bak`.

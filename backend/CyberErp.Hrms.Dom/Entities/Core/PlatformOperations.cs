@@ -117,7 +117,14 @@ public class Setting : BaseEntity, IAggregateRoot
     public bool EnforceTwoFactorForAll { get; private set; }
     public bool EnforceTwoFactorForAdmins { get; private set; }
 
-    // ---- Mail (see the class remarks — NOT yet the source of truth) --------
+    // ---- Mail --------------------------------------------------------------
+    // These ARE the source of truth as of 2026-08-13 (logic.md §12.12): ISmtpSettingsResolver reads
+    // them in-request and the resolved values travel into the Hangfire dispatch job. Anything left
+    // blank falls back to the Email configuration section, field by field.
+    //
+    // ⚠️ There is no password column, deliberately. The credential stays in configuration
+    // (user-secrets locally, environment variables elsewhere) — it must never be written here,
+    // because these values are serialized into Hangfire's job arguments, which are persisted.
     public string SmtpHost { get; private set; } = string.Empty;
     public int SmtpPort { get; private set; }
     public string SmtpUser { get; private set; } = string.Empty;

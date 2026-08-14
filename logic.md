@@ -2087,6 +2087,76 @@ logo        GET DocumentTemplate/logo/info -> {"hasLogo":true,"contentType":"ima
 live        login 200 | sidebar 34 links | 598 grants, baseline restored
 ```
 
+### 12.12 SMTP settings: Core.Setting is now the source of truth
+
+No migration — this is a code change plus one data correction.
+
+#### What was actually wrong
+
+`Core.Setting` has held `SmtpHost` / `SmtpPort` / `SmtpUser` / `SmtpUseTls` all along, and **nothing
+in the application read or wrote them**. There was no handler, no controller and no screen; the row
+that exists was seeded. `SmtpEmailService` went straight to the `Email` configuration section, so the
+stored values were inert.
+
+#### ⚠️ Why the settings are resolved IN-REQUEST
+
+`EmailDispatchJob` says it plainly:
+
+> the job itself touches NO tenant-scoped data … background jobs have no request, hence no Finbuckle
+> tenant context
+
+`Core.Setting` is tenant-scoped. Resolving it *inside* the job would have quietly returned nothing
+and fallen back to configuration — the very bug being fixed, in the one place nobody would look. So
+`QueuedEmailService` resolves the relay in-request, exactly as it already materialises the payload,
+and passes it into the job.
+
+#### ⚠️ The password never travels that path
+
+**Hangfire persists job arguments.** A password in the job payload would be written to disk in clear
+text and kept for the life of the job history. So `SmtpSettings` carries Host/Port/User/TLS only, and
+the credential is read from configuration *inside* the send. That is also why `Core.Setting` has no
+password column, and why `IEmailConfiguration` exposes `HasPassword` but never the value.
+
+The old 4-argument `EmailDispatchJob.SendAsync` is **kept**: Hangfire resolves a job by method
+signature, so removing it would strand every message already queued at deploy time.
+
+#### ⚠️ Setting was invisible, exactly like Organization
+
+Its single row carries an **empty `TenantId`**, so the repository's filter excluded it and the first
+working build still returned the configured host. `Setting` had to join `IsGlobalEntity` — it holds
+deployment-level operations (relay, backup schedule, password and session policy) as one row.
+
+#### ⚠️ The seeded row would have redirected live mail
+
+Once visible, the stored values won — and they were `smtp.cyber.com` / `noreply@cybererp.com`, seed
+data nobody had verified, overriding a **working** relay. `scripts/clear-seeded-smtp-placeholders.sql`
+blanks just those two fields (only where they still hold the seeded values), so configuration remains
+the fallback until an administrator sets a relay deliberately. Fallback is **field by field**: a
+tenant that sets only a host still inherits the configured port.
+
+#### What was added to make this real
+
+A settings API, because settings that cannot be edited are not settings: `GET`/`PUT /api/v1/Setting`
+and `POST /api/v1/Setting/test-email`. The test endpoint reports which host and user were *actually*
+resolved — the stored value and the configured fallback are easy to confuse — and refuses up front
+when mail is disabled, no host is configured, or a user is set with no password, rather than letting
+the send fail invisibly in a background job.
+
+Gated on `setting`, and a "Settings" entry was added to `SeedDefaultMenu`'s System group. No role
+holds that link yet, so the endpoints are unreachable until one is granted deliberately.
+
+#### Verification
+
+```
+before   GET /Setting -> smtp.gmail.com   (config; stored value ignored)
+after    GET /Setting -> smtp.cyber.com   (stored value now wins)
+cleared  GET /Setting -> smtp.gmail.com   (config fallback restored)
+                         autoBackup still true from the DB -> field-by-field confirmed
+
+gate     /Setting 403 without the link | 200 with it
+live     sidebar 34 links | 598 grants | 175 operations (the new Settings entry)
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and
