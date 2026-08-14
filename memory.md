@@ -577,7 +577,15 @@ via `TenantModule` (sidebar + projector, changed) or join from a tenant-scoped g
 TenantId + default on ModuleId are invisible to EF scaffolding and block DROP COLUMN — remove by
 name-agnostic lookup. ⚠️ **CORRECTION:** I claimed OperationId was the join between permissionGate's
 catalog and tenant grants — **FALSE**; every frontend permission consumer matches on **link**, the id
-is a React key. Dropping it was cheap. **Older differences remain**: the 2 template links (`TenantOperation.OperationId`,
+is a React key. Dropping it was cheap. **STAGE 2d DONE 2026-08-15** (handoff 0113): ⚠️ my "0 differences" check had NOT compared DEFAULT
+CONSTRAINTS — adding them found 9 more incl. **SRMS had also dropped `Operation.SubSystemId`**.
+Dropped it + its misnamed cascading FK; `Operation.ModuleId` → nullable (`Guid?`); dropped the LAST
+template link `TenantModule.ModuleId` (projector now keys groups on **(SubSystemId, Name)**, verified
+unique); removed 6 stray EF defaults + respelled IsActive default to SRMS's `((1))`. ⚠️ **EF will not
+drop a default it never declared** — use name-agnostic raw SQL. **RESULT: 0 DIFFERENCES across all 4
+navigation tables** (name/type/size/nullability/default); only ordinal ORDER differs. ⚠️ **Home
+read-models drift SILENTLY** — its `Operation.SubSystemId` and `TenantModule.ModuleId` still compiled
+and 500'd at runtime with "Invalid column name"; only running the query finds it. **Older notes**: the 2 template links (`TenantOperation.OperationId`,
 `TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
 needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED

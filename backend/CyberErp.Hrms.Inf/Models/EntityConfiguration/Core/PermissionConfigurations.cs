@@ -27,10 +27,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // nvarchar(200) / nvarchar(100), all NOT NULL. The longest module name is 29 characters,
             // so narrowing Name and Icon from 200 loses nothing.
             builder.Property(m => m.Name).IsRequired().HasMaxLength(100);
-            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
-            builder.Property(m => m.Filter).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
-            builder.Property(m => m.DisplayOrder).HasDefaultValue(0);   // was SortOrder
-            builder.Property(m => m.IsActive).IsRequired().HasDefaultValue(true);
+            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100);
+            builder.Property(m => m.Filter).IsRequired().HasMaxLength(200);
+            builder.Property(m => m.DisplayOrder);   // was SortOrder — no DB default, as in SRMS
+            builder.Property(m => m.IsActive).IsRequired();
 
             // SRMS spells the column SubSystemId (capital S), as Core.Operation already does here.
             // Mapped rather than renamed so the C# property stays SubsystemId across the codebase.
@@ -117,21 +117,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.NoAction);
             builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-            // ⚠️ The subsystem FK is CASCADE and is called FK_Operation_Module_ModuleId — both
-            // copied from SRMS verbatim, per the "identical structure" requirement. The name is a
-            // MISNOMER there (a leftover from a rename; it constrains SubSystemId, not ModuleId) and
-            // the cascade means deleting a subsystem takes its whole menu with it, which CERP
-            // previously refused with Restrict. Kept identical deliberately — do not "fix" either
-            // without changing SRMS first, or the databases diverge again.
-            builder.HasOne<Subsystem>()
-                .WithMany()
-                .HasForeignKey(o => o.SubSystemId)
-                .HasConstraintName("FK_Operation_Module_ModuleId")
-                .OnDelete(DeleteBehavior.Cascade);
-
+            // ⚠️ SubSystemId is GONE (2026-08-15). SRMS normalised it onto Core.Module, so a screen's
+            // subsystem is its module's — read it through the Module navigation. Its foreign key went
+            // with it: that was the one confusingly named FK_Operation_Module_ModuleId, which
+            // constrained SubSystemId rather than ModuleId and cascaded. Both problems solved by the
+            // column no longer existing.
             builder.HasIndex(o => o.ModuleId);
-            builder.HasIndex(o => o.SubSystemId);
-            builder.HasIndex(o => new { o.SubSystemId, o.ModuleId, o.DisplayOrder });
+            builder.HasIndex(o => new { o.ModuleId, o.DisplayOrder });
         }
     }
 

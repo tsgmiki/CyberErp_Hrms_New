@@ -27,8 +27,10 @@ public class GetOperationByIdHandler(
                 Name = x.Name,
                 // The menu GROUP (Core.Module); empty on a legacy group row.
                 Module = x.Module != null ? x.Module.Name : string.Empty,
-                SubsystemId = x.SubSystemId,
-                SubSystem = subsystems.GetAll().Where(s => s.Id == x.SubSystemId)
+                // The subsystem is the MODULE's now — Operation.SubSystemId was dropped for
+                // SRMS parity on 2026-08-15.
+                SubsystemId = x.Module != null ? x.Module.SubsystemId : Guid.Empty,
+                SubSystem = subsystems.GetAll().Where(s => x.Module != null && s.Id == x.Module.SubsystemId)
                     .Select(s => s.Name).FirstOrDefault() ?? string.Empty,
                 Link = x.Link,
                 Filter = x.Filter,

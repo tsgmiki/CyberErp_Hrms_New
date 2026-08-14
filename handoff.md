@@ -123,6 +123,31 @@
 
 ## 1. Most recent changes (latest first)
 
+0113. **All four navigation tables now diff to ZERO — STAGE 2d (2026-08-15).** Detail in logic.md
+    §12.19. Migrations `OperationSubSystemIdAndDefaults` + `TenantModuleDropTemplateLink`, APPLIED.
+    - ⚠️ **My earlier "zero differences" check was incomplete** — it compared name/type/length/
+      nullability but NOT default constraints. Adding them surfaced 9 more, including a real one:
+      **SRMS had also dropped `Core.Operation.SubSystemId`** (same normalisation onto the module).
+    - Dropped `Operation.SubSystemId` and its FK (the misnamed `FK_Operation_Module_ModuleId`, which
+      constrained that column and cascaded — both problems gone with the column). The three readers
+      now take the subsystem from `Module`.
+    - `Operation.ModuleId` is nullable, matching SRMS: the CLR property became `Guid?`, which is what
+      I backed out of before. `Create` still rejects an empty Guid, so the app enforces what the
+      column permits.
+    - Dropped the **last template link**, `TenantModule.ModuleId`, now that `OperationId` has gone.
+      The projector keys groups on **(SubSystemId, Name)** — verified unique, 0 duplicates, all 24
+      rows resolve.
+    - Removed 6 leftover EF default constraints SRMS lacks, and respelled `Operation.IsActive`'s
+      default from `(CONVERT([bit],(1)))` to SRMS's `((1))`. EF will not drop defaults it never
+      declared, so these go via name-agnostic raw SQL.
+    - **RESULT: 0 differences across Module / Operation / TenantModule / TenantOperation** on column
+      name, type, size, nullability AND default. Only ordinal ORDER still differs (needs a rebuild).
+    - ⚠️ Home needed two follow-ups its build could not catch: its `Operation` entity still mapped
+      `SubSystemId` and its `TenantModule` still mapped `ModuleId`. Both compiled fine and failed at
+      runtime with **"Invalid column name"** — the portal feed 500'd. Mapped read-models drift
+      silently; only running the query finds it.
+    - Verified: HRMS 12 groups / 34 screens, Home HOME(21)/HRMS(13) — unchanged.
+
 0112. **`Core.TenantOperation` made identical to SRMS — STAGE 2c (2026-08-15).** Detail in
     logic.md §12.19. Migration `TenantOperationSrmsParity`, APPLIED to CERP.
     Backup: `D:/Backups/CERP_before-tenantoperation-parity-20260815-010639.bak`.

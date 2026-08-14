@@ -55,13 +55,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasOne<Subsystem>().WithMany()
                 .HasForeignKey(m => m.SubSystemId).OnDelete(DeleteBehavior.Restrict);
 
-            // ModuleId is the CERP-only template link (see the entity note). Restrict, so deleting a
-            // template module cannot silently orphan a tenant's group.
-            builder.HasOne<Module>().WithMany()
-                .HasForeignKey(m => m.ModuleId).OnDelete(DeleteBehavior.Restrict);
-
-            // One copy per (tenant, source module) — the same rule TenantOperation uses.
-            builder.HasIndex(m => new { m.TenantId, m.ModuleId }).IsUnique();
+            // No template link — SRMS keeps none. A copy is keyed to its template by
+            // (SubSystemId, Name), which is unique in both tables.
+            builder.HasIndex(m => new { m.TenantId, m.SubSystemId, m.Name }).IsUnique();
         }
     }
 

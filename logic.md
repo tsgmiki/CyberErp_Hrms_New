@@ -2635,6 +2635,34 @@ caller:
 without it the natural key does the job — verified 0 duplicate `(ModuleId, Link)` pairs across the
 144 rows, and link is what every permission check already matches on.
 
+#### Stage 2d (done): zero differences, and what the earlier check missed
+
+⚠️ **The Stage 2a "diff to zero" was measured on the wrong set.** It compared column name, type,
+length and nullability — but not DEFAULT CONSTRAINTS. Adding them surfaced nine more differences, one
+of them substantive: SRMS had also dropped `Core.Operation.SubSystemId`, the same normalisation it
+applied to the tenant tables.
+
+| Change | Note |
+|---|---|
+| `Operation.SubSystemId` dropped | its FK went too — the misnamed `FK_Operation_Module_ModuleId`, which constrained that column and cascaded. Both problems solved by the column not existing. The three readers take the subsystem from `Module` |
+| `Operation.ModuleId` → nullable | the CLR property is `Guid?` now. I backed out of this once because EF refuses to map a nullable column to a non-nullable Guid; with SubSystemId gone the surface was small enough to just do it |
+| `TenantModule.ModuleId` dropped | the last template link, now that `OperationId` has gone. The projector keys groups on **(SubSystemId, Name)** — verified unique, all 24 rows resolve |
+| 6 stray defaults removed | EF added them via `HasDefaultValue`; SRMS has none |
+| `Operation.IsActive` default respelled | `CONVERT([bit],(1))` → `((1))`. Same value, different catalog text |
+
+⚠️ **EF will not drop a default constraint it never declared**, so the leftovers need name-agnostic
+raw SQL — the same lesson as the raw-SQL FK that blocked Stage 2c.
+
+**Result: zero differences** across `Module`, `Operation`, `TenantModule` and `TenantOperation` on
+name, type, size, nullability and default. Only ordinal ORDER still differs, which needs a rebuild.
+
+#### ⚠️ Mapped read-models drift silently
+
+Home's build stayed green while two of its entities mapped columns that no longer existed
+(`Operation.SubSystemId`, `TenantModule.ModuleId`). Nothing catches that at compile time — the portal
+feed simply returned **500 "Invalid column name"** at runtime. When this repo drops a column, grep the
+Home entities and RUN the feed; a green build proves nothing.
+
 #### ⚠️ A correction to what §12.19 said about `OperationId`
 
 When this column came up as a "blocker" I gave two reasons to keep it. One was **wrong**: I said it

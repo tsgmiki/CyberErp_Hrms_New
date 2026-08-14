@@ -122,17 +122,13 @@ public class TenantRole : BaseEntity, IAggregateRoot
 /// now live here, which is why <c>TenantOperation.ModuleId</c> became NOT NULL and points at this
 /// table.</para>
 ///
-/// <para>⚠️ <see cref="ModuleId"/> is a CERP EXTRA — SRMS's tenant copies carry no link back to the
-/// template at all (0 of its 220 rows share an Id with one). It is kept for exactly the reason
-/// <see cref="TenantOperation.OperationId"/> is: the projector needs to know which template a copy
-/// came from, and the UI reports template ids as the stable identifier. Deliberate superset,
-/// recorded in the extras list.</para>
+/// <para>It carries no link back to <see cref="Module"/> — SRMS keeps none, and CERP matched it on
+/// 2026-08-15. The projector keys a copy to its template on <b>(SubSystemId, Name)</b>, which is
+/// unique: verified 0 duplicate pairs across both tables.</para>
 /// </summary>
 public class TenantModule : BaseEntity
 {
     public Guid SubSystemId { get; private set; }
-    /// <summary>The global <see cref="Module"/> this mirrors. CERP extra — see the note above.</summary>
-    public Guid ModuleId { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
     public string Icon { get; private set; } = string.Empty;
@@ -143,18 +139,15 @@ public class TenantModule : BaseEntity
 
     private TenantModule() : base() { }
 
-    public static TenantModule Create(Guid owningTenantId, Guid subSystemId, Guid moduleId,
+    public static TenantModule Create(Guid owningTenantId, Guid subSystemId,
         string name, string? icon, int displayOrder, bool isActive, string? filter = null)
     {
         if (owningTenantId == Guid.Empty)
             throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
-        if (moduleId == Guid.Empty)
-            throw new ArgumentException("Source module is required.", nameof(moduleId));
         return new TenantModule
         {
             TenantId = owningTenantId.ToString(),
             SubSystemId = subSystemId,
-            ModuleId = moduleId,
             Name = name?.Trim() ?? string.Empty,
             Icon = icon?.Trim() ?? string.Empty,
             DisplayOrder = displayOrder,

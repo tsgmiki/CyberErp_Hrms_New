@@ -4,6 +4,7 @@ using CyberErp.Hrms.Inf.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CyberErp.Hrms.Inf.Migrations
 {
     [DbContext(typeof(HrmsDbContext))]
-    partial class HrmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814222248_OperationSubSystemIdAndDefaults")]
+    partial class OperationSubSystemIdAndDefaults
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -11191,6 +11194,9 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<Guid>("ModuleId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -11215,9 +11221,11 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ModuleId");
+
                     b.HasIndex("SubSystemId");
 
-                    b.HasIndex("TenantId", "SubSystemId", "Name")
+                    b.HasIndex("TenantId", "ModuleId")
                         .IsUnique();
 
                     b.ToTable("TenantModule", "Core");
@@ -15175,6 +15183,12 @@ namespace CyberErp.Hrms.Inf.Migrations
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantModule", b =>
                 {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Module", null)
+                        .WithMany()
+                        .HasForeignKey("ModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Subsystem", null)
                         .WithMany()
                         .HasForeignKey("SubSystemId")

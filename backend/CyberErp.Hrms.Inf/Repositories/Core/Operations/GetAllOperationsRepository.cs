@@ -30,9 +30,9 @@ public class GetAllOperationsRepository(
         }
 
         // Cascading central-administration filters: Subsystem → parent group (both optional).
-        // SubSystemId is carried on the row itself now, so this no longer joins through Core.Module.
+        // Back through Core.Module: Operation.SubSystemId was dropped for SRMS parity (2026-08-15).
         if (request.SubsystemId.HasValue)
-            query = query.Where(x => x.SubSystemId == request.SubsystemId.Value);
+            query = query.Where(x => x.Module != null && x.Module.SubsystemId == request.SubsystemId.Value);
         if (request.ModuleId.HasValue)
             query = query.Where(x => x.ModuleId == request.ModuleId.Value);
 
@@ -58,8 +58,8 @@ public class GetAllOperationsRepository(
                 ModuleId = x.ModuleId,
                 Name = x.Name,
                 Module = x.Module != null ? x.Module.Name : string.Empty,
-                SubsystemId = x.SubSystemId,
-                SubSystem = _subsystems.GetAll().Where(s => s.Id == x.SubSystemId)
+                SubsystemId = x.Module != null ? x.Module.SubsystemId : Guid.Empty,
+                SubSystem = _subsystems.GetAll().Where(s => x.Module != null && s.Id == x.Module.SubsystemId)
                     .Select(s => s.Name).FirstOrDefault() ?? string.Empty,
                 Link = x.Link,
                 Filter = x.Filter,

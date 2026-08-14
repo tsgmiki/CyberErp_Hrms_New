@@ -74,9 +74,10 @@ public class GetModuleWithOperationsRepository(
             .OrderBy(m => m.DisplayOrder).ThenBy(m => m.Name)
             .Select(m => new GetModuleWithOperationResult
             {
-                // ⚠️ The TEMPLATE id, not the tenant row's — the wire contract both SPAs already
-                // work with. TenantModule.ModuleId is the CERP-only link back to Core.Module.
-                Id = m.ModuleId,
+                // The TENANT group's own id. It reported the template id until 2026-08-15, when the
+                // link column was dropped for SRMS parity. Nothing joins on it — both SPAs use it as
+                // a sidebar-group key and match permissions by LINK.
+                Id = m.Id,
                 Name = m.Name ?? string.Empty,
                 SubsystemId = m.SubSystemId,
                 SubSystem = subsystemNames.TryGetValue(m.SubSystemId, out var ssName) ? ssName : string.Empty,

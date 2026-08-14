@@ -148,26 +148,15 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var existing = await tenantModules.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // The groups this tenant needs. TenantOperation can no longer be joined back to its
-            // template (OperationId is gone) or filtered by tenant, so this is derived from the
-            // groups the tenant ALREADY holds, plus nothing new — creation of a brand-new tenant's
-            // menu is a seeding concern, not a projection one.
-            var needed = existing.Select(m => m.ModuleId).Distinct().ToList();
+            // Keyed on (subsystem, name): TenantModule carries no template link, because SRMS carries
+            // none. The pair is unique in both tables — verified 0 duplicates across all 24 rows.
+            var templateByKey = templates
+                .ToDictionary(m => (m.SubsystemId, (m.Name ?? string.Empty).Trim()), m => m);
 
-            foreach (var moduleId in needed)
+            foreach (var row in existing)
             {
-                var template = templates.FirstOrDefault(m => m.Id == moduleId);
-                if (template is null) continue;
-
-                var row = existing.FirstOrDefault(m => m.ModuleId == moduleId);
-                if (row is null)
-                {
-                    await tenantModules.AddAsync(TenantModule.Create(
-                        tenantId, template.SubsystemId, template.Id, template.Name, template.Icon,
-                        template.DisplayOrder, template.IsActive, template.Filter));
-                    written++;
+                if (!templateByKey.TryGetValue((row.SubSystemId, row.Name.Trim()), out var template))
                     continue;
-                }
 
                 if (row.SyncFromTemplate(template.SubsystemId, template.Name, template.Icon,
                         template.DisplayOrder, template.Filter, template.IsActive))
@@ -196,10 +185,13 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var templates = await operations.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // Template module id -> THIS tenant's copy of that group.
+            // Template module -> THIS tenant's copy of that group, keyed on (subsystem, name) since
+            // there is no template link column any more.
             var groups = await tenantModules.GetAll().ToListAsync(ct);
-            var groupByTemplate = groups.ToDictionary(m => m.ModuleId, m => m.Id);
+            var groupByTemplate = groups
+                .ToDictionary(m => (m.SubSystemId, m.Name.Trim()), m => m.Id);
             var myGroupIds = groups.Select(m => m.Id).ToHashSet();
+            var moduleById = await modules.GetAll().ToDictionaryAsync(m => m.Id, m => m, ct);
 
             // ⚠️ SCOPED BY GROUP, not by tenant filter — the filter no longer exists on this table.
             var existing = await tenantOperations.GetAll()
@@ -208,9 +200,15 @@ namespace CyberErp.Hrms.App.Common.Authorization
 
             // What this tenant SHOULD have: one copy per template whose group it holds, keyed by
             // (tenant group, link).
-            var wanted = templates
-                .Where(t => groupByTemplate.ContainsKey(t.ModuleId))
-                .ToDictionary(t => (groupByTemplate[t.ModuleId], (t.Link ?? string.Empty).Trim()), t => t);
+            // ModuleId is nullable on the template (SRMS leaves the column nullable), but no code
+            // path can produce a null and there are none in either database — skip defensively.
+            var wanted = new Dictionary<(Guid, string), Dom.Entities.Core.Operation>();
+            foreach (var t in templates)
+            {
+                if (!t.ModuleId.HasValue || !moduleById.TryGetValue(t.ModuleId.Value, out var mod)) continue;
+                if (!groupByTemplate.TryGetValue((mod.SubsystemId, mod.Name.Trim()), out var groupId)) continue;
+                wanted[(groupId, (t.Link ?? string.Empty).Trim())] = t;
+            }
 
             foreach (var row in existing)
             {
