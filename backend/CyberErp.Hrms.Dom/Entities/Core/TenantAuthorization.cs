@@ -115,6 +115,86 @@ public class TenantRole : BaseEntity, IAggregateRoot
 }
 
 /// <summary>
+/// A menu GROUP as it exists for one tenant — the tenant-scoped twin of <see cref="Module"/>, and
+/// the parent of <see cref="TenantOperation"/>. Added 2026-08-15 to match cybererp_srms.
+///
+/// <para>Before this, a group was a <see cref="TenantOperation"/> row with a null ModuleId. Groups
+/// now live here, which is why <c>TenantOperation.ModuleId</c> became NOT NULL and points at this
+/// table.</para>
+///
+/// <para>⚠️ <see cref="ModuleId"/> is a CERP EXTRA — SRMS's tenant copies carry no link back to the
+/// template at all (0 of its 220 rows share an Id with one). It is kept for exactly the reason
+/// <see cref="TenantOperation.OperationId"/> is: the projector needs to know which template a copy
+/// came from, and the UI reports template ids as the stable identifier. Deliberate superset,
+/// recorded in the extras list.</para>
+/// </summary>
+public class TenantModule : BaseEntity
+{
+    public Guid SubSystemId { get; private set; }
+    /// <summary>The global <see cref="Module"/> this mirrors. CERP extra — see the note above.</summary>
+    public Guid ModuleId { get; private set; }
+
+    public string Name { get; private set; } = string.Empty;
+    public string Icon { get; private set; } = string.Empty;
+    public int DisplayOrder { get; private set; }
+    public bool IsActive { get; private set; } = true;
+    /// <summary>Optional per-tenant row filter expression; empty when unused.</summary>
+    public string Filter { get; private set; } = string.Empty;
+
+    private TenantModule() : base() { }
+
+    public static TenantModule Create(Guid owningTenantId, Guid subSystemId, Guid moduleId,
+        string name, string? icon, int displayOrder, bool isActive, string? filter = null)
+    {
+        if (owningTenantId == Guid.Empty)
+            throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
+        if (moduleId == Guid.Empty)
+            throw new ArgumentException("Source module is required.", nameof(moduleId));
+        return new TenantModule
+        {
+            TenantId = owningTenantId.ToString(),
+            SubSystemId = subSystemId,
+            ModuleId = moduleId,
+            Name = name?.Trim() ?? string.Empty,
+            Icon = icon?.Trim() ?? string.Empty,
+            DisplayOrder = displayOrder,
+            IsActive = isActive,
+            Filter = filter?.Trim() ?? string.Empty,
+        };
+    }
+
+    /// <summary>Re-applies the template's fields. True when something actually changed.</summary>
+    public bool SyncFromTemplate(Guid subSystemId, string name, string? icon, int displayOrder,
+        string? filter, bool isActive)
+    {
+        var newName = (name ?? string.Empty).Trim();
+        var newIcon = (icon ?? string.Empty).Trim();
+        var newFilter = (filter ?? string.Empty).Trim();
+
+        if (SubSystemId == subSystemId && Name == newName && Icon == newIcon
+            && DisplayOrder == displayOrder && Filter == newFilter && IsActive == isActive)
+            return false;
+
+        SubSystemId = subSystemId;
+        Name = newName;
+        Icon = newIcon;
+        DisplayOrder = displayOrder;
+        Filter = newFilter;
+        IsActive = isActive;
+        base.Update();
+        return true;
+    }
+
+    /// <summary>Hides or restores the whole group for the tenant.</summary>
+    public void SetActive(bool isActive)
+    {
+        if (IsActive == isActive) return;
+        IsActive = isActive;
+        base.Update();
+    }
+}
+
+/// <summary>
 /// A menu operation AS IT EXISTS FOR ONE TENANT — a copy, not a reference.
 ///
 /// <para>It carries its own <see cref="Name"/>, <see cref="Link"/>, <see cref="Icon"/>,
@@ -124,9 +204,13 @@ public class TenantRole : BaseEntity, IAggregateRoot
 public class TenantOperation : BaseEntity
 {
     public Guid SubSystemId { get; private set; }
-    /// <summary>The global <see cref="Operation"/> this mirrors.</summary>
+    /// <summary>The global <see cref="Operation"/> this mirrors. A CERP extra; SRMS has no such link.</summary>
     public Guid OperationId { get; private set; }
-    public Guid? ModuleId { get; private set; }
+    /// <summary>
+    /// The <see cref="TenantModule"/> this screen sits under — NOT the global module. Non-null since
+    /// 2026-08-15: groups moved to TenantModule, so every remaining row here is a screen.
+    /// </summary>
+    public Guid ModuleId { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
     /// <summary>Route this operation grants, e.g. "/employee". The permission check matches on this.</summary>
@@ -140,7 +224,7 @@ public class TenantOperation : BaseEntity
     private TenantOperation() : base() { }
 
     public static TenantOperation Create(Guid owningTenantId, Guid subSystemId, Guid operationId,
-        Guid? moduleId, string name, string link, string? icon, int displayOrder, bool isActive)
+        Guid moduleId, string name, string link, string? icon, int displayOrder, bool isActive)
     {
         if (owningTenantId == Guid.Empty)
             throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
@@ -168,7 +252,7 @@ public class TenantOperation : BaseEntity
     /// rename a tenant's copy of a screen, so there is no local edit to protect. Add one here the
     /// moment such a screen exists, or the first template edit will overwrite it.</para>
     /// </summary>
-    public bool SyncFromTemplate(Guid subSystemId, Guid? moduleId, string name, string link,
+    public bool SyncFromTemplate(Guid subSystemId, Guid moduleId, string name, string link,
         string? icon, int displayOrder, string? filter)
     {
         var newName = (name ?? string.Empty).Trim();

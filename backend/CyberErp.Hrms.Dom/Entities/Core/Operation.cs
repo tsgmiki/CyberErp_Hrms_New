@@ -14,23 +14,29 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
  * modules across USING THEIR OWN Ids: every parent operation's Id already equalled its module's, so
  * all 144 children were already pointing at a valid Core.Module row.
  *
- * The 24 parent rows still exist here with ModuleId NULL. They are what Core.Module now expresses,
- * and removing them is a separate step — the sidebar still reads groups from the tenant copies.
+ * The 24 parent rows were REMOVED on 2026-08-15 once Core.TenantModule existed to hold the tenant
+ * copies of the groups, so ModuleId is NOT NULL here exactly as it is in SRMS.
  *
  * `TenantId` is KEPT, unlike SRMS — see the note on User.
  */
 public class Operation : BaseEntity
 {
     /// <summary>
-    /// The Core.Module this screen belongs to. Nullable only until the 24 legacy group rows are
-    /// removed; SRMS has it NOT NULL and no group rows at all.
+    /// The Core.Module this screen belongs to.
+    ///
+    /// <para>⚠️ CERP has this NOT NULL; SRMS leaves it nullable (holding 0 nulls, as CERP does).
+    /// This is the one place the two schemas deliberately differ on a shared column, and CERP is the
+    /// STRICTER side — it can hold anything SRMS can. Matching SRMS exactly would mean making the
+    /// CLR property <c>Guid?</c>, since EF refuses to map a nullable column to a non-nullable Guid,
+    /// and that would reintroduce null handling everywhere for no gain now that groups live in
+    /// Core.Module.</para>
     /// </summary>
-    public Guid? ModuleId { get; private set; }
+    public Guid ModuleId { get; private set; }
 
-    /// <summary>The subsystem this branch of the menu belongs to. Parents and children agree.</summary>
+    /// <summary>The subsystem this screen belongs to; denormalised from its module.</summary>
     public Guid SubSystemId { get; private set; }
     public string Name { get; private set; } = string.Empty;
-    /// <summary>The route. EMPTY on a parent — a group is not navigable and grants nothing.</summary>
+    /// <summary>The route the screen grants, e.g. "/employee".</summary>
     public string Link { get; private set; } = string.Empty;
     public string Filter { get; private set; } = string.Empty;
     public string Icon { get; private set; } = string.Empty;
@@ -39,42 +45,12 @@ public class Operation : BaseEntity
     /// <summary>False hides the screen everywhere — it is a template-level kill switch.</summary>
     public bool IsActive { get; private set; } = true;
 
-    /// <summary>The menu group this screen belongs to (Core.Module). Null on a legacy group row.</summary>
+    /// <summary>The menu group this screen belongs to (Core.Module).</summary>
     public Module? Module { get; private set; }
-
-    /// <summary>True when this row is a menu group rather than a screen.</summary>
-    public bool IsParent => ModuleId is null;
 
     private Operation() : base() { }
 
-    /// <summary>Creates a PARENT — a menu group, carrying no route.</summary>
-    public static Operation CreateParent(
-        Guid subSystemId,
-        string name,
-        string? icon,
-        int displayOrder = 0,
-        bool isActive = true)
-    {
-        if (subSystemId == Guid.Empty)
-            throw new ArgumentException("Subsystem ID cannot be empty.", nameof(subSystemId));
-
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Operation name cannot be empty.", nameof(name));
-
-        return new Operation
-        {
-            ModuleId = null,
-            SubSystemId = subSystemId,
-            Name = name,
-            Link = string.Empty,
-            Filter = string.Empty,
-            Icon = icon ?? string.Empty,
-            DisplayOrder = displayOrder,
-            IsActive = isActive
-        };
-    }
-
-    /// <summary>Creates a CHILD — a screen hanging off <paramref name="moduleId"/>'s parent row.</summary>
+    /// <summary>Creates a screen under the module <paramref name="moduleId"/>.</summary>
     public static Operation Create(
         Guid moduleId,
         string name,
@@ -86,7 +62,7 @@ public class Operation : BaseEntity
         bool isActive = true)
     {
         if (moduleId == Guid.Empty)
-            throw new ArgumentException("Parent ID cannot be empty.", nameof(moduleId));
+            throw new ArgumentException("Module ID cannot be empty.", nameof(moduleId));
 
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Operation name cannot be empty.", nameof(name));
@@ -118,7 +94,7 @@ public class Operation : BaseEntity
         Guid? subSystemId = null)
     {
         if (moduleId == Guid.Empty)
-            throw new ArgumentException("Parent ID cannot be empty.", nameof(moduleId));
+            throw new ArgumentException("Module ID cannot be empty.", nameof(moduleId));
 
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Operation name cannot be empty.", nameof(name));
@@ -135,21 +111,6 @@ public class Operation : BaseEntity
             DisplayOrder = displayOrder.Value;
         if (subSystemId.HasValue)
             SubSystemId = subSystemId.Value;
-        base.Update();
-    }
-
-    /// <summary>Renames or re-orders a PARENT. A group has no route, so there is nothing else to set.</summary>
-    public void UpdateParent(string name, string? icon, int? displayOrder = null, Guid? subSystemId = null)
-    {
-        if (!IsParent)
-            throw new InvalidOperationException("This operation is a child; use Update instead.");
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Operation name cannot be empty.", nameof(name));
-
-        Name = name;
-        Icon = icon ?? string.Empty;
-        if (displayOrder.HasValue) DisplayOrder = displayOrder.Value;
-        if (subSystemId.HasValue) SubSystemId = subSystemId.Value;
         base.Update();
     }
 

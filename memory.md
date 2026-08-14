@@ -556,8 +556,20 @@ DisplayOrder, +Filter/+IsActive, Name/Icon→nvarchar(100), Icon NOT NULL, Subsy
 vs SRMS**. ⚠️ **GOTCHA: dropping a TenantId breaks EVERY read of that entity until it is added to
 `Repository.IsGlobalEntity`** — the filter references an unmapped member and surfaces as **409 "LINQ
 expression could not be translated" on a plain GET**, which looks like a concurrency conflict and
-isn't. Still pending: drop the 24 Operation group rows (they hold **0 grants**) + ModuleId NOT NULL,
-new `Core.TenantModule` + repoint TenantOperation.ModuleId, column ORDER (needs table rebuild). **Phase 2 STEP 1 DONE
+isn't. **STAGE 2b DONE** (handoff 0111, migration `TenantModuleAndOperationGroups`, backup
+`CERP_before-tenantmodule-*.bak`): `Core.TenantModule` created; groups MOVED out of TenantOperation
+into it (each **keeping its own Id**, so only the 144 screens were repointed); the 24 group rows
+deleted from BOTH `TenantOperation` and `Core.Operation` ⇒ every row in either is now a screen.
+Verified 24/144/144, 0 bad ModuleId, **570 grants intact 0 orphaned**; sidebar still 12 groups/34
+screens, portal still HOME(21)/HRMS(13). Projector gained `SyncModulesAsync` — runs BEFORE
+operations, is the only sync that CREATES rows (the set is derived: a tenant holding a screen must
+hold its group), and `SyncOperationsAsync` now **translates** template ModuleId → tenant group Id.
+⚠️ **HRMS + Home must deploy TOGETHER** (Home reads TenantOperation.ModuleId directly).
+⚠️ Migration data steps must run BETWEEN CreateTable and the NOT NULL alter — the EF scaffold orders
+them wrong — and end with a `THROW` guard, else a surviving orphan becomes an empty-Guid FK silently.
+**3 deliberate differences remain**: the 2 template links (`TenantOperation.OperationId`,
+`TenantModule.ModuleId`) + `Operation.ModuleId` NOT NULL vs SRMS nullable (CERP stricter; matching
+needs a `Guid?` property as EF won't map a nullable column to a non-nullable Guid). Column ORDER too. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:

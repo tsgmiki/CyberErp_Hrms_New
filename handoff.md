@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0111. **`Core.TenantModule` created, menu groups moved into it — STAGE 2b (2026-08-15).**
+    Detail in logic.md §12.19. Migration `TenantModuleAndOperationGroups`, APPLIED to CERP.
+    Backup: `D:\Backups\CERP_before-tenantmodule-20260815-001623.bak` (first destructive step).
+    - New `Core.TenantModule` (tenant copy of a menu group) + `TenantOperation.ModuleId` repointed at
+      it and made NOT NULL; the 24 group rows removed from **both** `TenantOperation` and
+      `Core.Operation`, so every remaining row in either is a screen.
+    - Data migration, all inside the migration: 24 groups → TenantModule (**keeping their own Ids**,
+      so nothing else is re-keyed), 144 screens repointed from the template module id to the tenant's
+      group row, then both sets of group rows deleted, with a `THROW` guard that aborts if any null
+      `ModuleId` survives.
+    - Verified after applying: TenantModule **24**, TenantOperation **144**, Operation **144**,
+      **0** bad ModuleId in either table, **570 grants intact, 0 orphaned**.
+    - Code: projector gained `SyncModulesAsync` (runs BEFORE operations, and **translates** the
+      template's ModuleId to the tenant's group row); HRMS sidebar reads groups from TenantModule;
+      **Home** got the `TenantModule` entity, DbContext mapping and a rewritten `GetMySubsystems`
+      join. Both feeds still report TEMPLATE ids, so neither SPA changed.
+    - Verified live on both APIs: HRMS sidebar **12 groups / 34 screens** (unchanged), Home
+      `my-subsystems` HOME(21)/HRMS(13) with the same three groups — identical to before.
+    - ⚠️ **Deploy the two repos together.** Home reads `TenantOperation.ModuleId` and would break on
+      the old code against the new schema.
+    - **Remaining differences vs SRMS: 3, all deliberate.** `TenantOperation.OperationId` and
+      `TenantModule.ModuleId` are the template links kept by your decision (SRMS's tenant copies have
+      none); `Operation.ModuleId` is NOT NULL here where SRMS leaves it nullable — CERP is the
+      stricter side, and matching would mean a `Guid?` property since EF refuses to map a nullable
+      column to a non-nullable Guid. Column ORDER also still differs (needs a table rebuild).
+
 0110. **`Core.Module` aligned with SRMS — STAGE 2a (2026-08-15).** Detail in logic.md §12.19.
     Migrations `ModuleSrmsAlignment` + `ModuleOperationColumnParity`, both APPLIED to CERP.
     - `Core.Module`: −`TenantId`, `SortOrder`→`DisplayOrder`, +`Filter`, +`IsActive`, Name/Icon
