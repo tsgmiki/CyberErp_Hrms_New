@@ -299,11 +299,17 @@ public class TenantUserRole : BaseEntity
     public Guid TenantUserId { get; private set; }
     public Guid TenantRoleId { get; private set; }
     public DateTime AssignedAt { get; private set; }
-    public string? AssignedBy { get; private set; }
+
+    /// <summary>
+    /// The USER who granted the role. A Guid since the 2026-08-14 SRMS alignment — it was free text
+    /// before and only ever held provenance markers ("seed-tenant-authorization", "projection"),
+    /// never a real identity, so those were dropped to null rather than invented as ids.
+    /// </summary>
+    public Guid? AssignedBy { get; private set; }
 
     private TenantUserRole() : base() { }
 
-    public static TenantUserRole Create(Guid tenantUserId, Guid tenantRoleId, string? assignedBy = null)
+    public static TenantUserRole Create(Guid tenantUserId, Guid tenantRoleId, Guid? assignedBy = null)
     {
         if (tenantUserId == Guid.Empty)
             throw new ArgumentException("Tenant user is required.", nameof(tenantUserId));

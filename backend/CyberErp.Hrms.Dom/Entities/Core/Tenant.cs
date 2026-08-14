@@ -16,7 +16,45 @@ public class Tenant : BaseEntity, IAggregateRoot
     public DateTime? SubscriptionStartDate { get; private set; }
     public DateTime? SubscriptionEndDate { get; private set; }
 
+    // ---- SRMS platform alignment (2026-08-14, logic.md §12.13) -------------
+    // ⚠️ Do not confuse OrganizationId with BaseEntity.TenantId. The latter is the Finbuckle
+    // DISCRIMINATOR STRING carried by all 202 tables; this is a real foreign key to the legal
+    // entity that owns the tenant. One organization may hold several tenants.
+    public Guid OrganizationId { get; private set; }
+
+    /// <summary>Optional classification (trial, internal, customer…). No table backs it yet.</summary>
+    public Guid? TenantTypeId { get; private set; }
+
+    // Per-tenant overrides of the organization's localisation. Null means "inherit".
+    public string? CurrencyOverride { get; private set; }
+    public string? LocaleOverride { get; private set; }
+    public string? TimezoneOverride { get; private set; }
+
     private Tenant() : base() { }
+
+    /// <summary>Attaches the tenant to its owning organization.</summary>
+    public void SetOrganization(Guid organizationId)
+    {
+        if (organizationId == Guid.Empty)
+            throw new ArgumentException("Organization is required.", nameof(organizationId));
+        OrganizationId = organizationId;
+        base.Update();
+    }
+
+    public void SetTenantType(Guid? tenantTypeId)
+    {
+        TenantTypeId = tenantTypeId;
+        base.Update();
+    }
+
+    /// <summary>Sets (or clears, when null) the localisation overrides for this tenant.</summary>
+    public void SetLocalisationOverrides(string? currency, string? locale, string? timezone)
+    {
+        CurrencyOverride = string.IsNullOrWhiteSpace(currency) ? null : currency.Trim();
+        LocaleOverride = string.IsNullOrWhiteSpace(locale) ? null : locale.Trim();
+        TimezoneOverride = string.IsNullOrWhiteSpace(timezone) ? null : timezone.Trim();
+        base.Update();
+    }
 
     public static Tenant Create(
         string name,

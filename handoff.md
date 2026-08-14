@@ -123,6 +123,31 @@
 
 ## 1. Most recent changes (latest first)
 
+0103. **Remaining platform tables aligned with cybererp_srms (2026-08-14).** Detail in logic.md
+    §12.13. Migrations `AlignPlatformTablesWithSrms` + `AlignAssignedByAndSettingUpdatedAt`, both
+    APPLIED to CERP. Backup: `D:\Backups\CERP_before-platform-align-*.bak`.
+    - Full diff of all **22 shared tables** found **13 differing**. Now **7 columns on 7 tables**,
+      all from two root causes that cannot be closed (below).
+    - Closed: `Tenant` +OrganizationId(FK)/TenantTypeId/Currency|Locale|TimezoneOverride;
+      `Subsystem` +Abbreviation/Icon/Description/DisplayOrder/IsActive/LandingPath, Name 200→100;
+      `SubscriptionPlan` +Code; `Organization` all 19 length/nullability diffs; `UserPreference`
+      5 cols → NOT NULL + narrower (empty table); `TenantRole`/`TenantOperation` widths;
+      `TenantUserRole.AssignedBy` → uniqueidentifier; `Setting.UpdatedAt` → NOT NULL.
+      **No truncation** — longest value in any narrowed column was 24 chars against 80–500 caps.
+    - ⚠️ **Three scaffold traps:** `Tenant.OrganizationId` got an FK over an empty-Guid default
+      (backfilled first; creates an organization if tenants exist without one); `AssignedBy`
+      string→Guid **fails outright** because SQL Server cannot cast `'seed-tenant-authorization'`
+      (non-Guids nulled via TRY_CAST — they were provenance markers, never user ids); and
+      `Setting.UpdatedAt`→NOT NULL scaffolded a `0001-01-01` default (seeded from CreatedAt).
+    - ⚠️ **CANNOT be aligned — both are `BaseEntity` properties shared by 202 tables:**
+      **`TenantId`** is the Finbuckle DISCRIMINATOR STRING here and a Guid FK in SRMS — two different
+      concepts; CERP models the FK separately as `OwningTenantId`. Matching means re-keying
+      multi-tenancy across 202 tables, the repository filter and every seeded value.
+      **`User.CreatedAt`** is a non-nullable `Instant` on all 202 tables; making it optional for one
+      entity is impossible in EF and globally would drop a guarantee every audited row has.
+    - Verified: data intact (3 tenants, 506 users, 503 user-roles, 598 grants, 175 operations,
+      7 subsystems); HRMS login 200 / 34 links; Home 2/12/34; gate 403/200/200; 0 errors either log.
+
 0102. **SMTP settings: Core.Setting is now the source of truth (2026-08-13).** Detail in
     logic.md §12.12. No migration — code plus one data correction.
     - `Core.Setting` has held SmtpHost/Port/User/UseTls all along and **nothing read or wrote them**:

@@ -214,7 +214,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 wanted.Add((member.Id, tenantRoleId));
 
                 if (held.Any(h => h.TenantUserId == member.Id && h.TenantRoleId == tenantRoleId)) continue;
-                await tenantUserRoles.AddAsync(TenantUserRole.Create(member.Id, tenantRoleId, "projection"));
+                await tenantUserRoles.AddAsync(TenantUserRole.Create(member.Id, tenantRoleId));
                 written++;
             }
 

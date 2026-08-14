@@ -2157,6 +2157,69 @@ gate     /Setting 403 without the link | 200 with it
 live     sidebar 34 links | 598 grants | 175 operations (the new Settings entry)
 ```
 
+### 12.13 Aligning the remaining platform tables with SRMS
+
+Migrations `AlignPlatformTablesWithSrms` and `AlignAssignedByAndSettingUpdatedAt`. A full
+column-by-column diff of all **22 shared tables** found **13 differing**; these close all but two
+root causes, taking it to **7 columns on 7 tables**.
+
+#### Closed
+
+| Table | Change |
+|---|---|
+| `Tenant` | +`OrganizationId` (FK to Core.Organization), `TenantTypeId`, `CurrencyOverride`, `LocaleOverride`, `TimezoneOverride` |
+| `Subsystem` | +`Abbreviation`, `Icon`, `Description`, `DisplayOrder`, `IsActive`, `LandingPath`; `Name` 200→100 |
+| `SubscriptionPlan` | +`Code` |
+| `Organization` | all 19 length/nullability differences |
+| `UserPreference` | 5 columns → NOT NULL and narrower (table is empty, so free) |
+| `TenantRole` / `TenantOperation` | `Code`, `Name`, `Description`, `Link` widths |
+| `TenantUserRole` | `AssignedBy` nvarchar(200) → uniqueidentifier |
+| `Setting` | `UpdatedAt` → NOT NULL |
+
+No truncation anywhere: the longest value in any narrowed column was 24 characters against caps of
+80–500.
+
+#### ⚠️ Three traps in the scaffolded migrations
+
+1. **`Tenant.OrganizationId`** was added NOT NULL defaulting to an empty Guid, then given an FK to
+   `Core.Organization` — which nothing satisfies. Backfilled from the single organization first; on a
+   fresh database `Core.Tenant` is empty so it is a no-op, and if tenants somehow exist with no
+   organization one is created rather than failing the migration.
+2. **`AssignedBy` string → Guid.** SQL Server cannot cast `'seed-tenant-authorization'` to a
+   uniqueidentifier, so the ALTER fails outright. The column only ever held provenance markers, never
+   a user id, so anything not already a Guid is dropped to null via `TRY_CAST` rather than invented.
+3. **`Setting.UpdatedAt` → NOT NULL** scaffolded a default of `0001-01-01`, which would stamp every
+   existing row with a date that never happened. Seeded from `CreatedAt` instead.
+
+#### ⚠️ What CANNOT be aligned, and why
+
+Both remaining differences are **`BaseEntity` properties**, so they cannot be changed for a few
+tables while the rest of the model shares them.
+
+**`TenantId` — `uniqueidentifier` in SRMS, `nvarchar(max)` here (6 tables).** These are not the same
+concept. In CERP `TenantId` is the **Finbuckle discriminator string**, declared once on `BaseEntity`,
+carried by **202 tables**, and used by `Repository<T>.ApplyTenantFilter` on every query. SRMS uses the
+name for a Guid foreign key to the tenant — which CERP models separately and deliberately as
+`OwningTenantId` (§12.1). Matching would mean re-keying multi-tenancy across the whole application:
+202 tables, the repository filter, the Finbuckle wiring and every seeded discriminator value. That is
+a re-architecture, not a column alignment.
+
+**`User.CreatedAt` — nullable in SRMS, NOT NULL here.** `BaseEntity.CreatedAt` is a non-nullable
+`Instant` on all 202 tables. EF cannot make it optional for one entity while the CLR property is
+non-nullable, and doing it globally would drop a guarantee every audited row currently has. SRMS being
+looser here is not worth adopting.
+
+#### Verification
+
+```
+diff       22 shared tables | 13 differing -> 7 columns, all BaseEntity-rooted
+data       3 tenants | 506 users | 503 user-roles | 598 grants | 175 operations | 7 subsystems
+live       HRMS login 200, 34 links, employee counts unchanged
+           Home  login 200, 2 subsystems / 12 modules / 34 operations
+           gate  RolePermission 403 | OtherLeave 200 | Position 200
+           0 errors in either log
+```
+
 ### 12.2 What phase 2 is, and its one hard rule
 
 The tenant-scoped auth model — `TenantRole` (from a `Role` TEMPLATE, with `SourceTemplateId` and

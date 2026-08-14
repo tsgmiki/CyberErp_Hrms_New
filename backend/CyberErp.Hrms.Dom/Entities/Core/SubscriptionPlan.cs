@@ -5,6 +5,11 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
 
 public class SubscriptionPlan : BaseEntity, IAggregateRoot
 {
+    /// <summary>
+    /// Stable identifier for the plan, e.g. "STARTER". Added for the SRMS alignment
+    /// (2026-08-14, logic.md §12.13); derived from the name when a caller omits it.
+    /// </summary>
+    public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string Description { get; private set; } = string.Empty;
     public decimal Price { get; private set; }
@@ -25,7 +30,8 @@ public class SubscriptionPlan : BaseEntity, IAggregateRoot
         int maxUsers,
         int maxStorageGB,
         int trialDays = 0,
-        string? features = null)
+        string? features = null,
+        string? code = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Plan name cannot be empty.", nameof(name));
@@ -35,6 +41,10 @@ public class SubscriptionPlan : BaseEntity, IAggregateRoot
 
         return new SubscriptionPlan
         {
+            // The code identifies the plan; fall back to an upper-cased, hyphenated name.
+            Code = string.IsNullOrWhiteSpace(code)
+                ? string.Join("-", name.Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant()
+                : code.Trim(),
             Name = name,
             Description = description,
             Price = price,

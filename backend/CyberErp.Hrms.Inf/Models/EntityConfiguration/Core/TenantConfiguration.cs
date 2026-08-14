@@ -14,6 +14,21 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .IsRequired()
                 .HasMaxLength(200);
 
+            // ---- SRMS platform alignment (2026-08-14, logic.md §12.13) --------------
+            // ⚠️ OrganizationId is a REAL foreign key to the owning legal entity. It is not
+            // BaseEntity.TenantId, which is the Finbuckle discriminator string.
+            builder.Property(t => t.OrganizationId).IsRequired();
+            builder.HasOne<Organization>()
+                .WithMany()
+                .HasForeignKey(t => t.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasIndex(t => t.OrganizationId);
+
+            builder.Property(t => t.TenantTypeId);
+            builder.Property(t => t.CurrencyOverride);
+            builder.Property(t => t.LocaleOverride);
+            builder.Property(t => t.TimezoneOverride);
+
             builder.Property(t => t.Identifier)
                 .IsRequired()
                 .HasMaxLength(100);

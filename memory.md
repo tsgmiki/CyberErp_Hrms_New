@@ -470,7 +470,16 @@ arguments**; it is read from config inside the send, which is why the table has 
 ⚠️ The seeded row held `smtp.cyber.com` and would have redirected live mail →
 `clear-seeded-smtp-placeholders.sql`. Added `GET/PUT /Setting` + `POST /Setting/test-email`, gated on
 `setting` (no role holds it yet). **Mail DOES work** — `Email:Password` comes from user-secrets, not
-appsettings. **Phase 2 STEP 1 DONE
+appsettings. **Remaining platform tables ALIGNED with SRMS 2026-08-14** (handoff 0103, logic §12.13,
+migrations `AlignPlatformTablesWithSrms` + `AlignAssignedByAndSettingUpdatedAt`): 22 shared tables,
+13 differed → **7 columns left**. Closed Tenant(+OrganizationId FK/TenantTypeId/3 overrides),
+Subsystem(+6 cols), SubscriptionPlan(+Code), Organization(19 diffs), UserPreference, TenantRole/
+TenantOperation widths, AssignedBy→Guid, Setting.UpdatedAt→NOT NULL. ⚠️ Traps: OrganizationId FK over
+an empty-Guid default; `AssignedBy` string→Guid **fails** on `'seed-tenant-authorization'` (TRY_CAST
+null it); `UpdatedAt` NOT NULL scaffolds a `0001-01-01` default. ⚠️ **The last 7 CANNOT be fixed** —
+`TenantId` (6 tables) and `User.CreatedAt` are **BaseEntity properties on 202 tables**: TenantId is
+the Finbuckle DISCRIMINATOR STRING here vs a Guid FK in SRMS (CERP models that as `OwningTenantId`),
+so matching = re-keying multi-tenancy app-wide. **Phase 2 STEP 1 DONE
 2026-08-13** (handoff 00EZ, logic §12.3): the six tenant-scoped auth tables exist and are MIRRORED
 1:1 from CERP's own data (`seed-tenant-authorization.sql`), acceptance test **MATCH** — 70,852 grant
 rows both sides, 0 lost, 0 gained. **Nothing reads them yet, so behaviour is unchanged.** ⚠️ Traps:
