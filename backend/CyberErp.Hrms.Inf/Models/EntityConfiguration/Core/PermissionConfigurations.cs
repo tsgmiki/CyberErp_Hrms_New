@@ -81,7 +81,16 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(s => s.IsActive).IsRequired().HasDefaultValue(true);
             builder.Property(s => s.LandingPath).IsRequired().HasMaxLength(250).HasDefaultValue(string.Empty);
 
-            builder.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none. Subsystem rows had been created PER
+            // TENANT, which is why HOME existed twice; the duplicate was merged away first by
+            // scripts/dedup-subsystem-rows.sql. The catalogue is one global list now.
+            builder.Ignore(s => s.TenantId);
+
+            // Unique on Name ALONE, since the tenant half of the old key no longer exists. All 7
+            // names are distinct, so this is the same guarantee minus the dropped column. SRMS has no
+            // index here at all — the constraint is kept deliberately, because losing it would let a
+            // second row claim a name the launcher matches on.
+            builder.HasIndex(s => s.Name).IsUnique();
         }
     }
 

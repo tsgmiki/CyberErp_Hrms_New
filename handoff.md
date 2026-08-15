@@ -123,6 +123,22 @@
 
 ## 1. Most recent changes (latest first)
 
+0123. **Subsystem deduplicated and TenantId dropped (2026-08-15).** Migration
+    `SubsystemDropTenantId` + `backend/scripts/dedup-subsystem-rows.sql`, both APPLIED.
+    Backup: `D:/Backups/CERP_before-subsystem-dedup-*.bak`. Columns 14 -> 13.
+    - Subsystem rows had been created PER TENANT, so `HOME` existed twice: an EMPTY row for the
+      demo tenant and the NVI row owning all 4 modules / 8 tenant modules. Both carried
+      `Code = HOME`, which the Home SPA matches literally in five places.
+    - Dedup: the demo row is deleted and its single entitlement REPOINTED to the survivor, so demo
+      keeps its access rather than losing it. Verified 0 duplicate codes, **0 orphaned references**.
+    - ⚠️ The unique index `(TenantId, Name)` had to go with the column. Replaced with **unique on
+      `Name` alone** — all 7 names are distinct, so it is the same guarantee minus the dropped half.
+      SRMS has no index there at all; keeping one is deliberate, because losing it would let a
+      second row claim a name the launcher matches on.
+    - Verified: HRMS sidebar 12 groups / 34 screens, `Subsystem` now returns all **7** rows (global,
+      as intended), Home feed HOME(21)/HRMS(13), and — the check that matters — **exactly 1 row
+      matches `code === HOME`**. 0 translation errors.
+
 0122. **Three more TenantId columns dropped -- Organization, Setting, TenantUserRole (2026-08-15).**
     Migration , APPLIED. Columns 17 -> 14.
     - Organization and Setting were trivial: one row each, both already in , so
