@@ -17,6 +17,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Ignore(r => r.TenantId);
 
             builder.HasKey(r => r.Id);
+            builder.HasKey(r => r.Id).HasName("PK_StandardRoleTemplate");   // SRMS's constraint name
+
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
 
             // SRMS alignment: Code identifies the role TEMPLATE, so it is required and unique.

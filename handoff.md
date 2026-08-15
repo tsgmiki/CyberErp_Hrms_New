@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0118. **The index comparison — and a harness that lied (2026-08-15).** Detail in logic.md §12.20.
+    Migration `SrmsConstraintNamesAndAlternateKeys`, APPLIED.
+    Backup: `D:/Backups/CERP_before-constraint-renames-20260815-031627.bak`.
+    - ⚠️ **THE FIRST RUN REPORTED "0 DIFFERENCES" AND WAS WRONG.** The query used `FOR XML PATH`
+      string-building; it returned nothing, the `Where-Object { $_ -match '~' }` filter swallowed the
+      empty result, and both dictionaries came back empty — which compares as identical. Caught only
+      by printing the loaded row counts. **A comparison that returns nothing looks exactly like a
+      comparison that passes: always assert the harness loaded data before trusting a zero.**
+    - The real answer was **69 differences**, in three groups:
+      **(a) 6 PRIMARY KEY NAMES** — SRMS calls them `PK_NavigationModule`, `PK_StandardRoleTemplate`,
+      `PK_SystemSetting`, `PK_TenantNavigationModule`, `PK_TenantModuleEntitlement`, and — confusingly
+      — `PK_Module` for **`Core.Subsystem`**. All renamed to match.
+      **(b) 4 alternate keys** SRMS declares (`AK_Tenant_Id_OrganizationId` and three like it) — added.
+      **(c) 53 CERP-only indexes** — **KEPT.** These are performance and uniqueness indexes
+      (`IX_User_UserName` from the performance pass, the notification indexes, unique business keys
+      like `IX_Tenant_Identifier`). Dropping them would regress performance and integrity.
+    - ⚠️ **`sp_rename`, not DropPrimaryKey/AddPrimaryKey.** EF scaffolds a rename as drop-then-add,
+      and SQL Server refuses to drop a PK that foreign keys reference ("The constraint
+      'PK_TenantModule' is being referenced by table 'TenantOperation'"). `sp_rename` renames in
+      place and leaves dependants intact.
+    - ⚠️ **Order matters:** `Core.Module`'s PK had to be renamed away *before* `Core.Subsystem` could
+      take the freed `PK_Module` name.
+    - **RESULT: every index and key SRMS has now exists in CERP with an identical definition** — 0
+      missing, 0 definition mismatches. Columns, foreign keys, indexes and keys all compared.
+    - Verified: sidebar 12 groups / 34 screens, employee/module/subsystem/lookup reads 200.
+
 0117. **`Tenant.TenantTypeId` foreign key + the FK/index audit I had MISSED (2026-08-15).**
     Detail in logic.md §12.20. Migration `TenantTypeIdForeignKey`, APPLIED.
     - ⚠️ **MY AUDIT HAD A HOLE.** Handoff 0114–0116 compared COLUMNS only — name, type, size,

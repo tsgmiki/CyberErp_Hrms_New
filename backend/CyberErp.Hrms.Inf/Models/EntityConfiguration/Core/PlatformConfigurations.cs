@@ -69,6 +69,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("OrganizationSubscription", "Core");
             builder.HasKey(s => s.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(s => new { s.Id, s.OrganizationId }).HasName("AK_OrganizationSubscription_Id_OrganizationId");
 
             // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none, and this is PLATFORM data, not
             // tenant data: a plan and its modules belong to the product, not to one customer. The
@@ -176,6 +178,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             // SRMS keeps this at datetime2(3); the convention gives non-nullable stamps (3) but
             // Setting.UpdatedAt is non-nullable AND was (7) from an older explicit mapping.
+            builder.HasKey(x => x.Id).HasName("PK_SystemSetting");   // SRMS's constraint name
+
             builder.Property(x => x.UpdatedAt).HasColumnType("datetime2(3)");
 
             builder.ToTable("Setting", "Core");

@@ -9,6 +9,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<Tenant> builder)
         {
             builder.HasKey(t => t.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(t => new { t.Id, t.OrganizationId }).HasName("AK_Tenant_Id_OrganizationId");
 
             // ⚠️ TenantId is GONE (2026-08-15). A tenant row carrying a tenant DISCRIMINATOR was
             // always meaningless — the row IS the tenant, and Core.Tenant has been in

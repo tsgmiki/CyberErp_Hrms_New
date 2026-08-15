@@ -2775,6 +2775,35 @@ to every "remaining differences" count reported in §12.20 up to that point.
 data. Running the comparison properly: **foreign keys diff to zero across all 30 shared tables, in
 both directions.** Indexes are still uncompared — the same hole, one level down.
 
+#### ⚠️ The index comparison, and a harness that lied
+
+The first index comparison reported **0 differences**. It was wrong. The query built its column list
+with `FOR XML PATH`, returned nothing, and the `Where-Object { $_ -match '~' }` filter quietly
+swallowed the empty result — leaving two empty dictionaries, which compare as identical.
+
+**A comparison that returns nothing looks exactly like a comparison that passes.** The fix is one
+line: print the row counts and assert they are non-zero before trusting a zero. `Core.Tenant` alone
+disproved it — CERP had three indexes there, SRMS had one different one.
+
+The real answer was **69 differences**, in three groups:
+
+| Group | Count | Action |
+|---|---|---|
+| Primary-key NAMES | 6 | renamed to SRMS's: `PK_NavigationModule`, `PK_StandardRoleTemplate`, `PK_SystemSetting`, `PK_TenantNavigationModule`, `PK_TenantModuleEntitlement`, and `PK_Module` for **`Core.Subsystem`** (a leftover from when SRMS's SubSystem entity was called Module) |
+| Alternate keys SRMS declares | 4 | added — each is trivially unique, leading with the primary key column |
+| CERP-only indexes | 53 | **KEPT** — performance and uniqueness indexes (`IX_User_UserName` from the performance pass, the notification indexes, unique business keys like `IX_Tenant_Identifier`). Dropping them regresses performance and integrity |
+
+⚠️ **Renaming a primary key needs `sp_rename`, not EF.** EF scaffolds a rename as drop-then-add, and
+SQL Server refuses to drop a key that foreign keys reference — *"The constraint 'PK_TenantModule' is
+being referenced by table 'TenantOperation'"*. `sp_rename` changes the name in place and leaves every
+dependant intact, which is what a rename actually means.
+
+⚠️ **And the order matters:** `Core.Module`'s PK had to be renamed away before `Core.Subsystem` could
+take the freed `PK_Module` name.
+
+**Result: every index and key SRMS has now exists in CERP with an identical definition** — 0 missing,
+0 mismatched. Columns, foreign keys, indexes and keys have all now been compared.
+
 #### ⚠️ CERP has TWO lookup systems, and EF picked the wrong one
 
 Mapping that foreign key through EF scaffolded a constraint to **`Hrms.LookUpCategoryList`** — the

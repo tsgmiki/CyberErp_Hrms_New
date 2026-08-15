@@ -22,6 +22,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("TenantRole", "Core");
             builder.HasKey(r => r.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(r => new { r.Id, r.TenantId }).HasName("AK_TenantRole_Id_TenantId");
 
             builder.Property(r => r.Code).IsRequired().HasMaxLength(80);
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
@@ -49,7 +51,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<TenantModule> builder)
         {
             builder.ToTable("TenantModule", "Core");
-            builder.HasKey(m => m.Id);
+            builder.HasKey(m => m.Id).HasName("PK_TenantNavigationModule");   // SRMS's name
 
             builder.Property(m => m.Name).IsRequired().HasMaxLength(200);
             builder.Property(m => m.Icon).IsRequired().HasMaxLength(100);
@@ -119,6 +121,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("TenantUser", "Core");
             builder.HasKey(u => u.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(u => new { u.Id, u.TenantId }).HasName("AK_TenantUser_Id_TenantId");
 
             builder.Property(u => u.Status).IsRequired().HasMaxLength(30);
 
@@ -153,7 +157,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<TenantSubSystem> builder)
         {
             builder.ToTable("TenantSubSystem", "Core");
-            builder.HasKey(s => s.Id);
+            builder.HasKey(s => s.Id).HasName("PK_TenantModuleEntitlement");   // SRMS's name
 
             builder.Property(s => s.SourceType).IsRequired().HasMaxLength(30);
             builder.Property(s => s.Status).IsRequired().HasMaxLength(30);

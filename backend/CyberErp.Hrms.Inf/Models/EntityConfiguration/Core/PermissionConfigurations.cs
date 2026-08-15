@@ -21,7 +21,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // Core.TenantModule.
             builder.Ignore(m => m.TenantId);
 
-            builder.HasKey(m => m.Id);
+            builder.HasKey(m => m.Id).HasName("PK_NavigationModule");   // SRMS's constraint name
 
             // Lengths and nullability match cybererp_srms exactly (2026-08-15): nvarchar(100) /
             // nvarchar(200) / nvarchar(100), all NOT NULL. The longest module name is 29 characters,
@@ -61,7 +61,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("Subsystem", "Core");
 
-            builder.HasKey(s => s.Id);
+            // ⚠️ SRMS calls this PK_Module — a leftover from when its SubSystem entity was named
+            // Module. Copied verbatim for catalog parity; it collides with nothing because CERP's
+            // own Module PK is renamed to PK_NavigationModule in the same migration.
+            builder.HasKey(s => s.Id).HasName("PK_Module");
 
             builder.Property(s => s.Name).IsRequired().HasMaxLength(100);
             builder.Property(s => s.Code).IsRequired().HasMaxLength(50).HasDefaultValue(string.Empty);
