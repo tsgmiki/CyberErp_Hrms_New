@@ -46,6 +46,16 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("UserRole", "Core");
 
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none, so this table is GLOBAL now, and
+            // unlike every other drop in this series NOTHING can re-derive the tenant: a row carries
+            // only UserId and RoleId, and Core.User and Core.Role are both global too.
+            //
+            // That is why the projector's membership sweep was DELETED rather than re-scoped, and why
+            // the six places that read this table by UserId or RoleId now go through
+            // ICurrentUserRoles, which answers the same questions from the tenant-scoped model.
+            // A bare `userRoles.GetAll().Where(u => u.UserId == x)` is a CROSS-TENANT read.
+            builder.Ignore(u => u.TenantId);
+
             builder.HasKey(u => u.Id);
 
             // RoleId / UserId are mapped as plain scalar columns (no EF relationship). The handler

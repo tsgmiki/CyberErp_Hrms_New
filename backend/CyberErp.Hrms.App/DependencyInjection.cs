@@ -708,6 +708,9 @@ namespace CyberErp.Hrms.App
 
             // Per-operation endpoint authorization (enforces RolePermission.CanView on [RequirePermission] actions)
             services.AddScoped<Common.Authorization.IEndpointPermissionService, Common.Authorization.EndpointPermissionService>();
+            // Resolves the caller's TEMPLATE role ids from the tenant model. Scoped, so its per-request
+            // memoisation holds for the whole request.
+            services.AddScoped<Common.Authorization.ICurrentUserRoles, Common.Authorization.CurrentUserRoles>();
             services.AddScoped<Common.Authorization.ITenantAuthorizationProjector, Common.Authorization.TenantAuthorizationProjector>();
             services.AddScoped<Features.Core.Settings.IGetSetting, Features.Core.Settings.GetSetting>();
             services.AddScoped<Features.Core.Settings.ISaveSetting, Features.Core.Settings.SaveSetting>();

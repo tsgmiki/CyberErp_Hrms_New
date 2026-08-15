@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -56,7 +57,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
     public class WorkflowApproverAuth(
         IRepository<WorkflowDefinition> definitions,
-        IRepository<UserRole> userRoles,
+        ICurrentUserRoles currentUserRoles,
         IRepository<User> users,
         IRepository<TenantRolePermission> tenantRolePermissions,
         IRepository<TenantOperation> tenantOperations,
@@ -84,14 +85,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
 
         public async Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync()
         {
-            if (_roleIds is not null) return _roleIds;
-            var userId = currentUser.GetCurrentUserId();
-            if (userId is null) return _roleIds = [];
-            return _roleIds = (await userRoles.GetAll()
-                    .Where(u => u.UserId == userId.Value)
-                    .Select(u => u.RoleId)
-                    .ToListAsync())
-                .ToHashSet();
+            // Resolved from the TENANT model, not Core.UserRole. That table lost its TenantId on
+            // 2026-08-15 and is global now, so reading it by UserId would return the roles this user
+            // holds in EVERY tenant — and a multi-tenant approver would pass a check using a role
+            // granted somewhere else. See ICurrentUserRoles.
+            return _roleIds ??= await currentUserRoles.GetTemplateRoleIdsAsync();
         }
 
         public Task<Guid?> CurrentEmployeeIdForInboxAsync() => CurrentEmployeeIdAsync();
@@ -214,10 +212,9 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                         break;
 
                     case WorkflowApproverType.Role:
-                        var roleUserIds = await userRoles.GetAll()
-                            .Where(u => u.RoleId == a.ApproverId)
-                            .Select(u => u.UserId)
-                            .ToListAsync();
+                        // Holders IN THIS TENANT. Core.UserRole is global since 2026-08-15, so a
+                        // direct read would notify role-holders in other tenants.
+                        var roleUserIds = await currentUserRoles.GetUserIdsInRolesAsync([a.ApproverId]);
                         foreach (var id in roleUserIds) userIds.Add(id);
                         break;
 
@@ -257,12 +254,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var roleIds = await WorkflowApproveRoleIdsAsync();
             if (roleIds.Count == 0) return [];
 
-            return (await userRoles.GetAll()
-                    .Where(u => roleIds.Contains(u.RoleId))
-                    .Select(u => u.UserId)
-                    .Distinct()
-                    .ToListAsync())
-                .ToHashSet();
+            // Holders IN THIS TENANT — see the note in ResolveApproverUserIdsAsync.
+            return await currentUserRoles.GetUserIdsInRolesAsync(roleIds.ToList());
         }
 
         public async Task<bool> CanActOnOpenStepsAsync()

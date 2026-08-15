@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0124. **UserRole.TenantId dropped -- membership projection removed, role resolution rewritten
+    (2026-08-15).** Migration `UserRoleDropTenantId`, APPLIED. Columns 13 -> 12.
+    Backup: `D:/Backups/CERP_before-userrole-tenantid-*.bak`.
+    - This was the one with NO derivation path: a UserRole row carries only UserId and RoleId, and
+      Core.User and Core.Role are both global, so once the column goes nothing in the database can
+      say which tenant an assignment belongs to. It could not be re-scoped -- only replaced.
+    - **`SyncMembershipsAsync` DELETED.** It created a TenantUser for every user in `assignments`;
+      with UserRole global that is a TenantUser in THIS tenant for every user of EVERY tenant. It
+      also had nothing left to project from: HRMS stopped writing Core.UserRole when the User Roles
+      screen went (handoff 0107), and SRMS writes TenantUser/TenantUserRole directly. Same reasoning
+      that retired the permission projection on 2026-08-13.
+    - **New `ICurrentUserRoles`** answers the two questions the six call sites actually asked, from
+      the tenant model (`TenantUser -> TenantUserRole -> TenantRole.RoleId`):
+      `GetTemplateRoleIdsAsync()` and `GetUserIdsInRolesAsync()`. Without it a multi-tenant user
+      would have passed an approver check using a role granted in a DIFFERENT tenant, and open-step
+      notifications would have been sent to other tenants role-holders.
+      Rewired: WorkflowApproverAuth (3 sites) + EmployeeTermination clearance approver checks (3).
+    - Verified: old and new resolution paths agree for hoadmin (1 role each); sidebar 12 groups /
+      34 screens; **my-clearances 200** (the rewritten path); Home feed HOME(21)/HRMS(13); 0 errors.
+
 0123. **Subsystem deduplicated and TenantId dropped (2026-08-15).** Migration
     `SubsystemDropTenantId` + `backend/scripts/dedup-subsystem-rows.sql`, both APPLIED.
     Backup: `D:/Backups/CERP_before-subsystem-dedup-*.bak`. Columns 14 -> 13.
