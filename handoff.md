@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+0119. **`TenantRolePermission` FK name + ⚠️ MY FK AUDIT WAS FALSE (2026-08-15).** Detail in
+    logic.md §12.20. Migrations `SrmsForeignKeyNames` + `LoginTrailAndTenantModuleForeignKeys`.
+    - ⚠️ **RETRACTION: handoff 0117 and 0118 claimed "foreign keys diff to ZERO across all 30 shared
+      tables". THAT WAS FALSE.** The comparison query hit a **collation conflict**
+      (`Latin1_General_CI_AS_KS_WS` vs `SQL_Latin1_General_CP1_CI_AS` when concatenating `fk.name`
+      with `delete_referential_action_desc`), returned only an error, and the
+      `Where-Object { $_ -match '~' }` filter swallowed it — leaving two EMPTY dictionaries, which
+      compare as identical. **Second false zero this session from the same root cause: a harness that
+      returns nothing looks exactly like one that passes.** Fixed with `COLLATE DATABASE_DEFAULT`,
+      and every comparison now asserts its load count first.
+    - The real number was **13**. `Core.TenantRolePermission`'s was a NAME difference: SRMS calls it
+      `FK_TenantRolePermission_Operation_OperationId` — naming a column (`OperationId`) that exists
+      on neither side, left from when the table referenced `Core.Operation` directly. Renamed to
+      match, along with `TenantOperation`'s (`FK_TenantNavigationOperation_TenantModule_ModuleId`).
+    - Added the two FKs SRMS had and CERP lacked, both verified **0 orphans** first:
+      `LoginTrail.UserId → User` (SET NULL, so a deleted account leaves its audit trail) and
+      `TenantModule.TenantId → Tenant` — the latter in **raw SQL**, because EF cannot model a
+      relationship on the value-converted `TenantId` (same reason as the §12.16 FKs).
+    - **13 → 9.** The rest are judgment calls, not omissions — see logic.md §12.20.
+    - Verified: sidebar 12 groups / 34 screens, employee and subsystem reads 200. (A Hangfire job
+      retrying against a deleted `ReportSchedule` is pre-existing and unrelated.)
+
 0118. **The index comparison — and a harness that lied (2026-08-15).** Detail in logic.md §12.20.
     Migration `SrmsConstraintNamesAndAlternateKeys`, APPLIED.
     Backup: `D:/Backups/CERP_before-constraint-renames-20260815-031627.bak`.

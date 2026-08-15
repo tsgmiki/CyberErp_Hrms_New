@@ -87,8 +87,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             // ModuleId now points at the TENANT's group, not the global module, and is NOT NULL:
             // every row here is a screen since groups moved to TenantModule (2026-08-15).
+            // SRMS's constraint name, from its TenantNavigationOperation era.
             builder.HasOne<TenantModule>().WithMany()
-                .HasForeignKey(o => o.ModuleId).OnDelete(DeleteBehavior.NoAction);
+                .HasForeignKey(o => o.ModuleId)
+                .HasConstraintName("FK_TenantNavigationOperation_TenantModule_ModuleId")
+                .OnDelete(DeleteBehavior.NoAction);
 
             // One copy per (module, link) — the natural key now that OperationId is gone.
             builder.HasIndex(o => new { o.ModuleId, o.Link }).IsUnique();
@@ -108,8 +111,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .HasForeignKey(p => p.TenantRoleId).OnDelete(DeleteBehavior.Cascade);
             // NoAction on the second leg: two cascade paths into the same table is a multiple-cascade
             // -path error in SQL Server, and the role side is the one that should cascade.
+            // ⚠️ SRMS calls this FK_TenantRolePermission_Operation_OperationId — a name that refers
+            // to a column (OperationId) existing on neither side, left over from when the table
+            // referenced Core.Operation directly. Copied verbatim for catalog parity.
             builder.HasOne<TenantOperation>().WithMany()
-                .HasForeignKey(p => p.TenantOperationId).OnDelete(DeleteBehavior.NoAction);
+                .HasForeignKey(p => p.TenantOperationId)
+                .HasConstraintName("FK_TenantRolePermission_Operation_OperationId")
+                .OnDelete(DeleteBehavior.NoAction);
 
             builder.HasIndex(p => new { p.TenantRoleId, p.TenantOperationId }).IsUnique();
         }

@@ -158,6 +158,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(l => l.UserNameAttempted).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
             builder.Property(l => l.EventType).IsRequired().HasMaxLength(30).HasDefaultValue("Login");
+
+            // SRMS constrains UserId to Core.User with SET NULL, so a deleted account leaves its
+            // audit trail behind with the link cleared rather than taking the rows with it. CERP had
+            // no constraint at all. Verified before adding: 84 rows, 0 orphans, column nullable.
+            builder.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(l => l.UserId)
+                .HasConstraintName("FK_LoginTrail_User_UserId")
+                .OnDelete(DeleteBehavior.SetNull);
             builder.Property(l => l.IpAddress).IsRequired().HasMaxLength(45);
             builder.Property(l => l.Status).HasMaxLength(50);
             builder.Property(l => l.FailureReason).HasMaxLength(500);

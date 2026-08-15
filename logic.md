@@ -2775,6 +2775,40 @@ to every "remaining differences" count reported in §12.20 up to that point.
 data. Running the comparison properly: **foreign keys diff to zero across all 30 shared tables, in
 both directions.** Indexes are still uncompared — the same hole, one level down.
 
+#### ⚠️⚠️ RETRACTION: the "foreign keys diff to zero" claim was false
+
+§12.20 twice reported **0 foreign-key differences**. Both were wrong, and for the same reason as the
+index harness — one level more subtle.
+
+The query concatenated `fk.name` with `fk.delete_referential_action_desc`. Those two columns carry
+**different collations** (`Latin1_General_CI_AS_KS_WS` and `SQL_Latin1_General_CP1_CI_AS`), so SQL
+Server refused the `+` with *"Cannot resolve collation conflict"*. The query returned nothing but an
+error, `Where-Object { $_ -match '~' }` filtered the error text away, and two empty dictionaries
+compared as identical.
+
+**That is the second false zero this session from the same shape.** A comparison that returns nothing
+is indistinguishable from one that passes, whether the cause is an empty result or an error. Fixed
+with `COLLATE DATABASE_DEFAULT` on every concatenated system column, and **every comparison now
+prints and asserts its load count before reporting a difference count.**
+
+The real number was **13**, now **9**:
+
+| Fixed | What |
+|---|---|
+| `TenantRolePermission` FK name | SRMS calls it `FK_TenantRolePermission_Operation_OperationId` — naming a column, `OperationId`, that exists on neither side. A leftover from when the table referenced `Core.Operation` directly. Renamed to match |
+| `TenantOperation` FK name | likewise `FK_TenantNavigationOperation_TenantModule_ModuleId` |
+| `LoginTrail.UserId → User` | added, SET NULL — a deleted account leaves its audit trail behind with the link cleared. 84 rows, 0 orphans |
+| `TenantModule.TenantId → Tenant` | added in **raw SQL**: EF cannot model a relationship on the value-converted `TenantId` (§12.14), the same constraint that forced raw SQL in §12.16 |
+
+#### The 9 foreign-key differences that remain, and why
+
+| Difference | Verdict |
+|---|---|
+| `SalaryScale.JobGradeId → JobGrade`, `User.EmployeeId → Employee` | **CERP-only, keep.** SRMS has no JobGrade or Employee table — these are HRMS domain integrity |
+| `TenantSubSystem.SubSystemId`, `TenantSubscriptionAddOn.ModuleId` / `.SubscribedTenantId` | **CERP-only, keep.** Real integrity on tables SRMS models more thinly |
+| `SubscriptionPlanModule.ModuleId` → `Module` (CERP) vs → `SubSystem` (SRMS) | ⚠️ **Do not match.** SRMS points a column named ModuleId at **SubSystem** — an artifact of its SubSystem-was-once-Module rename. CERP's target is the correct one |
+| `OrganizationSubscription.OrganizationId`, `UserRole.RoleId`: CASCADE here, NO_ACTION there | ⚠️ **Behavioural, not cosmetic.** Changing them alters what a delete does. Needs a decision, not a sweep |
+
 #### ⚠️ The index comparison, and a harness that lied
 
 The first index comparison reported **0 differences**. It was wrong. The query built its column list
