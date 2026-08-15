@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0120. **All three dimensions re-verified with a real harness (2026-08-15).**
+    New script: `backend/scripts/compare-schemas.ps1`. **No schema change.**
+    - After two false zeros I re-ran everything through one script that **asserts its load counts
+      before reporting**. These numbers are trustworthy because the harness proved it read rows:
+
+      | Dimension | Loaded (CERP / SRMS) | Differences |
+      |---|---|---|
+      | COLUMNS | 441 / 429 | **18** |
+      | FOREIGN KEYS | 32 / 27 | **9** |
+      | INDEXES + KEYS | 87 / 34 | **53** — every one a CERP-only EXTRA; 0 missing, 0 mismatched |
+
+    - The earlier column (18) and index (0 missing) results are **confirmed**; only the FK dimension
+      had been wrong, and it is now 9.
+    - The script fixes both root causes permanently: `COLLATE DATABASE_DEFAULT` on every concatenated
+      system column (the FK failure), and `STRING_AGG` instead of `FOR XML PATH` (the index failure).
+    - ⚠️ **The script is ASCII-only on purpose.** Windows PowerShell 5.1 reads a UTF-8 `.ps1` without
+      a BOM as ANSI, so an em-dash becomes `â€”` and breaks string parsing — the file failed to run
+      until every non-ASCII character was stripped.
+    - Use it before claiming parity: `& backend/scripts/compare-schemas.ps1`.
+
 0119. **`TenantRolePermission` FK name + ⚠️ MY FK AUDIT WAS FALSE (2026-08-15).** Detail in
     logic.md §12.20. Migrations `SrmsForeignKeyNames` + `LoginTrailAndTenantModuleForeignKeys`.
     - ⚠️ **RETRACTION: handoff 0117 and 0118 claimed "foreign keys diff to ZERO across all 30 shared
