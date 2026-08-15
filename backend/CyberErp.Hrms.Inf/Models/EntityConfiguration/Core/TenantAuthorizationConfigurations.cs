@@ -156,6 +156,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantUserRole", "Core");
             builder.HasKey(r => r.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: the row's tenant is its TenantUser's.
+            // Listed in Repository.IsGlobalEntity, so GetAll() spans every tenant — the projector's
+            // `held` set is scoped through this tenant's members for exactly that reason. Without
+            // that scoping its cleanup would delete OTHER tenants' role assignments.
+            builder.Ignore(r => r.TenantId);
+
             builder.Property(r => r.AssignedBy);   // uniqueidentifier, as in SRMS
 
             builder.HasOne<TenantUser>().WithMany()

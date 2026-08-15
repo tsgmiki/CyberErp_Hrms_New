@@ -123,6 +123,27 @@
 
 ## 1. Most recent changes (latest first)
 
+0122. **Three more TenantId columns dropped -- Organization, Setting, TenantUserRole (2026-08-15).**
+    Migration , APPLIED. Columns 17 -> 14.
+    - Organization and Setting were trivial: one row each, both already in , so
+      nothing had ever filtered on them.
+    -  needed one real fix. Its tenant is its TenantUser's, so the column goes --
+      but the projector's  set is used to DELETE assignments not in , and       only ever holds THIS tenant's pairs. Unscoped, the cleanup would have deleted **other tenants'
+      role assignments**.  is now filtered through this tenant's member ids.
+    - Home dropped the entity's TenantId, its , and the query filter for both
+      TenantRolePermission and TenantUserRole; its feed scopes through TenantUser, still filtered.
+    - Verified: HRMS 12 groups / 34 screens with all 12 group names intact, Home HOME(21)/HRMS(13),
+      0 translation errors in either log.
+    - ⚠️ ** NOT dropped -- there is no derivation path.** A UserRole row holds
+      only UserId and RoleId, and BOTH are global tables, so nothing can say which tenant an
+      assignment belongs to once the column goes.  creates a TenantUser for
+      every user in ; unscoped that is a cross-tenant membership leak, and there is
+      no join that would re-scope it. Dropping this one destroys information rather than
+      normalising it.
+    - ⚠️ ** NOT dropped** -- HOME is duplicated across 2 tenants (8 rows), so
+      going global surfaces both rows and needs dedup plus repointing Module / Operation /
+      TenantModule / TenantOperation / TenantSubSystem first.
+
 0121. ** DROPPED — the table is now column-identical (2026-08-15).**
     Migration , APPLIED. Columns 18 -> 17.
     - A grant's tenant is its ROLE's tenant now, exactly as SRMS models it.

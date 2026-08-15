@@ -21,6 +21,11 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("Organization", "Core");
             builder.HasKey(o => o.Id);
 
+            // TenantId is GONE (2026-08-15) — SRMS has none. An organization is the legal entity a
+            // tenant belongs to, so a tenant discriminator on it was backwards. Already in
+            // Repository.IsGlobalEntity, so nothing ever filtered on it.
+            builder.Ignore(o => o.TenantId);
+
             builder.Property(o => o.Code).IsRequired().HasMaxLength(80);
             builder.Property(o => o.LegalName).IsRequired().HasMaxLength(200);
             builder.Property(o => o.DisplayName).IsRequired().HasMaxLength(200);
@@ -188,6 +193,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // SRMS keeps this at datetime2(3); the convention gives non-nullable stamps (3) but
             // Setting.UpdatedAt is non-nullable AND was (7) from an older explicit mapping.
             builder.HasKey(x => x.Id).HasName("PK_SystemSetting");   // SRMS's constraint name
+
+            // TenantId is GONE (2026-08-15) — SRMS has none, the single row held the empty Guid, and
+            // Setting has always been in Repository.IsGlobalEntity so nothing filtered on it.
+            builder.Ignore(x => x.TenantId);
 
             builder.Property(x => x.UpdatedAt).HasColumnType("datetime2(3)");
 

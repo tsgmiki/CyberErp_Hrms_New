@@ -73,7 +73,7 @@ namespace CyberErp.Hrms.Inf.Repositories
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
                    or "User" or "Role" or "Operation" or "Module" or "Organization" or "Setting"
                    or "TenantOperation" or "OrganizationSubscription" or "SubscriptionPlanModule"
-                   or "TenantRolePermission";
+                   or "TenantRolePermission" or "TenantUserRole";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {

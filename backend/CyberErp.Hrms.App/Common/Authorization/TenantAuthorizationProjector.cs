@@ -260,7 +260,15 @@ namespace CyberErp.Hrms.App.Common.Authorization
 
             var assignments = await userRoles.GetAll().ToListAsync(ct);
             var members = await tenantUsers.GetAll().ToListAsync(ct);
-            var held = await tenantUserRoles.GetAll().ToListAsync(ct);
+
+            // ⚠️ SCOPED BY MEMBER, not by tenant filter. TenantUserRole lost its TenantId on
+            // 2026-08-15, so GetAll() now spans every tenant. The cleanup below deletes any `held`
+            // row not in `wanted`, and `wanted` only ever contains THIS tenant's pairs — so an
+            // unscoped read here would delete other tenants' role assignments outright.
+            var memberIds = members.Select(m => m.Id).ToHashSet();
+            var held = (await tenantUserRoles.GetAll().ToListAsync(ct))
+                .Where(h => memberIds.Contains(h.TenantUserId))
+                .ToList();
             var written = 0;
 
             // 1. Membership rows for everyone holding a role in this tenant.
