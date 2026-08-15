@@ -2764,6 +2764,34 @@ three are **empty**, so there was nothing to lose. ⚠️ The latter two had to 
 the *same* change, or every read of them would have failed with the 409 "could not be translated"
 that cost a debugging round on `Module`.
 
+#### ⚠️ The audit had a hole: columns are not a schema
+
+Everything above compared **columns** — name, type, size, nullability, default. It never compared
+**foreign keys**. So `FK_Tenant_LookUpCategoryList`, which SRMS has and CERP did not, was invisible
+to every "remaining differences" count reported in §12.20 up to that point.
+
+`Core.Tenant.TenantTypeId` now references `Core.LookUpCategoryList` under SRMS's constraint name,
+`Restrict` on delete. All three rows hold NULL and NULLs are exempt, so it applied without touching
+data. Running the comparison properly: **foreign keys diff to zero across all 30 shared tables, in
+both directions.** Indexes are still uncompared — the same hole, one level down.
+
+#### ⚠️ CERP has TWO lookup systems, and EF picked the wrong one
+
+Mapping that foreign key through EF scaffolded a constraint to **`Hrms.LookUpCategoryList`** — the
+wrong table — and it would have applied silently.
+
+| Table | What it is | Referenced by |
+|---|---|---|
+| `Core.LookUpCategory` / `Core.LookUpCategoryList` | mirrors the **SRMS platform** schema | `Tenant.TenantTypeId` (now) |
+| `Hrms.LookUpCategory` / `Hrms.LookUpCategoryList` | the **HRMS domain** lookups — education level, field of study | the `LookupCategoryList` **entity** maps this one |
+
+Both exist, both are currently empty, and before this change **neither was referenced by any foreign
+key at all**. A tenant TYPE is platform data, so the constraint belongs on the Core pair — which EF
+cannot express while the entity maps the Hrms pair, hence raw SQL.
+
+**The general point: when two tables share a name across schemas, read the scaffolded migration
+before applying it.** EF resolves the entity, not the intent.
+
 #### ⚠️ Two "extras" that are not extras
 
 Not everything CERP has and SRMS lacks is surplus. Two were deliberately left:

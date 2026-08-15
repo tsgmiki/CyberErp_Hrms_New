@@ -30,6 +30,17 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
             builder.HasIndex(t => t.OrganizationId);
 
+            /*
+             * TenantTypeId references Core.LookUpCategoryList — the PLATFORM lookup table, the one
+             * SRMS constrains with FK_Tenant_LookUpCategoryList.
+             *
+             * ⚠️ NOT mapped through EF, and that is deliberate. CERP has TWO lookup systems:
+             * Core.LookUpCategory/List mirrors the SRMS platform schema, and Hrms.LookUpCategory/List
+             * is the HRMS domain one the LookupCategoryList ENTITY maps (education levels, fields of
+             * study). A tenant TYPE is platform data, so the constraint has to point at the Core
+             * table — which EF cannot express while the entity maps the Hrms one. Added in raw SQL by
+             * the TenantTypeIdForeignKey migration instead.
+             */
             builder.Property(t => t.TenantTypeId);
             builder.Property(t => t.CurrencyOverride);
             builder.Property(t => t.LocaleOverride);

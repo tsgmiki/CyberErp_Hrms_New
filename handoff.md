@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0117. **`Tenant.TenantTypeId` foreign key + the FK/index audit I had MISSED (2026-08-15).**
+    Detail in logic.md §12.20. Migration `TenantTypeIdForeignKey`, APPLIED.
+    - ⚠️ **MY AUDIT HAD A HOLE.** Handoff 0114–0116 compared COLUMNS only — name, type, size,
+      nullability, default. It never compared **foreign keys or indexes**, so
+      `FK_Tenant_LookUpCategoryList` — present in SRMS, absent in CERP — was invisible to every
+      "remaining differences" count I reported. A column-level diff is not a schema diff.
+    - Added it: `Core.Tenant.TenantTypeId` → `Core.LookUpCategoryList`, same constraint name as SRMS,
+      Restrict. Safe — all three rows hold NULL, and NULLs are exempt.
+    - ⚠️ **RAW SQL, not the EF model, and the reason matters.** CERP has **TWO lookup systems**:
+      `Core.LookUpCategory/List` mirrors the SRMS platform schema, and `Hrms.LookUpCategory/List` is
+      the HRMS domain one the `LookupCategoryList` **entity maps** (education levels, fields of
+      study). Both exist, both empty, neither previously referenced by any FK. A tenant TYPE is
+      platform data, so the constraint must point at **Core** — mapping it through EF silently
+      scaffolded a foreign key to **`Hrms.LookUpCategoryList`**, the wrong table. Caught by reading
+      the scaffold before applying it.
+    - **SRMS needed no change** — it already had the FK, correctly.
+    - Ran the missing audit: **foreign keys now diff to ZERO** across all 30 shared tables, in both
+      directions. Indexes still uncompared (see §12.20).
+    - Verified: sidebar 12 groups / 34 screens, employee and lookup reads 200.
+
 0116. **`Core.Tenant` matched + the safe platform drops — 23 → 18 (2026-08-15).** Detail in
     logic.md §12.20. Migrations `TenantDropTenantIdDiscriminator` +
     `PlatformTablesDropTenantIdAndSettingPrecision`, APPLIED.
