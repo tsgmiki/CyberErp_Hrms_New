@@ -3218,6 +3218,16 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 
 ## 4. Gotchas that will bite (hard-won)
 
+- **⚠️ `Core.Subsystem.Code` is a JOIN KEY, not a label.** The Home portal's frontend matches it
+  literally in five places — `useMenuModules` (the sidebar filter), `portalLanding`, `widgets`,
+  `dashboard` and `services/portal`. Renaming the NVI tenant's Home row to code `003` left the portal
+  **loading fine with an empty sidebar**: login 200, feed 200, all 21 screens returned, nothing
+  matched. A working API and a broken UI at once. Restored by
+  `backend/scripts/restore-home-subsystem-code.sql` (2026-08-15). **`Name` is safe to change — it is
+  only displayed. `Code` is not.**
+- **Subsystem rows are duplicated PER TENANT**, so two rows can share a code without colliding — the
+  table is tenant-filtered. `9FC9447D…` is demo's Home, `B7340E07…` is NVI's.
+
 - **Before deleting a menu operation, grep its link in `[RequirePermission]`.** `EndpointPermissionService`
   matches a required link against the caller's GRANTED operation links, so a key whose operation no
   longer exists can never be granted — the gate returns **403 to everyone, forever**, and fails
