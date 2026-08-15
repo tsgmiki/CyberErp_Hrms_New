@@ -123,6 +123,20 @@
 
 ## 1. Most recent changes (latest first)
 
+0121. ** DROPPED — the table is now column-identical (2026-08-15).**
+    Migration , APPLIED. Columns 18 -> 17.
+    - A grant's tenant is its ROLE's tenant now, exactly as SRMS models it.
+    - **No query needed re-scoping.** All four HRMS readers were already constrained by
+       or , both themselves tenant-scoped:
+       and  join from tenant tables,
+       filters on this tenant's role ids, and the projector's
+      delete is scoped to this tenant's operations. Home's feed reaches it through
+      TenantUser -> TenantUserRole, both still filtered.
+    - Added to  and removed Home's query filter + , in the
+      same change — the 409 trap.
+    - Verified: 570 grants intact, all resolving to a TenantRole AND a TenantOperation, deriving to
+      exactly 1 tenant. HRMS sidebar 12 groups / 34 screens, Home HOME(21)/HRMS(13), 0 errors.
+
 0120. **All three dimensions re-verified with a real harness (2026-08-15).**
     New script: `backend/scripts/compare-schemas.ps1`. **No schema change.**
     - After two false zeros I re-ran everything through one script that **asserts its load counts

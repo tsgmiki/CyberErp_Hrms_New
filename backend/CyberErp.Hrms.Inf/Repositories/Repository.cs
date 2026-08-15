@@ -72,7 +72,8 @@ namespace CyberErp.Hrms.Inf.Repositories
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
                    or "User" or "Role" or "Operation" or "Module" or "Organization" or "Setting"
-                   or "TenantOperation" or "OrganizationSubscription" or "SubscriptionPlanModule";
+                   or "TenantOperation" or "OrganizationSubscription" or "SubscriptionPlanModule"
+                   or "TenantRolePermission";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {

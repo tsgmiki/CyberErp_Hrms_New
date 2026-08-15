@@ -107,6 +107,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantRolePermission", "Core");
             builder.HasKey(p => p.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: a grant's tenant is its ROLE's tenant.
+            // Every reader was already constrained by TenantRoleId or TenantOperationId, both of
+            // which are themselves tenant-scoped, so no query needed re-scoping. But the entity MUST
+            // be listed in Repository.IsGlobalEntity, or the tenant filter references an unmapped
+            // member and every read fails with a 409 "could not be translated".
+            builder.Ignore(p => p.TenantId);
+
             builder.HasOne<TenantRole>().WithMany()
                 .HasForeignKey(p => p.TenantRoleId).OnDelete(DeleteBehavior.Cascade);
             // NoAction on the second leg: two cascade paths into the same table is a multiple-cascade
