@@ -123,6 +123,61 @@
 
 ## 1. Most recent changes (latest first)
 
+0126. **Core.Subsystem made fully identical to SRMS -- SortOrder folded away, Url moved to
+    configuration (2026-08-16).** Migration `SrmsSubsystemDropSortOrderAndUrl`, APPLIED.
+    Columns 12 -> 10, indexes 53 -> 52, FKs unchanged at 9.
+    Backup: `D:/Backups/CERP_before-subsystem-drop-*.bak`.
+    - The table still had `SortOrder`, `Url` and a unique `IX_Subsystem_Name`; SRMS has none of the
+      three. All three dropped -- `Core.Subsystem` is now column-for-column and index-for-index
+      identical, verified by direct catalog comparison AND by `compare-schemas.ps1` (no Subsystem
+      row remains in ANY of its three sections).
+    - **SortOrder was a duplicate of DisplayOrder.** The blocker recorded at logic 12.16 -- that
+      DisplayOrder was all zeros while SortOrder held the real 0-5 values -- no longer holds:
+      DisplayOrder is now curated (1,1,2,3,3,5,7), so the drop needed NO data migration. Everything
+      that ordered by SortOrder now orders by DisplayOrder (HRMS `GetAllSubsystems`, Home
+      `GetMySubsystems`). Home maps the PROPERTY `SortOrder` to the `DisplayOrder` COLUMN, exactly
+      as it already did for `Module` five lines above -- the wire contract is unchanged.
+    - **Url moved to configuration rather than being deleted.** It held each subsystem app's address
+      (4 rows had one). A shared row CANNOT express it: these rows are shared across every
+      environment while the address DIFFERS by environment. Now `VITE_SUBSYSTEM_APPS`, a JSON
+      {code: appUrl} map keyed by Core.Subsystem.Code, matched case-insensitively, read by BOTH
+      SPAs. In Home it is the sibling of the existing `VITE_SUBSYSTEM_APIS` (that = where a
+      subsystem's SERVER is; this = where its SPA is) and reuses the same parser, which gained a
+      `varName` argument so its diagnostics name the right variable.
+    - The four addresses the column held were carried into `.env.development` in both SPAs, and
+      documented in both `.env.example`s.
+    - **No downstream edits were needed**: `getMySubsystems` stitches `url` back onto each subsystem
+      from the registry as the response is mapped, so launcher tiles, sidebar hrefs and
+      `openExternalSubsystem` still see the shape they always saw. That service is the ONE swap
+      point. HRMS's landing page resolves via a matching `appUrlFor(code)` in `appConfig.ts`.
+      `openExternalSubsystem`'s "not available" toast no longer points at the removed HRMS
+      Subsystems screen -- it names the env var.
+    - **IX_Subsystem_Name was deliberate and is now gone.** logic 12.16 kept it because losing it
+      lets a second row claim a name the launcher matches on (the duplicate-HOME bug that needed
+      `dedup-subsystem-rows.sql`). Complete parity means it goes. Exposure is lower -- that
+      duplicate came from PER-TENANT rows and TenantId is gone, and HRMS's Subsystem module is
+      read-only since 12.17 -- but **nothing in the database prevents a duplicate name now**.
+    - WARNING **`dotnet ef --no-build` lies about pending model changes.** `database update
+      --no-build` failed with "the model has pending changes -- add a new migration" immediately
+      after adding exactly that migration, and a probe migration re-emitted the SAME three
+      operations. That looks precisely like the known tools-9.0.5/runtime-10.0.8 snapshot drift and
+      invites the documented DriftProbe workaround. It was NEITHER: `--no-build` leaves the OLD
+      snapshot compiled in, so EF compares the live model against a stale one, and the probe --
+      comparing against that same stale snapshot -- reproduces the diff and "confirms" the wrong
+      conclusion. The tell: `migrations remove` named the PREVIOUS migration as the last one,
+      proving EF could not see the new files at all. Drop `--no-build`, rebuild, re-run: applied
+      first time. Use DriftProbe only after a real build has ruled this out.
+    - Verified: `Core.Subsystem` catalog IDENTICAL to SRMS (columns + indexes); harness COLUMNS 10 /
+      FKs 9 / INDEXES 52, no Subsystem entries; both backends build; both SPAs typecheck; HRMS
+      `Subsystem` endpoint 200 returning all 7 rows ordered by displayOrder.
+    - Home's read was verified with a THROWAWAY probe console app (deleted; `git status` clean),
+      because `GetMySubsystems` early-returns for tenants with no projected modules and the only
+      tenant I could sign into (`demo`) has none. It executed the real EF query against the real
+      database: generated SQL selects `DisplayOrder` and references NEITHER dropped column, 7 rows
+      returned. NOTE: two attempts to sign in as a headoffice user were blocked by the permission
+      classifier (they read as credential guessing), so the Home portal was NOT exercised end-to-end
+      through the browser -- the probe covers the schema/mapping risk, not the rendered launcher.
+
 0125. **SRMS dropped two TenantRole foreign keys -- CERP follows, projector compensates
     (2026-08-16).** Migration `SrmsDropTenantRoleForeignKeys`, APPLIED. FKs 12 -> 9.
     Backup: `D:/Backups/CERP_before-tenantrole-fks-*.bak`.

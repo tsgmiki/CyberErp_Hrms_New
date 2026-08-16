@@ -2882,3 +2882,57 @@ operations, 598 permissions and 506 users. The map is
 permission set is identical before and after. Everything that reads the current model has to move in
 lockstep: login, `PermissionAuthorizationFilter`, `IEndpointPermissionService`, the DB-driven sidebar
 and the Role Permissions screens.
+
+### 12.21 Core.Subsystem: dropping the last two CERP-only columns
+
+The table still carried `SortOrder` and `Url`, plus a unique `IX_Subsystem_Name`. SRMS has none of
+the three, so all three went. `Core.Subsystem` is now column-for-column and index-for-index
+identical to SRMS.
+
+**`SortOrder` was a duplicate.** SRMS's ordering column is `DisplayOrder`, which CERP also had —
+two columns doing one job. When the pair was first noticed (§12.16) `DisplayOrder` was all zeros
+while `SortOrder` held 0–5, so dropping the wrong one would have scrambled the launcher. That is no
+longer true: `DisplayOrder` is now curated (1,1,2,3,3,5,7), so the drop needed no data migration.
+Everything that ordered by `SortOrder` now orders by `DisplayOrder`.
+
+**`Url` was in the wrong place entirely, and that is the point.** It held each subsystem
+application's address — `http://localhost:5174` and friends. A database column cannot express it,
+because these rows are SHARED across every environment while the address DIFFERS by environment:
+dev, staging and production each need their own value, and one shared row has only one. So the four
+addresses moved into environment configuration, `VITE_SUBSYSTEM_APPS`, a JSON `{code: appUrl}` map
+keyed by `Core.Subsystem.Code` and matched case-insensitively. Both SPAs read the same variable
+name; the Home portal already had the identical pattern one function above it for subsystem *APIs*
+(`VITE_SUBSYSTEM_APIS`) — this is its sibling for subsystem *apps*: one is where a subsystem's
+server is, the other where its SPA is.
+
+The wire contract did not change. `getMySubsystems` stitches `url` back onto each subsystem from
+the registry as the response is mapped, so the launcher tiles, sidebar hrefs and
+`openExternalSubsystem` all still see the shape they always saw and needed no edits. **That is the
+single place the swap happens** — resolve addresses through `appUrlFor(code)`, never expect a
+server-supplied `url`.
+
+#### The index that was deliberate, and is now gone
+
+`IX_Subsystem_Name` (unique) was kept on purpose at §12.16, because losing it lets a second row
+claim a name the launcher matches on — the duplicate-`HOME` bug that needed
+`dedup-subsystem-rows.sql`. Complete parity means it goes anyway. The exposure is smaller than it
+was: that duplicate came from PER-TENANT subsystem rows, and `TenantId` is gone (§12.16); HRMS's
+Subsystem module is read-only since §12.17, so SRMS owns writes here. A duplicate can now only
+arrive by manual insert. **Nothing in the database prevents one.**
+
+#### ⚠️ `--no-build` makes `dotnet ef` lie about pending changes
+
+`database update --no-build` failed with *"The model for context 'HrmsDbContext' has pending
+changes. Add a new migration"* — immediately after adding exactly that migration. Scaffolding a
+probe migration then re-emitted the SAME three operations, which looks like the known
+tools-9.0.5-vs-runtime-10.0.8 snapshot drift and invites the documented DriftProbe workaround.
+
+It was neither. `--no-build` means the compiled assembly still holds the OLD snapshot: `migrations
+add` writes the `.cs` files, but nothing recompiles them, so `database update` compares the live
+model against a stale compiled snapshot and reports phantom drift — and the probe, comparing
+against the same stale snapshot, reproduces the same diff and "confirms" the false conclusion.
+
+The tell that separates the two: `migrations remove` named the PREVIOUS migration as the last one,
+proving EF could not see the new files at all. **Drop `--no-build` and rebuild before `database
+update`.** Reach for the DriftProbe workaround only after a real build has ruled this out —
+otherwise a probe migration gets committed to fix a problem that does not exist.

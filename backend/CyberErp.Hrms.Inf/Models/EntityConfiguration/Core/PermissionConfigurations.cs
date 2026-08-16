@@ -68,9 +68,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.Property(s => s.Name).IsRequired().HasMaxLength(100);
             builder.Property(s => s.Code).IsRequired().HasMaxLength(50).HasDefaultValue(string.Empty);
-            builder.Property(s => s.SortOrder).HasDefaultValue(0);
-            // Where the subsystem's app lives — the Home portal's launcher tiles deep-link here.
-            builder.Property(s => s.Url).HasMaxLength(400);
+
+            // ⚠️ SortOrder and Url are GONE (2026-08-16) — SRMS has neither, and this table is now
+            // column-for-column identical to it. SortOrder duplicated DisplayOrder, which survives.
+            // Url held each subsystem app's address; that is deployment configuration, not shared
+            // tenant data, so both SPAs resolve it from VITE_SUBSYSTEM_APPS keyed by Code. See the
+            // remarks on the Subsystem entity before adding either back.
 
             // SRMS platform alignment (2026-08-14, logic.md §12.13). The six columns SRMS carries
             // that CERP lacked; defaults keep existing rows and new inserts valid without a value.
@@ -86,11 +89,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // scripts/dedup-subsystem-rows.sql. The catalogue is one global list now.
             builder.Ignore(s => s.TenantId);
 
-            // Unique on Name ALONE, since the tenant half of the old key no longer exists. All 7
-            // names are distinct, so this is the same guarantee minus the dropped column. SRMS has no
-            // index here at all — the constraint is kept deliberately, because losing it would let a
-            // second row claim a name the launcher matches on.
-            builder.HasIndex(s => s.Name).IsUnique();
+            // ⚠️ NO index on Name. IX_Subsystem_Name was dropped on 2026-08-16 so this table matches
+            // SRMS exactly — SRMS has no index here at all. It had guarded against a second row
+            // claiming a name the launcher matches on; nothing enforces that now. The exposure is
+            // small because the duplicate it originally cleaned up (HOME twice) came from the
+            // per-tenant rows, and TenantId is gone, and HRMS's Subsystem module is read-only —
+            // SRMS owns writes to this catalogue. A duplicate can now only come from a manual insert.
         }
     }
 

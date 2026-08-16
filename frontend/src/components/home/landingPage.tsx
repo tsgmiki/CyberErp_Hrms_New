@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Building2, ChevronRight, LogOut } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import store from "@/store";
+import { appUrlFor } from "@/config/appConfig";
 import { useAuth } from "@/context/AuthContext";
 import BrandTitle from "@/components/common/brand/brandTitle";
 import {
@@ -146,14 +147,18 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
   const firstName = user?.fullName?.split(" ")[0] ?? t("User", { defaultValue: "User" });
 
   const handleSelectSubsystem = (subsystem: string) => {
-    // Centralized architecture: each subsystem row (dbo.coreSubsystem) carries its application's
-    // URL. Selecting a subsystem hosted by ANOTHER application (e.g. Home) deep-links there;
-    // this application renders only its own subsystem's screens.
+    // Centralized architecture: selecting a subsystem hosted by ANOTHER application (e.g. Home)
+    // deep-links there; this application renders only its own subsystem's screens.
+    //
+    // ⚠️ The address comes from VITE_SUBSYSTEM_APPS keyed by the subsystem's CODE, not from the
+    // row — Core.Subsystem.Url was dropped on 2026-08-16 for SRMS parity. A subsystem with no
+    // configured address simply scopes locally, exactly as an absent Url did before.
     const row = subsystemRows?.find((s) => s.name === subsystem);
-    if (row?.url) {
+    const url = appUrlFor(row?.code);
+    if (url) {
       try {
-        if (new URL(row.url).origin !== window.location.origin) {
-          window.location.assign(row.url);
+        if (new URL(url).origin !== window.location.origin) {
+          window.location.assign(url);
           return;
         }
       } catch {
