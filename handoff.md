@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+0125. **SRMS dropped two TenantRole foreign keys -- CERP follows, projector compensates
+    (2026-08-16).** Migration `SrmsDropTenantRoleForeignKeys`, APPLIED. FKs 12 -> 9.
+    Backup: `D:/Backups/CERP_before-tenantrole-fks-*.bak`.
+    - Detected by `compare-schemas.ps1`: FK differences jumped 9 -> 12 while SRMS own FK count fell
+      27 -> 25. Confirmed directly on the three tables rather than trusting the diff. Three changes:
+      **(a)** `FK_TenantRole_Role_RoleId` renamed to **`FK_TenantRole_Role_SourceTemplateId`** -- SRMS
+      keeps the OLD property name in the constraint while the column is `RoleId`, the mirror image of
+      CERP, which renamed the column and let EF rename the key.
+      **(b)** `FK_TenantRolePermission_TenantRole_TenantRoleId` **dropped** (was CASCADE).
+      **(c)** `FK_TenantUserRole_TenantRole_TenantRoleId` **dropped** (was NO_ACTION).
+    - !! **THE CODE REFACTOR THAT MATTERS.** (b) was the CASCADE that cleaned up a deleted role's
+      grants, and (c) was what BLOCKED deleting a role someone still held. The projector deleted an
+      orphan TenantRole and let the database do the rest; with both keys gone that silently leaves
+      orphaned grants and assignments. `SyncRolesAsync` now deletes TenantRolePermission and
+      TenantUserRole children explicitly before removing the role.
+    - Two scaffold side-effects corrected: EF wanted to DROP `IX_TenantUserRole_TenantRoleId` (it
+      existed for the removed FK, and nothing else covers a lookup by that column -- kept explicitly,
+      since the new cleanup queries it) and to ADD a redundant `IX_TenantRolePermission_TenantRoleId`
+      (the composite unique index already leads with TenantRoleId -- dropped from the config).
+    - Verified: FKs 12 -> 9 with all three resolved, columns 12 and indexes 53 unchanged; HRMS 12
+      groups / 34 screens, my-clearances 200, Home HOME(21)/HRMS(13), 0 errors.
+
 0124. **UserRole.TenantId dropped -- membership projection removed, role resolution rewritten
     (2026-08-15).** Migration `UserRoleDropTenantId`, APPLIED. Columns 13 -> 12.
     Backup: `D:/Backups/CERP_before-userrole-tenantid-*.bak`.

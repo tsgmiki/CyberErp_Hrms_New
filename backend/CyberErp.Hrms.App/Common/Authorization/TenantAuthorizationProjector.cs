@@ -136,7 +136,26 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var orphans = existing
                 .Where(r => r.SourceTemplateId.HasValue && !templateIds.Contains(r.SourceTemplateId.Value))
                 .ToList();
-            foreach (var orphan in orphans) { tenantRoles.Delete(orphan); written++; }
+
+            // ⚠️ THE CHILDREN ARE DELETED BY HAND, because the database no longer does it.
+            //
+            // TenantRolePermission -> TenantRole used to CASCADE, and TenantUserRole -> TenantRole
+            // used to BLOCK the delete outright. SRMS dropped BOTH foreign keys on 2026-08-15 and
+            // CERP followed for parity, so deleting a role now silently leaves its grants and its
+            // holders' assignments behind — rows that grant nothing and point at nothing.
+            foreach (var orphan in orphans)
+            {
+                var grants = await tenantRolePermissions.GetAll()
+                    .Where(p => p.TenantRoleId == orphan.Id).ToListAsync(ct);
+                foreach (var grant in grants) { tenantRolePermissions.Delete(grant); written++; }
+
+                var assignments = await tenantUserRoles.GetAll()
+                    .Where(a => a.TenantRoleId == orphan.Id).ToListAsync(ct);
+                foreach (var assignment in assignments) { tenantUserRoles.Delete(assignment); written++; }
+
+                tenantRoles.Delete(orphan);
+                written++;
+            }
 
             return written;
         }

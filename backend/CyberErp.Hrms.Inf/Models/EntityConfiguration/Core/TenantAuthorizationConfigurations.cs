@@ -31,8 +31,12 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             // The template is a soft link: deleting a global Role must not delete tenants' instances,
             // which may since have been customised.
+            // The constraint NAME is SRMS's: it still says SourceTemplateId even though the column is
+            // RoleId — the mirror image of CERP, which renamed the column and let EF rename the key.
             builder.HasOne<Role>().WithMany()
-                .HasForeignKey(r => r.SourceTemplateId).OnDelete(DeleteBehavior.SetNull);
+                .HasForeignKey(r => r.SourceTemplateId)
+                .HasConstraintName("FK_TenantRole_Role_SourceTemplateId")
+                .OnDelete(DeleteBehavior.SetNull);
 
             // SRMS names this column RoleId; the property stays SourceTemplateId because "RoleId" on
             // a table of roles reads like a primary key. Mapped, not renamed (2026-08-15).
@@ -114,8 +118,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // member and every read fails with a 409 "could not be translated".
             builder.Ignore(p => p.TenantId);
 
-            builder.HasOne<TenantRole>().WithMany()
-                .HasForeignKey(p => p.TenantRoleId).OnDelete(DeleteBehavior.Cascade);
+            // ⚠️ NO foreign key to TenantRole. SRMS dropped it, so CERP does too (2026-08-15) — and
+            // it was the CASCADE that used to clean up a deleted role's grants. The database no
+            // longer does that, so TenantAuthorizationProjector deletes the children explicitly
+            // before removing an orphan role. Do not rely on the database here.
+            //
+            // No index is added for the lost FK: IX_TenantRolePermission_TenantRoleId_TenantOperationId
+            // already leads with TenantRoleId, so lookups by role are covered.
             // NoAction on the second leg: two cascade paths into the same table is a multiple-cascade
             // -path error in SQL Server, and the role side is the one that should cascade.
             // ⚠️ SRMS calls this FK_TenantRolePermission_Operation_OperationId — a name that refers
@@ -166,8 +175,15 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             builder.HasOne<TenantUser>().WithMany()
                 .HasForeignKey(r => r.TenantUserId).OnDelete(DeleteBehavior.Cascade);
-            builder.HasOne<TenantRole>().WithMany()
-                .HasForeignKey(r => r.TenantRoleId).OnDelete(DeleteBehavior.NoAction);
+            // ⚠️ NO foreign key to TenantRole — SRMS dropped it (2026-08-15). It used to BLOCK
+            // deleting a role that someone still held; now nothing does, so the projector removes
+            // these rows itself before deleting an orphan role.
+            //
+            // The index is kept EXPLICITLY. EF created it for the foreign key and would drop it with
+            // the relationship, but nothing else covers a lookup by TenantRoleId here
+            // (IX_TenantUserRole_TenantUserId_TenantRoleId leads with TenantUserId), and the
+            // projector's cleanup queries exactly that column.
+            builder.HasIndex(r => r.TenantRoleId);
 
             builder.HasIndex(r => new { r.TenantUserId, r.TenantRoleId }).IsUnique();
         }
