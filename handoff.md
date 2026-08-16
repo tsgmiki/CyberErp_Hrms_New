@@ -123,6 +123,52 @@
 
 ## 1. Most recent changes (latest first)
 
+0127. **Edit Profile replaces Change Password in the HOME portal (2026-08-16).** Ported from
+    `D:/Workspace/CyberErp/CYBER_ERP_SRMS/SRMS-main` (`Web/src/components/UserAccountDialog.tsx` +
+    `AccountMenu.tsx` + `services/api/authService.ts`). Home repo only -- NO migration, NO HRMS change.
+    - Removed: `/password` page, its route + lazy import, `ChangePasswordModel`, and the
+      "Change Password" menu item. **The capability was NOT removed** -- password change moved into
+      the dialog's Security tab and still posts to the existing `auth/change-password`, which is
+      exactly how SRMS arranges it. `services/auth/changePassword.ts` is therefore KEPT.
+    - Added backend: `Features/Account/AccountProfile.cs` (8 slices), `AccountController`, and three
+      newly-mapped read-models -- `User` extended with the profile/security columns, plus
+      `UserPreference` and `LoginTrail` entities.
+    - Added frontend: `components/account/userAccountDialog.tsx` (3 tabs), `services/account/`,
+      `models/masters/AccountModel.ts`; `AuthContext` gained `syncUser`.
+    - ⚠️ **Deliberately NOT ported: the ADMIN half.** SRMS's dialog is three components in one --
+      it also CREATES users and EDITS other people's accounts (`createMode` / `targetUser` /
+      `platformMode`), which is why its endpoints are `/User/{id}/...` and why it carries a role
+      picker, employee combobox and account-status switches. The portal has no user administration
+      (SRMS owns it), so copying that shape would have put **every signed-in user one URL edit away
+      from reading and rewriting anyone else's profile**, behind UI that would itself be dead. Every
+      portal endpoint is a `me` route; `AccountController` takes NO user id. Admin editing, if ever
+      wanted, needs its own permission-gated slice -- not a widened parameter.
+    - Kept from SRMS: avatar crop to 512x512 JPEG, picture changes STAGED until Save, dirty-state
+      discard guard, live theme switching, security activity feed (4 + "View all").
+    - **No migration**: every column already existed on Core.User / Core.UserPreference /
+      Core.LoginTrail and the portal had simply never mapped them.
+    - ⚠️ TWO runtime-only traps, both of which BUILD CLEANLY (logic 12.22):
+      **(a)** `UserPreference.TenantId` is **nvarchar(900)**, not the uniqueidentifier the re-keyed
+      tables use -- it was never part of the 12.14 re-key. HomeDbContext's blanket
+      "convert every string TenantId to uniqueidentifier" loop had to SKIP it, or EF sends a Guid
+      parameter at an nvarchar column. **Check the COLUMN before trusting "every TenantId is a Guid".**
+      **(b)** `UserPreference.RowVersion` is **varbinary(8) NOT NULL, manually managed** -- the first
+      insert failed with "Cannot insert the value NULL into column 'RowVersion'". Fixed by extending
+      `SharedAudited`. **Any shared table the portal INSERTS into needs that base class**; read-only
+      ones (LoginTrail) do not.
+    - Smaller decisions: the avatar is served as an image STREAM with `Cache-Control: private,
+      max-age=300` (never base64 in JSON) and the SPA busts it with `?v=`; the upload uses RAW fetch
+      because the shared client forces `Content-Type: application/json` on any body and would break
+      the multipart boundary; "last successful login" is the newest SUCCESS, not the newest row.
+    - Verified end-to-end against the live DB: all 8 endpoints 200, BOTH preference branches
+      (insert + update), avatar upload/fetch/delete round-trip (67-byte PNG back byte-for-byte,
+      404 after delete), duplicate-username -> clean 400 (not 500), unauthenticated -> 401,
+      bad current password -> 400. API log ZERO errors. Frontend typecheck + lint + production
+      build all clean.
+    - ⚠️ NOT verified: the rendered dialog in a browser. No Playwright/Puppeteer in the repo and I
+      did not install one; port 5175 was already served by an existing dev server, which picks the
+      changes up by HMR. Backend + build are proven; the visual layout is not.
+
 0126. **Core.Subsystem made fully identical to SRMS -- SortOrder folded away, Url moved to
     configuration (2026-08-16).** Migration `SrmsSubsystemDropSortOrderAndUrl`, APPLIED.
     Columns 12 -> 10, indexes 53 -> 52, FKs unchanged at 9.

@@ -2936,3 +2936,56 @@ The tell that separates the two: `migrations remove` named the PREVIOUS migratio
 proving EF could not see the new files at all. **Drop `--no-build` and rebuild before `database
 update`.** Reach for the DriftProbe workaround only after a real build has ruled this out —
 otherwise a probe migration gets committed to fix a problem that does not exist.
+
+### 12.22 Edit Profile in the Home portal, ported from SRMS
+
+The portal's "Change Password" menu item and its `/password` page are gone, replaced by SRMS's
+`UserAccountDialog` — a three-tab self-service dialog (Profile / Preferences / Security) opened from
+the header account menu. **Password change was not removed**: it moved into the Security tab, which
+is where SRMS has it, and still posts to the portal's existing `auth/change-password`.
+
+#### What was deliberately NOT ported
+
+SRMS's dialog is three components wearing one name. Besides "my profile" it is also the **create a
+user** form and the **edit someone else's account** form (`createMode`, `targetUser`,
+`platformMode`) — which is why its endpoints are `/User/{id}/profile`, `/User/{id}/preferences`, and
+why it carries a role picker, an employee combobox and account-status switches.
+
+The portal has no user administration; SRMS owns that. Porting the id-addressed shape would have put
+**every signed-in user one URL edit away from reading and rewriting anyone else's profile**, behind
+UI that would itself be dead. So every portal endpoint is a `me` route taking the account from the
+auth cookie, and `AccountController` takes no user id at all. If admin editing is ever wanted here,
+it needs its own permission-gated slice — not a widened parameter.
+
+Everything belonging to the self-service path was kept: avatar cropping to a 512×512 JPEG, picture
+changes STAGED until Save, the dirty-state discard guard, live theme switching, and the security
+activity feed.
+
+#### No migration — and two runtime-only traps
+
+Every column already existed on `Core.User` (`ProfilePicture`, `ProfilePictureContentType`,
+`AccountStatus`, `TwoFactorEnabled`, `FailedLoginAttempts`, `LockoutEndUtc`), plus all nine of
+`Core.UserPreference` and the whole of `Core.LoginTrail`. The portal had simply never mapped them.
+Both traps below build perfectly cleanly and fail only when the row is actually written:
+
+1. **`UserPreference.TenantId` is `nvarchar(900)`, not `uniqueidentifier`.** It was never part of
+   the §12.14 re-key. `HomeDbContext` ends with a blanket loop converting EVERY string `TenantId` to
+   `uniqueidentifier`; left alone it sends a Guid parameter at an nvarchar column. The entity is
+   explicitly skipped there. **Check the COLUMN before trusting "every TenantId is a Guid now".**
+2. **`UserPreference.RowVersion` is `varbinary(8) NOT NULL`** and manually managed (not a SQL
+   rowversion the server fills in). The first insert failed with *"Cannot insert the value NULL into
+   column 'RowVersion'"*. `SharedAudited` exists for exactly this, so the entity extends it. **Any
+   shared table the portal INSERTS into needs that base class; read-only ones (LoginTrail) do not.**
+
+#### Smaller decisions worth keeping
+
+- **The avatar is a STREAM, not JSON.** `GET Account/profile-picture` returns the image with
+  `Cache-Control: private, max-age=300`; the profile response carries only a URL. Inlining base64
+  would put the whole picture in every profile read. The SPA appends `?v=<timestamp>` after an
+  upload so only the changed avatar is refetched.
+- **The upload uses raw `fetch`.** The shared client sets `Content-Type: application/json` whenever
+  there is a body, which overrides the multipart boundary the browser must generate.
+- **`AuthContext` gained `syncUser`** so the header reflects a renamed account immediately — the
+  shell reads the name and email from context, not from a re-fetch.
+- **"Last successful login" is the newest SUCCESS**, not the newest row: a failed attempt after a
+  good one must not be reported as the last sign-in.
