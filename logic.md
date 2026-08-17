@@ -3057,3 +3057,45 @@ packages** — launch with `--remote-debugging-port`, connect to the page target
 `Runtime.evaluate` / `Input.dispatchMouseEvent` / `Page.captureScreenshot`. Screenshots come back
 as base64 PNGs that can be read directly. Worth rebuilding whenever a UI bug resists inspection —
 note that `element.click()` does not open the header dropdowns; a real dispatched mouse event does.
+
+### 12.24 The header avatar, and the blob that rode along with it
+
+The account button top-right shows the profile picture when the account has one, initials when it
+does not, and changes the moment a picture is saved or removed.
+
+**The shell has to KNOW whether a picture exists.** It cannot be inferred by rendering an `<img>`
+and waiting for it to fail — that shows a broken image or an empty circle first, on every load, for
+the ~99% of accounts with no picture. So the flag rides on the session: both the sign-in payload
+and **`Auth/me`, the session probe**, return `profilePictureUrl` (the relative route, or null).
+Putting it only on sign-in is not enough; without it on the probe, a reload flashes initials before
+swapping to the image.
+
+`AuthContext` turns that into an absolute, cache-busted URL in **one** place, so every consumer can
+simply render it or not. **The `?v=` is load-bearing:** the picture endpoint answers
+`private, max-age=300`, so a freshly saved image would keep serving the old one for five minutes
+without a new version each time.
+
+Instant update comes from the dialog pushing the new URL — or `null` on removal — into the session
+through `syncUser` as part of the save. It is sent **only when the picture was actually touched**
+(`undefined` means "leave it alone"), so an unrelated profile save cannot clobber it.
+
+The `<img onError>` fallback to initials is a real path, not decoration: the URL is minted from a
+session flag, so it goes stale if the picture is removed in another tab, and a broken image icon in
+the header is worse than initials.
+
+#### ⚠️ Mapping a varbinary(max) column has a cost everywhere it is materialised
+
+`Core.User.ProfilePicture` is `varbinary(max)`. Once §12.22 mapped it onto the entity, **every**
+`users.GetAll()` that materialised a `User` started dragging the image with it — including **login**,
+which loaded each candidate's avatar purely to compare a password hash. Nothing failed; it just got
+quietly more expensive on the hottest path in the system.
+
+Login, `GetMyProfile` and `GetMyAccountProfile` now project the columns they actually use, reducing
+the blob to `HasProfilePicture = u.ProfilePicture != null && u.ProfilePicture.Length > 0`.
+
+**Rule: do not materialise `Core.User` — project it.** The same applies to any entity that gains a
+blob: mapping it is not free, and the cost lands on readers that never asked for it.
+
+The avatar's route is now the shared constant `AccountRoutes.ProfilePicture`, so the sign-in
+payload, the profile reads and the upload response cannot drift apart — the SPA keys "has a
+picture" off exactly that value.

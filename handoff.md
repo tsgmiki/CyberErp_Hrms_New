@@ -123,6 +123,36 @@
 
 ## 1. Most recent changes (latest first)
 
+0129. **Header avatar: profile picture with initials fallback, updating instantly (2026-08-17).**
+    Home repo only, no migration. Commit `77f0ece`.
+    - Top-right account button renders the avatar when one exists, initials when not, and switches
+      the INSTANT a picture is saved or removed -- no reload.
+    - For that the shell must KNOW whether a picture exists, so the flag is carried on the SESSION,
+      not guessed: `LoginResultDto` and **`Auth/me` (the session probe)** both return
+      `profilePictureUrl` (relative route, or null). Without it on the PROBE the header would flash
+      initials on every page load before swapping to the image.
+    - `AuthContext` normalises that into an ABSOLUTE, cache-busted URL in ONE place
+      (`resolveProfilePicture` / `normalizeUser`), so every consumer just renders it or doesn't.
+      ⚠️ The `?v=` is load-bearing: the picture endpoint answers `private, max-age=300`, so a freshly
+      saved image would keep showing the OLD one for five minutes without it.
+    - The dialog pushes the new URL (or null on removal) into the session via `syncUser` on save --
+      that is what makes it instant. Sent ONLY when the picture was actually touched (`undefined`
+      means "leave it alone"), so an unrelated save does not clobber it.
+    - `<img onError>` falls back to initials. A REAL path, not belt-and-braces: the URL is minted
+      from a session flag, so it goes stale if the picture is removed in another tab, and a broken
+      image icon in the header is worse than initials.
+    - ⚠️ **PERF REGRESSION I INTRODUCED, now fixed.** `Core.User.ProfilePicture` is
+      **varbinary(max)**, so once it was mapped (0127) any `users.GetAll()` that MATERIALISED the
+      entity dragged the whole image along -- including **LOGIN**, which loaded every candidate's
+      blob just to compare a password hash. Login, `GetMyProfile` and `GetMyAccountProfile` now
+      PROJECT the columns they use (`HasProfilePicture = u.ProfilePicture != null && Length > 0`).
+      **Rule: never materialise Core.User; project.**
+    - Avatar route is now the shared const `AccountRoutes.ProfilePicture` so the sign-in payload,
+      the profile reads and the upload response cannot drift apart.
+    - Verified in Chrome (CDP): initials before; **image immediately after save with NO reload**;
+      image again after a full reload (proves the probe reports it); initials again after removing.
+      Screenshot reviewed. Typecheck, lint, build clean; demo's row restored to its original state.
+
 0128. **Edit Profile: save blocked, Cancel unescapable, failures invisible -- all three fixed
     (2026-08-17).** Home repo only, no migration. Reproduced in a REAL browser before and after
     (Chrome over CDP -- see below). Commit `fce6a5a`.
