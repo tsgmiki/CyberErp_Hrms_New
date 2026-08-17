@@ -2989,3 +2989,71 @@ Both traps below build perfectly cleanly and fail only when the row is actually 
   shell reads the name and email from context, not from a re-fetch.
 - **"Last successful login" is the newest SUCCESS**, not the newest row: a failed attempt after a
   good one must not be reported as the last sign-in.
+
+### 12.23 Why Edit Profile could not save, and could not be cancelled
+
+Three independent defects, each of which alone looked like "the feature is broken". Reproduced in
+a real browser (Chrome over CDP) before and after fixing.
+
+#### 1. Email was required, but almost nobody has one
+
+`UpdateMyProfile` demanded an email, on the client AND the server. **489 of the 506 accounts in
+this database have none** — and that is deliberate, not dirty data: `IX_User_NormalizedEmail` is
+UNIQUE but **FILTERED to `NormalizedEmail <> ''`**, so the schema explicitly exempts blanks.
+Those users could not save anything, not even a phone number, without inventing an address.
+
+Even had the client allowed it, the server would still have refused: the uniqueness check compared
+empty strings, so all 489 blanks collided with one another. Email is now optional, its format is
+checked only when supplied, and the uniqueness check skips blanks.
+
+**The lesson: read what the INDEX says before deciding a field is mandatory.** A filtered unique
+index is a statement about optionality, and it disagreed with the code.
+
+The same handler never maintained `NormalizedUserName` / `NormalizedEmail`, which are what those
+unique indexes actually enforce. A rename left them stale — the row's identity and its uniqueness
+guarantee drifting apart. Both are now written alongside the values they mirror.
+
+#### 2. ⚠️ The top layer: why Cancel did nothing, forever
+
+`components/ui/modal.tsx` opens with **`<dialog>.showModal()`**, which places it in the browser's
+**top layer** and makes everything outside it **inert**. `DialogModal` — and therefore `confirm()` —
+was a plain `position: fixed; z-index: 100` portal into `document.body`.
+
+Top-layer content paints above ALL normal content regardless of z-index, and inertness means
+clicks never arrive. So the discard prompt rendered *behind* the modal's own backdrop and could not
+be clicked: `await confirm(...)` never settled, Cancel hung, and the only escape was a page reload.
+
+`DialogModal` is now a native `<dialog>` too — dialogs stack in open order, so a confirm raised
+from inside a modal sits above it. **A z-index, however large, cannot beat the top layer.**
+
+#### 3. The same trap made every failure silent
+
+`Toaster` portals into the normal layer as well, so *every* toast raised while a modal was open —
+including the save error naming the exact problem — was hidden behind the backdrop. That is why
+this presented as "nothing happens" rather than as an error.
+
+The toast stack is now a `popover="manual"` element: it reaches the top layer **without** making
+the page inert or taking focus, which is what a toast requires and what a second `<dialog>` could
+not provide. The dialog additionally renders the failure INLINE in its footer, so feedback never
+depends on the toast layer alone.
+
+#### Smaller things found while verifying
+
+- **Cancel is never disabled.** It was `disabled={busy}`, so a hung or slow save also locked the
+  only way out. The discard guard now closes rather than stranding the user if it ever fails.
+- **Auto-close on success is guarded**, so the dialog's own `close` event cannot re-open the
+  discard prompt on the way out.
+- **`InputField` hardcoded `layout="horizontal"`** into FieldShell, which pins the label BESIDE the
+  control for non-full-width fields. A form mixing widths therefore had labels above on some rows
+  and beside on others. It now forwards `layout` as `SelectField` already did.
+- **`sqlcmd` needs `SET QUOTED_IDENTIFIER ON`** to update `Core.User` at all — the filtered index
+  requires it. EF sets it by default, so this bites only hand-run SQL.
+
+#### The browser harness
+
+Diagnosing this by inspection failed twice; the answer came from driving a real browser. Node 22
+has a global `WebSocket`, so Chrome can be driven over the DevTools Protocol with **no npm
+packages** — launch with `--remote-debugging-port`, connect to the page target, then
+`Runtime.evaluate` / `Input.dispatchMouseEvent` / `Page.captureScreenshot`. Screenshots come back
+as base64 PNGs that can be read directly. Worth rebuilding whenever a UI bug resists inspection —
+note that `element.click()` does not open the header dropdowns; a real dispatched mouse event does.

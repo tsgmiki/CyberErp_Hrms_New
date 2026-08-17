@@ -123,6 +123,53 @@
 
 ## 1. Most recent changes (latest first)
 
+0128. **Edit Profile: save blocked, Cancel unescapable, failures invisible -- all three fixed
+    (2026-08-17).** Home repo only, no migration. Reproduced in a REAL browser before and after
+    (Chrome over CDP -- see below). Commit `fce6a5a`.
+    - **(1) Email was REQUIRED but 489 of 506 accounts have none.** Client and server both demanded
+      it, so those users could not save ANYTHING (not even a phone number) without inventing an
+      address. And the server's uniqueness check compared empty strings, so all 489 blanks collided
+      with each other -- it would have refused even if the client had allowed it. ⚠️ The schema
+      already said email is OPTIONAL: **`IX_User_NormalizedEmail` is UNIQUE but FILTERED to
+      `NormalizedEmail <> ''`**. **Read the INDEX before deciding a field is mandatory.** Now
+      optional, format checked only when supplied, uniqueness skips blanks.
+    - Same handler never maintained **NormalizedUserName / NormalizedEmail** -- the columns those
+      unique indexes actually enforce -- so a rename left them stale. Both now written alongside
+      the values they mirror; uniqueness checked against them.
+    - **(2) ⚠️ THE TOP LAYER -- why Cancel did nothing FOREVER.** `ui/modal.tsx` opens with
+      `<dialog>.showModal()` => browser TOP LAYER + everything outside it INERT. `DialogModal`
+      (and so `confirm()`) was a plain `fixed; z-index:100` portal => the discard prompt rendered
+      BEHIND the modal's own backdrop and could not be clicked => `await confirm(...)` never
+      settled => Cancel hung with no escape but a page reload. DialogModal is now a native
+      `<dialog>` too (dialogs stack in open order). **A z-index, however large, cannot beat the
+      top layer.**
+    - **(3) The same trap made every failure SILENT.** `Toaster` also portals into the normal
+      layer, so every toast raised while a modal was open -- including the save error naming the
+      exact problem -- was hidden behind the backdrop. Hence "nothing happens" instead of an error.
+      Toast stack is now `popover="manual"` (top layer WITHOUT making the page inert or taking
+      focus -- a second `<dialog>` would do both). Dialog ALSO shows the failure INLINE in its
+      footer, so feedback never depends on the toast layer alone.
+    - Cancel is **never disabled** now (was `disabled={busy}`, so a slow/hung save also locked the
+      only way out); the discard guard closes rather than stranding the user if it fails; auto-close
+      on success is guarded so the dialog's own `close` event cannot re-open the discard prompt.
+    - Also found while verifying: **`InputField` HARDCODED `layout="horizontal"`** into FieldShell,
+      which pins the label BESIDE the control for non-full-width fields -- so a form mixing widths
+      had labels above on some rows and beside on others (visible in the screenshots). Now forwards
+      `layout` as `SelectField` already did; default unchanged, no caller passed it.
+    - ⚠️ `sqlcmd` needs **`SET QUOTED_IDENTIFIER ON`** to UPDATE Core.User at all -- the filtered
+      index demands it. EF sets it by default, so this bites only hand-run SQL.
+    - **BROWSER HARNESS (reusable, zero npm):** Node 22 has a global `WebSocket`, so Chrome can be
+      driven over the DevTools Protocol with no packages -- launch with `--remote-debugging-port`,
+      connect to the page target, then `Runtime.evaluate` / `Input.dispatchMouseEvent` /
+      `Page.captureScreenshot` (base64 PNGs readable directly). Two rounds of diagnosis by
+      inspection had failed; this found it in one. ⚠️ `element.click()` does NOT open the header
+      dropdowns -- dispatch a real mouse event.
+    - Verified: save with empty email persists + dialog auto-closes; Cancel on a dirty form shows a
+      CLICKABLE confirm (hit-tested inside itself) and closes; duplicate username keeps the dialog
+      open with inline "That username is already taken." and Cancel enabled; toast confirmed
+      `:popover-open` and visible over the modal; screenshots reviewed for all three tabs.
+      Typecheck, lint and production build clean. Demo's test data restored.
+
 0127. **Edit Profile replaces Change Password in the HOME portal (2026-08-16).** Ported from
     `D:/Workspace/CyberErp/CYBER_ERP_SRMS/SRMS-main` (`Web/src/components/UserAccountDialog.tsx` +
     `AccountMenu.tsx` + `services/api/authService.ts`). Home repo only -- NO migration, NO HRMS change.
