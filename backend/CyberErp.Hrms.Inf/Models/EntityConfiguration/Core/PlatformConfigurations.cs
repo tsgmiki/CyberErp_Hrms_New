@@ -183,6 +183,17 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasIndex(l => l.UserId);
             builder.HasIndex(l => l.Date);
             builder.HasIndex(l => new { l.UserNameAttempted, l.EventType });
+
+            // ⚠️ THE INDEX THAT MATTERS AT SCALE. Every "recent security activity" read is
+            // `WHERE UserId = @x ORDER BY Date DESC` + TOP(n) — the Edit Profile dialog does it on
+            // open, for every user. With only IX_LoginTrail_UserId, SQL Server seeks the user then
+            // SORTS every row they have ever accumulated just to take the newest few. This table
+            // grows one row per sign-in ATTEMPT and is never trimmed, so that sort grows without
+            // bound per user. Leading with UserId and descending on Date makes it a seek + top,
+            // with no sort at all.
+            builder.HasIndex(l => new { l.UserId, l.Date })
+                .IsDescending(false, true)
+                .HasDatabaseName("IX_LoginTrail_UserId_Date");
         }
     }
 

@@ -3199,3 +3199,63 @@ depends on.
 principal is not carrying the full claim set, while `UserId` and `Name` come through. The header
 therefore greets the user by username. Cosmetic, pre-existing, and unrelated to preferences; noted
 in `GetCurrentUserRepository` rather than half-fixed.
+
+### 12.27 Making the Edit Profile dialog open fast — and measuring first
+
+Reported as slow to load. **Measured before touching anything**, which changed what was worth doing:
+
+| | |
+|---|---|
+| `Account/profile` warm | 3–5 ms |
+| `Account/account-profile` warm | 4–5 ms |
+| Click → fields populated | **74 ms cold, ~40 ms warm** |
+
+So the server was never the bottleneck on this machine, and most of the 40 ms is React render, not
+network. A slower environment (debugger attached, verbose EF console logging) inflates it, but the
+dialog was also doing more work per open than it needs — and that cost is paid per user, per open,
+on a surface reached from the header of every page.
+
+#### What changed
+
+1. **One request instead of two.** `Account/profile` and `Account/account-profile` were fired in
+   parallel on every open and **each re-read `Core.User`**. `GET Account/overview` returns both
+   halves from ONE read of that row plus one read of the activity trail.
+2. **Cached for 60 s** (React Query `fetchQuery` + `staleTime`), so re-opening inside the window
+   costs nothing.
+3. **Prefetched when the account MENU opens** — pointer-enter, focus or click. That menu is the only
+   route to the dialog, and the human pause between the two clicks is enough for the request to
+   land. `prefetchQuery` no-ops while the value is fresh, so opening the menu repeatedly does not
+   hammer the API. Saving invalidates the key with `refetchType: "none"` so the next open refetches
+   without firing a request nobody asked for.
+
+**Result on the same measurement: ZERO requests when the dialog opens** (the prefetch has already
+warmed it), 43 ms cold / 39 ms warm. The request count is the meaningful improvement; on a slow link
+or slow API it is the difference of a whole round trip.
+
+#### ⚠️ The index that matters when this table grows
+
+Every "recent security activity" read is `WHERE UserId = @x ORDER BY Date DESC` + `TOP(n)`. The only
+index was `IX_LoginTrail_UserId` — UserId alone — so SQL Server seeks the user and then **SORTS
+every row they have ever accumulated** to take the newest few. `Core.LoginTrail` gains a row per
+sign-in ATTEMPT and is never trimmed, so that sort grows without bound per user.
+
+Added `IX_LoginTrail_UserId_Date` — `(UserId, Date DESC)`, migration
+`LoginTrailUserIdDateIndex` (HRMS owns this table).
+
+**Verified with the actual plan, not by assumption.** At the current 122 rows the optimiser still
+picks a Clustered Index Scan + Sort — correct, because a scan beats seek-plus-lookups on a tiny
+table. Forcing the index shows the intended shape:
+
+```
+|--Top(TOP EXPRESSION:((20)))
+     |--Index Seek(... IX_LoginTrail_UserId_Date ... ORDERED FORWARD)
+     |--Clustered Index Seek(... LOOKUP ORDERED FORWARD)
+```
+
+**Top → Seek → Lookup, with no Sort.** It switches to this on its own once a user has enough history
+to make the seek cheaper. Deliberately NOT covering: including `UserAgent` (nvarchar 2000) and
+`FailureReason` (1000) would nearly duplicate the table to save 20 key lookups per read.
+
+**The habit worth keeping: measure before optimising, and read the plan before claiming an index
+helps.** Both steps changed the work here — the first ruled out the server, the second showed the
+index is dormant at current volumes and proved it does the right thing at scale.

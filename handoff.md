@@ -123,6 +123,40 @@
 
 ## 1. Most recent changes (latest first)
 
+0132. **Edit Profile dialog performance: one prefetched cached call + the index that scales
+    (2026-08-17).** Home repo (dialog) + HRMS migration `LoginTrailUserIdDateIndex`, APPLIED.
+    Backup `D:/Backups/CERP_before-logintrail-index-*.bak`. Home `04c0c05`.
+    - ⚠️ **MEASURED FIRST, which changed the plan.** Warm endpoints were **3-5 ms**; click ->
+      fields-populated was **74 ms cold / ~40 ms warm**, and most of that is REACT RENDER, not
+      network. The server was never the bottleneck here — the user's slowness is likely environment
+      (debugger attached + verbose EF console logging). But the dialog still did avoidable work per
+      open, on a surface reached from every page's header.
+    - **(1) ONE request instead of two.** `Account/profile` + `Account/account-profile` fired in
+      parallel every open and **each re-read Core.User**. NEW `GET Account/overview` returns both
+      halves from ONE user read + one activity read.
+    - **(2) CACHED 60 s** (React Query `fetchQuery` + staleTime) — re-open inside the window is free.
+    - **(3) PREFETCHED on ACCOUNT-MENU open** (pointer-enter/focus/click) — the only route to the
+      dialog, and the pause between the two clicks covers the request. `prefetchQuery` no-ops while
+      fresh, so re-opening the menu does not hammer the API. Save invalidates with
+      `refetchType:"none"` so the next open refetches without an unasked-for request.
+    - **RESULT: the dialog now issues ZERO requests on open** (prefetch already warmed it);
+      43 ms cold / 39 ms warm. The request COUNT is the real win — on a slow link/API it is a whole
+      round trip saved.
+    - **(4) ⚠️ THE SCALE FIX: `IX_LoginTrail_UserId_Date` (UserId, Date DESC).** Every activity read
+      is `WHERE UserId=@x ORDER BY Date DESC TOP(n)`, but the only index was UserId ALONE — so SQL
+      seeks the user then **SORTS every row they ever accumulated**. Core.LoginTrail gains a row per
+      sign-in ATTEMPT and is never trimmed, so that sort grows without bound per user.
+    - ⚠️ **VERIFIED WITH THE PLAN, not assumed.** At 122 rows the optimiser still picks Clustered
+      Index Scan + Sort (correct — a scan beats seek+lookups on a tiny table). FORCING the index
+      gives the intended shape: **Top -> Index Seek (ORDERED FORWARD) -> key Lookup, NO Sort.** It
+      switches over on its own once a user has enough history. Deliberately NOT covering: including
+      UserAgent(2000)/FailureReason(1000) would nearly duplicate the table to save 20 lookups.
+    - Also fixed here: the overview projection no longer emits `[u].[ProfilePicture]` at all (only
+      the `CASE ... IS NOT NULL` test), confirmed in the SQL log.
+    - **Habit: measure before optimising; read the PLAN before claiming an index helps.** Both steps
+      changed the outcome — one ruled out the server, the other proved the index is dormant now and
+      correct later.
+
 0131. **HRMS ignored the preferences because its two auth endpoints return DIFFERENT user shapes
     (2026-08-17).** HRMS repo only, no migration.
     - `auth/login` returns **id / fullName**; the session probe `auth/loginStatus` returns
