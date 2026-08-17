@@ -6,6 +6,7 @@ import './config/theme.css'
 import './i18n'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider } from './context/AuthContext'
+import { PreferencesProvider } from './context/PreferencesContext'
 import App from './App.tsx'
 
 // A lazy route chunk can fail to load when the server restarted (dev) or a new build was
@@ -40,7 +41,10 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <App />
+          {/* Inside Auth (needs the signed-in user) and inside Theme (applies the theme it reads). */}
+          <PreferencesProvider>
+            <App />
+          </PreferencesProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

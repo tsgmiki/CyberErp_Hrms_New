@@ -3099,3 +3099,59 @@ blob: mapping it is not free, and the cost lands on readers that never asked for
 The avatar's route is now the shared constant `AccountRoutes.ProfilePicture`, so the sign-in
 payload, the profile reads and the upload response cannot drift apart — the SPA keys "has a
 picture" off exactly that value.
+
+### 12.25 Preferences that are read, not just written
+
+Preferences had been saveable for some time, but nothing read them back. Theme came from
+`localStorage`, language was pinned by `i18n.init({ lng: "en" })`, and the remaining seven were
+written and never consulted. A user could set a preference, see it work for as long as the dialog
+was open, and watch the app return to the system defaults on the next load.
+
+`PreferencesContext` (one per SPA) is now the single place that reads a user's row and applies it:
+
+- **Dynamic read** — loaded once the session is known, keyed to the signed-in user.
+- **Default fallback** — no row, or an unreachable API, leaves the defaults in place. An absent row
+  is the NORMAL state for anyone who has never opened the dialog, not an error.
+- **Instant application** — the dialog saves THROUGH the context, so every consumer re-renders at
+  once and nothing reverts.
+
+**One row, two subsystems.** `Core.UserPreference` is shared. Home OWNS editing it (Edit Profile);
+HRMS only READS it, through a new `GET UserPreference/mine`. A second editor for one shared row is
+how validation drifts apart, so the HRMS slice is deliberately read-only.
+
+#### What is actually applied, and what is not
+
+| Preference | Status |
+|---|---|
+| `theme`, `language` | **Applied** in both SPAs — each has one control point. `<html lang>` is set too, so the applied language is observable and assistive tech sees it. |
+| `landingPage` | Honoured by the post-login redirect (Home). |
+| `inAppNotifications` | Hides the bell **and stops its 60-second poll** — a preference that leaves the poll running is only half honoured. |
+| `dateFormat`, `numberFormat`, `timeZone` | Exposed as `formatDate` / `formatNumber`. **Screens that format values themselves are NOT retrofitted** — there is no chokepoint (the shared `dateFormater.ts` hardcodes its patterns and has 3 callers), so use these helpers or the preference cannot reach that screen. |
+| `emailNotifications`, `approvalNotifications` | Stored only — they are instructions to the senders (backend), not to the UI. |
+
+#### ⚠️ Two React traps this hit, both in the provider itself
+
+1. **A ref guard that deadlocks under StrictMode.** The load effect skipped work when the user id
+   was unchanged, to avoid a duplicate fetch. StrictMode runs effects twice: pass 1 armed the guard
+   and started the fetch, cleanup marked it cancelled, pass 2 returned early on the guard — and the
+   cancelled pass never set `loaded`. Anything awaiting `loaded` waited forever; the login redirect
+   did exactly that, so **sign-in stopped navigating at all**. The `cancelled` flag already prevents
+   a stale response being applied, which is the only thing the guard was really needed for. Use the
+   ref to identify WHICH load is current, never to skip an effect run.
+2. **A callback dependency that re-triggers itself.** `apply` closed over `ThemeContext.setTheme`,
+   which is recreated on each ThemeProvider render — and `apply` is what changes the theme. With
+   `apply` in the dependency array, applying a preference re-ran the fetch that applied it. It is
+   held in a ref so the effect keys on the user alone.
+
+**And a rule for anything on the sign-in path: cap the wait.** The login redirect briefly waits for
+preferences so it can honour `landingPage`, but falls through to `/` on a timer. Sign-in must never
+depend on a secondary fetch succeeding.
+
+#### A projection that did not project
+
+While verifying, the API log showed `GetMyProfile` still emitting
+`SELECT …, [u].[ProfilePicture]` despite §12.24's projection. `HasProfilePicture =
+u.ProfilePicture != null && u.ProfilePicture.Length > 0` cannot be translated, so EF fetched the
+whole `varbinary(max)` column to evaluate `.Length` client-side — the exact cost the projection
+existed to avoid. `!= null` alone translates cleanly, and an empty array is never stored because the
+upload handler rejects a zero-length file. **Read the generated SQL; a projection is not proof.**

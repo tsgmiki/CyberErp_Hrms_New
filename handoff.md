@@ -123,6 +123,54 @@
 
 ## 1. Most recent changes (latest first)
 
+0130. **User preferences are now READ and APPLIED, in Home AND HRMS (2026-08-17).** Both repos.
+    No migration. Home `5b4760e`; HRMS commit follows.
+    - ROOT CAUSE of "always shows the default settings": **nothing ever read the row back.** Theme
+      came from `localStorage`, language was pinned by `i18n.init({ lng: "en" })`, and the other
+      seven were written and never consulted. The dialog applied theme only while it was OPEN.
+    - NEW `context/PreferencesContext.tsx` in BOTH SPAs — the single place that reads the user's row
+      and applies it. Dynamic read keyed to the user; DEFAULT FALLBACK when there is no row or the
+      API is unreachable (an absent row is NORMAL, not an error); the dialog saves THROUGH the
+      context so every consumer re-renders at once.
+    - **One row, two subsystems.** `Core.UserPreference` is shared. Home OWNS editing (Edit Profile);
+      HRMS only READS via NEW `GET UserPreference/mine` (`Features/Core/UserPreferences/`, ungated
+      self-service like Employee/my-profile, returns DEFAULTS not 404). Deliberately read-only there
+      — a second editor for one row is how validation drifts.
+    - APPLIED: theme + language (the two with a single control point) + `<html lang>` so the language
+      is observable; `landingPage` in the post-login redirect; `inAppNotifications` hides the bell
+      AND stops its 60s poll. EXPOSED as formatDate/formatNumber: dateFormat/numberFormat/timeZone —
+      ⚠️ **screens that format values themselves are NOT retrofitted** (no chokepoint; the shared
+      `dateFormater.ts` hardcodes patterns, 3 callers). email/approval toggles are sender-side, stored only.
+    - ⚠️⚠️ TWO REACT TRAPS, both in my own provider, both worth remembering:
+      **(a) A ref guard that DEADLOCKS under StrictMode.** The effect skipped work when the user id
+      was unchanged; StrictMode runs effects twice, so pass 1 armed the guard + started the fetch,
+      cleanup cancelled it, pass 2 returned early, and `loaded` was NEVER set. The login redirect
+      awaited `loaded` => **sign-in stopped navigating entirely** (caught only by driving a browser).
+      Use the ref to say WHICH load is current, never to skip an effect run; `cancelled` already
+      prevents applying a stale response.
+      **(b) A callback dependency that re-triggers itself.** `apply` closed over ThemeContext's
+      `setTheme`, recreated each ThemeProvider render — and `apply` changes the theme. In the dep
+      array, applying a preference re-ran the fetch that applied it. Held in a ref instead.
+    - **Rule for the sign-in path: CAP THE WAIT.** The login redirect waits briefly for preferences
+      so it can honour landingPage, then falls through to "/" on a timer. Sign-in must never depend
+      on a secondary fetch succeeding.
+    - ⚠️ **A projection that did not project** (fixes 0129): the API log showed `GetMyProfile` still
+      emitting `SELECT …, [u].[ProfilePicture]`. `!= null && Length > 0` is NOT translatable, so EF
+      pulled the whole varbinary(max) to evaluate `.Length` client-side — the exact cost the
+      projection existed to avoid. `!= null` alone translates. **READ THE GENERATED SQL; a
+      projection is not proof.**
+    - Verified in Chrome (CDP), Home: live theme preview; instant apply on save (dark + `lang=am` +
+      sidebar `ዳሽቦርድ`); and THE bug — reload with the localStorage theme cache **CLEARED** still
+      returns dark+am, proving it loads from the DB. HRMS SPA: after login and after a cache-cleared
+      reload, dark + am, from the row Home saved. Typecheck/lint clean both apps.
+    - ⚠️ FOUND IN THE DATA: `Core.UserPreference` holds rows for real users **`rojer(dr)b`** (system/en)
+      and **`tatekg`** (light/am) in tenant aadb4e82 — i.e. the reported symptom was tatekg's
+      light+Amharic being ignored. Their rows were left untouched; only demo's was used for testing
+      and it was restored.
+    - ⚠️ The HRMS SPA cannot call the Home API (Cors:AllowedOrigins lists only 5175) — correct, since
+      it reads preferences from its OWN API on 55900. A test that seeds via the portal API must do
+      so server-side (curl), not from the HRMS page.
+
 0129. **Header avatar: profile picture with initials fallback, updating instantly (2026-08-17).**
     Home repo only, no migration. Commit `77f0ece`.
     - Top-right account button renders the avatar when one exists, initials when not, and switches

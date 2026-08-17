@@ -182,6 +182,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
             services.AddScoped<IGetMyEmployee, GetMyEmployee>();
+            // Display preferences (read-only here — the Home portal owns editing them).
+            services.AddScoped<
+                Features.Core.UserPreferences.IGetMyPreferences,
+                Features.Core.UserPreferences.GetMyPreferences>();
             services.AddScoped<IGetMyProfile, GetMyProfile>();
             services.AddScoped<IUpdateMyProfile, UpdateMyProfile>();
             services.AddScoped<IGetProfileChangeFields, GetProfileChangeFields>();
