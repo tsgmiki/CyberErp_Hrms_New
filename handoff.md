@@ -123,6 +123,36 @@
 
 ## 1. Most recent changes (latest first)
 
+0131. **HRMS ignored the preferences because its two auth endpoints return DIFFERENT user shapes
+    (2026-08-17).** HRMS repo only, no migration.
+    - `auth/login` returns **id / fullName**; the session probe `auth/loginStatus` returns
+      **userId / name** (CurrentUserResult). Both were cast straight to the SPA's `User` type, so on
+      any session RESTORED FROM THE COOKIE — every deep-link in from Home, every reload without
+      sessionStorage — **`user.id` was undefined**. `PreferencesContext` loads when `user.id`
+      appears, so it never loaded and HRMS fell back to the system defaults.
+    - Fixed with `AuthContext.normalizeUser` (accepts either shape). Fixes THREE symptoms of the one
+      defect: (a) preferences now load on a cookie-restored session; (b) the header showed "User"
+      instead of the person's name (it reads `user.fullName`); (c) `useFormLayoutPreference` had
+      already grown a local `?? user?.userName ?? "anon"` workaround, so every restored session
+      shared ONE "anon" layout key — it keys per user now (a saved layout looks reset once).
+    - ⚠️⚠️ **WHY MY 0130 VERIFICATION MISSED IT:** I signed in through the **HRMS login form**, which
+      calls `login()` with the well-shaped `auth/login` payload and writes it to sessionStorage;
+      AuthContext seeds state from sessionStorage, so `user.id` existed and it worked — even after a
+      reload. **The form login REPAIRS the very data the bug depends on.** To test HRMS honestly:
+      mint the cookie WITHOUT the form (as the portal's dual sign-in does), clear sessionStorage AND
+      the localStorage theme cache, then load cold. **Test the path the user actually takes.**
+    - Verified that way: cold, cookie-only session comes up **dark + lang=am** from the row saved in
+      the Home portal, stable across reloads; `sessionUser` now shows a real `id`.
+    - ⚠️ KNOWN GAP left in place (commented in `GetCurrentUserRepository`, not half-fixed):
+      `loginStatus` reports `Name` as the USERNAME and `TenantId` as **null**, although
+      `auth/login/cookie` appears to add FullName/Email/TenantId claims — the cookie principal is not
+      carrying the full claim set while UserId/Name are. So the header greets by username. Cosmetic,
+      pre-existing, unrelated to preferences.
+    - ⚠️ Test-harness trap (cost a run): a regex literal inside a `cdp.eval` template string breaks —
+      `\n` becomes a REAL newline, giving "Invalid regular expression: missing /". Use
+      `String.fromCharCode(10)` / `split().join()` instead, and write scenarios with the Write tool,
+      not a heredoc.
+
 0130. **User preferences are now READ and APPLIED, in Home AND HRMS (2026-08-17).** Both repos.
     No migration. Home `5b4760e`; HRMS commit follows.
     - ROOT CAUSE of "always shows the default settings": **nothing ever read the row back.** Theme

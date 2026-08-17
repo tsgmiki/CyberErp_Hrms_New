@@ -3155,3 +3155,47 @@ u.ProfilePicture != null && u.ProfilePicture.Length > 0` cannot be translated, s
 whole `varbinary(max)` column to evaluate `.Length` client-side — the exact cost the projection
 existed to avoid. `!= null` alone translates cleanly, and an empty array is never stored because the
 upload handler rejects a zero-length file. **Read the generated SQL; a projection is not proof.**
+
+### 12.26 Why HRMS still ignored the preferences: two endpoints, two user shapes
+
+The provider from §12.25 was mounted and its endpoint worked, yet HRMS kept showing the defaults.
+The cause was neither: **HRMS's two auth endpoints disagree about the shape of a user.**
+
+| Endpoint | Returns |
+|---|---|
+| `auth/login` | `id`, `fullName`, `email`, `userName`, … |
+| `auth/loginStatus` (the session probe) | **`userId`**, **`name`**, `email`, `tenantId`, `isAuthenticated` |
+
+Both were cast straight to the SPA's `User` type, which declares `id` and `fullName`. So on any
+session **restored from the cookie** — every deep-link in from the Home portal, and every reload
+without `sessionStorage` — `user.id` and `user.fullName` were `undefined`. `PreferencesContext`
+loads when `user.id` appears, so it never loaded.
+
+`AuthContext.normalizeUser` now maps either shape onto the declared one, which fixes three things
+that were all the same defect:
+
+- **Preferences** load on a cookie-restored session.
+- **The header** showed "User" instead of the person's name (it reads `user.fullName`).
+- **`useFormLayoutPreference`** had already grown a local `?? user?.userName ?? "anon"` workaround,
+  so every restored session shared ONE `"anon"` layout key. It keys per user now — a saved layout
+  looks reset once, because the key changes.
+
+#### ⚠️ The test that hid the bug
+
+The §12.25 verification signed in through the **HRMS login form**, which calls `login()` with the
+well-shaped `auth/login` payload and writes it to `sessionStorage`. `AuthContext` seeds its state
+from `sessionStorage`, so `user.id` was present and everything worked — including after a reload.
+The bug only appears when `sessionStorage` is empty and identity comes from the **probe alone**.
+
+**Test the path the user actually takes.** For HRMS that means: mint the cookie WITHOUT the login
+form (as the portal's dual sign-in does), clear `sessionStorage` *and* the `localStorage` theme
+cache, then load cold. Signing in through the form tests a path that repairs the very data the bug
+depends on.
+
+#### Known gap, deliberately left
+
+`loginStatus` reports `Name` as the **username** and `TenantId` as **null**, even though
+`auth/login/cookie` appears to add `FullName`, `Email` and `TenantId` claims — so the cookie
+principal is not carrying the full claim set, while `UserId` and `Name` come through. The header
+therefore greets the user by username. Cosmetic, pre-existing, and unrelated to preferences; noted
+in `GetCurrentUserRepository` rather than half-fixed.
