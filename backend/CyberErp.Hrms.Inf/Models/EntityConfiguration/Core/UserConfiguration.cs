@@ -28,6 +28,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .HasMaxLength(200);
 
             builder.Property(u => u.PhoneNumber)
+                .IsRequired(false)   // nullable since 2026-08-18 — most accounts have no phone number
                 .HasMaxLength(50);
 
             builder.Property(u => u.UserName)
@@ -46,7 +47,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
 
             builder.Property(u => u.AccountStatus)
-                .IsRequired().HasMaxLength(20).HasDefaultValue(UserAccountStatuses.Active);
+                .IsRequired().HasDefaultValue(true);   // bit since 2026-08-18 (was a 4-state string)
             builder.Property(u => u.FailedLoginAttempts).IsRequired().HasDefaultValue(0);
             builder.Property(u => u.LockoutEndUtc).HasColumnType("datetime2");
             builder.Property(u => u.TwoFactorEnabled).IsRequired().HasDefaultValue(false);

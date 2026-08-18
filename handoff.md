@@ -123,6 +123,45 @@
 
 ## 1. Most recent changes (latest first)
 
+0133. **Core.User: AccountStatus -> bit, PhoneNumber -> nullable (2026-08-18).** Migration
+    `UserAccountStatusBitAndNullablePhone`, APPLIED. Backup
+    `D:/Backups/CERP_before-user-accountstatus-bit-*.bak`. Both repos.
+    - `AccountStatus`: nvarchar(20) NOT NULL default 'Active' -> **bit NOT NULL default 1**.
+      `PhoneNumber`: nvarchar(50) NOT NULL -> **nullable**. Data was safe: all 506 rows were
+      'Active' (nothing lost collapsing 4 states to 2) and PhoneNumber had 0 NULLs but 489 blanks.
+    - ⚠️⚠️ **THIS BREAKS SRMS, ON PURPOSE.** cybererp_srms runs against THIS SAME DATABASE
+      (connection string `Database=CERP`), maps the column as `public string AccountStatus`, and
+      **gates sign-in** on `AccountStatus == "Active"` (AuthenticationServiceExtensions, 2 places).
+      A bit cannot be read into a string => **SRMS cannot authenticate until it is updated to
+      match.** Raised with evidence BEFORE applying; user chose "Change CERP only". Deliberate
+      divergence from the parity of 12.13-12.21, not an oversight.
+    - `UserAccountStatuses` (Active|Suspended|Locked|Invited) REMOVED. Nothing ever set anything but
+      Active, and a temporary block was never this column anyway — that is `LockoutEndUtc`
+      (+ FailedLoginAttempts), both untouched.
+    - The dialog's "Sign-in lock" now reads a NEW **server-computed `IsLockedOut`**
+      (`LockoutEndUtc > UtcNow`). Better than what it replaced: the browser should not compare a UTC
+      instant to the workstation clock, and doing it during render tripped React's
+      "no impure function during render" lint rule (Date.now()).
+    - `PhoneNumber` is `string?` on both entities but the DTO boundary coalesces to `""`, so the wire
+      contract is unchanged and SRMS (non-nullable string) never meets a NULL from our writes.
+    - ⚠️ **MIGRATION TRAP 1:** EF's scaffolded `AlterColumn<bool>` CANNOT WORK — SQL Server will not
+      convert 'Active' to bit. The column must be REBUILT: drop the server-named default, add a bit
+      column, `UPDATE ... CASE WHEN AccountStatus='Active' THEN 1 ELSE 0 END`, drop old, `sp_rename`
+      into place, re-add the default. (No index/check/computed column referenced it — verified.)
+    - ⚠️ **MIGRATION TRAP 2:** that rebuild CANNOT be one `Sql()` call. SQL Server compiles a whole
+      batch before running it, so an UPDATE naming a column added by an ALTER in the SAME batch fails
+      to parse: *Invalid column name 'AccountStatus_bit'*. `GO` is a client directive EF rejects.
+      **Each `migrationBuilder.Sql()` IS its own batch — that is the separator.** First attempt died
+      exactly this way; EF's transaction rolled it back cleanly (verified: no temp column, no
+      history row) before the retry.
+    - Verified: schema + default as intended, 506 rows = 1; Home `Account/overview` returns
+      `"accountStatus": true` / `"isLockedOut": false`; profile PUT 200; a real NULL phone reads back
+      as `""` without error; HRMS login 200; dialog shows Status "Active", Sign-in lock "Unlocked".
+      All builds + typecheck + lint clean.
+    - ⚠️ Build gotcha (again): the user's Visual Studio + IIS Express hold the Api DLLs. Build
+      `CyberErp.Hrms.Inf` alone to verify Dom/App/Inf compile while blocked; `dotnet ef` needs the
+      Api and must wait for their instance to release it.
+
 0132. **Edit Profile dialog performance: one prefetched cached call + the index that scales
     (2026-08-17).** Home repo (dialog) + HRMS migration `LoginTrailUserIdDateIndex`, APPLIED.
     Backup `D:/Backups/CERP_before-logintrail-index-*.bak`. Home `04c0c05`.

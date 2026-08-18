@@ -3259,3 +3259,60 @@ to make the seek cheaper. Deliberately NOT covering: including `UserAgent` (nvar
 **The habit worth keeping: measure before optimising, and read the plan before claiming an index
 helps.** Both steps changed the work here — the first ruled out the server, the second showed the
 index is dormant at current volumes and proved it does the right thing at scale.
+
+### 12.28 Core.User: AccountStatus as a bit, PhoneNumber nullable
+
+Two schema changes to a table THREE applications share, applied 2026-08-18 (migration
+`UserAccountStatusBitAndNullablePhone`).
+
+| Column | Before | After |
+|---|---|---|
+| `AccountStatus` | `nvarchar(20) NOT NULL`, default `'Active'` | `bit NOT NULL`, default `1` |
+| `PhoneNumber` | `nvarchar(50) NOT NULL` | `nvarchar(50) NULL` |
+
+Data was safe on both counts: all 506 rows were `'Active'` (so nothing was lost collapsing four
+states to two), and PhoneNumber had no NULLs but 489 blanks, so nullable matches how it is actually
+used.
+
+#### ⚠️ THIS BREAKS SRMS, DELIBERATELY
+
+`cybererp_srms` runs against **this same CERP database** (its connection string is `Database=CERP`),
+maps the column as `public string AccountStatus`, and **gates sign-in** on
+`user.AccountStatus == "Active"` in `AuthenticationServiceExtensions`. A `bit` cannot be read into a
+`string`, so SRMS cannot authenticate against CERP until it is updated to match. This was raised
+with evidence before applying and the change was made on that understanding — it is a deliberate
+divergence from the SRMS parity established in §12.13–§12.21, not an oversight.
+
+#### The four states, and where "Locked" went
+
+`UserAccountStatuses` (Active | Suspended | Locked | Invited) is removed. Nothing ever set anything
+but Active, and — importantly — a **temporary sign-in block was never really this column**: that is
+`LockoutEndUtc`, which survives untouched along with `FailedLoginAttempts`. So the dialog's
+"Sign-in lock" indicator now reads a new `IsLockedOut` flag computed **server-side** as
+`LockoutEndUtc > UtcNow`. That is better than what it replaced: the browser has no business
+comparing a UTC instant to the workstation clock, and computing it during render tripped the
+`no impure function during render` lint rule.
+
+`PhoneNumber` becomes `string?` on both entities, but the DTO boundary coalesces to `""`, so the
+wire contract is unchanged and SRMS — which reads this column into a non-nullable `string` — does
+not meet a NULL from anything we write.
+
+#### ⚠️ Two migration traps, both hit
+
+1. **EF's scaffolded `AlterColumn<bool>` cannot work.** SQL Server will not convert `'Active'` to
+   `bit`; the ALTER fails on the first row. The column must be REBUILT: drop the (server-named)
+   default constraint, add a `bit` column, `UPDATE … CASE WHEN AccountStatus = 'Active' THEN 1 ELSE
+   0 END`, drop the old column, `sp_rename` the new one into place, re-add the default.
+2. **That rebuild cannot be ONE `Sql()` call.** SQL Server compiles a whole batch before executing
+   any of it, so an `UPDATE` naming a column added by an `ALTER` in the same batch fails to parse:
+   *Invalid column name 'AccountStatus_bit'*. The usual separator is `GO`, but `GO` is a client
+   directive and EF rejects it. **Each `migrationBuilder.Sql()` IS its own batch — that is the
+   separator.** Split the rebuild across several calls.
+
+   (The first attempt failed exactly this way; EF's transaction rolled the whole migration back
+   cleanly, leaving no temp column behind — verified before retrying.)
+
+Verified after applying: schema and default as intended, all 506 rows = 1; Home returns
+`"accountStatus": true` and `"isLockedOut": false`; profile save 200; a genuine NULL phone reads
+back as `""` without error; HRMS sign-in 200; the dialog renders Status "Active" / Sign-in lock
+"Unlocked".
