@@ -123,6 +123,34 @@
 
 ## 1. Most recent changes (latest first)
 
+0134. **SRMS login redesigned to match HRMS and Home (2026-08-18).** SRMS tree only —
+    `D:/Workspace/CyberErp/SRMS-main/SRMS-main/Web`. NEW `src/components/auth/AuthLayout.tsx`;
+    `src/pages/LoginPage.tsx` rewritten to compose it.
+    - Same shell as the siblings: branded gradient backdrop (dot grid, glows, outlined circles),
+      product mark top-left, ONE elevated card (accent bar + in-card mark + "Sign in" + form +
+      divided footer note), slim legal footer. Structure mirrors them too (layout component + page).
+    - ⚠️ **HRMS and Home were ALREADY identical** — verified, not assumed. A naive `diff` said the
+      whole file differed; that was LINE ENDINGS. `diff --strip-trailing-cr` showed only a comment
+      block and the footer version string differ. Target design therefore unambiguous.
+    - ⚠️⚠️ **A FILE COPY WOULD HAVE FAILED SILENTLY.** HRMS/Home store ready-to-use colours
+      (`--primary: #0a4fa3`) with hand-written utilities; SRMS is shadcn-style with **HSL TRIPLETS**
+      (`--primary: 224 71% 33%`) valid only inside `hsl()`. Their inline
+      `linear-gradient(..., var(--primary), ...)` is INVALID CSS in SRMS — flat background, no error.
+      Every colour in the SRMS shell goes through `hsl(var(--…))`; the gradient's dark end uses
+      `color-mix` because SRMS has no `--primary-hover`. **Check the palette FORMAT before porting
+      any design between these apps.**
+    - Behaviour preserved: caps-lock hint, show/hide toggle, submit-time validation, sonner toast.
+      Field presentation aligned to the siblings (required asterisks, "User Name", lock icon).
+    - Verified visually via CDP screenshot against Home's login — identical apart from the brand
+      accent (CyberSRMS vs CyberHome) and version string, which is the intent. Typecheck: 0 errors in
+      the two files I touched (the tree has 105 PRE-EXISTING errors — missing finance pages, Tenant
+      type gaps — untouched).
+    - ⚠️ SRMS login renders at **`/`**, not `/login` (App.tsx `LoginRoute`) — `/login` 404s.
+    - ⚠️ **THREE SRMS trees exist**: `SRMS-main/SRMS-main` (CHANGED — the one the :8080 dev server
+      serves, confirmed via HMR), `CYBER_ERP_SRMS/SRMS-main` (the one read all session for schema
+      parity), `CYBER_ERP_SRMS1`. Only the first was modified. **None is a git repository** — changes
+      are on disk only.
+
 0133. **Core.User: AccountStatus -> bit, PhoneNumber -> nullable (2026-08-18).** Migration
     `UserAccountStatusBitAndNullablePhone`, APPLIED. Backup
     `D:/Backups/CERP_before-user-accountstatus-bit-*.bak`. Both repos.

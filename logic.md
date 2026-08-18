@@ -3316,3 +3316,46 @@ Verified after applying: schema and default as intended, all 506 rows = 1; Home 
 `"accountStatus": true` and `"isLockedOut": false`; profile save 200; a genuine NULL phone reads
 back as `""` without error; HRMS sign-in 200; the dialog renders Status "Active" / Sign-in lock
 "Unlocked".
+
+### 12.29 One sign-in experience across all three subsystems
+
+The SRMS login was a self-contained page — a small bordered card on a plain background, with its own
+brand block. It now presents the same shell as HRMS and the Home portal: branded gradient backdrop
+with dot grid and outlined geometry, product mark top-left, one elevated card carrying the accent
+bar, in-card mark, "Sign in" heading, the form, a divided footer note, and a slim legal footer.
+
+Structure mirrors the siblings too: a reusable `components/auth/AuthLayout.tsx` that the page
+composes, exactly as `authLayout.tsx` + `pages/auth/login/page.tsx` do in HRMS and Home.
+
+**HRMS and Home were already identical** — verified, not assumed: a naive `diff` reported the whole
+file changed, but that was line endings. `diff --strip-trailing-cr` showed the only real differences
+are one comment block and the footer version string. So the target design was unambiguous.
+
+#### ⚠️ It could not be a file copy, and copying would have failed silently
+
+HRMS and Home define their palette as ready-to-use colours (`--primary: #0a4fa3`) with hand-written
+utility classes. SRMS is shadcn-style: `--primary: 224 71% 33%`, an **HSL triplet** that is only
+valid inside `hsl()`. Pasting their
+
+```
+linear-gradient(165deg, var(--primary) 0%, …)
+```
+
+into SRMS yields invalid CSS — no gradient, no error, just a flat background. Every colour in the
+SRMS shell therefore goes through `hsl(var(--…))`, and the dark end of the gradient is produced with
+`color-mix` because SRMS has no `--primary-hover`.
+
+Each app keeps its own palette and brand accent, so the SRMS card reads "Cyber**SRMS**" against its
+own primary while the portal reads "Cyber**Home**" — same design, correct identity.
+
+#### Behaviour deliberately preserved
+
+The redesign changed the frame, not the form. SRMS's caps-lock hint, show/hide toggle, per-field
+validation on submit and sonner failure toast are untouched. Field presentation was aligned to the
+siblings (required asterisks, "User Name" wording, lock icon on the submit button) because that is
+the visible part of the consistency being asked for.
+
+**⚠️ Three SRMS trees exist on this machine** (`SRMS-main/SRMS-main`, `CYBER_ERP_SRMS/SRMS-main`,
+`CYBER_ERP_SRMS1`). Only the first was changed — it is the one the running dev server on :8080
+serves, confirmed because the edits appeared there by HMR. **It is not a git repository**, so those
+changes exist on disk only and are not version-controlled.
