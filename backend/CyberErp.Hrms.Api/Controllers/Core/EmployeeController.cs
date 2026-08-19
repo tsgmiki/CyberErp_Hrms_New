@@ -27,14 +27,17 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         /// <summary>The signed-in user's own employee identity (self-service screens). Null body when the account has no employee link.</summary>
         [HttpGet("me")]
+        [SelfScoped]
         public Task<MyEmployeeDto?> Me() => myEmployeeHandler.GetAsync();
 
         /// <summary>The signed-in employee's own full profile (ESS) — editable personal fields + read-only context.</summary>
         [HttpGet("my-profile")]
+        [SelfScoped]
         public Task<MyProfileDto> MyProfile() => myProfileHandler.GetAsync();
 
         /// <summary>Self-service profile update — writes ONLY safe personal/contact fields of the caller's own record.</summary>
         [HttpPut("my-profile")]
+        [SelfScoped]
         public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateMyProfileDto dto)
         {
             await updateMyProfileHandler.UpdateAsync(dto);
@@ -52,6 +55,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             => upcomingRetirementsHandler.GetAsync();
 
         [HttpGet("{id:guid}")]
+        [SelfScoped]
         public Task<EmployeeDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
 

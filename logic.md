@@ -3622,3 +3622,54 @@ rather than hiding (a disabled control with a tooltip is easier to support than 
 and revoked on the role screen, and decided nothing: it was never projected into the module feed,
 never present on the models, and `useListPermissions` returned `canExport: canView`. It is now
 carried end to end in both applications and gates the export/download control.
+
+### 12.38 Gating a controller on "its" screen breaks the endpoints beside it
+
+The privilege gate (§12.36) is right about verbs and wrong about neighbours: a controller serves one
+screen, but not every action on it belongs to that screen's audience. Two categories broke, and both
+surface as **blank fields and empty comboboxes** rather than as an access error, because the SPA
+swallows the 403 and renders whatever it got — nothing.
+
+#### Self-scoped endpoints on an HR-gated controller
+
+`EmployeeController` is gated on `employee`, the HR staff register. It also answers
+`GET /Employee/me`, which every employee's portal calls on sign-in. Requiring the register grant
+there denied ordinary staff their own record. The same shape applies to `Workflow/my-approvals`,
+`OrganizationUnit/my-units` and `EmployeeTermination/my-clearances`.
+
+`[SelfScoped]` marks these: being signed in is the whole check, because the HANDLER scopes the
+result to the caller.
+
+⚠️ It also covers `GET /Employee/{id}`, for a subtler reason: that handler already applies a
+**finer** rule than any screen grant — `visibility.CanAccessEmployeeAsync` allows HR admin, the
+employee themselves, *or* their manager. The gate was stopping employees before that rule could run,
+so the coarse check was overriding the precise one.
+
+Endpoints whose controller is gated on the employee's OWN screen (Annual Leave, Other Leave, My
+Medical Claims …) deliberately keep their grant. That check is meaningful, and revoking the screen
+should indeed close them.
+
+#### Reference lists that self-service screens read
+
+Review cycles, organisational objectives, appraisal templates, employee custom fields, job grades,
+positions and salary scales are HR *configuration* — and also the CONTENTS of comboboxes every
+employee uses. An employee cannot pick their review cycle on an Employee Goal without reading the
+list. Gated on the configuration screen alone, the control renders visible and empty, which reads as
+a broken form.
+
+Their READ endpoints therefore name their consumers as well:
+
+```csharp
+[HttpGet]
+[RequirePermission("reviewCycle", "appraisal", "employeeGoal", "myPeerReviews", …)]
+```
+
+⚠️ **An action-level attribute REPLACES the class-level one.** That is exactly what keeps this safe:
+the reads open, while create/update/delete fall through to the class-level attribute and stay
+HR-only. Verified: `GET` 200 and `POST` 403 on the same controller for the same user.
+
+#### How to find the rest
+
+Sign in as a single-role account and walk every portal screen collecting 403s. Two remain, and both
+are correct — `/survey` and `/myTraining` are reachable by typing the URL but absent from that
+user's menu, so the denial is the guard working.

@@ -22,6 +22,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         /// <summary>The units the caller may act for — admin=all, manager=own subtree, else none (self-service).</summary>
         [HttpGet("my-units")]
+        [SelfScoped]
         public Task<PaginatedResponse<OrganizationUnitDto>> MyUnits([FromQuery] GetAllRequest request)
             => myUnitsHandler.GetAsync(request);
 

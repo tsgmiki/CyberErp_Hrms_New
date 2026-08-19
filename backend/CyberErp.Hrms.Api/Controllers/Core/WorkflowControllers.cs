@@ -21,6 +21,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         /// <summary>The current user's approval inbox (Dashboard "Approvals" tab, approver-only).</summary>
         [HttpGet("my-approvals")]
+        [SelfScoped]
         public Task<MyApprovalsDto> GetMyApprovals()
             => myApprovalsHandler.GetAsync();
 

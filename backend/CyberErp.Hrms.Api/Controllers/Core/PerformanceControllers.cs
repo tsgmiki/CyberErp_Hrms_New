@@ -103,9 +103,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllReviewCycles getAllHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("reviewCycle", "appraisal", "employeeGoal", "myPeerReviews", "appraisalAppeal", "performanceDashboard")]
         public Task<PaginatedResponse<ReviewCycleDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("reviewCycle", "appraisal", "employeeGoal", "myPeerReviews", "appraisalAppeal", "performanceDashboard")]
         public Task<ReviewCycleDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
 
         [HttpPost]
@@ -127,9 +129,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllOrganizationalObjectives getAllHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("organizationalObjective", "employeeGoal", "appraisal")]
         public Task<PaginatedResponse<OrganizationalObjectiveDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("organizationalObjective", "employeeGoal", "appraisal")]
         public Task<OrganizationalObjectiveDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
 
         [HttpPost]
@@ -467,9 +471,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllAppraisalTemplates getAllHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("appraisalTemplate", "appraisal")]
         public Task<PaginatedResponse<AppraisalTemplateDto>> GetAll([FromQuery] GetAllRequest request) => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("appraisalTemplate", "appraisal")]
         public Task<AppraisalTemplateDto> GetById(Guid id) => getByIdHandler.GetAsync(id);
 
         [HttpPost]

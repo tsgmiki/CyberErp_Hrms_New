@@ -15,10 +15,12 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllEmployeeFields getAllHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("employeeField", "myProfile", "employee")]
         public Task<PaginatedResponse<EmployeeFieldDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("employeeField", "myProfile", "employee")]
         public Task<EmployeeFieldDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
 

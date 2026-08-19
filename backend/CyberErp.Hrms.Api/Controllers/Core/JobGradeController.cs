@@ -15,10 +15,12 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetAllJobGrades getAllHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("jobGrade", "myProfile", "employee")]
         public Task<PaginatedResponse<JobGradeDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("jobGrade", "myProfile", "employee")]
         public Task<JobGradeDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
 

@@ -123,6 +123,30 @@
 
 ## 1. Most recent changes (latest first)
 
+0142. **Self-service screens could not read what they render with (2026-08-19).** HRMS repo, no
+    migration. NEW `App/Common/Authorization/SelfScopedAttribute.cs`. See logic §12.38.
+    - Reported as "the Review Cycle combobox is visible to everyone but its data only loads for HR
+      Admins". `ReviewCycleController` is gated on `reviewCycle`, an HR CONFIG screen, so
+      `GET /ReviewCycle` 403'd for ordinary staff and the combobox rendered empty. ⚠️ The SPA
+      swallows the 403, so this class of bug always looks like a broken form, never a denial.
+    - **Pre-existing** for ReviewCycle and AppraisalTemplate (both gated the same way in HEAD~2);
+      **introduced by 0140** for OrganizationalObjective. Owned and fixed together.
+    - Reference READS now name their consumers as extra links (reviewCycle, organizationalObjective,
+      appraisalTemplate, employeeField, jobGrade, position, salaryScale). ⚠️ An action-level
+      attribute REPLACES the class-level one, which is what keeps create/update/delete HR-only —
+      verified GET 200 / POST 403 on the same controller for the same user.
+    - ⚠️ **0140 also broke self-service**: `GET /Employee/me` and `/my-profile`,
+      `Workflow/my-approvals`, `OrganizationUnit/my-units`, `EmployeeTermination/my-clearances` sit
+      on controllers gated to the HR register. `[SelfScoped]` exempts them — the HANDLER scopes to
+      the caller, so being signed in is the whole check.
+    - ⚠️ `GET /Employee/{id}` is `[SelfScoped]` for a subtler reason: its handler already applies a
+      FINER rule than any screen grant (`CanAccessEmployeeAsync` = HR admin OR self OR manager). The
+      coarse gate was overriding the precise one.
+    - Method: swept all 22 portal screens as a single-role account collecting 403s, fixed, re-swept
+      until only correct denials remained (`/survey`, `/myTraining` — reachable by URL, absent from
+      that user's menu).
+
+
 0141. **The portal fabricated its privileges; both SPAs defaulted them open (2026-08-19).** Home repo
     + HRMS frontend, no migration. See logic §12.37. Paired with 0140 — the server-side gate is the
     wall; these are the affordances in front of it.

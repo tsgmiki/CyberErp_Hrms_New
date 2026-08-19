@@ -50,6 +50,14 @@ namespace CyberErp.Hrms.Api.Configuration
             if (context.HttpContext.User?.Identity?.IsAuthenticated != true)
                 return;
 
+            // An action that only ever touches the caller's OWN data is authorised by being
+            // signed in. Its controller is gated on the screen it serves — the HR register for
+            // Employee / Workflow / OrganizationUnit — which is the wrong check for the "/me"
+            // endpoint sitting beside it.
+            if (context.ActionDescriptor is ControllerActionDescriptor selfScoped &&
+                selfScoped.MethodInfo.GetCustomAttributes(typeof(SelfScopedAttribute), inherit: true).Length > 0)
+                return;
+
             var attribute = ResolveAttribute(context);
             if (attribute is null || attribute.OperationLinks.Count == 0)
                 return; // opt-in: no attribute → not permission-gated
