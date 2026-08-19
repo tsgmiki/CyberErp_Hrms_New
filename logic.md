@@ -3397,3 +3397,30 @@ not. It is now `HOME_SUBSYSTEM_ABBREVIATION`, defined once in `config/subsystemA
 
 Scope: the Home portal only. HRMS's own landing page still reads its `Subsystem` feed's `code`,
 which is untouched and independent.
+
+### 12.31 HRMS keys subsystems on Abbreviation too
+
+The mirror of §12.30, applied to HRMS's own subsystem feed so both SPAs identify subsystems the
+same way.
+
+- **API**: `SubsystemDto.Code` → `Abbreviation` (wire field `abbreviation`), projected from
+  `Core.Subsystem.Abbreviation` with a `Code` fallback because the column is nullable. Verified in
+  the running API's swagger schema: `["id","name","abbreviation","icon","displayOrder"]`.
+- **Search** matches Abbreviation *and* still Code, so a search for what someone remembers from the
+  old field keeps working.
+- **Frontend**: `SubsystemModel.code` → `abbreviation`; the landing page's HOME exclusion and
+  `appUrlFor` both key on it; `VITE_SUBSYSTEM_APPS` re-keyed to abbreviations.
+- The Home-identity literal is now `HOME_SUBSYSTEM_ABBREVIATION` in `config/appConfig`, defined
+  once — the same fix as the portal, for the same reason.
+
+#### ⚠️ Scope: the SUBSYSTEM identifier only
+
+`Code` is not one concept in HRMS. **33 DTOs expose a `Code`** — Branch, JobGrade, JobCategory,
+Position, PositionClass, OrganizationUnit, LeaveType, AllowanceType, Lookup, CareerPath and more.
+Those are *business codes* on `Hrms.*` tables: they map to real `Code` columns, those tables have no
+`Abbreviation` column at all, and a Position's code is an identifier rather than an abbreviation.
+Renaming them would mean a migration across ~33 tables plus every CRUD screen and Zod schema that
+references `code`, and would change meaning, not just naming.
+
+Only the subsystem identifier was changed, because that is the one with an `Abbreviation` column
+already holding the better value — and it is what makes HRMS and the portal agree.

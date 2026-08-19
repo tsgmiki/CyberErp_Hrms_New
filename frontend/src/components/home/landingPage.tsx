@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Building2, ChevronRight, LogOut } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import store from "@/store";
-import { appUrlFor } from "@/config/appConfig";
+import { appUrlFor, HOME_SUBSYSTEM_ABBREVIATION } from "@/config/appConfig";
 import { useAuth } from "@/context/AuthContext";
 import BrandTitle from "@/components/common/brand/brandTitle";
 import {
@@ -125,7 +125,7 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
   const subsystems = useMemo(() => {
     const portalNames = new Set(
       (subsystemRows ?? [])
-        .filter((row) => (row.code ?? "").trim().toUpperCase() === "HOME")
+        .filter((row) => (row.abbreviation ?? "").trim().toUpperCase() === HOME_SUBSYSTEM_ABBREVIATION)
         .map((row) => row.name ?? ""),
     );
     return buildLandingSubsystems(modules, subsystemRows).filter(
@@ -150,11 +150,11 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
     // Centralized architecture: selecting a subsystem hosted by ANOTHER application (e.g. Home)
     // deep-links there; this application renders only its own subsystem's screens.
     //
-    // ⚠️ The address comes from VITE_SUBSYSTEM_APPS keyed by the subsystem's CODE, not from the
+    // ⚠️ The address comes from VITE_SUBSYSTEM_APPS keyed by the subsystem's ABBREVIATION, not from
     // row — Core.Subsystem.Url was dropped on 2026-08-16 for SRMS parity. A subsystem with no
     // configured address simply scopes locally, exactly as an absent Url did before.
     const row = subsystemRows?.find((s) => s.name === subsystem);
-    const url = appUrlFor(row?.code);
+    const url = appUrlFor(row?.abbreviation);
     if (url) {
       try {
         if (new URL(url).origin !== window.location.origin) {

@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+0136. **HRMS subsystem feed keys on Abbreviation (2026-08-19).** HRMS repo, no migration. Mirror of
+    0135 so both SPAs identify subsystems identically.
+    - `SubsystemDto.Code` -> `Abbreviation` (wire `abbreviation`), projected from
+      Core.Subsystem.Abbreviation with a Code fallback (nullable column). **Verified in the running
+      API's swagger schema**: `["id","name","abbreviation","icon","displayOrder"]` — `code` gone.
+    - Search now matches Abbreviation AND still Code, so searching for the old value keeps working.
+    - Frontend: `SubsystemModel.code` -> `abbreviation`; landing-page HOME exclusion + `appUrlFor`
+      key on it; `VITE_SUBSYSTEM_APPS` re-keyed to SSMS/HRMS/SRMS/SAMS. Home-identity literal is now
+      `HOME_SUBSYSTEM_ABBREVIATION` in `config/appConfig`, defined ONCE (same fix as the portal).
+    - ⚠️ **SCOPE — the SUBSYSTEM identifier ONLY.** `Code` is not one concept in HRMS: **33 DTOs
+      expose a Code** (Branch, JobGrade, JobCategory, Position, PositionClass, OrganizationUnit,
+      LeaveType, AllowanceType, Lookup, CareerPath …). Those are BUSINESS codes on `Hrms.*` tables —
+      real `Code` columns, **no Abbreviation column exists on them**, and a Position's code is an
+      identifier, not an abbreviation. Renaming them = migration across ~33 tables + every CRUD
+      screen and Zod schema. Raised with the user rather than assumed.
+    - ⚠️ **UNRELATED DATA FINDING:** `demo` now has **NO Core.TenantUser row** (all 499 memberships
+      are in `headoffice`), so HRMS/Home login for demo returns 401 "This account is not assigned to
+      any organization." NOT caused by this refactor — the projector deletes only
+      TenantRolePermission / TenantUserRole / TenantRole / TenantOperation, never TenantUser, and no
+      TenantUser row has been created since 2026-08-13. Verified the contract via swagger instead of
+      a logged-in call.
+
 0135. **Home portal keys subsystems on Abbreviation instead of Code (2026-08-19).** Home repo only,
     no migration. Commit `8f87a98`.
     - `Core.Subsystem.Code` is NOT a dependable key: the catalogue holds `HOME`, `002`, `srms`,
