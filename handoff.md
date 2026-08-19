@@ -123,6 +123,58 @@
 
 ## 1. Most recent changes (latest first)
 
+0143. **Core.TenantUser.Status becomes a bit (2026-08-19).** HRMS + Home, migration
+    `20260819140000_TenantUserStatusBit`. See logic §12.39. Restore point:
+    `C:\Temp\CERP_before_tenantuser_status_bit.bak`.
+    - `nvarchar(30)` holding Active/Suspended/Invited → `bit`, 1 = active. All 499 rows were
+      'Active', so nothing was lost. `TenantUserStatuses` deleted; 5 HRMS query sites and 2 Home
+      ones updated; seed/verify SQL scripts too. **No frontend surface** — neither SPA references
+      TenantUser.
+    - ⚠️ **A hand-written migration needs its own `[Migration]` attribute.** EF discovers migrations
+      by it; the scaffolder normally puts it in the .Designer.cs. Without it the file compiles, sits
+      in the folder and is SILENTLY NEVER APPLIED ("The database is already up to date").
+      `[DbContext(typeof(HrmsDbContext))]` needs `using Microsoft.EntityFrameworkCore.Infrastructure;`
+      or it resolves to the CLASS ("not an attribute class"). The model snapshot needs hand-editing
+      too, else `PendingModelChangesWarning` blocks the update.
+    - ⚠️ **Pre-existing migration drift found on the way**: `LoginTrailUserIdDateIndex` and
+      `UserAccountStatusBitAndNullablePhone` had been applied to the database BY HAND but never
+      recorded in `__EFMigrationsHistory`, so `database update` tried to re-run them and failed on
+      an existing index. Verified the database genuinely matched both, then recorded them in the
+      history rather than re-running.
+    - ⚠️ Two states where there were three: Suspended and Invited are no longer distinguishable.
+    - ⚠️ **SRMS writes this table** and stores 'Active' — its inserts now fail against the bit
+      column. Same divergence as Core.User.AccountStatus (0133), accepted on the same terms.
+    - Verified: HRMS login 200, menu feed 200, permission gate 200/403, Home login 200, portal feed
+      24 operations. Then set one membership to 0 → login **401**; restored to 1 → **200**, which is
+      what proves the column still gates rather than being ignored.
+    - Also in this batch: the Home portal DASHBOARD is now full-bleed (logic §12.40) — its
+      `max-w-7xl` cap removed and the shell's `p-2` cancelled with a negative margin, so no other
+      screen changes. Measured at 1600px: dashboard 0/0, every other screen unchanged at 8px.
+
+0142. **Self-service screens could not read what they render with (2026-08-19).** HRMS repo, no
+    migration. NEW `App/Common/Authorization/SelfScopedAttribute.cs`. See logic §12.38.
+    - Reported as "the Review Cycle combobox is visible to everyone but its data only loads for HR
+      Admins". `ReviewCycleController` is gated on `reviewCycle`, an HR CONFIG screen, so
+      `GET /ReviewCycle` 403'd for ordinary staff and the combobox rendered empty. ⚠️ The SPA
+      swallows the 403, so this class of bug always looks like a broken form, never a denial.
+    - **Pre-existing** for ReviewCycle and AppraisalTemplate (both gated the same way in HEAD~2);
+      **introduced by 0140** for OrganizationalObjective. Owned and fixed together.
+    - Reference READS now name their consumers as extra links (reviewCycle, organizationalObjective,
+      appraisalTemplate, employeeField, jobGrade, position, salaryScale). ⚠️ An action-level
+      attribute REPLACES the class-level one, which is what keeps create/update/delete HR-only —
+      verified GET 200 / POST 403 on the same controller for the same user.
+    - ⚠️ **0140 also broke self-service**: `GET /Employee/me` and `/my-profile`,
+      `Workflow/my-approvals`, `OrganizationUnit/my-units`, `EmployeeTermination/my-clearances` sit
+      on controllers gated to the HR register. `[SelfScoped]` exempts them — the HANDLER scopes to
+      the caller, so being signed in is the whole check.
+    - ⚠️ `GET /Employee/{id}` is `[SelfScoped]` for a subtler reason: its handler already applies a
+      FINER rule than any screen grant (`CanAccessEmployeeAsync` = HR admin OR self OR manager). The
+      coarse gate was overriding the precise one.
+    - Method: swept all 22 portal screens as a single-role account collecting 403s, fixed, re-swept
+      until only correct denials remained (`/survey`, `/myTraining` — reachable by URL, absent from
+      that user's menu).
+
+
 0141. **The portal fabricated its privileges; both SPAs defaulted them open (2026-08-19).** Home repo
     + HRMS frontend, no migration. See logic §12.37. Paired with 0140 — the server-side gate is the
     wall; these are the affordances in front of it.

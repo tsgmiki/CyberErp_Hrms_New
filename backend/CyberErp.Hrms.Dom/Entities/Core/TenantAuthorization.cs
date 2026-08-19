@@ -24,13 +24,12 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
  * the discriminator — the same choice made for TenantSubscriptionAddOn.
  */
 
-/// <summary>Membership state of a user within one tenant.</summary>
-public static class TenantUserStatuses
-{
-    public const string Active = "Active";
-    public const string Suspended = "Suspended";
-    public const string Invited = "Invited";
-}
+/*
+ * TenantUserStatuses (Active / Suspended / Invited) was removed on 2026-08-19 when
+ * Core.TenantUser.Status became a bit. Two states is all the column can now express: an active
+ * membership, or not one. Suspended and Invited are no longer distinguishable — see the
+ * TenantUserStatusBit migration.
+ */
 
 /// <summary>Where a tenant's access to a subsystem came from.</summary>
 public static class TenantSubSystemSources
@@ -338,13 +337,14 @@ public class TenantRolePermission : BaseEntity
 public class TenantUser : BaseEntity
 {
     public Guid UserId { get; private set; }
-    public string Status { get; private set; } = TenantUserStatuses.Active;
+    /// <summary>True when the membership is active. A bit since 2026-08-19 (was 'Active'/'Suspended'/'Invited').</summary>
+    public bool Status { get; private set; } = true;
     public bool IsDefaultTenant { get; private set; }
 
     private TenantUser() : base() { }
 
     public static TenantUser Create(Guid owningTenantId, Guid userId,
-        string status = TenantUserStatuses.Active, bool isDefaultTenant = true)
+        bool status = true, bool isDefaultTenant = true)
     {
         if (owningTenantId == Guid.Empty)
             throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
@@ -354,17 +354,15 @@ public class TenantUser : BaseEntity
         {
             TenantId = owningTenantId.ToString(),
             UserId = userId,
-            Status = string.IsNullOrWhiteSpace(status) ? TenantUserStatuses.Active : status.Trim(),
+            Status = status,
             IsDefaultTenant = isDefaultTenant,
         };
     }
 
-    public void SetStatus(string status)
+    /// <summary>Activates or deactivates the membership.</summary>
+    public void SetStatus(bool status)
     {
-        if (string.IsNullOrWhiteSpace(status))
-            throw new ArgumentException("Status is required.", nameof(status));
-        Status = status.Trim();
-        base.Update();
+        Status = status;
     }
 }
 

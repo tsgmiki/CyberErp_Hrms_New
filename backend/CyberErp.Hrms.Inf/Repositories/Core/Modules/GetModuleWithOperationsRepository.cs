@@ -39,7 +39,7 @@ public class GetModuleWithOperationsRepository(
         if (userId.HasValue)
         {
             tenantRoleIds = await tenantUserRepository.GetAll()
-                .Where(tu => tu.UserId == userId.Value && tu.Status == TenantUserStatuses.Active)
+                .Where(tu => tu.UserId == userId.Value && tu.Status)
                 .Join(tenantUserRoleRepository.GetAll(),
                     tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
                 .Distinct()

@@ -14,10 +14,12 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IDeleteSalaryScale deleteHandler) : BaseController
     {
         [HttpGet]
+        [RequirePermission("salaryScale", "myProfile", "employee", "myCompensation")]
         public Task<PaginatedResponse<SalaryScaleDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("salaryScale", "myProfile", "employee", "myCompensation")]
         public Task<SalaryScaleDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
 

@@ -96,7 +96,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
         private async Task<GrantedLinks> LoadGrantedLinksAsync(Guid userId)
         {
             var rows = await tenantUsers.GetAll()
-                .Where(tu => tu.UserId == userId && tu.Status == TenantUserStatuses.Active)
+                .Where(tu => tu.UserId == userId && tu.Status)
                 .Join(tenantUserRoles.GetAll(),
                     tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
                 .Join(tenantRolePermissions.GetAll(),

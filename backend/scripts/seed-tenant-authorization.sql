@@ -82,7 +82,8 @@ WHERE NOT EXISTS (
 -- holding two roles in one tenant would produce two membership rows and hit the unique index.
 INSERT INTO Core.TenantUser
     (Id, UserId, Status, IsDefaultTenant, TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), m.UserId, 'Active', 1, m.TenantId, SYSUTCDATETIME(), @rv
+-- Status is a bit since 2026-08-19: 1 = an active membership.
+SELECT NEWID(), m.UserId, 1, 1, m.TenantId, SYSUTCDATETIME(), @rv
 FROM (
     SELECT DISTINCT ur.UserId, tr.TenantId
     FROM Core.UserRole ur

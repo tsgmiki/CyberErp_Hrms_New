@@ -34,6 +34,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
         /// <summary>The current user's clearance queue (Dashboard "Clearance" tab, approver-only).</summary>
         [HttpGet("my-clearances")]
+        [SelfScoped]
         public Task<MyClearancesDto> GetMyClearances()
             => myClearancesHandler.GetAsync();
 
