@@ -11,11 +11,16 @@ namespace CyberErp.Hrms.App.Common.Authorization
     public interface IEndpointPermissionService
     {
         /// <summary>
-        /// True when one of the caller's roles has <c>CanView</c> on at least one operation whose
-        /// <c>Link</c> matches (slash/case-insensitively) any of <paramref name="operationLinks"/>.
-        /// An empty required set is treated as "no restriction" (true).
+        /// True when one of the caller's roles holds <paramref name="access"/> on at least one
+        /// operation whose <c>Link</c> matches (namespace/slash/case-insensitively) any of
+        /// <paramref name="operationLinks"/>. An empty required set is "no restriction" (true).
         /// </summary>
-        Task<bool> HasAnyAsync(IReadOnlyList<string> operationLinks);
+        /// <para><paramref name="access"/> defaults to <see cref="PermissionAccess.View"/> because the
+        /// handlers that call this directly are VISIBILITY probes - "does this caller hold the HR
+        /// screen at all?" - not action checks. Endpoint gating always passes an explicit value.</para>
+        Task<bool> HasAnyAsync(
+            IReadOnlyList<string> operationLinks,
+            PermissionAccess access = PermissionAccess.View);
 
         /// <summary>
         /// Drops every cached granted-link set, so the next request re-reads from the database.
@@ -34,7 +39,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
         IMemoryCache cache) : IEndpointPermissionService
     {
         // PERFORMANCE: this service runs on EVERY [RequirePermission]-gated request, so the caller's
-        // granted-link set is cached for a short window instead of hitting the database each time.
+        // granted links are cached for a short window instead of hitting the database each time.
         // Permission changes made through the admin screens bust the cache outright (InvalidateAll);
         // the TTL only bounds changes made behind the application's back, e.g. directly in SQL.
         private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(60);
@@ -43,13 +48,21 @@ namespace CyberErp.Hrms.App.Common.Authorization
         // prefix. Bumping it orphans every existing entry at once — they then expire on their own.
         private static int _generation;
 
+        /// <summary>One set of granted links per privilege, all loaded in a single round trip.</summary>
+        private sealed class GrantedLinks
+        {
+            public required Dictionary<PermissionAccess, HashSet<string>> ByAccess { get; init; }
+        }
+
         public void InvalidateAll() => Interlocked.Increment(ref _generation);
 
-        public async Task<bool> HasAnyAsync(IReadOnlyList<string> operationLinks)
+        public async Task<bool> HasAnyAsync(
+            IReadOnlyList<string> operationLinks,
+            PermissionAccess access = PermissionAccess.View)
         {
             if (operationLinks is null || operationLinks.Count == 0) return true;
             // Strictly role-based: no head-office/branch bypass. "Admin" access = a role granted the
-            // operation's CanView, not a user who simply has no branch assignment.
+            // privilege on the operation, not a user who simply has no branch assignment.
             var userId = currentUser.GetCurrentUserId();
             if (userId is null) return false;
 
@@ -60,13 +73,14 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 return await LoadGrantedLinksAsync(userId.Value);
             });
 
-            if (granted is null || granted.Count == 0) return false;
-            return operationLinks.Any(l => granted.Contains(Normalize(l)));
+            if (granted is null) return false;
+            if (!granted.ByAccess.TryGetValue(access, out var links) || links.Count == 0) return false;
+            return operationLinks.Any(l => links.Contains(Normalize(l)));
         }
 
         /// <summary>
         /// One round-trip through the TENANT-SCOPED model: the caller's membership of this tenant →
-        /// the roles they hold in it → CanView grants → the tenant's own copy of each operation link.
+        /// the roles they hold in it → their grants → the tenant's own copy of each operation link.
         ///
         /// <para>Every repository call is already filtered to the current tenant by the Finbuckle
         /// discriminator, so a user who belongs to several tenants gets only the links for the one
@@ -74,21 +88,56 @@ namespace CyberErp.Hrms.App.Common.Authorization
         ///
         /// <para><c>IsActive</c> is honoured here: a tenant that hides a screen revokes access to it,
         /// not merely its sidebar entry.</para>
+        ///
+        /// <para>⚠️ All SIX privileges are read in this one query. It used to filter
+        /// <c>Where(p =&gt; p.CanView)</c> and return a single set, which is why every verb on a
+        /// gated endpoint was authorised by the view grant.</para>
         /// </summary>
-        private async Task<HashSet<string>> LoadGrantedLinksAsync(Guid userId)
+        private async Task<GrantedLinks> LoadGrantedLinksAsync(Guid userId)
         {
-            var links = await tenantUsers.GetAll()
+            var rows = await tenantUsers.GetAll()
                 .Where(tu => tu.UserId == userId && tu.Status == TenantUserStatuses.Active)
                 .Join(tenantUserRoles.GetAll(),
                     tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
-                .Join(tenantRolePermissions.GetAll().Where(p => p.CanView),
-                    roleId => roleId, p => p.TenantRoleId, (roleId, p) => p.TenantOperationId)
+                .Join(tenantRolePermissions.GetAll(),
+                    roleId => roleId, p => p.TenantRoleId, (roleId, p) => p)
                 .Join(tenantOperations.GetAll().Where(o => o.IsActive && o.Link != ""),
-                    opId => opId, o => o.Id, (opId, o) => o.Link)
-                .Distinct()
+                    p => p.TenantOperationId, o => o.Id, (p, o) => new
+                    {
+                        o.Link,
+                        p.CanView,
+                        p.CanAdd,
+                        p.CanEdit,
+                        p.CanDelete,
+                        p.CanApprove,
+                        p.CanExport,
+                    })
                 .ToListAsync();
 
-            return links.Select(Normalize).ToHashSet();
+            // A user may hold several roles: the union wins, so one permissive role grants the
+            // privilege even when another does not.
+            var byAccess = new Dictionary<PermissionAccess, HashSet<string>>
+            {
+                [PermissionAccess.View] = [],
+                [PermissionAccess.Add] = [],
+                [PermissionAccess.Edit] = [],
+                [PermissionAccess.Delete] = [],
+                [PermissionAccess.Approve] = [],
+                [PermissionAccess.Export] = [],
+            };
+
+            foreach (var row in rows)
+            {
+                var link = Normalize(row.Link);
+                if (row.CanView) byAccess[PermissionAccess.View].Add(link);
+                if (row.CanAdd) byAccess[PermissionAccess.Add].Add(link);
+                if (row.CanEdit) byAccess[PermissionAccess.Edit].Add(link);
+                if (row.CanDelete) byAccess[PermissionAccess.Delete].Add(link);
+                if (row.CanApprove) byAccess[PermissionAccess.Approve].Add(link);
+                if (row.CanExport) byAccess[PermissionAccess.Export].Add(link);
+            }
+
+            return new GrantedLinks { ByAccess = byAccess };
         }
 
         /// <summary>

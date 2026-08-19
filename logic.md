@@ -3517,3 +3517,72 @@ frontend got the mirror of §12.33 — its own `utils/routeMatch`, applied to:
 
 SSMS links are still stored un-namespaced, which is why the portal worked; verified live by
 temporarily storing `/ssms/suggestion` and confirming the sidebar rendered `/suggestion`.
+
+### 12.36 Privileges are enforced on the server, not just drawn in the UI
+
+Revoking Create for a role changed the buttons a SPA drew and nothing else — the request still
+succeeded. Four independent causes, all real:
+
+1. **The gate read `CanView` and nothing else.** `EndpointPermissionService` filtered
+   `Where(p => p.CanView)` and returned ONE set of links, so `[RequirePermission("annualLeave")]`
+   meant "may open the Annual Leave screen" and a POST was authorised by the same grant as a GET.
+   Six privilege columns existed on `Core.TenantRolePermission`; one of them decided anything.
+2. **48 controller CLASSES carried no attribute at all**, including `AnnualLeaveController` — the
+   reported symptom — and `EmployeeController`, which made the entire staff register readable by
+   any signed-in user.
+3. **The portal API never sent the privileges** and the portal SPA filled the gap by hardcoding
+   them (§12.37).
+4. **`CanExport` never left the database**, and both SPAs defaulted a missing privilege to `true`.
+
+#### The model
+
+`PermissionAccess` — View, Add, Edit, Delete, Approve, Export — one value per column.
+`EndpointPermissionService` loads all six sets in a single query and unions them across the
+caller's roles, so one permissive role grants the privilege even when another does not. The 60s
+cache and the `InvalidateAll` generation counter are unchanged.
+
+#### Which privilege an endpoint needs is DERIVED
+
+This API has ~795 endpoints across 136 controller classes. Hand-labelling each one is a large
+change *and* a standing invitation to forget one — and a forgotten label on a POST is an ungated
+write. So a controller declares only WHICH SCREEN it serves, and the filter derives the access:
+
+| Endpoint | Privilege |
+|---|---|
+| `GET` / `HEAD` | View |
+| `DELETE` | Delete |
+| `PUT` / `PATCH` | Edit |
+| `POST` with no route suffix | Add — the create endpoint |
+| `POST` whose suffix decides (`approve`, `reject`, `signoff`, …) | Approve |
+| `POST` whose suffix creates (`generate`, `build`, `clone`, `seed`, …) | Add |
+| `POST` with any other suffix | Edit — it changes a record that already exists |
+| any verb whose suffix extracts (`export`, `download`, `print`, …) | Export |
+
+`[RequirePermission("x", Access = PermissionAccess.Approve)]` overrides the derivation per action.
+
+#### ⚠️ The suffix must be tokenised
+
+Real routes are compound. Matching the whole suffix against a set silently mis-derives every one of
+them: `reviewer-signoff` would ask for Edit rather than Approve, and `create-development-plan` for
+Edit rather than Add. The suffix is split on `-` and each token is tested.
+
+#### ⚠️ Gate only on links that EXIST in the catalogue
+
+`[RequirePermission("leaveRequest")]` where no such operation exists denies **everyone** — no grant
+can ever match it. Every link used was checked against `Core.TenantOperation` first.
+`leaveRequest`, `leaveBalance`, `employeeMovement` and `terminationSettlement` have no operation of
+their own; the first two are therefore still ungated and need a catalogue decision rather than a
+guess.
+
+#### ⚠️ What must stay ungated
+
+Auth (anonymous), the `Module` / `Operation` / `Subsystem` feeds (they ARE the menu — gating them
+locks every user out of the whole application), `Lookup`, `EmployeeOptions` and `Step` (shared
+dropdown data that every screen reads), plus `Dashboard`, `Search` and `UserPreference`, which are
+self-scoped or filtered internally.
+
+#### ⚠️ Privileges are OR-ed across roles, which makes testing subtle
+
+`tatekg` holds **HR Admin and UserRole**. Revoking Create on UserRole alone leaves HR Admin's grant
+standing, so that account can still create — correctly. Test privilege changes with a single-role
+account (`abaynehh`).
