@@ -6,6 +6,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Leave requests (HC034–HC039). Approvals are driven by the generic workflow engine.</summary>
+    // Gated on the leave screens rather than on a link of its own: there is NO leaveRequest operation
+    // in Core.TenantOperation, and gating on a link nobody can hold denies everyone. Its own page
+    // (/leaveRequest) is consequently absent from every menu, so the grants that matter are the leave
+    // screens an employee actually holds.
+    [RequirePermission("annualLeave", "otherLeave")]
     public class LeaveRequestController(
         ISubmitLeaveRequest submitHandler,
         ICancelLeaveRequest cancelHandler,
@@ -85,6 +90,10 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Leave balances (HC033): view per employee, set opening figures / adjust.</summary>
+    // Same reasoning as LeaveRequestController, and it is not only its own screen: the ANNUAL LEAVE
+    // form in BOTH applications reads balances from here, so the annualLeave grant is the one that has
+    // to open it.
+    [RequirePermission("annualLeave", "otherLeave")]
     public class LeaveBalanceController(
         IGetLeaveBalances getHandler,
         ISetLeaveBalance setHandler) : BaseController
