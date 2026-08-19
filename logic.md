@@ -3359,3 +3359,41 @@ the visible part of the consistency being asked for.
 `CYBER_ERP_SRMS1`). Only the first was changed — it is the one the running dev server on :8080
 serves, confirmed because the edits appeared there by HMR. **It is not a git repository**, so those
 changes exist on disk only and are not version-controlled.
+
+### 12.30 The portal keys on Abbreviation, not Code
+
+The Home portal identified subsystems by `Core.Subsystem.Code`. That column is not dependable as a
+key — the same catalogue holds `HOME`, `002`, `srms` and `Finance`, and it is re-typed by hand.
+
+| Name | Code | Abbreviation |
+|---|---|---|
+| Self Service Management Sysem | `HOME` | **SSMS** |
+| Security and Admin Management System | `002` | **SAMS** |
+| SRMS | `srms` | **SRMS** |
+| Finance | `Finance` | **IFMS** |
+
+The working copy showed exactly what that instability costs: the SPA was matching `"003"` while the
+row still said `HOME`. Nothing errors — `resolveOperationHref` simply stops recognising the portal's
+own subsystem, so every Home-local link becomes an external deep-link and the sidebar empties.
+Abbreviation is the curated short name, and everything now keys on it.
+
+- **API**: `PortalSubsystemDto.Code` → `Abbreviation`, so the wire field is `abbreviation`.
+  Confirmed in the published swagger schema, which no longer carries `code`.
+- **Fallback**: the column is NULLABLE, so the projection falls back to `Code` when it is blank. An
+  un-keyed row would drop out of the launcher entirely, which is worse than an odd key.
+- **Frontend**: `PortalSubsystemModel.code` → `abbreviation`, and every consumer follows — the
+  app-URL and API registries, `apiFor` / `baseUrlFor` / `appUrlFor`, `resolveOperationHref`,
+  `openExternalSubsystem`, the launcher, dashboard widgets, the menu hook, the sign-in failure toast.
+  `DEFAULT_SUBSYSTEM_CODE` → `DEFAULT_SUBSYSTEM_ABBREVIATION`.
+- **Environment**: `VITE_SUBSYSTEM_APPS` / `VITE_SUBSYSTEM_APIS` are keyed by abbreviation, so the
+  app map reads `SSMS` / `HRMS` / `SRMS` / `SAMS`.
+
+#### ⚠️ The duplicated constant was the actual bug
+
+The portal's own identity was a literal copy-pasted into **three** components plus a fourth inline
+check in the menu hook. That is how they drifted: one was updated to `"003"` and the others were
+not. It is now `HOME_SUBSYSTEM_ABBREVIATION`, defined once in `config/subsystemApis` and imported.
+**Import it; never re-declare it** — a second copy is a future outage, not a style preference.
+
+Scope: the Home portal only. HRMS's own landing page still reads its `Subsystem` feed's `code`,
+which is untouched and independent.

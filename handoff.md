@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0135. **Home portal keys subsystems on Abbreviation instead of Code (2026-08-19).** Home repo only,
+    no migration. Commit `8f87a98`.
+    - `Core.Subsystem.Code` is NOT a dependable key: the catalogue holds `HOME`, `002`, `srms`,
+      `Finance` and is re-typed by hand. `Abbreviation` is the curated short name and is stable:
+      **SSMS** (Home), HRMS, **SAMS** (002), SRMS, PSMS, SALES, **IFMS** (Finance).
+    - ⚠️ **The live proof of why**: the working copy was matching `"003"` while the row still said
+      `HOME`. Nothing errors — `resolveOperationHref` stops recognising the portal's OWN subsystem,
+      so every Home-local link becomes an external deep-link and the sidebar empties.
+    - API: `PortalSubsystemDto.Code` -> `Abbreviation` (wire field `abbreviation`). **Verified in
+      the published swagger schema** — `code` is gone. Nullable column, so the projection falls back
+      to Code when blank: an un-keyed row would drop out of the launcher entirely.
+    - Frontend: `PortalSubsystemModel.code` -> `abbreviation` + every consumer (app-URL and API
+      registries, `apiFor`/`baseUrlFor`/`appUrlFor`, `resolveOperationHref`, `openExternalSubsystem`,
+      launcher, dashboard widgets, menu hook, sign-in failure toast). `DEFAULT_SUBSYSTEM_CODE` ->
+      `DEFAULT_SUBSYSTEM_ABBREVIATION`. Env maps re-keyed to SSMS/HRMS/SRMS/SAMS.
+    - ⚠️⚠️ **THE DUPLICATED CONSTANT WAS THE REAL BUG.** The portal's own identity was a literal
+      copy-pasted into THREE components plus a fourth inline check in the menu hook — which is how
+      they drifted (one updated to "003", the rest not). Now `HOME_SUBSYSTEM_ABBREVIATION`, defined
+      ONCE in `config/subsystemApis` and imported. **Never re-declare it.**
+    - Verified with a throwaway probe against the live DB (deleted after): the entity reads the real
+      Abbreviation column and every row resolves to a clean key. ⚠️ Could NOT verify via the endpoint
+      itself — `demo`'s tenant has no projected TenantModules so `my-subsystems` returns `[]` before
+      it ever reads Core.Subsystem. Typecheck, lint, production build clean.
+    - Scope: Home portal ONLY. HRMS's landing page still reads its own Subsystem feed's `code`,
+      untouched and independent.
+
 0134. **SRMS login redesigned to match HRMS and Home (2026-08-18).** SRMS tree only —
     `D:/Workspace/CyberErp/SRMS-main/SRMS-main/Web`. NEW `src/components/auth/AuthLayout.tsx`;
     `src/pages/LoginPage.tsx` rewritten to compose it.
