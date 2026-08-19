@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("organizationUnit")]
     public class OrganizationUnitController(
         ICreateOrganizationUnit createHandler,
         IUpdateOrganizationUnit updateHandler,

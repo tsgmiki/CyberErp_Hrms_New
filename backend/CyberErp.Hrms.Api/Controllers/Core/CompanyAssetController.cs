@@ -9,6 +9,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Company-asset registry + exit recovery checklists (HC214/HC215). HR manages the registry;
     /// employees see their own assignments; recovery lines resolve as items come back (or are waived).
     /// </summary>
+    [RequirePermission("companyAsset")]
     public class CompanyAssetController(
         ISaveCompanyAsset saveHandler,
         IDeleteCompanyAsset deleteHandler,

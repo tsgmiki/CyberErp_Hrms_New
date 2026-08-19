@@ -12,5 +12,7 @@ export default interface UserPermissionModel extends AbstractModel {
   canEdit?: boolean;
   canDelete?: boolean;
   canApprove?: boolean;
+  /** Core.TenantRolePermission.CanExport — gates the list export / download actions. */
+  canExport?: boolean;
   details: UserPermissionModel[];
 }

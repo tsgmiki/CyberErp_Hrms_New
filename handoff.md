@@ -123,6 +123,70 @@
 
 ## 1. Most recent changes (latest first)
 
+0141. **The portal fabricated its privileges; both SPAs defaulted them open (2026-08-19).** Home repo
+    + HRMS frontend, no migration. See logic §12.37. Paired with 0140 — the server-side gate is the
+    wall; these are the affordances in front of it.
+    - ⚠️ **`PortalOperationDto` carried NO privilege fields**, so Home's `useMenuModules` invented
+      them: `canView/canAdd/canEdit/canDelete/canApprove: true`. Every Add/Edit/Delete control in the
+      portal drew itself enabled for everyone regardless of the role screen. The API now projects the
+      five flags and the SPA reads them.
+    - ⚠️ The projection GROUPS by operation and OR-s the flags instead of `DistinctBy(OperationId)`:
+      a multi-role user has one row per role per operation with different flags, so taking the first
+      row hands out whichever role happened to sort first.
+    - ⚠️ **Both SPAs read `operation.canX ?? true`** when building `store.PermissionData` — a missing
+      privilege was treated as granted. Now `?? false`; `canView` keeps `?? true` because an
+      operation only reaches a SPA once the server's view filter passed it.
+    - ⚠️ **The page-level `+` Add button was never permission-checked in EITHER app** —
+      `inventoryLayout` gated it on nothing but the module's own `hideAdd` prop, and it is the primary
+      create affordance on every list screen. It now resolves the route through the same
+      `findBestRouteMatch` the row actions and list toolbar use, and DISABLES with a reason.
+    - ⚠️ **`CanExport` had never left the database.** Granted and revoked on the role screen, never
+      projected, never on the models, and `useListPermissions` returned `canExport: canView`. Carried
+      end to end in both apps now.
+    - Verified in a browser as `abaynehh` (UserRole only): Add DISABLED with a tooltip on
+      `/annualLeave` and `/appraisal` (Create revoked), still ENABLED on `/otherLeave` — so it
+      discriminates per screen rather than blanket-disabling.
+    - Home's own API needs none of this: it has no `[RequirePermission]` and its writes are
+      self-scoped (notifications, own profile); business writes go to the HRMS API.
+
+0140. **Privileges are enforced on the server now — they never were (2026-08-19).** HRMS repo, no
+    migration. NEW `App/Common/Authorization/PermissionAccess.cs`; `RequirePermissionAttribute`,
+    `EndpointPermissionService` and `PermissionAuthorizationFilter` rewritten. See logic §12.36.
+    - ⚠️ **The gate read `CanView` and nothing else.** `[RequirePermission("x")]` meant "may open
+      screen x", so POST/PUT/DELETE were all authorised by the VIEW grant. Six privilege columns
+      existed on Core.TenantRolePermission; one decided anything. Revoking Create changed the
+      buttons a SPA drew and nothing more — exactly the reported symptom.
+    - ⚠️ **48 controller CLASSES had no attribute at all**, including `AnnualLeaveController` (the
+      reported case) and `EmployeeController` — the whole staff register was readable by any signed-in
+      user. **A per-FILE grep understates this badly** (it reported 12): several ungated classes sit
+      in files where a DIFFERENT class carries the attribute. Audit per class.
+    - `PermissionAccess` {View,Add,Edit,Delete,Approve,Export}; the service loads all six sets in ONE
+      query and unions them across roles. The needed privilege is DERIVED from verb + route suffix
+      (~795 endpoints — hand-labelling each is itself a defect waiting to happen), overridable per
+      action with `Access = …`.
+    - ⚠️ **Tokenise the route suffix on `-`.** Whole-string matching mis-derives every compound
+      route: `reviewer-signoff` → Edit instead of Approve, `create-development-plan` → Edit
+      instead of Add.
+    - ⚠️ **Only gate on links that EXIST in Core.TenantOperation** — an invented link denies
+      everyone, since no grant can match it. `leaveRequest` and `leaveBalance` have no operation at
+      all and are deliberately still ungated: that is a catalogue decision, not a guess.
+    - ⚠️ **Deliberately ungated:** Auth, the Module/Operation/Subsystem feeds (they ARE the menu —
+      gating them locks everyone out), Lookup/EmployeeOptions/Step (shared dropdown data),
+      Dashboard, Search, UserPreference.
+    - Verified live, four endpoints on ONE controller resolving to four different privileges:
+      `POST /Appraisal/generate` (Add) 403 · `PUT /Appraisal/score` (Edit) 403 ·
+      `POST /{id}/submit-self` (Edit) 403 · `POST /{id}/reviewer-signoff` (Approve) 400, i.e. past
+      the gate. `POST /AnnualLeave` 403 for the revoked user, 400 for a permitted one.
+    - Regression check: all 37 newly gated controllers return **zero** 403s for an HR user, while an
+      ordinary employee is correctly denied Employee/Position/OrganizationUnit/Workflow/Report.
+    - ⚠️ **Privileges are OR-ed across roles**, so `tatekg` (HR Admin **and** UserRole) can still
+      create after Create is revoked on UserRole — correctly. Test with a single-role account:
+      `abaynehh`, password `password`.
+    - Blast radius checked BEFORE building: of 447 grant rows only 3 lack Add, 2 lack Edit, 2 lack
+      Delete, 0 lack Approve — so strict enforcement changes almost nothing except the rows
+      deliberately revoked.
+
+
 0139. **Home portal: the same namespace resolution (2026-08-19).** Home repo only (commit `9c2a48b`), frontend only, no
     migration. NEW `frontend/src/utils/routeMatch.ts` — keep it in step with the HRMS copy.
     - Home needed NO backend change: it has no `[RequirePermission]` anywhere, and

@@ -1,8 +1,10 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("employee")]
     public class EmployeeEducationController(
         ISaveEmployeeEducation saveHandler,
         IDeleteEmployeeEducation deleteHandler,
@@ -31,6 +33,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         }
     }
 
+    [RequirePermission("employee")]
+
     public class EmployeeExperienceController(
         ISaveEmployeeExperience saveHandler,
         IDeleteEmployeeExperience deleteHandler,
@@ -58,6 +62,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             return Ok(new { message = "Deleted successfully" });
         }
     }
+
+    [RequirePermission("employee")]
 
     public class EmployeeDocumentController(
         IUploadEmployeeDocument uploadHandler,
@@ -97,6 +103,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             return Ok(new { message = "Deleted successfully" });
         }
     }
+
+    [RequirePermission("employee")]
 
     public class EmployeeDependentController(
         ISaveEmployeeDependent saveHandler,

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>Workflow tracking + approvals (instances of the generic engine).</summary>
+    [RequirePermission("workflow")]
     public class WorkflowController(
         IGetAllWorkflowInstances getAllHandler,
         IGetMyApprovals myApprovalsHandler,

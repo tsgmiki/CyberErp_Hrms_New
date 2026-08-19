@@ -15,5 +15,7 @@ export default interface OperationModel extends AbstractModel {
   canEdit?: boolean;
   canDelete?: boolean;
   canApprove?: boolean;
+  /** Core.TenantRolePermission.CanExport — gates list export / download. */
+  canExport?: boolean;
   subSystem?: string;
 }

@@ -10,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// gender-aware (maternity/paternity), lump-sum types taken in one block, and never charged
     /// against the annual-leave ledger. Approval rides the SAME workflow mechanism as Annual Leave.
     /// </summary>
+    [RequirePermission("otherLeave")]
     public class OtherLeaveController(
         ISubmitOtherLeave submitHandler,
         ICancelOtherLeave cancelHandler,

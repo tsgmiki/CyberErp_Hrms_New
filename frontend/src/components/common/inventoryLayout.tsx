@@ -2,6 +2,10 @@
 import OptionMenus from "./optionMenu/optionMenu";
 import { Settings, ArrowLeft, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
+import { useSignals } from "@preact/signals-react/runtime";
+import store from "@/store";
+import { findBestRouteMatch } from "@/utils/routeMatch";
 
 interface InventoryLayoutProps {
   children: ReactNode;
@@ -55,6 +59,18 @@ function InventoryLayout({
   tableIcon,
 }: InventoryLayoutProps) {
   const { t } = useTranslation();
+  useSignals();
+  const { pathname } = useLocation();
+  // Same source and same matcher as the row actions (gridAction) and the list toolbar
+  // (useListPermissions), so the three can never disagree about a route. When no permission data
+  // is loaded at all the button stays enabled — that is the "permissions not configured" case the
+  // rest of the app already honours; a populated set genuinely denies.
+  const permissions = store.PermissionData.value;
+  const canAdd =
+    !Array.isArray(permissions) ||
+    permissions.length === 0 ||
+    findBestRouteMatch(pathname, permissions, (p) => (p.link ? String(p.link) : undefined))
+      ?.canAdd === true;
 
   return (
     <div className="flex h-full w-full flex-col transition-colors duration-300">
@@ -128,8 +144,9 @@ function InventoryLayout({
                 <button
                   type="button"
                   onClick={onAdd}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-transparent bg-primary text-on-accent shadow-sm transition-all duration-200 hover:opacity-90 active:scale-95"
-                  title={t("Add")}
+                  disabled={!canAdd}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-transparent bg-primary text-on-accent shadow-sm transition-all duration-200 hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:opacity-40 disabled:active:scale-100"
+                  title={canAdd ? t("Add") : t("You do not have permission to create records here.")}
                   aria-label={t("Add")}
                 >
                   <Plus size={18} strokeWidth={3} />

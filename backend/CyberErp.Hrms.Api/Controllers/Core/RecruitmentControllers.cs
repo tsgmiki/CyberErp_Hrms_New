@@ -570,6 +570,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// recruitment console — any linked employee may browse the vacancies posted to the internal
     /// channel and apply as themselves; the handlers scope strictly to the caller's own employee id.
     /// </summary>
+    [RequirePermission("jobVacancy")]
     public class InternalVacancyController(
         IGetOpenVacancies openVacanciesHandler,
         IApplyToVacancy applyHandler,

@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Leaves;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +32,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
 
     /// <summary>Annual-leave requests (Master-Detail, dedicated to annual leave). Charged against the
     /// employee's annual-leave ledger row (hrms_LeaveBalance); approvals run through the workflow engine.</summary>
+    [RequirePermission("annualLeave")]
     public class AnnualLeaveController(
         ISubmitAnnualLeave submitHandler,
         ICancelAnnualLeave cancelHandler,

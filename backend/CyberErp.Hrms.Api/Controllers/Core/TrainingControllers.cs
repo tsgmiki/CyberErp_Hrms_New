@@ -62,6 +62,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// approve/reject serve the no-workflow mode; with a running instance decisions come from the
     /// My Approvals inbox.
     /// </summary>
+    [RequirePermission("trainingNeed")]
     public class TrainingNeedController(
         ISaveTrainingNeed saveHandler,
         IDeleteTrainingNeed deleteHandler,

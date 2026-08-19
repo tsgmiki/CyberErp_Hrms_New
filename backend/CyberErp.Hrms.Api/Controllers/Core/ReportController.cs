@@ -11,6 +11,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// set 1) + rows (result set 2). Parameters are metadata rows; lookups come from the master
     /// procedure Hrms.ReportFieldValues. @TenantId/@BranchId/@UserId are injected server-side.
     /// </summary>
+    [RequirePermission("reports")]
     public class ReportController(
         IGetReportCatalog catalogHandler,
         IGetReportSchema schemaHandler,

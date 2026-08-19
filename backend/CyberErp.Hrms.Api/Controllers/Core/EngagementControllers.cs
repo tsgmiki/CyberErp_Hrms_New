@@ -8,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Employee Engagement (§3.9.1) — Phase E1: suggestions, grievances, announcements.
 
     /// <summary>Suggestions / ideas / feedback to management (HC203), anonymous supported (HC207).</summary>
+    [RequirePermission("suggestion")]
     public class SuggestionController(
         ISubmitSuggestion submitHandler,
         IRespondSuggestion respondHandler,
@@ -30,6 +31,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Grievances (HC205): submit, assign, note trail, resolve, close.</summary>
+    [RequirePermission("grievance")]
     public class GrievanceController(
         ISubmitGrievance submitHandler,
         IAssignGrievance assignHandler,
@@ -112,6 +114,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Announcements (HC206): admin-managed, employees read their targeted feed.</summary>
+    [RequirePermission("announcement")]
     public class AnnouncementController(
         ISaveAnnouncement saveHandler,
         IDeleteAnnouncement deleteHandler,

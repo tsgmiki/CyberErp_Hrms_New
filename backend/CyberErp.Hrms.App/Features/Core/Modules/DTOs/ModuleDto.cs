@@ -111,6 +111,8 @@ namespace CyberErp.Hrms.App.Features.Core.Modules.DTOs
         public bool CanDelete { get; set; }
         public bool CanApprove { get; set; }
         public bool CanView { get; set; }
+        /// <summary>Core.TenantRolePermission.CanExport — the column existed but never left the database.</summary>
+        public bool CanExport { get; set; }
     }
 }
 

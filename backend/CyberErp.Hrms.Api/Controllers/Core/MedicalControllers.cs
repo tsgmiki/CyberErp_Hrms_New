@@ -53,6 +53,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Medical enrollment + beneficiaries (HC235/HC237).</summary>
+    [RequirePermission("medicalEnrollment", "myMedicalClaims")]
     public class MedicalEnrollmentController(
         ISaveMedicalEnrollment saveHandler,
         IGetEmployeeMedicalEnrollments getHandler,
@@ -84,6 +85,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Medical claims lifecycle + expense reports (HC239–246).</summary>
+    [RequirePermission("medicalClaim", "myMedicalClaims")]
     public class MedicalClaimController(
         ISubmitMedicalClaim submitHandler,
         IGetMedicalClaims getAllHandler,

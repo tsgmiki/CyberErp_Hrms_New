@@ -23,6 +23,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee loan requests + lifecycle (HC252/HC253).</summary>
+    [RequirePermission("loan", "myLoans")]
     public class LoanController(
         IRequestLoan requestHandler,
         IGetLoans getAllHandler,

@@ -3517,3 +3517,108 @@ frontend got the mirror of §12.33 — its own `utils/routeMatch`, applied to:
 
 SSMS links are still stored un-namespaced, which is why the portal worked; verified live by
 temporarily storing `/ssms/suggestion` and confirming the sidebar rendered `/suggestion`.
+
+### 12.36 Privileges are enforced on the server, not just drawn in the UI
+
+Revoking Create for a role changed the buttons a SPA drew and nothing else — the request still
+succeeded. Four independent causes, all real:
+
+1. **The gate read `CanView` and nothing else.** `EndpointPermissionService` filtered
+   `Where(p => p.CanView)` and returned ONE set of links, so `[RequirePermission("annualLeave")]`
+   meant "may open the Annual Leave screen" and a POST was authorised by the same grant as a GET.
+   Six privilege columns existed on `Core.TenantRolePermission`; one of them decided anything.
+2. **48 controller CLASSES carried no attribute at all**, including `AnnualLeaveController` — the
+   reported symptom — and `EmployeeController`, which made the entire staff register readable by
+   any signed-in user.
+3. **The portal API never sent the privileges** and the portal SPA filled the gap by hardcoding
+   them (§12.37).
+4. **`CanExport` never left the database**, and both SPAs defaulted a missing privilege to `true`.
+
+#### The model
+
+`PermissionAccess` — View, Add, Edit, Delete, Approve, Export — one value per column.
+`EndpointPermissionService` loads all six sets in a single query and unions them across the
+caller's roles, so one permissive role grants the privilege even when another does not. The 60s
+cache and the `InvalidateAll` generation counter are unchanged.
+
+#### Which privilege an endpoint needs is DERIVED
+
+This API has ~795 endpoints across 136 controller classes. Hand-labelling each one is a large
+change *and* a standing invitation to forget one — and a forgotten label on a POST is an ungated
+write. So a controller declares only WHICH SCREEN it serves, and the filter derives the access:
+
+| Endpoint | Privilege |
+|---|---|
+| `GET` / `HEAD` | View |
+| `DELETE` | Delete |
+| `PUT` / `PATCH` | Edit |
+| `POST` with no route suffix | Add — the create endpoint |
+| `POST` whose suffix decides (`approve`, `reject`, `signoff`, …) | Approve |
+| `POST` whose suffix creates (`generate`, `build`, `clone`, `seed`, …) | Add |
+| `POST` with any other suffix | Edit — it changes a record that already exists |
+| any verb whose suffix extracts (`export`, `download`, `print`, …) | Export |
+
+`[RequirePermission("x", Access = PermissionAccess.Approve)]` overrides the derivation per action.
+
+#### ⚠️ The suffix must be tokenised
+
+Real routes are compound. Matching the whole suffix against a set silently mis-derives every one of
+them: `reviewer-signoff` would ask for Edit rather than Approve, and `create-development-plan` for
+Edit rather than Add. The suffix is split on `-` and each token is tested.
+
+#### ⚠️ Gate only on links that EXIST in the catalogue
+
+`[RequirePermission("leaveRequest")]` where no such operation exists denies **everyone** — no grant
+can ever match it. Every link used was checked against `Core.TenantOperation` first.
+`leaveRequest`, `leaveBalance`, `employeeMovement` and `terminationSettlement` have no operation of
+their own; the first two are therefore still ungated and need a catalogue decision rather than a
+guess.
+
+#### ⚠️ What must stay ungated
+
+Auth (anonymous), the `Module` / `Operation` / `Subsystem` feeds (they ARE the menu — gating them
+locks every user out of the whole application), `Lookup`, `EmployeeOptions` and `Step` (shared
+dropdown data that every screen reads), plus `Dashboard`, `Search` and `UserPreference`, which are
+self-scoped or filtered internally.
+
+#### ⚠️ Privileges are OR-ed across roles, which makes testing subtle
+
+`tatekg` holds **HR Admin and UserRole**. Revoking Create on UserRole alone leaves HR Admin's grant
+standing, so that account can still create — correctly. Test privilege changes with a single-role
+account (`abaynehh`).
+
+### 12.37 The portal fabricated its privileges; both SPAs defaulted them open
+
+The server-side gate (§12.36) is the wall. These are the affordances in front of it, and all three
+were wrong in the same direction — permissive.
+
+**The portal invented them.** `PortalOperationDto` carried no privilege fields at all, so
+`useMenuModules` filled them in when adapting the feed to `ModuleModel`:
+
+```ts
+canView: true, canAdd: true, canEdit: true, canDelete: true, canApprove: true,
+```
+
+Every Add/Edit/Delete affordance in the portal therefore drew itself enabled for everyone, whatever
+the role screen said. The API now projects the five flags (`CanView` is implicit — an operation only
+reaches the response when the view grant let it through), and the SPA reads them.
+
+⚠️ The projection **groups by operation and OR-s** rather than taking `DistinctBy(OperationId)`.
+A user with several roles has one row per role per operation with *different* flags, so taking the
+first row hands out whichever role happened to sort first — sometimes the restrictive one.
+
+**Both SPAs defaulted a missing privilege to granted.** `operation.canAdd ?? true` in the
+PermissionData mapping meant any flag the feed did not carry read as allowed. It is `?? false` now:
+an unknown privilege denies. `canView` keeps `?? true`, because an operation only reaches a SPA at
+all once the server-side view filter has passed it.
+
+**The page-level Add button was never gated.** `inventoryLayout` rendered the `+` on every list
+screen behind nothing but the module's own `hideAdd` prop — the primary create affordance in the
+product. It now resolves the route's permission through the same `findBestRouteMatch` the row
+actions and the list toolbar use, so the three can never disagree, and disables with a reason
+rather than hiding (a disabled control with a tooltip is easier to support than a missing one).
+
+**`CanExport` finally does something.** The column existed on `TenantRolePermission`, was granted
+and revoked on the role screen, and decided nothing: it was never projected into the module feed,
+never present on the models, and `useListPermissions` returned `canExport: canView`. It is now
+carried end to end in both applications and gates the export/download control.

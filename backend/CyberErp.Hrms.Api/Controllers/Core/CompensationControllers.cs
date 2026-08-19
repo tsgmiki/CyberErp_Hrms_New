@@ -34,6 +34,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Per-employee allowances + the resolved compensation summary (HC226/HC233).</summary>
+    [RequirePermission("employeeCompensation", "myCompensation")]
     public class EmployeeAllowanceController(
         ISaveEmployeeAllowance saveHandler,
         IGetEmployeeAllowances getHandler,
@@ -196,6 +197,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee benefit enrollment (HC230): self-enroll during the open window, HR anytime.</summary>
+    [RequirePermission("benefitPlan", "myCompensation")]
     public class BenefitEnrollmentController(
         IEnrollBenefit enrollHandler,
         IWaiveBenefit waiveHandler,
@@ -254,6 +256,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // §3.10.1 CB4 — employee self-service: My Compensation + change/discrepancy requests.
 
     /// <summary>Employee self-service compensation views + requests (HC233/HC234).</summary>
+    [RequirePermission("myCompensation")]
     public class MyCompensationController(
         IGetMyCompensation myCompHandler,
         ISubmitCompensationRequest submitHandler,

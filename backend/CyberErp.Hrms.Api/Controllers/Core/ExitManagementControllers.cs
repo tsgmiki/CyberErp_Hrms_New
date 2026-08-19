@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
 
@@ -6,6 +7,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     // Exit / Separation (§3.9.2) — Phase X3: exit interviews + final settlements.
 
     /// <summary>Exit interviews (HC219): configurable questionnaire, snapshot per case, self-service answers.</summary>
+    [RequirePermission("exitInterview", "myExit")]
     public class ExitInterviewController(
         IGetExitQuestionnaire getQuestionnaireHandler,
         ISaveExitQuestionnaire saveQuestionnaireHandler,
@@ -39,6 +41,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Final settlements (HC216/HC217/HC218): auto-suggested worksheet, HR edits while Draft,
     /// approval locks, payment records the payroll/finance hand-off.
     /// </summary>
+    [RequirePermission("terminationList")]
     public class TerminationSettlementController(
         IBuildTerminationSettlement buildHandler,
         IUpdateSettlementLines updateLinesHandler,
