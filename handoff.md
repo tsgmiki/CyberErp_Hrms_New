@@ -123,6 +123,29 @@
 
 ## 1. Most recent changes (latest first)
 
+0144. **The last two ungated controllers, and the SRMS impact was narrower than reported
+    (2026-08-19).** HRMS repo, no migration.
+    - `LeaveRequestController` and `LeaveBalanceController` were left ungated by 0140 because
+      neither `leaveRequest` nor `leaveBalance` exists in Core.TenantOperation, and gating on a link
+      nobody can hold denies everyone. Resolved from the CONSUMERS instead of by inventing catalogue
+      rows: `LeaveBalance` is read by the Annual Leave form in BOTH applications, and neither screen
+      appears in any menu, so both are gated on `annualLeave, otherLeave` — links that exist and that
+      every employee holding a leave screen already has.
+    - Verified: ordinary employee GET /LeaveRequest 200 and /LeaveBalance past the gate (400
+      validation); HR the same. ⚠️ The Add-path DENIAL could not be demonstrated on these two,
+      because the test account currently holds CanAdd on both links — `/annualLeave` CanAdd is back
+      to 1, so the original "revoked Create" scenario is no longer revoked in the data.
+    - ⚠️ **CORRECTION to 0143's SRMS warning.** It said SRMS breaks against the bit column. That is
+      true only of the OLDER copies: `CYBER_ERP_SRMS1` and `CYBER_ERP_SRMS2` point at `CERP`, but the
+      copy being worked on (`CYBER_ERP_SRMS/CYBER_ERP_SRMS-main`, modified 2026-08-19) points at
+      **`CERP_Latest`**, a different database whose Status column is untouched nvarchar. Verified per
+      database: CERP = bit, CERP_Latest = nvarchar, cybererp_srms = nvarchar.
+    - ⚠️ Aligning SRMS would NOT be a like-for-like type swap: its membership state is a four-value
+      enum `MembershipStatus { Pending, Active, Suspended, Revoked }` in the multi-tenant control
+      plane, with admin screens behind it. Converting it to a bool removes real capability, so it is
+      a product decision rather than a refactor. Not done.
+
+
 0143. **Core.TenantUser.Status becomes a bit (2026-08-19).** HRMS + Home, migration
     `20260819140000_TenantUserStatusBit`. See logic §12.39. Restore point:
     `C:\Temp\CERP_before_tenantuser_status_bit.bak`.
