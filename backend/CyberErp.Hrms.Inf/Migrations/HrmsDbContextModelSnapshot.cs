@@ -11407,10 +11407,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<DateTime>("StartDate")
                         .HasColumnType("datetime2(3)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                    b.Property<bool>("Status")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("SubSystemId")
                         .HasColumnType("uniqueidentifier");

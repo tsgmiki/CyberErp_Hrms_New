@@ -286,7 +286,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
             foreach (var subsystemId in all.Except(existing))
             {
                 await tenantSubSystems.AddAsync(TenantSubSystem.Create(
-                    tenantId, subsystemId, TenantSubSystemSources.Plan, SubscriptionStatuses.Active,
+                    tenantId, subsystemId, TenantSubSystemSources.Plan, status: true,
                     DateTime.UtcNow.Date));
                 written++;
             }

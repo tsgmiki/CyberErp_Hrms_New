@@ -3729,3 +3729,30 @@ against. Measured at 1600px: dashboard gutters 0/0, every other screen unchanged
 the dashboard and the `md:p-2` on `<main>` emit no CSS — the padding was uniform the whole time.
 Check a class against the BUILT stylesheet before believing it does anything; see the palette note in
 `config/theme.css`.
+
+### 12.41 Core.TenantSubSystem.Status becomes a bit
+
+The same conversion as §12.39, applied to the subsystem entitlement: `nvarchar(30)` holding the
+five-value `SubscriptionStatuses` string is now `bit`, 1 meaning the entitlement is live. All 3 rows
+were `'Active'`.
+
+The backfill maps **`Active` AND `Trial` to 1** — a trial entitlement grants access, which is the
+only thing a boolean here can mean. `Suspended`, `Cancelled` and `Expired` map to 0.
+
+#### ⚠️ The constants stay, unlike last time
+
+`TenantUserStatuses` could be deleted with §12.39 because `TenantUser` was its only user.
+`SubscriptionStatuses` is **shared**: `OrganizationSubscription.Status` and
+`TenantSubscriptionAddOn.Status` are different tables that keep the five-value string. Only this
+column changed — verified after the migration that `Core.TenantSubscription.Status` is still
+`nvarchar`.
+
+#### What the column can no longer say
+
+Five states became two. A trial is now indistinguishable from a paid entitlement and a cancelled one
+from an expired one; `TrialEndDate` and `EndDate` carry part of that, but nothing records WHY an
+entitlement stopped. `Down` restores only `Active` / `Suspended` — the reversible states, rather than
+inventing a terminal one a row may never have been in.
+
+Surface: the entity, its EF mapping, the seed script, and `TenantAuthorizationProjector` — the only
+place that creates these rows. Neither SPA references the entity, and Home's backend does not either.
