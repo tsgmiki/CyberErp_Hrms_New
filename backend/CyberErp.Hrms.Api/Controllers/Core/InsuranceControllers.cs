@@ -39,6 +39,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Insurance coverage claims lifecycle (HC248/HC249).</summary>
+    [RequirePermission("insuranceClaim", "myInsuranceClaims")]
     public class InsuranceClaimController(
         ISubmitInsuranceClaim submitHandler,
         IGetInsuranceClaims getAllHandler,

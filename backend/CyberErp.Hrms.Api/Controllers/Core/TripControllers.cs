@@ -43,6 +43,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Business trip requests + lifecycle + expenses (HC260/HC261/HC262).</summary>
+    [RequirePermission("trip", "myTrips")]
     public class TripRequestController(
         IRequestTrip requestHandler,
         IGetTrips getAllHandler,

@@ -82,6 +82,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Competencies assigned to a position with weights (HC123/HC124).</summary>
+    [RequirePermission("positionCompetency")]
     public class PositionCompetencyController(
         IGetPositionCompetencies getHandler,
         ISavePositionCompetencies saveHandler) : BaseController
@@ -118,6 +119,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Organizational objectives — cascade hierarchy that goals align to (HC118/HC120/HC122).</summary>
+    [RequirePermission("organizationalObjective")]
     public class OrganizationalObjectiveController(
         ISaveOrganizationalObjective saveHandler,
         IDeleteOrganizationalObjective deleteHandler,
@@ -141,6 +143,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Individual employee goals with SMART criteria + action plans (HC119–HC122).</summary>
+    [RequirePermission("employeeGoal")]
     public class EmployeeGoalController(
         ISaveEmployeeGoal saveHandler,
         IDeleteEmployeeGoal deleteHandler,
@@ -164,6 +167,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Scored appraisals — generate, self/manager scoring, stage flow, completion (HC127/HC138).</summary>
+    [RequirePermission("appraisal")]
     public class AppraisalController(
         IGenerateAppraisal generateHandler,
         ISaveAppraisalScores saveScoresHandler,
@@ -204,6 +208,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee acknowledgment / signing of completed appraisals (HC142–HC143, HC146).</summary>
+    [RequirePermission("appraisal")]
     public class AppraisalSignatureController(
         IAcknowledgeAppraisal acknowledgeHandler,
         IManagerSignAppraisal managerSignHandler) : BaseController
@@ -216,6 +221,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Appraisal appeals and their HR/management review (HC143–HC144).</summary>
+    [RequirePermission("appraisalAppeal")]
     public class AppraisalAppealController(
         ISubmitAppraisalAppeal submitHandler,
         IStartAppraisalAppealReview startHandler,
@@ -248,6 +254,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Peer assessment of appraisals (HC127).</summary>
+    [RequirePermission("myPeerReviews", "appraisal")]
     public class AppraisalPeerController(
         IInviteAppraisalPeers inviteHandler,
         ISubmitAppraisalPeerReview submitHandler,
@@ -302,6 +309,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Manager / HR performance dashboard (HC134).</summary>
+    [RequirePermission("performanceDashboard")]
     public class PerformanceDashboardController(IGetPerformanceDashboard getHandler) : BaseController
     {
         [HttpGet]
@@ -309,6 +317,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Unified per-employee performance summary for cross-module use (HC147).</summary>
+    [RequirePermission("appraisal", "performanceDashboard")]
     public class EmployeePerformanceSummaryController(IGetEmployeePerformanceSummary getHandler) : BaseController
     {
         [HttpGet]
@@ -316,6 +325,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Append-only performance version history / audit trail (HC132).</summary>
+    [RequirePermission("appraisal", "performanceDashboard")]
     public class PerformanceHistoryController(IGetPerformanceHistory getHandler) : BaseController
     {
         [HttpGet]
@@ -323,6 +333,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Individual Development Plans (HC130–HC131).</summary>
+    [RequirePermission("developmentPlan")]
     public class DevelopmentPlanController(
         ISaveDevelopmentPlan saveHandler,
         IDeleteDevelopmentPlan deleteHandler,
@@ -346,6 +357,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Performance Improvement Plans (HC135).</summary>
+    [RequirePermission("improvementPlan")]
     public class ImprovementPlanController(
         ISaveImprovementPlan saveHandler,
         IRecordImprovementPlanOutcome outcomeHandler,
@@ -373,6 +385,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Employee achievements / milestones log (HC139–HC140).</summary>
+    [RequirePermission("achievement")]
     public class AchievementController(
         ISaveAchievement saveHandler,
         IDeleteAchievement deleteHandler,
@@ -421,6 +434,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Recognitions granted to employees — the recognition board (HC141).</summary>
+    [RequirePermission("recognition")]
     public class RecognitionController(
         ISaveEmployeeRecognition saveHandler,
         IDeleteEmployeeRecognition deleteHandler,

@@ -64,6 +64,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// approve/reject endpoints serve the no-workflow mode only — with a running instance, decisions
     /// come from the My Approvals inbox and the endpoints refuse.
     /// </summary>
+    [RequirePermission("rewardNomination")]
     public class RewardNominationController(
         ISaveRewardNomination saveHandler,
         IDeleteRewardNomination deleteHandler,

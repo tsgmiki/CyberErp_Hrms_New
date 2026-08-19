@@ -36,11 +36,16 @@ export function useMenuModules() {
           operation: operation.name,
           module: module.name,
           link: operation.link,
+          // ⚠️ DENY by default. These read `?? true` until 2026-08-19, so any privilege the
+          // feed did not carry was treated as granted — which is how a revoked Create still drew
+          // an enabled Add button. canView is the exception: an operation only reaches a SPA at
+          // all when the view grant let it through the server-side filter.
           canView: operation.canView ?? true,
-          canAdd: operation.canAdd ?? true,
-          canEdit: operation.canEdit ?? true,
-          canDelete: operation.canDelete ?? true,
-          canApprove: operation.canApprove ?? true,
+          canAdd: operation.canAdd ?? false,
+          canEdit: operation.canEdit ?? false,
+          canDelete: operation.canDelete ?? false,
+          canApprove: operation.canApprove ?? false,
+          canExport: operation.canExport ?? false,
           details: [],
         });
       });

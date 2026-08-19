@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Features.Core.Guarantees;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +10,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// toward EXTERNAL organizations per NBE guarantee procedures. Privacy is scope-based (like staff
     /// loans): non-admin callers only ever see and manage their OWN commitments; releases are HR-only.
     /// </summary>
+    [RequirePermission("employeeGuarantee", "myGuarantees")]
     public class EmployeeGuaranteeController(
         ISaveEmployeeGuarantee saveHandler,
         IDeleteEmployeeGuarantee deleteHandler,

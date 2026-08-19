@@ -3586,3 +3586,39 @@ self-scoped or filtered internally.
 `tatekg` holds **HR Admin and UserRole**. Revoking Create on UserRole alone leaves HR Admin's grant
 standing, so that account can still create — correctly. Test privilege changes with a single-role
 account (`abaynehh`).
+
+### 12.37 The portal fabricated its privileges; both SPAs defaulted them open
+
+The server-side gate (§12.36) is the wall. These are the affordances in front of it, and all three
+were wrong in the same direction — permissive.
+
+**The portal invented them.** `PortalOperationDto` carried no privilege fields at all, so
+`useMenuModules` filled them in when adapting the feed to `ModuleModel`:
+
+```ts
+canView: true, canAdd: true, canEdit: true, canDelete: true, canApprove: true,
+```
+
+Every Add/Edit/Delete affordance in the portal therefore drew itself enabled for everyone, whatever
+the role screen said. The API now projects the five flags (`CanView` is implicit — an operation only
+reaches the response when the view grant let it through), and the SPA reads them.
+
+⚠️ The projection **groups by operation and OR-s** rather than taking `DistinctBy(OperationId)`.
+A user with several roles has one row per role per operation with *different* flags, so taking the
+first row hands out whichever role happened to sort first — sometimes the restrictive one.
+
+**Both SPAs defaulted a missing privilege to granted.** `operation.canAdd ?? true` in the
+PermissionData mapping meant any flag the feed did not carry read as allowed. It is `?? false` now:
+an unknown privilege denies. `canView` keeps `?? true`, because an operation only reaches a SPA at
+all once the server-side view filter has passed it.
+
+**The page-level Add button was never gated.** `inventoryLayout` rendered the `+` on every list
+screen behind nothing but the module's own `hideAdd` prop — the primary create affordance in the
+product. It now resolves the route's permission through the same `findBestRouteMatch` the row
+actions and the list toolbar use, so the three can never disagree, and disables with a reason
+rather than hiding (a disabled control with a tooltip is easier to support than a missing one).
+
+**`CanExport` finally does something.** The column existed on `TenantRolePermission`, was granted
+and revoked on the role screen, and decided nothing: it was never projected into the module feed,
+never present on the models, and `useListPermissions` returned `canExport: canView`. It is now
+carried end to end in both applications and gates the export/download control.

@@ -116,7 +116,8 @@ public class GetModuleWithOperationsRepository(
                             CanEdit = permission?.CanEdit ?? false,
                             CanDelete = permission?.CanDelete ?? false,
                             CanApprove = permission?.CanApprove ?? false,
-                            CanView = permission?.CanView ?? false
+                            CanView = permission?.CanView ?? false,
+                            CanExport = permission?.CanExport ?? false
                         };
                     })
                     .Where(op => op.CanView)   // hide operations the role can't view

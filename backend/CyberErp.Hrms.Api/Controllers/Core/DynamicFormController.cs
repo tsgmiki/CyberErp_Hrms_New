@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
     /// <summary>User-defined dynamic form (custom tab) definitions — the "Form Builder".</summary>
+    [RequirePermission("formBuilder")]
     public class DynamicFormController(IDynamicFormService service) : BaseController
     {
         /// <summary>Paged list of forms for a module (admin Form Builder).</summary>
@@ -45,6 +46,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Data rows of a dynamic form for a specific owner (e.g. an employee).</summary>
+    [RequirePermission("formBuilder")]
     public class DynamicFormRecordController(IDynamicFormService service) : BaseController
     {
         [HttpGet]

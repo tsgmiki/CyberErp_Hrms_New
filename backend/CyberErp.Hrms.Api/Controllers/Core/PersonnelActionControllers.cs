@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,6 +8,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// Personnel actions (SAP-style movement log): transfers, promotions and demotions.
     /// Actions are recorded as Pending, then executed against the employee master (or cancelled).
     /// </summary>
+    [RequirePermission("transferRequest")]
     public class EmployeeMovementController(
         ISaveEmployeeMovement saveHandler,
         IGetEmployeeMovements getHandler,
@@ -88,6 +90,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>Disciplinary case records per employee, plus the standalone role-scoped case list.</summary>
+    [RequirePermission("disciplinaryCase")]
     public class DisciplinaryMeasureController(
         ISaveDisciplinaryMeasure saveHandler,
         IGetDisciplinaryMeasures getHandler,

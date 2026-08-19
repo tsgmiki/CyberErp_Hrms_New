@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0141. **The portal fabricated its privileges; both SPAs defaulted them open (2026-08-19).** Home repo
+    + HRMS frontend, no migration. See logic §12.37. Paired with 0140 — the server-side gate is the
+    wall; these are the affordances in front of it.
+    - ⚠️ **`PortalOperationDto` carried NO privilege fields**, so Home's `useMenuModules` invented
+      them: `canView/canAdd/canEdit/canDelete/canApprove: true`. Every Add/Edit/Delete control in the
+      portal drew itself enabled for everyone regardless of the role screen. The API now projects the
+      five flags and the SPA reads them.
+    - ⚠️ The projection GROUPS by operation and OR-s the flags instead of `DistinctBy(OperationId)`:
+      a multi-role user has one row per role per operation with different flags, so taking the first
+      row hands out whichever role happened to sort first.
+    - ⚠️ **Both SPAs read `operation.canX ?? true`** when building `store.PermissionData` — a missing
+      privilege was treated as granted. Now `?? false`; `canView` keeps `?? true` because an
+      operation only reaches a SPA once the server's view filter passed it.
+    - ⚠️ **The page-level `+` Add button was never permission-checked in EITHER app** —
+      `inventoryLayout` gated it on nothing but the module's own `hideAdd` prop, and it is the primary
+      create affordance on every list screen. It now resolves the route through the same
+      `findBestRouteMatch` the row actions and list toolbar use, and DISABLES with a reason.
+    - ⚠️ **`CanExport` had never left the database.** Granted and revoked on the role screen, never
+      projected, never on the models, and `useListPermissions` returned `canExport: canView`. Carried
+      end to end in both apps now.
+    - Verified in a browser as `abaynehh` (UserRole only): Add DISABLED with a tooltip on
+      `/annualLeave` and `/appraisal` (Create revoked), still ENABLED on `/otherLeave` — so it
+      discriminates per screen rather than blanket-disabling.
+    - Home's own API needs none of this: it has no `[RequirePermission]` and its writes are
+      self-scoped (notifications, own profile); business writes go to the HRMS API.
+
 0140. **Privileges are enforced on the server now — they never were (2026-08-19).** HRMS repo, no
     migration. NEW `App/Common/Authorization/PermissionAccess.cs`; `RequirePermissionAttribute`,
     `EndpointPermissionService` and `PermissionAuthorizationFilter` rewritten. See logic §12.36.

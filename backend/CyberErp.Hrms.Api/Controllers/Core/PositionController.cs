@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
+    [RequirePermission("position")]
     public class PositionController(
         ICreatePosition createHandler,
         IUpdatePosition updateHandler,

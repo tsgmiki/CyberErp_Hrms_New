@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using Microsoft.AspNetCore.Mvc;
 
@@ -8,6 +9,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     /// admin console: employees submit/track their OWN requests; the HR review/resolve endpoints
     /// gate on the caller's admin scope inside the handlers.
     /// </summary>
+    [RequirePermission("myProfile", "employee")]
     public class ProfileChangeRequestController(
         IGetProfileChangeFields fieldsHandler,
         ISubmitProfileChangeRequest submitHandler,

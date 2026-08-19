@@ -21,9 +21,13 @@ export function useListPermissions() {
       entry.link ? String(entry.link) : undefined,
     );
     const canView = !hasPermissions || match?.canView === true;
+    // Export is its OWN privilege (Core.TenantRolePermission.CanExport). It used to follow
+    // canView, so the column existed in the database, was granted or revoked on the role
+    // screen, and decided nothing.
+    const canExport = !hasPermissions || match?.canExport === true;
 
     return {
-      canExport: canView,
+      canExport,
       canConfigureColumns: canView,
       operation: match,
     };
