@@ -3424,3 +3424,58 @@ references `code`, and would change meaning, not just naming.
 
 Only the subsystem identifier was changed, because that is the one with an `Abbreviation` column
 already holding the better value — and it is what makes HRMS and the portal agree.
+
+### 12.32 Scope the sidebar on the abbreviation, never the display name
+
+`sidebarNav` filtered the menu feed by comparing each module's subsystem **display name** against a
+hardcoded literal:
+
+```ts
+const OWN_SUBSYSTEM = "HRMS";
+.filter((m) => (m.subSystem ?? OWN_SUBSYSTEM) === subsystem)
+```
+
+The catalogue then renamed that row to *Human Resource Management System*. The filter matched **0 of
+21 modules**, every group was discarded before render, and a fully-permissioned user arriving from
+the Home portal saw an empty sidebar. Nothing errored: the API had returned all 116 operations.
+
+- `GetModuleWithOperationResult` gains `SubSystemAbbreviation`, projected alongside the name in the
+  same query, falling back to the name when a row has no abbreviation.
+- The SPA scopes on it (`OWN_SUBSYSTEM_ABBREVIATION` in `config/appConfig`, defined once beside
+  `HOME_SUBSYSTEM_ABBREVIATION`), and `store.ModuleData` carries `{ abbreviation, name }` so the
+  landing page can keep showing the name while everything matches on the key.
+
+The **name is a label an administrator may rename; the abbreviation is the identifier.** `Code` is no
+help either — it is now a numeric ordinal (`001`–`016`).
+
+### 12.33 The catalogue namespaces links by subsystem; a URL does not
+
+Operation links are stored namespaced by their owner — `/hrms/branch`, not `/branch` — because one
+catalogue serves every subsystem and the same screen name recurs across them. But each subsystem SPA
+is served at the **root of its own origin**. The namespace is an addressing convention of the
+*catalogue*, never part of a URL.
+
+Nothing stripped it, on either side of the wire:
+
+- **Frontend.** The sidebar used the stored link as its `to`, so all 116 HRMS menu links resolved to
+  no route, fell through to `path="*"` and rendered *Page not found*.
+- **Backend.** `EndpointPermissionService.Normalize` only trimmed the leading slash and lower-cased,
+  so a granted `hrms/setting` never matched the bare link declared on
+  `[RequirePermission("setting")]`. **Every** gated endpoint answered 403 to callers who genuinely
+  held the grant — the dashboard's audit-log 403 was this, not a missing permission.
+
+The rule now lives in one place per side: `utils/routeMatch` (`toAppPath` for anything navigable,
+`normalizeRoutePath` for every comparison) and `Dom/Constants/Subsystems` for the API.
+
+#### ⚠️ Both sides of a comparison must strip
+
+The granted set and the catalogue set are built from *stored* links while the pathname is
+root-relative. Normalising only one of them does not fail safe — it sends every page to
+`/unauthorized`.
+
+#### ⚠️ Do not strip inside the Operation catalogue service
+
+`getAllOperation` feeds the **Menu Operations admin screen**, which must display and save the value
+as stored. Normalising there would show operators a link they did not write and eventually save it
+back, silently rewriting the catalogue.
+

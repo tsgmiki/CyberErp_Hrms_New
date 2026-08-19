@@ -56,3 +56,15 @@ export function appUrlFor(abbreviation: string | undefined | null): string | und
   const wanted = abbreviation.trim().toLowerCase();
   return Object.entries(SUBSYSTEM_APPS).find(([key]) => key.toLowerCase() === wanted)?.[1];
 }
+
+/**
+ * THIS application's own subsystem, by abbreviation — the sidebar's default scope and the identity
+ * HRMS renders menus for.
+ *
+ * ⚠️ Scope on the ABBREVIATION, never on the subsystem's display NAME. The name is a label an
+ * administrator can rename, and on 2026-08-19 one did: "HRMS" became
+ * "Human Resource Management System". The sidebar compared names against a hardcoded "HRMS", matched
+ * nothing, and every menu silently vanished for users arriving from the Home portal — their
+ * permissions were never the problem.
+ */
+export const OWN_SUBSYSTEM_ABBREVIATION = "HRMS";

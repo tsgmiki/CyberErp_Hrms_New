@@ -123,6 +123,33 @@
 
 ## 1. Most recent changes (latest first)
 
+0137. **Menu links resolved: the catalogue namespace, and a 403 on every gated endpoint
+    (2026-08-19).** HRMS repo, no migration. NEW `Dom/Constants/Subsystems.cs`.
+    - **Symptom A — a blank sidebar for a fully-permissioned user.** `sidebarNav` filtered modules by
+      subsystem DISPLAY NAME against a hardcoded `"HRMS"`; the catalogue had renamed that row to
+      *Human Resource Management System*, so the filter matched **0 of 21 modules**. Permissions were
+      never involved. Fixed by projecting `SubSystemAbbreviation` on the module feed and scoping on
+      it (`OWN_SUBSYSTEM_ABBREVIATION`, defined once); `store.ModuleData` now carries
+      `{ abbreviation, name }` and landing cards are keyed by abbreviation.
+    - **Symptom B — "Page not found" on every operation.** Links are stored namespaced by their owner
+      (`/hrms/branch`) while each SPA serves its routes at the root of its own origin. All 116 links
+      hit the `path="*"` catch-all. `utils/routeMatch` gains `toAppPath` (navigable) and
+      namespace-stripping `normalizeRoutePath` (comparisons).
+    - **Symptom C — 403 for callers who HELD the grant.** `EndpointPermissionService.Normalize` only
+      trimmed the slash and lower-cased, so granted `hrms/setting` never matched the bare link on
+      `[RequirePermission("setting")]`. EVERY gated endpoint was affected. ⚠️ I first reported the
+      dashboard's audit-log 403 as a missing permission — it was not: `tatekg` has
+      `/hrms/auditLog` CanView=1. Corrected after querying the grants.
+    - ⚠️ **Both sides must strip.** The granted/catalogue sets come from stored links, the pathname
+      is root-relative; normalising one side only sends every page to `/unauthorized`.
+    - ⚠️ **Do NOT strip inside `getAllOperation`** — the Menu Operations admin screen must show and
+      save the stored value.
+    - Measured, not assumed: the OLD filter matched 0 of 21 modules; the new one renders 17 groups /
+      116 operations, matching the DB grants exactly. Browser-verified (Employees, Branches, Job
+      Categories); `GET /Setting` and `GET /AuditLog` both 200 after the backend fix.
+
+
+
 0136. **HRMS subsystem feed keys on Abbreviation (2026-08-19).** HRMS repo, no migration. Mirror of
     0135 so both SPAs identify subsystems identically.
     - `SubsystemDto.Code` -> `Abbreviation` (wire `abbreviation`), projected from

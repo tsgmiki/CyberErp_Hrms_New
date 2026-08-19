@@ -6,6 +6,8 @@ import type { ModuleModel } from "@/models";
 import { useMenuModules } from "../hooks/useMenuModules";
 import { resolveNavIcon } from "../utils/lucideIconMap";
 import MenuNavLink from "../navLink";
+import { OWN_SUBSYSTEM_ABBREVIATION } from "@/config/appConfig";
+import { toAppPath } from "@/utils/routeMatch";
 
 interface SidebarNavProps {
   collapsed: boolean;
@@ -95,8 +97,7 @@ function NavGroup({
  * group, each of its role-visible coreOperation rows becomes a link. Icons are lucide-react
  * names stored on the rows. Order follows the SortOrder applied server-side.
  */
-/** This application's own subsystem (dbo.coreSubsystem row) — the sidebar's default scope. */
-const OWN_SUBSYSTEM = "HRMS";
+
 
 function buildDynamicGroups(
   modules: ModuleModel[] | undefined,
@@ -107,7 +108,11 @@ function buildDynamicGroups(
     // application's sidebar renders only the scoped subsystem — other subsystems' menus are
     // configured here (System → Subsystems / Menu Modules / Menu Operations) but rendered by
     // their own applications.
-    .filter((m) => (m.subSystem ?? OWN_SUBSYSTEM) === subsystem)
+    // Matched on the ABBREVIATION. This used to compare the subsystem display NAME against a
+    // hardcoded "HRMS"; the catalogue then renamed that row to "Human Resource Management System"
+    // and the filter silently dropped every module, leaving fully-permissioned users a blank
+    // sidebar. Abbreviations are stable identifiers, names are labels.
+    .filter((m) => (m.subSystemAbbreviation?.trim() || OWN_SUBSYSTEM_ABBREVIATION) === subsystem)
     .map((m) => ({
       key: m.id ?? m.name ?? "",
       label: m.name ?? "",
@@ -115,7 +120,10 @@ function buildDynamicGroups(
       links: (m.operations ?? [])
         .filter((op) => op.canView !== false && op.link)
         .map((op) => ({
-          to: op.link!.startsWith("/") ? op.link! : `/${op.link}`,
+          // The stored link is namespaced by its owning subsystem ("/hrms/branch"); this app is
+          // served at the root of its own origin and declares "/branch". toAppPath resolves the
+          // two — without it every menu click landed on the catch-all "Page not found" route.
+          to: toAppPath(op.link),
           label: op.name ?? "",
           Icon: resolveNavIcon(op.icon),
         })),
@@ -129,7 +137,7 @@ function SidebarNav({ collapsed }: SidebarNavProps) {
   const { modules, isLoading, selectedSubsystem } = useMenuModules();
 
   const navGroups = useMemo(
-    () => buildDynamicGroups(modules, selectedSubsystem?.trim() || OWN_SUBSYSTEM),
+    () => buildDynamicGroups(modules, selectedSubsystem?.trim() || OWN_SUBSYSTEM_ABBREVIATION),
     [modules, selectedSubsystem],
   );
 

@@ -122,16 +122,16 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
 
   // The Home portal is the ENTRY point of the platform — navigation only flows Home → HRMS,
   // never back. Its card is excluded here so HRMS offers no path into the portal.
-  const subsystems = useMemo(() => {
-    const portalNames = new Set(
-      (subsystemRows ?? [])
-        .filter((row) => (row.abbreviation ?? "").trim().toUpperCase() === HOME_SUBSYSTEM_ABBREVIATION)
-        .map((row) => row.name ?? ""),
-    );
-    return buildLandingSubsystems(modules, subsystemRows).filter(
-      (card) => !portalNames.has(card.id),
-    );
-  }, [modules, subsystemRows]);
+  //
+  // Matched on the card ABBREVIATION. This used to resolve the portal to a set of display NAMES and
+  // compare those; names get renamed, and the comparison then quietly stops excluding anything.
+  const subsystems = useMemo(
+    () =>
+      buildLandingSubsystems(modules, subsystemRows).filter(
+        (card) => card.id.trim().toUpperCase() !== HOME_SUBSYSTEM_ABBREVIATION,
+      ),
+    [modules, subsystemRows],
+  );
 
   const filteredSubsystems = useMemo(() => {
     if (!searchTerm.trim()) return subsystems;
@@ -146,15 +146,14 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
 
   const firstName = user?.fullName?.split(" ")[0] ?? t("User", { defaultValue: "User" });
 
-  const handleSelectSubsystem = (subsystem: string) => {
+  const handleSelectSubsystem = (abbreviation: string) => {
     // Centralized architecture: selecting a subsystem hosted by ANOTHER application (e.g. Home)
     // deep-links there; this application renders only its own subsystem's screens.
     //
     // ⚠️ The address comes from VITE_SUBSYSTEM_APPS keyed by the subsystem's ABBREVIATION, not from
-    // row — Core.Subsystem.Url was dropped on 2026-08-16 for SRMS parity. A subsystem with no
+    // the row — Core.Subsystem.Url was dropped on 2026-08-16 for SRMS parity. A subsystem with no
     // configured address simply scopes locally, exactly as an absent Url did before.
-    const row = subsystemRows?.find((s) => s.name === subsystem);
-    const url = appUrlFor(row?.abbreviation);
+    const url = appUrlFor(abbreviation);
     if (url) {
       try {
         if (new URL(url).origin !== window.location.origin) {
@@ -165,7 +164,11 @@ export default function LandingPage({ modules, subsystems: subsystemRows }: Land
         /* malformed URL — fall through to local scoping */
       }
     }
-    store.ModuleData.value = { name: subsystem };
+    // Scope the sidebar by ABBREVIATION. The name rides along for display only.
+    const row = subsystemRows?.find(
+      (s) => (s.abbreviation ?? "").trim().toUpperCase() === abbreviation.trim().toUpperCase(),
+    );
+    store.ModuleData.value = { abbreviation, name: row?.name };
     navigate("/");
   };
 

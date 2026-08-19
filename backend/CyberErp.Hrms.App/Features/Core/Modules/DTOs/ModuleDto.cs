@@ -84,8 +84,15 @@ namespace CyberErp.Hrms.App.Features.Core.Modules.DTOs
     {
         public Guid Id { get; set; }
         public Guid SubsystemId { get; set; }
-        /// <summary>Subsystem display name (resolved from SubsystemId).</summary>
+        /// <summary>Subsystem display NAME (resolved from SubsystemId) — renameable; do NOT scope on it.</summary>
         public string SubSystem { get;set;}
+        /// <summary>
+        /// The owning subsystem's ABBREVIATION (Core.Subsystem.Abbreviation) — what a SPA scopes its
+        /// sidebar on. <see cref="SubSystem"/> is a display label an administrator can rename, and
+        /// did: "HRMS" became "Human Resource Management System", which silently emptied this
+        /// application's menu for anyone arriving from the Home portal.
+        /// </summary>
+        public string SubSystemAbbreviation { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string? Icon { get; set; }
         public int SortOrder { get; set; }

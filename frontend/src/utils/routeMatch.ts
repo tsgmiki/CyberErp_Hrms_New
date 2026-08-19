@@ -11,11 +11,49 @@
  *
  * The rule here is a full path SEGMENT match: "/loan" never matches "/loanType", but does match
  * "/loan/new" and "/loan/{guid}".
+ *
+ * It also resolves the SUBSYSTEM NAMESPACE. Operation links are stored namespaced by the subsystem
+ * that owns them ("/hrms/branch"), because one shared catalogue serves every subsystem and the same
+ * screen name recurs across them. Each subsystem SPA is served at the ROOT of its own origin and
+ * declares its routes there ("/branch"), so the namespace is an addressing convention of the
+ * CATALOGUE, never part of a URL. It is stripped here, on both sides of every comparison; links
+ * stored without it keep working unchanged.
  */
+import { OWN_SUBSYSTEM_ABBREVIATION } from "@/config/appConfig";
 
-/** `"/JobCategory/"` → `"jobcategory"`. Tolerates links stored with or without a leading slash. */
-export const normalizeRoutePath = (value?: string): string =>
-  (value ?? "").trim().replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+/** This application's namespace in the shared catalogue, e.g. "hrms" — see the note above. */
+const SUBSYSTEM_NAMESPACE = OWN_SUBSYSTEM_ABBREVIATION.trim().toLowerCase();
+
+/**
+ * A stored catalogue link as an actual APP URL:
+ * `"/hrms/branch"` → `"/branch"` · `"hrms/branch"` → `"/branch"` · `"/branch"` → `"/branch"` ·
+ * `"/hrms"` → `"/"`.
+ *
+ * Use this wherever a stored link becomes something NAVIGABLE (an `href`, a `navigate()` target).
+ * To COMPARE a link against a pathname use `matchesRoute` / `normalizeRoutePath` instead — they
+ * strip the same namespace. Casing is preserved here: react-router matches paths case-sensitively,
+ * so "/jobCategory" must not become "/jobcategory".
+ */
+export function toAppPath(link?: string): string {
+  const segments = (link ?? "").trim().split("/").filter(Boolean);
+  if (segments[0]?.toLowerCase() === SUBSYSTEM_NAMESPACE) segments.shift();
+  return `/${segments.join("/")}`;
+}
+
+/**
+ * `"/JobCategory/"` → `"jobcategory"`, and `"/hrms/JobCategory"` → `"jobcategory"` too.
+ *
+ * Tolerates links stored with or without a leading slash, and with or without this subsystem's
+ * catalogue namespace — so a granted menu link ("/hrms/branch"), a catalogue link ("/hrms/branch")
+ * and a browser pathname ("/branch/{guid}") all reduce to the same key and compare equal.
+ */
+export const normalizeRoutePath = (value?: string): string => {
+  const path = (value ?? "").trim().replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+  if (path === SUBSYSTEM_NAMESPACE) return "";
+  return path.startsWith(`${SUBSYSTEM_NAMESPACE}/`)
+    ? path.slice(SUBSYSTEM_NAMESPACE.length + 1)
+    : path;
+};
 
 /** True when `pathname` IS `link`, or is nested beneath it on a segment boundary. */
 export function matchesRoute(pathname: string, link?: string): boolean {

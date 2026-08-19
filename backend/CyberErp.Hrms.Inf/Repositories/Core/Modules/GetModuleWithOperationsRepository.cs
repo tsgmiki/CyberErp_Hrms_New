@@ -67,8 +67,12 @@ public class GetModuleWithOperationsRepository(
             .Where(m => m.IsActive)
             .ToListAsync(ct);
 
-        var subsystemNames = await subsystemRepository.GetAll()
-            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        // Name AND abbreviation. The sidebar scopes on the ABBREVIATION because the NAME is a
+        // display label an administrator can rename at will — and did: "HRMS" became
+        // "Human Resource Management System", which silently emptied this application's menu.
+        var subsystems = await subsystemRepository.GetAll()
+            .Select(s => new { s.Id, s.Name, s.Abbreviation })
+            .ToDictionaryAsync(s => s.Id, s => s, ct);
 
         var result = groups
             .OrderBy(m => m.DisplayOrder).ThenBy(m => m.Name)
@@ -80,7 +84,11 @@ public class GetModuleWithOperationsRepository(
                 Id = m.Id,
                 Name = m.Name ?? string.Empty,
                 SubsystemId = m.SubSystemId,
-                SubSystem = subsystemNames.TryGetValue(m.SubSystemId, out var ssName) ? ssName : string.Empty,
+                SubSystem = subsystems.TryGetValue(m.SubSystemId, out var ss) ? ss.Name : string.Empty,
+                // Falls back to the name when a row has no abbreviation, so scoping still resolves.
+                SubSystemAbbreviation = subsystems.TryGetValue(m.SubSystemId, out var ssa)
+                    ? (string.IsNullOrWhiteSpace(ssa.Abbreviation) ? ssa.Name : ssa.Abbreviation)
+                    : string.Empty,
                 Icon = m.Icon,
                 SortOrder = m.DisplayOrder,
                 Operations = operations
