@@ -198,7 +198,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasKey(s => s.Id).HasName("PK_TenantModuleEntitlement");   // SRMS's name
 
             builder.Property(s => s.SourceType).IsRequired().HasMaxLength(30);
-            builder.Property(s => s.Status).IsRequired().HasMaxLength(30);
+            // A bit since 2026-08-19 — no length, and NOT NULL comes from the CLR type.
+            builder.Property(s => s.Status).IsRequired();
 
             builder.HasOne<Subsystem>().WithMany()
                 .HasForeignKey(s => s.SubSystemId).OnDelete(DeleteBehavior.Restrict);

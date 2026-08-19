@@ -108,7 +108,8 @@ WHERE NOT EXISTS (
 INSERT INTO Core.TenantSubSystem
     (Id, SubSystemId, SourceType, Status, StartDate, EndDate, TrialEndDate,
      TenantId, CreatedAt, RowVersion)
-SELECT NEWID(), ss.Id, 'Plan', 'Active', CAST(SYSUTCDATETIME() AS date), NULL, NULL,
+-- Status is a bit since 2026-08-19: 1 = the entitlement is live.
+SELECT NEWID(), ss.Id, 'Plan', 1, CAST(SYSUTCDATETIME() AS date), NULL, NULL,
        t.Id, SYSUTCDATETIME(), @rv
 FROM Core.Subsystem ss
 JOIN Core.Tenant t ON t.Id = ss.TenantId

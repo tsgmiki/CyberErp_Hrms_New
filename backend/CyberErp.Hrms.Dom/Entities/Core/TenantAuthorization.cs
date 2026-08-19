@@ -410,7 +410,13 @@ public class TenantSubSystem : BaseEntity
     public Guid SubSystemId { get; private set; }
     /// <summary>Plan | AddOn | Trial — see <see cref="TenantSubSystemSources"/>.</summary>
     public string SourceType { get; private set; } = TenantSubSystemSources.Plan;
-    public string Status { get; private set; } = SubscriptionStatuses.Active;
+    /// <summary>
+    /// True when the entitlement is live. A bit since 2026-08-19 — it was the five-value
+    /// SubscriptionStatuses string (Trial / Active / Suspended / Cancelled / Expired), and a trial
+    /// counts as live because it grants access. WHY an entitlement stopped is no longer recorded;
+    /// EndDate and TrialEndDate carry what is left of that.
+    /// </summary>
+    public bool Status { get; private set; } = true;
     public DateTime StartDate { get; private set; }
     public DateTime? EndDate { get; private set; }
     public DateTime? TrialEndDate { get; private set; }
@@ -418,7 +424,7 @@ public class TenantSubSystem : BaseEntity
     private TenantSubSystem() : base() { }
 
     public static TenantSubSystem Create(Guid owningTenantId, Guid subSystemId, string sourceType,
-        string status, DateTime startDate, DateTime? endDate = null, DateTime? trialEndDate = null)
+        bool status, DateTime startDate, DateTime? endDate = null, DateTime? trialEndDate = null)
     {
         if (owningTenantId == Guid.Empty)
             throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
@@ -431,7 +437,7 @@ public class TenantSubSystem : BaseEntity
             TenantId = owningTenantId.ToString(),
             SubSystemId = subSystemId,
             SourceType = string.IsNullOrWhiteSpace(sourceType) ? TenantSubSystemSources.Plan : sourceType.Trim(),
-            Status = string.IsNullOrWhiteSpace(status) ? SubscriptionStatuses.Active : status.Trim(),
+            Status = status,
             StartDate = startDate.Date,
             EndDate = endDate?.Date,
             TrialEndDate = trialEndDate?.Date,

@@ -123,6 +123,29 @@
 
 ## 1. Most recent changes (latest first)
 
+0145. **Core.TenantSubSystem.Status becomes a bit (2026-08-19).** HRMS repo, migration
+    `20260819160000_TenantSubSystemStatusBit`. See logic §12.41. Restore point:
+    `C:\Temp\CERP_before_tenantsubsystem_status_bit.bak`.
+    - Same rebuild pattern as 0143 (add / backfill / drop / rename, one `Sql()` call per step), and
+      this one carries its own `[Migration]` attribute from the start — that was the trap last time.
+    - Backfill maps **Active AND Trial to 1**: a trial entitlement grants access, which is all the
+      boolean can express. Suspended / Cancelled / Expired map to 0. All 3 rows were 'Active'.
+    - ⚠️ **`SubscriptionStatuses` is NOT deleted**, unlike `TenantUserStatuses` in 0143. It is shared
+      with `OrganizationSubscription.Status` and `TenantSubscriptionAddOn.Status` on other tables,
+      which keep the five-value string. Verified post-migration that `Core.TenantSubscription.Status`
+      is still nvarchar.
+    - Surface was small: entity, EF mapping, seed script, and `TenantAuthorizationProjector` (the
+      only row-creating site). No frontend surface in either SPA; Home's backend does not reference
+      the entity at all.
+    - Verified: login 200, menu feed 200, subsystem catalogue 200, a gated read 200, rows read back
+      as `BasePlan / 1`. ⚠️ The projector's WRITE path is proven by compilation and by the column
+      accepting the value, not by an end-to-end run — triggering it would write new entitlement rows
+      into live data.
+    - ⚠️ Five states became two: a trial is now indistinguishable from a paid entitlement, and a
+      cancelled one from an expired one. SRMS models the same concept as a six-value enum, but the
+      SRMS copy under active development targets `CERP_Latest`, not CERP (see 0144).
+
+
 0144. **The last two ungated controllers, and the SRMS impact was narrower than reported
     (2026-08-19).** HRMS repo, no migration.
     - `LeaveRequestController` and `LeaveBalanceController` were left ungated by 0140 because
