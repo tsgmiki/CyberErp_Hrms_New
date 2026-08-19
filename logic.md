@@ -3673,3 +3673,59 @@ HR-only. Verified: `GET` 200 and `POST` 403 on the same controller for the same 
 Sign in as a single-role account and walk every portal screen collecting 403s. Two remain, and both
 are correct — `/survey` and `/myTraining` are reachable by typing the URL but absent from that
 user's menu, so the denial is the guard working.
+
+### 12.39 Core.TenantUser.Status becomes a bit
+
+`Status` was `nvarchar(30)` holding `Active` / `Suspended` / `Invited`; it is now `bit`, 1 meaning an
+active membership. All 499 rows were `'Active'`, so nothing was lost in the conversion.
+
+- **Migration** `TenantUserStatusBit`, hand-written: a plain `AlterColumn` to bit fails because SQL
+  Server cannot convert `'Active'`, so the column is rebuilt — add `Status_bit`, backfill
+  `CASE WHEN Status = 'Active' THEN 1 ELSE 0 END`, drop, rename. **Each step is its own `Sql()`
+  call**: SQL Server compiles a whole batch before running any of it, so an UPDATE naming a column
+  added earlier in the same batch fails to parse.
+- **Domain**: `TenantUserStatuses` is deleted. Its three constants can no longer match anything the
+  column holds, and leaving them would be three dead strings that still compile.
+- **Queries**: `tu.Status == TenantUserStatuses.Active` → `tu.Status`, at five sites in HRMS
+  (`ICurrentUserRoles` ×2, `EndpointPermissionService`, `LoginRepository`,
+  `GetModuleWithOperationsRepository`) and two in Home (`LoginUser`, `GetMySubsystems`, which
+  compared against the string literal `"Active"`).
+- **No frontend surface at all** — neither SPA references `TenantUser`. The column exists only to
+  gate sign-in and permission lookups server-side.
+
+#### ⚠️ A hand-written migration needs its own `[Migration]` attribute
+
+EF discovers migrations by that attribute, which the scaffolder normally emits into the generated
+`.Designer.cs`. Without it the file compiles, sits in the Migrations folder, and is **silently never
+applied** — `database update` reports "No migrations were applied. The database is already up to
+date." `[DbContext(typeof(HrmsDbContext))]` needs
+`using Microsoft.EntityFrameworkCore.Infrastructure;`, or `DbContext` resolves to the class and the
+build fails with "not an attribute class". The model snapshot must be edited by hand too, or
+`database update` refuses with `PendingModelChangesWarning`.
+
+#### ⚠️ Two states where there were three
+
+`Suspended` and `Invited` are no longer distinguishable. `Down` maps 0 back to `'Suspended'`, the
+safer of the two to assume: `'Invited'` would imply the user may still accept and become active.
+
+#### ⚠️ SRMS writes this table
+
+`TenantAuthorizationProjector` records that memberships are created directly in `Core.TenantUser` /
+`Core.TenantUserRole` **by SRMS**, which stores the string `'Active'`. Its inserts now fail against
+the bit column and its reads compare a bit to a string. Same divergence as
+`Core.User.AccountStatus` (§12.28) and accepted on the same terms; SRMS needs the matching change.
+
+### 12.40 The portal dashboard is full-bleed
+
+Two things put gutters either side of a page in the portal shell, and the dashboard had both: its own
+`mx-auto max-w-7xl`, which capped the workspace at 1280px and centred it (~320px of dead grey down
+each side of a 1920px display), and the shell's `p-2` on `<main>`, which wraps every route.
+
+The shell padding is **cancelled with a negative margin** on the dashboard root rather than removed
+from `<main>`, so the page reaches the edges without changing the padding every other screen is drawn
+against. Measured at 1600px: dashboard gutters 0/0, every other screen unchanged at 8px.
+
+⚠️ **This project does not generate `md:` padding variants at all.** The `md:p-5` that was already on
+the dashboard and the `md:p-2` on `<main>` emit no CSS — the padding was uniform the whole time.
+Check a class against the BUILT stylesheet before believing it does anything; see the palette note in
+`config/theme.css`.

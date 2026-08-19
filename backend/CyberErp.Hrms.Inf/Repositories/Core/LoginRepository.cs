@@ -84,7 +84,7 @@ public class LoginRepository(
                 // A user can now hold several memberships, so the default one wins, then any active
                 // one. Read WITHOUT the tenant filter: there is no tenant context yet, by definition.
                 var membership = await _tenantUserRepository.GetAllWithoutTenantFilter().AsNoTracking()
-                    .Where(tu => tu.UserId == user.Id && tu.Status == TenantUserStatuses.Active)
+                    .Where(tu => tu.UserId == user.Id && tu.Status)
                     .OrderByDescending(tu => tu.IsDefaultTenant)
                     .Select(tu => new { tu.TenantId })
                     .FirstOrDefaultAsync();

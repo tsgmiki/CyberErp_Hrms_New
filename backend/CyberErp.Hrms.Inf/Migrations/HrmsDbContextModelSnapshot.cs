@@ -11594,10 +11594,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                    b.Property<bool>("Status")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");

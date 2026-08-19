@@ -70,4 +70,4 @@ SELECT
         JOIN Core.TenantUserRole tur       ON tur.TenantUserId = tu.Id
         JOIN Core.TenantRolePermission p   ON p.TenantRoleId = tur.TenantRoleId AND p.CanView = 1
         JOIN Core.TenantOperation o        ON o.Id = p.TenantOperationId AND o.IsActive = 1
-        WHERE tu.Status = 'Active' AND o.Link <> '') x)                          AS viewable_user_link_pairs;
+        WHERE tu.Status = 1 AND o.Link <> '') x)                          AS viewable_user_link_pairs;

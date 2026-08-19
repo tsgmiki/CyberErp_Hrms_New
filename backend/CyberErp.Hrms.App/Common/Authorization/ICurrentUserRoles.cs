@@ -51,7 +51,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
             // TenantUser and TenantRole are still tenant-filtered, so this chain is scoped even
             // though TenantUserRole itself no longer carries a TenantId.
             var ids = await tenantUsers.GetAll()
-                .Where(tu => tu.UserId == userId.Value && tu.Status == TenantUserStatuses.Active)
+                .Where(tu => tu.UserId == userId.Value && tu.Status)
                 .Join(tenantUserRoles.GetAll(),
                     tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
                 .Join(tenantRoles.GetAll().Where(r => r.SourceTemplateId != null),
@@ -70,7 +70,7 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 .Where(r => r.SourceTemplateId != null && templateRoleIds.Contains(r.SourceTemplateId!.Value))
                 .Join(tenantUserRoles.GetAll(),
                     r => r.Id, tur => tur.TenantRoleId, (r, tur) => tur.TenantUserId)
-                .Join(tenantUsers.GetAll().Where(tu => tu.Status == TenantUserStatuses.Active),
+                .Join(tenantUsers.GetAll().Where(tu => tu.Status),
                     tenantUserId => tenantUserId, tu => tu.Id, (tenantUserId, tu) => tu.UserId)
                 .Distinct()
                 .ToListAsync();

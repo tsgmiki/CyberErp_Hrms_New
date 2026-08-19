@@ -148,7 +148,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // SRMS declares this alternate key so composite foreign keys can target it.
             builder.HasAlternateKey(u => new { u.Id, u.TenantId }).HasName("AK_TenantUser_Id_TenantId");
 
-            builder.Property(u => u.Status).IsRequired().HasMaxLength(30);
+            // A bit since 2026-08-19 — no length, and NOT NULL comes from the CLR type.
+            builder.Property(u => u.Status).IsRequired();
 
             builder.HasOne<User>().WithMany()
                 .HasForeignKey(u => u.UserId).OnDelete(DeleteBehavior.NoAction);
