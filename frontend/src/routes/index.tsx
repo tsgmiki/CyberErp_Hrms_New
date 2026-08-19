@@ -17,6 +17,7 @@ const Dashboard = memo(lazy(() => import("@/pages/home/dashboard.tsx")));
 const ReportViewerPage = memo(lazy(() => import("@/pages/admin/reportViewer")));
 const ReportResultPage = memo(lazy(() => import("@/pages/admin/reportResult")));
 const AuditLogPage = memo(lazy(() => import("@/pages/admin/auditLog")));
+const SettingPage = memo(lazy(() => import("@/pages/admin/setting")));
 // Compensation & Benefit (HRMS §3.10.1)
 const TaxBracketPage = memo(lazy(() => import("@/pages/admin/taxBracket")));
 const SalaryIncrementPolicyPage = memo(lazy(() => import("@/pages/admin/salaryIncrementPolicy")));
@@ -101,6 +102,9 @@ export default function AppRoutes() {
         {/* Organizational Structure (HRMS §3.1) */}
         <Route path="reports" element={<ReportViewerPage />} />
         <Route path="auditLog" element={<AuditLogPage />} />
+        {/* Deployment operations settings — a singleton (one Core.Setting row), so it stays a
+            flat route: there is no record id to put in the URL. */}
+        <Route path="setting" element={<SettingPage />} />
         {/* Compensation & Benefit (HRMS §3.10.1) */}
         <Route path="taxBracket" element={<TaxBracketPage />} />
         {/* A singleton config, so it stays a flat route — there is no record id to put in the URL. */}

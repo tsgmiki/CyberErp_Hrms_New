@@ -123,6 +123,28 @@
 
 ## 1. Most recent changes (latest first)
 
+0138. **Settings screen built; the menu row had no page (2026-08-19).** HRMS repo, frontend only, no
+    migration. NEW `components/admin/setting/{index,form}.tsx`, `pages/admin/setting.tsx`,
+    `services/admin/setting/index.ts`; `models/settings/SettingModel.ts` rewritten; flat route.
+    - `System › Settings` (`/hrms/setting`) was the ONE link of 116 still 404ing after 0137. The
+      backend was already complete (`SettingController`: GET / PUT / `test-email`) — only the screen
+      was missing. The one related file, `components/header/defaultSetting.tsx`, is a dead button
+      pointing at another non-existent route.
+    - Singleton-config pattern, NOT the CRUD template: `EntityModuleShell` + `showForm hideAdd
+      hideBack`, exactly like `salaryIncrementPolicy`. SMTP host/port/user/TLS, backup
+      on-off/frequency/retention, and a test-message panel reporting the resolved relay.
+    - ⚠️ **No password field, deliberately** — it is deployment configuration, never sent to a
+      browser; the DTO reports only `hasSmtpPassword`, which becomes a warning banner.
+    - ⚠️ GET returns the RESOLVED relay (stored row or configuration fallback), so saving persists
+      the configured value into the row. Re-read after save; do not trust the local copy.
+    - ⚠️ Two FormProviders on one screen ⇒ explicit unique `formId`s (`settingForm`,
+      `settingTestEmailForm`). The default id makes Save submit the other form.
+    - ⚠️ Only palette variants defined in `theme.css` are used (`bg-*/15`, `border-*/20`).
+      `bg-warning/10` + `border-warning/30` emit NOTHING — the Increment Rules banners have that bug.
+    - Verified in a real browser as `tatekg`: renders, both form ids present, fields populated,
+      Save 200, test message 200 with *"Queued for delivery through smtp.gmail.com:587"*. The save
+      test persisted the configured host into the row; `SmtpHost` was restored to '' afterwards.
+
 0137. **Menu links resolved: the catalogue namespace, and a 403 on every gated endpoint
     (2026-08-19).** HRMS repo, no migration. NEW `Dom/Constants/Subsystems.cs`.
     - **Symptom A — a blank sidebar for a fully-permissioned user.** `sidebarNav` filtered modules by

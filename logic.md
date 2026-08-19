@@ -3479,3 +3479,25 @@ root-relative. Normalising only one of them does not fail safe — it sends ever
 as stored. Normalising there would show operators a link they did not write and eventually save it
 back, silently rewriting the catalogue.
 
+### 12.34 Settings: a menu row that had no screen
+
+`System › Settings` (`/hrms/setting`) existed in the catalogue and had a complete backend —
+`SettingController` with GET / PUT / `test-email` — but no page had ever been built; the only related
+file was an unused header button pointing at another non-existent route. It was the one link of 116
+that still 404ed after §12.33.
+
+Built on the **singleton-config pattern**, not the CRUD template: one `Core.Setting` row means no
+list, no id and no `useEntityCrudModule`, so it uses `EntityModuleShell` with `showForm hideAdd
+hideBack`, exactly like Increment Rules (§12.34's sibling precedent, `salaryIncrementPolicy`).
+
+- **The SMTP password is absent in both directions, deliberately.** It is deployment configuration
+  (user-secrets / environment variable) and is never sent to a browser; the DTO reports only
+  `hasSmtpPassword`, which the screen turns into a warning. Do not "helpfully" add the field.
+- **GET returns the resolved relay** — the stored row *or* the configuration fallback — so saving
+  persists the configured value into the row. The screen re-reads after saving rather than trusting
+  its local copy.
+- Two `FormProvider`s (settings + test message) ⇒ explicit unique `formId`s. With the default id the
+  Save button submits the other form.
+- Only palette variants that exist in `theme.css` are used (`bg-*/15`, `border-*/20`). `bg-warning/10`
+  and `border-warning/30` emit **nothing** — the Increment Rules banners have that bug.
+

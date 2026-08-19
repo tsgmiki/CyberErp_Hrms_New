@@ -23,6 +23,7 @@ export type { default as TransactionApprovalModel } from "./masters/TransactionA
 export type { default as SectionItemModel } from "./SectionItemModel";
 export type { default as NotificationModel } from "./masters/NotificationModel";
 export type { default as SettingModel } from "./settings/SettingModel";
+export type { TestEmailResultModel } from "./settings/SettingModel";
 export type { default as ReportModel, ReportCriteriaModel } from "./ReportModel";
 export type { default as ReportConfigModel } from "./ReportConfigModel";
 // Organizational Structure (HRMS §3.1)
