@@ -3501,3 +3501,19 @@ hideBack`, exactly like Increment Rules (§12.34's sibling precedent, `salaryInc
 - Only palette variants that exist in `theme.css` are used (`bg-*/15`, `border-*/20`). `bg-warning/10`
   and `border-warning/30` emit **nothing** — the Increment Rules banners have that bug.
 
+### 12.35 The same resolution in the Home portal
+
+Home scoped its sidebar on the abbreviation already, and its API needs nothing: it has no
+`[RequirePermission]`, and `GetMySubsystems` filters by id joins, only ever *projecting* `Link`. The
+frontend got the mirror of §12.33 — its own `utils/routeMatch`, applied to:
+
+- `resolveOperationHref`, which takes the **owning** subsystem's abbreviation. This is what makes a
+  deep link correct: HRMS answers `/employee`, so composing the raw `/hrms/employee` onto its origin
+  would land on that application's not-found page.
+- The `CONDITIONAL_MENU` hidden-link test, which compared raw stored strings — a namespaced
+  catalogue would silently stop hiding Exit Interview and Clearance Form, leaving dead entries.
+- The three permission matchers, which also closes the `String.includes` bug HRMS had already fixed
+  (`/loanType` satisfied by the `/loan` row, `/tripBudget` by `/trip`).
+
+SSMS links are still stored un-namespaced, which is why the portal worked; verified live by
+temporarily storing `/ssms/suggestion` and confirming the sidebar rendered `/suggestion`.

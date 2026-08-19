@@ -123,6 +123,29 @@
 
 ## 1. Most recent changes (latest first)
 
+0139. **Home portal: the same namespace resolution (2026-08-19).** Home repo only (commit `9c2a48b`), frontend only, no
+    migration. NEW `frontend/src/utils/routeMatch.ts` — keep it in step with the HRMS copy.
+    - Home needed NO backend change: it has no `[RequirePermission]` anywhere, and
+      `GetMySubsystems` filters by id joins, only ever PROJECTING `Link`. Its sidebar already scoped
+      on the abbreviation, so 0137 had no Home equivalent either.
+    - `resolveOperationHref` now strips the **owning** subsystem's namespace. That fixes a latent
+      deep-link bug: HRMS answers `/employee`, so `subsystem.url + "/hrms/employee"` would have
+      landed on HRMS's not-found page. Dormant today (Home only deep-links at subsystem level).
+    - `CONDITIONAL_MENU`'s hidden-link test compared RAW stored strings — its contract even said
+      "matches the seeded coreOperation.Link exactly". A namespaced catalogue would silently stop
+      hiding Exit Interview / Clearance Form, leaving dead sidebar entries with no error.
+    - The three permission matchers now share the module, which also closes the `String.includes`
+      bugs HRMS fixed earlier (`/loanType` satisfied by the `/loan` row, `/tripBudget` by `/trip`),
+      and `gridAction` no longer scans for ANY row with the flag set.
+    - Verified in a real browser as `tatekg`: 23 sidebar links, 25/25 SSMS operations resolve,
+      click-through opens Annual Leave / My Profile / Suggestions. ⚠️ **Proved the namespace fix
+      live** by temporarily storing `/ssms/suggestion` in Core.TenantOperation — the sidebar rendered
+      `/suggestion` — then restoring the row.
+    - ⚠️ Home's catch-all is `Navigate to="/"`, so an unroutable link bounces to the dashboard
+      instead of showing an error. That is WHY this class of bug is invisible there. Left as-is.
+    - ⚠️ Harness note: do NOT blanket-click `aside button` in Home — "All Modules" navigates to the
+      launcher and empties the sidebar, which reads as "the menu broke". Cost two false readings.
+
 0138. **Settings screen built; the menu row had no page (2026-08-19).** HRMS repo, frontend only, no
     migration. NEW `components/admin/setting/{index,form}.tsx`, `pages/admin/setting.tsx`,
     `services/admin/setting/index.ts`; `models/settings/SettingModel.ts` rewritten; flat route.
