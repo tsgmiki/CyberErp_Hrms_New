@@ -1,14 +1,9 @@
 
 namespace CyberErp.Hrms.Dom.Entities.Core;
 
-/// <summary>Account lifecycle state — see <see cref="User.AccountStatus"/>.</summary>
-public static class UserAccountStatuses
-{
-    public const string Active = "Active";
-    public const string Suspended = "Suspended";
-    public const string Locked = "Locked";
-    public const string Invited = "Invited";
-}
+// UserAccountStatuses (Active | Suspended | Locked | Invited) was REMOVED on 2026-08-18 when
+// AccountStatus became a bool. Nothing ever set anything but Active, and a temporary sign-in block
+// is expressed by LockoutEndUtc, not by this field.
 
 /*
  * Aligned with the SRMS platform schema (2026-08-13). `Password` is now `PasswordHash`, and the
@@ -23,7 +18,13 @@ public class User : BaseEntity, IAggregateRoot
 {
     public string FullName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
-    public string PhoneNumber { get; private set; } = string.Empty;
+    /// <summary>
+    /// Optional (2026-08-18): the column is nullable and most accounts have none — 489 of the 506
+    /// rows in this database are blank. Writers here still store a trimmed string rather than null,
+    /// because SRMS reads this same shared column into a NON-nullable string and a null would break
+    /// it; the schema permits null for other writers, this code just does not produce one.
+    /// </summary>
+    public string? PhoneNumber { get; private set; }
     public string UserName { get; private set; } = string.Empty;
 
     /// <summary>PBKDF2 hash (see <c>Encryption.GenerateHash</c>) — never the plaintext.</summary>
@@ -34,8 +35,15 @@ public class User : BaseEntity, IAggregateRoot
     /// <summary>Upper-cased <see cref="Email"/>. Blank for the many accounts with no address on file.</summary>
     public string NormalizedEmail { get; private set; } = string.Empty;
 
-    /// <summary>Active | Suspended | Locked | Invited — see <see cref="UserAccountStatuses"/>.</summary>
-    public string AccountStatus { get; private set; } = UserAccountStatuses.Active;
+    /// <summary>
+    /// Whether the account may sign in. A BOOLEAN since 2026-08-18 (was the four-state string
+    /// Active | Suspended | Locked | Invited).
+    ///
+    /// ⚠️ A temporary sign-in block is NOT this flag — that is <see cref="LockoutEndUtc"/>, which
+    /// survived the change and is what the lockout logic reads. This is the durable "is this account
+    /// enabled" decision an administrator makes.
+    /// </summary>
+    public bool AccountStatus { get; private set; } = true;
     public int FailedLoginAttempts { get; private set; }
     /// <summary>When set and in the future, sign-in is refused regardless of the password.</summary>
     public DateTime? LockoutEndUtc { get; private set; }
@@ -96,7 +104,7 @@ public class User : BaseEntity, IAggregateRoot
             PasswordHash = password,
             NormalizedUserName = Normalize(userName),
             NormalizedEmail = Normalize(email),
-            AccountStatus = UserAccountStatuses.Active
+            AccountStatus = true
             // TenantId, CreatedBy will be set by Repository.AddAsync()
         };
     }
@@ -195,11 +203,9 @@ public class User : BaseEntity, IAggregateRoot
         base.Update();
     }
 
-    public void SetAccountStatus(string status)
+    public void SetAccountStatus(bool isActive)
     {
-        if (string.IsNullOrWhiteSpace(status))
-            throw new ArgumentException("Account status cannot be empty.", nameof(status));
-        AccountStatus = status.Trim();
+        AccountStatus = isActive;
         base.Update();
     }
 

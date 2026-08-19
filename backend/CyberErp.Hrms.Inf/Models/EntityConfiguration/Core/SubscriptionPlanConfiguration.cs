@@ -10,6 +10,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.HasKey(p => p.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none, and this is PLATFORM data, not
+            // tenant data: a plan and its modules belong to the product, not to one customer. The
+            // table is empty, so nothing was lost. Added to Repository.IsGlobalEntity in the same
+            // change, WITHOUT which every read fails on the now-unmapped filter member.
+            builder.Ignore(p => p.TenantId);
+
+
             // SRMS platform alignment (2026-08-14, logic.md §12.13).
             builder.Property(p => p.Code)
                 .IsRequired()

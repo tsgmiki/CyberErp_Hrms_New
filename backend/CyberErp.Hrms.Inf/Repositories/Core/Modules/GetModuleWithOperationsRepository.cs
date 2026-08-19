@@ -56,27 +56,39 @@ public class GetModuleWithOperationsRepository(
         // Only active rows: hiding a screen or a group for a tenant removes it from the menu.
         // Groups moved OUT of TenantOperation into TenantModule on 2026-08-15 (SRMS parity), so this
         // is two reads again rather than one self-referencing one.
+        // ⚠️ SCOPED BY GROUP. TenantOperation lost its TenantId on 2026-08-15, so an unscoped read
+        // here would pull every tenant's screens into memory before the join discarded them.
+        var groupIds = await tenantModuleRepository.GetAll().Select(m => m.Id).ToListAsync(ct);
         var operations = await tenantOperationRepository.GetAll()
-            .Where(o => o.IsActive)
+            .Where(o => o.IsActive && groupIds.Contains(o.ModuleId))
             .ToListAsync(ct);
 
         var groups = await tenantModuleRepository.GetAll()
             .Where(m => m.IsActive)
             .ToListAsync(ct);
 
-        var subsystemNames = await subsystemRepository.GetAll()
-            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        // Name AND abbreviation. The sidebar scopes on the ABBREVIATION because the NAME is a
+        // display label an administrator can rename at will — and did: "HRMS" became
+        // "Human Resource Management System", which silently emptied this application's menu.
+        var subsystems = await subsystemRepository.GetAll()
+            .Select(s => new { s.Id, s.Name, s.Abbreviation })
+            .ToDictionaryAsync(s => s.Id, s => s, ct);
 
         var result = groups
             .OrderBy(m => m.DisplayOrder).ThenBy(m => m.Name)
             .Select(m => new GetModuleWithOperationResult
             {
-                // ⚠️ The TEMPLATE id, not the tenant row's — the wire contract both SPAs already
-                // work with. TenantModule.ModuleId is the CERP-only link back to Core.Module.
-                Id = m.ModuleId,
+                // The TENANT group's own id. It reported the template id until 2026-08-15, when the
+                // link column was dropped for SRMS parity. Nothing joins on it — both SPAs use it as
+                // a sidebar-group key and match permissions by LINK.
+                Id = m.Id,
                 Name = m.Name ?? string.Empty,
                 SubsystemId = m.SubSystemId,
-                SubSystem = subsystemNames.TryGetValue(m.SubSystemId, out var ssName) ? ssName : string.Empty,
+                SubSystem = subsystems.TryGetValue(m.SubSystemId, out var ss) ? ss.Name : string.Empty,
+                // Falls back to the name when a row has no abbreviation, so scoping still resolves.
+                SubSystemAbbreviation = subsystems.TryGetValue(m.SubSystemId, out var ssa)
+                    ? (string.IsNullOrWhiteSpace(ssa.Abbreviation) ? ssa.Name : ssa.Abbreviation)
+                    : string.Empty,
                 Icon = m.Icon,
                 SortOrder = m.DisplayOrder,
                 Operations = operations
@@ -90,7 +102,12 @@ public class GetModuleWithOperationsRepository(
                         var permission = grants.FirstOrDefault(p => p.TenantOperationId == op.Id);
                         return new OperationRecord
                         {
-                            Id = op.OperationId,           // the template id the UI already works with
+                            // The TENANT row's own id. It used to report the template id via
+                            // OperationId, which SRMS has no column for and CERP dropped on
+                            // 2026-08-15. Nothing joins on it: every permission consumer in both
+                            // SPAs matches on LINK (permissionGate, formPermissions, gridAction,
+                            // useListPermissions), so this is a React key and nothing more.
+                            Id = op.Id,
                             Name = op.Name,
                             Link = op.Link,
                             Icon = op.Icon,

@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -187,7 +188,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             Guid? departmentId,
             string departmentName,
             IRepository<ClearanceDepartment> departmentRepository,
-            IRepository<UserRole> userRoleRepository,
+            ICurrentUserRoles currentUserRoles,
             ICurrentUserService currentUser)
         {
             var approvers = await departmentRepository.GetAll()
@@ -205,10 +206,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (approvers.Any(a => a.ApproverType == WorkflowApproverType.User && a.ApproverId == userId.Value))
                 return (true, names);
 
-            var roleIds = await userRoleRepository.GetAll()
-                .Where(u => u.UserId == userId.Value)
-                .Select(u => u.RoleId)
-                .ToListAsync();
+            // Template role ids held IN THIS TENANT. Core.UserRole is global since 2026-08-15, so
+            // querying it directly would match roles the user holds in another tenant.
+            var roleIds = await currentUserRoles.GetTemplateRoleIdsAsync();
             var allowed = approvers.Any(a => a.ApproverType == WorkflowApproverType.Role && roleIds.Contains(a.ApproverId));
             return (allowed, names);
         }
@@ -326,7 +326,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeTermination> repository,
         IRepository<Employee> employeeRepository,
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
-        IRepository<UserRole> userRoleRepository,
+        ICurrentUserRoles currentUserRoles,
         ICurrentUserService currentUser,
         Performance.IPerformanceVisibilityService visibility,
         ICustomFieldService customFields,
@@ -358,10 +358,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .ToListAsync();
             var userId = currentUser.GetCurrentUserId();
             var roleIds = departments.Count > 0 && userId != null
-                ? (await userRoleRepository.GetAll()
-                    .Where(u => u.UserId == userId.Value)
-                    .Select(u => u.RoleId)
-                    .ToListAsync()).ToHashSet()
+                ? await currentUserRoles.GetTemplateRoleIdsAsync()
                 : [];
 
             (bool CanDecide, List<string> Names) Evaluate(TerminationClearance c)
@@ -433,7 +430,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeTermination> terminationRepository,
         IRepository<Employee> employeeRepository,
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
-        IRepository<UserRole> userRoleRepository,
+        ICurrentUserRoles currentUserRoles,
         ICurrentUserService currentUser,
         ILogger<UpdateTerminationClearance> logger) : IUpdateTerminationClearance
     {
@@ -454,7 +451,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             // Departments with configured approvers accept a decision only from an authorized user
             // (any single one of them); departments without approvers stay open.
             var (canDecide, approverNames) = await TerminationShared.EvaluateClearanceApproverAsync(
-                item.DepartmentId, item.Department, clearanceDepartmentRepository, userRoleRepository, currentUser);
+                item.DepartmentId, item.Department, clearanceDepartmentRepository, currentUserRoles, currentUser);
             if (!canDecide)
                 throw new ValidationException("approver",
                     $"You are not an authorized approver for the '{item.Department}' clearance." +
@@ -644,7 +641,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<EmployeeTermination> terminationRepository,
         IRepository<Employee> employeeRepository,
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
-        IRepository<UserRole> userRoleRepository,
+        ICurrentUserRoles currentUserRoles,
         ICurrentUserService currentUser) : IGetMyClearances
     {
         public async Task<MyClearancesDto> GetAsync()
@@ -652,10 +649,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var userId = currentUser.GetCurrentUserId();
             if (userId is null) return new MyClearancesDto { IsApprover = false };
 
-            var roleIds = (await userRoleRepository.GetAll()
-                .Where(u => u.UserId == userId.Value)
-                .Select(u => u.RoleId)
-                .ToListAsync()).ToHashSet();
+            var roleIds = await currentUserRoles.GetTemplateRoleIdsAsync();
 
             // Active departments the current user is a *specific* approver of (user or role).
             var myDepartments = await clearanceDepartmentRepository.GetAll()

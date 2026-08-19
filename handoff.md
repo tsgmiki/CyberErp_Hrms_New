@@ -123,6 +123,774 @@
 
 ## 1. Most recent changes (latest first)
 
+0139. **Home portal: the same namespace resolution (2026-08-19).** Home repo only (commit `9c2a48b`), frontend only, no
+    migration. NEW `frontend/src/utils/routeMatch.ts` — keep it in step with the HRMS copy.
+    - Home needed NO backend change: it has no `[RequirePermission]` anywhere, and
+      `GetMySubsystems` filters by id joins, only ever PROJECTING `Link`. Its sidebar already scoped
+      on the abbreviation, so 0137 had no Home equivalent either.
+    - `resolveOperationHref` now strips the **owning** subsystem's namespace. That fixes a latent
+      deep-link bug: HRMS answers `/employee`, so `subsystem.url + "/hrms/employee"` would have
+      landed on HRMS's not-found page. Dormant today (Home only deep-links at subsystem level).
+    - `CONDITIONAL_MENU`'s hidden-link test compared RAW stored strings — its contract even said
+      "matches the seeded coreOperation.Link exactly". A namespaced catalogue would silently stop
+      hiding Exit Interview / Clearance Form, leaving dead sidebar entries with no error.
+    - The three permission matchers now share the module, which also closes the `String.includes`
+      bugs HRMS fixed earlier (`/loanType` satisfied by the `/loan` row, `/tripBudget` by `/trip`),
+      and `gridAction` no longer scans for ANY row with the flag set.
+    - Verified in a real browser as `tatekg`: 23 sidebar links, 25/25 SSMS operations resolve,
+      click-through opens Annual Leave / My Profile / Suggestions. ⚠️ **Proved the namespace fix
+      live** by temporarily storing `/ssms/suggestion` in Core.TenantOperation — the sidebar rendered
+      `/suggestion` — then restoring the row.
+    - ⚠️ Home's catch-all is `Navigate to="/"`, so an unroutable link bounces to the dashboard
+      instead of showing an error. That is WHY this class of bug is invisible there. Left as-is.
+    - ⚠️ Harness note: do NOT blanket-click `aside button` in Home — "All Modules" navigates to the
+      launcher and empties the sidebar, which reads as "the menu broke". Cost two false readings.
+
+0138. **Settings screen built; the menu row had no page (2026-08-19).** HRMS repo, frontend only, no
+    migration. NEW `components/admin/setting/{index,form}.tsx`, `pages/admin/setting.tsx`,
+    `services/admin/setting/index.ts`; `models/settings/SettingModel.ts` rewritten; flat route.
+    - `System › Settings` (`/hrms/setting`) was the ONE link of 116 still 404ing after 0137. The
+      backend was already complete (`SettingController`: GET / PUT / `test-email`) — only the screen
+      was missing. The one related file, `components/header/defaultSetting.tsx`, is a dead button
+      pointing at another non-existent route.
+    - Singleton-config pattern, NOT the CRUD template: `EntityModuleShell` + `showForm hideAdd
+      hideBack`, exactly like `salaryIncrementPolicy`. SMTP host/port/user/TLS, backup
+      on-off/frequency/retention, and a test-message panel reporting the resolved relay.
+    - ⚠️ **No password field, deliberately** — it is deployment configuration, never sent to a
+      browser; the DTO reports only `hasSmtpPassword`, which becomes a warning banner.
+    - ⚠️ GET returns the RESOLVED relay (stored row or configuration fallback), so saving persists
+      the configured value into the row. Re-read after save; do not trust the local copy.
+    - ⚠️ Two FormProviders on one screen ⇒ explicit unique `formId`s (`settingForm`,
+      `settingTestEmailForm`). The default id makes Save submit the other form.
+    - ⚠️ Only palette variants defined in `theme.css` are used (`bg-*/15`, `border-*/20`).
+      `bg-warning/10` + `border-warning/30` emit NOTHING — the Increment Rules banners have that bug.
+    - Verified in a real browser as `tatekg`: renders, both form ids present, fields populated,
+      Save 200, test message 200 with *"Queued for delivery through smtp.gmail.com:587"*. The save
+      test persisted the configured host into the row; `SmtpHost` was restored to '' afterwards.
+
+0137. **Menu links resolved: the catalogue namespace, and a 403 on every gated endpoint
+    (2026-08-19).** HRMS repo, no migration. NEW `Dom/Constants/Subsystems.cs`.
+    - **Symptom A — a blank sidebar for a fully-permissioned user.** `sidebarNav` filtered modules by
+      subsystem DISPLAY NAME against a hardcoded `"HRMS"`; the catalogue had renamed that row to
+      *Human Resource Management System*, so the filter matched **0 of 21 modules**. Permissions were
+      never involved. Fixed by projecting `SubSystemAbbreviation` on the module feed and scoping on
+      it (`OWN_SUBSYSTEM_ABBREVIATION`, defined once); `store.ModuleData` now carries
+      `{ abbreviation, name }` and landing cards are keyed by abbreviation.
+    - **Symptom B — "Page not found" on every operation.** Links are stored namespaced by their owner
+      (`/hrms/branch`) while each SPA serves its routes at the root of its own origin. All 116 links
+      hit the `path="*"` catch-all. `utils/routeMatch` gains `toAppPath` (navigable) and
+      namespace-stripping `normalizeRoutePath` (comparisons).
+    - **Symptom C — 403 for callers who HELD the grant.** `EndpointPermissionService.Normalize` only
+      trimmed the slash and lower-cased, so granted `hrms/setting` never matched the bare link on
+      `[RequirePermission("setting")]`. EVERY gated endpoint was affected. ⚠️ I first reported the
+      dashboard's audit-log 403 as a missing permission — it was not: `tatekg` has
+      `/hrms/auditLog` CanView=1. Corrected after querying the grants.
+    - ⚠️ **Both sides must strip.** The granted/catalogue sets come from stored links, the pathname
+      is root-relative; normalising one side only sends every page to `/unauthorized`.
+    - ⚠️ **Do NOT strip inside `getAllOperation`** — the Menu Operations admin screen must show and
+      save the stored value.
+    - Measured, not assumed: the OLD filter matched 0 of 21 modules; the new one renders 17 groups /
+      116 operations, matching the DB grants exactly. Browser-verified (Employees, Branches, Job
+      Categories); `GET /Setting` and `GET /AuditLog` both 200 after the backend fix.
+
+
+
+0136. **HRMS subsystem feed keys on Abbreviation (2026-08-19).** HRMS repo, no migration. Mirror of
+    0135 so both SPAs identify subsystems identically.
+    - `SubsystemDto.Code` -> `Abbreviation` (wire `abbreviation`), projected from
+      Core.Subsystem.Abbreviation with a Code fallback (nullable column). **Verified in the running
+      API's swagger schema**: `["id","name","abbreviation","icon","displayOrder"]` — `code` gone.
+    - Search now matches Abbreviation AND still Code, so searching for the old value keeps working.
+    - Frontend: `SubsystemModel.code` -> `abbreviation`; landing-page HOME exclusion + `appUrlFor`
+      key on it; `VITE_SUBSYSTEM_APPS` re-keyed to SSMS/HRMS/SRMS/SAMS. Home-identity literal is now
+      `HOME_SUBSYSTEM_ABBREVIATION` in `config/appConfig`, defined ONCE (same fix as the portal).
+    - ⚠️ **SCOPE — the SUBSYSTEM identifier ONLY.** `Code` is not one concept in HRMS: **33 DTOs
+      expose a Code** (Branch, JobGrade, JobCategory, Position, PositionClass, OrganizationUnit,
+      LeaveType, AllowanceType, Lookup, CareerPath …). Those are BUSINESS codes on `Hrms.*` tables —
+      real `Code` columns, **no Abbreviation column exists on them**, and a Position's code is an
+      identifier, not an abbreviation. Renaming them = migration across ~33 tables + every CRUD
+      screen and Zod schema. Raised with the user rather than assumed.
+    - ⚠️ **UNRELATED DATA FINDING:** `demo` now has **NO Core.TenantUser row** (all 499 memberships
+      are in `headoffice`), so HRMS/Home login for demo returns 401 "This account is not assigned to
+      any organization." NOT caused by this refactor — the projector deletes only
+      TenantRolePermission / TenantUserRole / TenantRole / TenantOperation, never TenantUser, and no
+      TenantUser row has been created since 2026-08-13. Verified the contract via swagger instead of
+      a logged-in call.
+
+0135. **Home portal keys subsystems on Abbreviation instead of Code (2026-08-19).** Home repo only,
+    no migration. Commit `8f87a98`.
+    - `Core.Subsystem.Code` is NOT a dependable key: the catalogue holds `HOME`, `002`, `srms`,
+      `Finance` and is re-typed by hand. `Abbreviation` is the curated short name and is stable:
+      **SSMS** (Home), HRMS, **SAMS** (002), SRMS, PSMS, SALES, **IFMS** (Finance).
+    - ⚠️ **The live proof of why**: the working copy was matching `"003"` while the row still said
+      `HOME`. Nothing errors — `resolveOperationHref` stops recognising the portal's OWN subsystem,
+      so every Home-local link becomes an external deep-link and the sidebar empties.
+    - API: `PortalSubsystemDto.Code` -> `Abbreviation` (wire field `abbreviation`). **Verified in
+      the published swagger schema** — `code` is gone. Nullable column, so the projection falls back
+      to Code when blank: an un-keyed row would drop out of the launcher entirely.
+    - Frontend: `PortalSubsystemModel.code` -> `abbreviation` + every consumer (app-URL and API
+      registries, `apiFor`/`baseUrlFor`/`appUrlFor`, `resolveOperationHref`, `openExternalSubsystem`,
+      launcher, dashboard widgets, menu hook, sign-in failure toast). `DEFAULT_SUBSYSTEM_CODE` ->
+      `DEFAULT_SUBSYSTEM_ABBREVIATION`. Env maps re-keyed to SSMS/HRMS/SRMS/SAMS.
+    - ⚠️⚠️ **THE DUPLICATED CONSTANT WAS THE REAL BUG.** The portal's own identity was a literal
+      copy-pasted into THREE components plus a fourth inline check in the menu hook — which is how
+      they drifted (one updated to "003", the rest not). Now `HOME_SUBSYSTEM_ABBREVIATION`, defined
+      ONCE in `config/subsystemApis` and imported. **Never re-declare it.**
+    - Verified with a throwaway probe against the live DB (deleted after): the entity reads the real
+      Abbreviation column and every row resolves to a clean key. ⚠️ Could NOT verify via the endpoint
+      itself — `demo`'s tenant has no projected TenantModules so `my-subsystems` returns `[]` before
+      it ever reads Core.Subsystem. Typecheck, lint, production build clean.
+    - Scope: Home portal ONLY. HRMS's landing page still reads its own Subsystem feed's `code`,
+      untouched and independent.
+
+0134. **SRMS login redesigned to match HRMS and Home (2026-08-18).** SRMS tree only —
+    `D:/Workspace/CyberErp/SRMS-main/SRMS-main/Web`. NEW `src/components/auth/AuthLayout.tsx`;
+    `src/pages/LoginPage.tsx` rewritten to compose it.
+    - Same shell as the siblings: branded gradient backdrop (dot grid, glows, outlined circles),
+      product mark top-left, ONE elevated card (accent bar + in-card mark + "Sign in" + form +
+      divided footer note), slim legal footer. Structure mirrors them too (layout component + page).
+    - ⚠️ **HRMS and Home were ALREADY identical** — verified, not assumed. A naive `diff` said the
+      whole file differed; that was LINE ENDINGS. `diff --strip-trailing-cr` showed only a comment
+      block and the footer version string differ. Target design therefore unambiguous.
+    - ⚠️⚠️ **A FILE COPY WOULD HAVE FAILED SILENTLY.** HRMS/Home store ready-to-use colours
+      (`--primary: #0a4fa3`) with hand-written utilities; SRMS is shadcn-style with **HSL TRIPLETS**
+      (`--primary: 224 71% 33%`) valid only inside `hsl()`. Their inline
+      `linear-gradient(..., var(--primary), ...)` is INVALID CSS in SRMS — flat background, no error.
+      Every colour in the SRMS shell goes through `hsl(var(--…))`; the gradient's dark end uses
+      `color-mix` because SRMS has no `--primary-hover`. **Check the palette FORMAT before porting
+      any design between these apps.**
+    - Behaviour preserved: caps-lock hint, show/hide toggle, submit-time validation, sonner toast.
+      Field presentation aligned to the siblings (required asterisks, "User Name", lock icon).
+    - Verified visually via CDP screenshot against Home's login — identical apart from the brand
+      accent (CyberSRMS vs CyberHome) and version string, which is the intent. Typecheck: 0 errors in
+      the two files I touched (the tree has 105 PRE-EXISTING errors — missing finance pages, Tenant
+      type gaps — untouched).
+    - ⚠️ SRMS login renders at **`/`**, not `/login` (App.tsx `LoginRoute`) — `/login` 404s.
+    - ⚠️ **THREE SRMS trees exist**: `SRMS-main/SRMS-main` (CHANGED — the one the :8080 dev server
+      serves, confirmed via HMR), `CYBER_ERP_SRMS/SRMS-main` (the one read all session for schema
+      parity), `CYBER_ERP_SRMS1`. Only the first was modified. **None is a git repository** — changes
+      are on disk only.
+
+0133. **Core.User: AccountStatus -> bit, PhoneNumber -> nullable (2026-08-18).** Migration
+    `UserAccountStatusBitAndNullablePhone`, APPLIED. Backup
+    `D:/Backups/CERP_before-user-accountstatus-bit-*.bak`. Both repos.
+    - `AccountStatus`: nvarchar(20) NOT NULL default 'Active' -> **bit NOT NULL default 1**.
+      `PhoneNumber`: nvarchar(50) NOT NULL -> **nullable**. Data was safe: all 506 rows were
+      'Active' (nothing lost collapsing 4 states to 2) and PhoneNumber had 0 NULLs but 489 blanks.
+    - ⚠️⚠️ **THIS BREAKS SRMS, ON PURPOSE.** cybererp_srms runs against THIS SAME DATABASE
+      (connection string `Database=CERP`), maps the column as `public string AccountStatus`, and
+      **gates sign-in** on `AccountStatus == "Active"` (AuthenticationServiceExtensions, 2 places).
+      A bit cannot be read into a string => **SRMS cannot authenticate until it is updated to
+      match.** Raised with evidence BEFORE applying; user chose "Change CERP only". Deliberate
+      divergence from the parity of 12.13-12.21, not an oversight.
+    - `UserAccountStatuses` (Active|Suspended|Locked|Invited) REMOVED. Nothing ever set anything but
+      Active, and a temporary block was never this column anyway — that is `LockoutEndUtc`
+      (+ FailedLoginAttempts), both untouched.
+    - The dialog's "Sign-in lock" now reads a NEW **server-computed `IsLockedOut`**
+      (`LockoutEndUtc > UtcNow`). Better than what it replaced: the browser should not compare a UTC
+      instant to the workstation clock, and doing it during render tripped React's
+      "no impure function during render" lint rule (Date.now()).
+    - `PhoneNumber` is `string?` on both entities but the DTO boundary coalesces to `""`, so the wire
+      contract is unchanged and SRMS (non-nullable string) never meets a NULL from our writes.
+    - ⚠️ **MIGRATION TRAP 1:** EF's scaffolded `AlterColumn<bool>` CANNOT WORK — SQL Server will not
+      convert 'Active' to bit. The column must be REBUILT: drop the server-named default, add a bit
+      column, `UPDATE ... CASE WHEN AccountStatus='Active' THEN 1 ELSE 0 END`, drop old, `sp_rename`
+      into place, re-add the default. (No index/check/computed column referenced it — verified.)
+    - ⚠️ **MIGRATION TRAP 2:** that rebuild CANNOT be one `Sql()` call. SQL Server compiles a whole
+      batch before running it, so an UPDATE naming a column added by an ALTER in the SAME batch fails
+      to parse: *Invalid column name 'AccountStatus_bit'*. `GO` is a client directive EF rejects.
+      **Each `migrationBuilder.Sql()` IS its own batch — that is the separator.** First attempt died
+      exactly this way; EF's transaction rolled it back cleanly (verified: no temp column, no
+      history row) before the retry.
+    - Verified: schema + default as intended, 506 rows = 1; Home `Account/overview` returns
+      `"accountStatus": true` / `"isLockedOut": false`; profile PUT 200; a real NULL phone reads back
+      as `""` without error; HRMS login 200; dialog shows Status "Active", Sign-in lock "Unlocked".
+      All builds + typecheck + lint clean.
+    - ⚠️ Build gotcha (again): the user's Visual Studio + IIS Express hold the Api DLLs. Build
+      `CyberErp.Hrms.Inf` alone to verify Dom/App/Inf compile while blocked; `dotnet ef` needs the
+      Api and must wait for their instance to release it.
+
+0132. **Edit Profile dialog performance: one prefetched cached call + the index that scales
+    (2026-08-17).** Home repo (dialog) + HRMS migration `LoginTrailUserIdDateIndex`, APPLIED.
+    Backup `D:/Backups/CERP_before-logintrail-index-*.bak`. Home `04c0c05`.
+    - ⚠️ **MEASURED FIRST, which changed the plan.** Warm endpoints were **3-5 ms**; click ->
+      fields-populated was **74 ms cold / ~40 ms warm**, and most of that is REACT RENDER, not
+      network. The server was never the bottleneck here — the user's slowness is likely environment
+      (debugger attached + verbose EF console logging). But the dialog still did avoidable work per
+      open, on a surface reached from every page's header.
+    - **(1) ONE request instead of two.** `Account/profile` + `Account/account-profile` fired in
+      parallel every open and **each re-read Core.User**. NEW `GET Account/overview` returns both
+      halves from ONE user read + one activity read.
+    - **(2) CACHED 60 s** (React Query `fetchQuery` + staleTime) — re-open inside the window is free.
+    - **(3) PREFETCHED on ACCOUNT-MENU open** (pointer-enter/focus/click) — the only route to the
+      dialog, and the pause between the two clicks covers the request. `prefetchQuery` no-ops while
+      fresh, so re-opening the menu does not hammer the API. Save invalidates with
+      `refetchType:"none"` so the next open refetches without an unasked-for request.
+    - **RESULT: the dialog now issues ZERO requests on open** (prefetch already warmed it);
+      43 ms cold / 39 ms warm. The request COUNT is the real win — on a slow link/API it is a whole
+      round trip saved.
+    - **(4) ⚠️ THE SCALE FIX: `IX_LoginTrail_UserId_Date` (UserId, Date DESC).** Every activity read
+      is `WHERE UserId=@x ORDER BY Date DESC TOP(n)`, but the only index was UserId ALONE — so SQL
+      seeks the user then **SORTS every row they ever accumulated**. Core.LoginTrail gains a row per
+      sign-in ATTEMPT and is never trimmed, so that sort grows without bound per user.
+    - ⚠️ **VERIFIED WITH THE PLAN, not assumed.** At 122 rows the optimiser still picks Clustered
+      Index Scan + Sort (correct — a scan beats seek+lookups on a tiny table). FORCING the index
+      gives the intended shape: **Top -> Index Seek (ORDERED FORWARD) -> key Lookup, NO Sort.** It
+      switches over on its own once a user has enough history. Deliberately NOT covering: including
+      UserAgent(2000)/FailureReason(1000) would nearly duplicate the table to save 20 lookups.
+    - Also fixed here: the overview projection no longer emits `[u].[ProfilePicture]` at all (only
+      the `CASE ... IS NOT NULL` test), confirmed in the SQL log.
+    - **Habit: measure before optimising; read the PLAN before claiming an index helps.** Both steps
+      changed the outcome — one ruled out the server, the other proved the index is dormant now and
+      correct later.
+
+0131. **HRMS ignored the preferences because its two auth endpoints return DIFFERENT user shapes
+    (2026-08-17).** HRMS repo only, no migration.
+    - `auth/login` returns **id / fullName**; the session probe `auth/loginStatus` returns
+      **userId / name** (CurrentUserResult). Both were cast straight to the SPA's `User` type, so on
+      any session RESTORED FROM THE COOKIE — every deep-link in from Home, every reload without
+      sessionStorage — **`user.id` was undefined**. `PreferencesContext` loads when `user.id`
+      appears, so it never loaded and HRMS fell back to the system defaults.
+    - Fixed with `AuthContext.normalizeUser` (accepts either shape). Fixes THREE symptoms of the one
+      defect: (a) preferences now load on a cookie-restored session; (b) the header showed "User"
+      instead of the person's name (it reads `user.fullName`); (c) `useFormLayoutPreference` had
+      already grown a local `?? user?.userName ?? "anon"` workaround, so every restored session
+      shared ONE "anon" layout key — it keys per user now (a saved layout looks reset once).
+    - ⚠️⚠️ **WHY MY 0130 VERIFICATION MISSED IT:** I signed in through the **HRMS login form**, which
+      calls `login()` with the well-shaped `auth/login` payload and writes it to sessionStorage;
+      AuthContext seeds state from sessionStorage, so `user.id` existed and it worked — even after a
+      reload. **The form login REPAIRS the very data the bug depends on.** To test HRMS honestly:
+      mint the cookie WITHOUT the form (as the portal's dual sign-in does), clear sessionStorage AND
+      the localStorage theme cache, then load cold. **Test the path the user actually takes.**
+    - Verified that way: cold, cookie-only session comes up **dark + lang=am** from the row saved in
+      the Home portal, stable across reloads; `sessionUser` now shows a real `id`.
+    - ⚠️ KNOWN GAP left in place (commented in `GetCurrentUserRepository`, not half-fixed):
+      `loginStatus` reports `Name` as the USERNAME and `TenantId` as **null**, although
+      `auth/login/cookie` appears to add FullName/Email/TenantId claims — the cookie principal is not
+      carrying the full claim set while UserId/Name are. So the header greets by username. Cosmetic,
+      pre-existing, unrelated to preferences.
+    - ⚠️ Test-harness trap (cost a run): a regex literal inside a `cdp.eval` template string breaks —
+      `\n` becomes a REAL newline, giving "Invalid regular expression: missing /". Use
+      `String.fromCharCode(10)` / `split().join()` instead, and write scenarios with the Write tool,
+      not a heredoc.
+
+0130. **User preferences are now READ and APPLIED, in Home AND HRMS (2026-08-17).** Both repos.
+    No migration. Home `5b4760e`; HRMS commit follows.
+    - ROOT CAUSE of "always shows the default settings": **nothing ever read the row back.** Theme
+      came from `localStorage`, language was pinned by `i18n.init({ lng: "en" })`, and the other
+      seven were written and never consulted. The dialog applied theme only while it was OPEN.
+    - NEW `context/PreferencesContext.tsx` in BOTH SPAs — the single place that reads the user's row
+      and applies it. Dynamic read keyed to the user; DEFAULT FALLBACK when there is no row or the
+      API is unreachable (an absent row is NORMAL, not an error); the dialog saves THROUGH the
+      context so every consumer re-renders at once.
+    - **One row, two subsystems.** `Core.UserPreference` is shared. Home OWNS editing (Edit Profile);
+      HRMS only READS via NEW `GET UserPreference/mine` (`Features/Core/UserPreferences/`, ungated
+      self-service like Employee/my-profile, returns DEFAULTS not 404). Deliberately read-only there
+      — a second editor for one row is how validation drifts.
+    - APPLIED: theme + language (the two with a single control point) + `<html lang>` so the language
+      is observable; `landingPage` in the post-login redirect; `inAppNotifications` hides the bell
+      AND stops its 60s poll. EXPOSED as formatDate/formatNumber: dateFormat/numberFormat/timeZone —
+      ⚠️ **screens that format values themselves are NOT retrofitted** (no chokepoint; the shared
+      `dateFormater.ts` hardcodes patterns, 3 callers). email/approval toggles are sender-side, stored only.
+    - ⚠️⚠️ TWO REACT TRAPS, both in my own provider, both worth remembering:
+      **(a) A ref guard that DEADLOCKS under StrictMode.** The effect skipped work when the user id
+      was unchanged; StrictMode runs effects twice, so pass 1 armed the guard + started the fetch,
+      cleanup cancelled it, pass 2 returned early, and `loaded` was NEVER set. The login redirect
+      awaited `loaded` => **sign-in stopped navigating entirely** (caught only by driving a browser).
+      Use the ref to say WHICH load is current, never to skip an effect run; `cancelled` already
+      prevents applying a stale response.
+      **(b) A callback dependency that re-triggers itself.** `apply` closed over ThemeContext's
+      `setTheme`, recreated each ThemeProvider render — and `apply` changes the theme. In the dep
+      array, applying a preference re-ran the fetch that applied it. Held in a ref instead.
+    - **Rule for the sign-in path: CAP THE WAIT.** The login redirect waits briefly for preferences
+      so it can honour landingPage, then falls through to "/" on a timer. Sign-in must never depend
+      on a secondary fetch succeeding.
+    - ⚠️ **A projection that did not project** (fixes 0129): the API log showed `GetMyProfile` still
+      emitting `SELECT …, [u].[ProfilePicture]`. `!= null && Length > 0` is NOT translatable, so EF
+      pulled the whole varbinary(max) to evaluate `.Length` client-side — the exact cost the
+      projection existed to avoid. `!= null` alone translates. **READ THE GENERATED SQL; a
+      projection is not proof.**
+    - Verified in Chrome (CDP), Home: live theme preview; instant apply on save (dark + `lang=am` +
+      sidebar `ዳሽቦርድ`); and THE bug — reload with the localStorage theme cache **CLEARED** still
+      returns dark+am, proving it loads from the DB. HRMS SPA: after login and after a cache-cleared
+      reload, dark + am, from the row Home saved. Typecheck/lint clean both apps.
+    - ⚠️ FOUND IN THE DATA: `Core.UserPreference` holds rows for real users **`rojer(dr)b`** (system/en)
+      and **`tatekg`** (light/am) in tenant aadb4e82 — i.e. the reported symptom was tatekg's
+      light+Amharic being ignored. Their rows were left untouched; only demo's was used for testing
+      and it was restored.
+    - ⚠️ The HRMS SPA cannot call the Home API (Cors:AllowedOrigins lists only 5175) — correct, since
+      it reads preferences from its OWN API on 55900. A test that seeds via the portal API must do
+      so server-side (curl), not from the HRMS page.
+
+0129. **Header avatar: profile picture with initials fallback, updating instantly (2026-08-17).**
+    Home repo only, no migration. Commit `77f0ece`.
+    - Top-right account button renders the avatar when one exists, initials when not, and switches
+      the INSTANT a picture is saved or removed -- no reload.
+    - For that the shell must KNOW whether a picture exists, so the flag is carried on the SESSION,
+      not guessed: `LoginResultDto` and **`Auth/me` (the session probe)** both return
+      `profilePictureUrl` (relative route, or null). Without it on the PROBE the header would flash
+      initials on every page load before swapping to the image.
+    - `AuthContext` normalises that into an ABSOLUTE, cache-busted URL in ONE place
+      (`resolveProfilePicture` / `normalizeUser`), so every consumer just renders it or doesn't.
+      ⚠️ The `?v=` is load-bearing: the picture endpoint answers `private, max-age=300`, so a freshly
+      saved image would keep showing the OLD one for five minutes without it.
+    - The dialog pushes the new URL (or null on removal) into the session via `syncUser` on save --
+      that is what makes it instant. Sent ONLY when the picture was actually touched (`undefined`
+      means "leave it alone"), so an unrelated save does not clobber it.
+    - `<img onError>` falls back to initials. A REAL path, not belt-and-braces: the URL is minted
+      from a session flag, so it goes stale if the picture is removed in another tab, and a broken
+      image icon in the header is worse than initials.
+    - ⚠️ **PERF REGRESSION I INTRODUCED, now fixed.** `Core.User.ProfilePicture` is
+      **varbinary(max)**, so once it was mapped (0127) any `users.GetAll()` that MATERIALISED the
+      entity dragged the whole image along -- including **LOGIN**, which loaded every candidate's
+      blob just to compare a password hash. Login, `GetMyProfile` and `GetMyAccountProfile` now
+      PROJECT the columns they use (`HasProfilePicture = u.ProfilePicture != null && Length > 0`).
+      **Rule: never materialise Core.User; project.**
+    - Avatar route is now the shared const `AccountRoutes.ProfilePicture` so the sign-in payload,
+      the profile reads and the upload response cannot drift apart.
+    - Verified in Chrome (CDP): initials before; **image immediately after save with NO reload**;
+      image again after a full reload (proves the probe reports it); initials again after removing.
+      Screenshot reviewed. Typecheck, lint, build clean; demo's row restored to its original state.
+
+0128. **Edit Profile: save blocked, Cancel unescapable, failures invisible -- all three fixed
+    (2026-08-17).** Home repo only, no migration. Reproduced in a REAL browser before and after
+    (Chrome over CDP -- see below). Commit `fce6a5a`.
+    - **(1) Email was REQUIRED but 489 of 506 accounts have none.** Client and server both demanded
+      it, so those users could not save ANYTHING (not even a phone number) without inventing an
+      address. And the server's uniqueness check compared empty strings, so all 489 blanks collided
+      with each other -- it would have refused even if the client had allowed it. ⚠️ The schema
+      already said email is OPTIONAL: **`IX_User_NormalizedEmail` is UNIQUE but FILTERED to
+      `NormalizedEmail <> ''`**. **Read the INDEX before deciding a field is mandatory.** Now
+      optional, format checked only when supplied, uniqueness skips blanks.
+    - Same handler never maintained **NormalizedUserName / NormalizedEmail** -- the columns those
+      unique indexes actually enforce -- so a rename left them stale. Both now written alongside
+      the values they mirror; uniqueness checked against them.
+    - **(2) ⚠️ THE TOP LAYER -- why Cancel did nothing FOREVER.** `ui/modal.tsx` opens with
+      `<dialog>.showModal()` => browser TOP LAYER + everything outside it INERT. `DialogModal`
+      (and so `confirm()`) was a plain `fixed; z-index:100` portal => the discard prompt rendered
+      BEHIND the modal's own backdrop and could not be clicked => `await confirm(...)` never
+      settled => Cancel hung with no escape but a page reload. DialogModal is now a native
+      `<dialog>` too (dialogs stack in open order). **A z-index, however large, cannot beat the
+      top layer.**
+    - **(3) The same trap made every failure SILENT.** `Toaster` also portals into the normal
+      layer, so every toast raised while a modal was open -- including the save error naming the
+      exact problem -- was hidden behind the backdrop. Hence "nothing happens" instead of an error.
+      Toast stack is now `popover="manual"` (top layer WITHOUT making the page inert or taking
+      focus -- a second `<dialog>` would do both). Dialog ALSO shows the failure INLINE in its
+      footer, so feedback never depends on the toast layer alone.
+    - Cancel is **never disabled** now (was `disabled={busy}`, so a slow/hung save also locked the
+      only way out); the discard guard closes rather than stranding the user if it fails; auto-close
+      on success is guarded so the dialog's own `close` event cannot re-open the discard prompt.
+    - Also found while verifying: **`InputField` HARDCODED `layout="horizontal"`** into FieldShell,
+      which pins the label BESIDE the control for non-full-width fields -- so a form mixing widths
+      had labels above on some rows and beside on others (visible in the screenshots). Now forwards
+      `layout` as `SelectField` already did; default unchanged, no caller passed it.
+    - ⚠️ `sqlcmd` needs **`SET QUOTED_IDENTIFIER ON`** to UPDATE Core.User at all -- the filtered
+      index demands it. EF sets it by default, so this bites only hand-run SQL.
+    - **BROWSER HARNESS (reusable, zero npm):** Node 22 has a global `WebSocket`, so Chrome can be
+      driven over the DevTools Protocol with no packages -- launch with `--remote-debugging-port`,
+      connect to the page target, then `Runtime.evaluate` / `Input.dispatchMouseEvent` /
+      `Page.captureScreenshot` (base64 PNGs readable directly). Two rounds of diagnosis by
+      inspection had failed; this found it in one. ⚠️ `element.click()` does NOT open the header
+      dropdowns -- dispatch a real mouse event.
+    - Verified: save with empty email persists + dialog auto-closes; Cancel on a dirty form shows a
+      CLICKABLE confirm (hit-tested inside itself) and closes; duplicate username keeps the dialog
+      open with inline "That username is already taken." and Cancel enabled; toast confirmed
+      `:popover-open` and visible over the modal; screenshots reviewed for all three tabs.
+      Typecheck, lint and production build clean. Demo's test data restored.
+
+0127. **Edit Profile replaces Change Password in the HOME portal (2026-08-16).** Ported from
+    `D:/Workspace/CyberErp/CYBER_ERP_SRMS/SRMS-main` (`Web/src/components/UserAccountDialog.tsx` +
+    `AccountMenu.tsx` + `services/api/authService.ts`). Home repo only -- NO migration, NO HRMS change.
+    - Removed: `/password` page, its route + lazy import, `ChangePasswordModel`, and the
+      "Change Password" menu item. **The capability was NOT removed** -- password change moved into
+      the dialog's Security tab and still posts to the existing `auth/change-password`, which is
+      exactly how SRMS arranges it. `services/auth/changePassword.ts` is therefore KEPT.
+    - Added backend: `Features/Account/AccountProfile.cs` (8 slices), `AccountController`, and three
+      newly-mapped read-models -- `User` extended with the profile/security columns, plus
+      `UserPreference` and `LoginTrail` entities.
+    - Added frontend: `components/account/userAccountDialog.tsx` (3 tabs), `services/account/`,
+      `models/masters/AccountModel.ts`; `AuthContext` gained `syncUser`.
+    - ⚠️ **Deliberately NOT ported: the ADMIN half.** SRMS's dialog is three components in one --
+      it also CREATES users and EDITS other people's accounts (`createMode` / `targetUser` /
+      `platformMode`), which is why its endpoints are `/User/{id}/...` and why it carries a role
+      picker, employee combobox and account-status switches. The portal has no user administration
+      (SRMS owns it), so copying that shape would have put **every signed-in user one URL edit away
+      from reading and rewriting anyone else's profile**, behind UI that would itself be dead. Every
+      portal endpoint is a `me` route; `AccountController` takes NO user id. Admin editing, if ever
+      wanted, needs its own permission-gated slice -- not a widened parameter.
+    - Kept from SRMS: avatar crop to 512x512 JPEG, picture changes STAGED until Save, dirty-state
+      discard guard, live theme switching, security activity feed (4 + "View all").
+    - **No migration**: every column already existed on Core.User / Core.UserPreference /
+      Core.LoginTrail and the portal had simply never mapped them.
+    - ⚠️ TWO runtime-only traps, both of which BUILD CLEANLY (logic 12.22):
+      **(a)** `UserPreference.TenantId` is **nvarchar(900)**, not the uniqueidentifier the re-keyed
+      tables use -- it was never part of the 12.14 re-key. HomeDbContext's blanket
+      "convert every string TenantId to uniqueidentifier" loop had to SKIP it, or EF sends a Guid
+      parameter at an nvarchar column. **Check the COLUMN before trusting "every TenantId is a Guid".**
+      **(b)** `UserPreference.RowVersion` is **varbinary(8) NOT NULL, manually managed** -- the first
+      insert failed with "Cannot insert the value NULL into column 'RowVersion'". Fixed by extending
+      `SharedAudited`. **Any shared table the portal INSERTS into needs that base class**; read-only
+      ones (LoginTrail) do not.
+    - Smaller decisions: the avatar is served as an image STREAM with `Cache-Control: private,
+      max-age=300` (never base64 in JSON) and the SPA busts it with `?v=`; the upload uses RAW fetch
+      because the shared client forces `Content-Type: application/json` on any body and would break
+      the multipart boundary; "last successful login" is the newest SUCCESS, not the newest row.
+    - Verified end-to-end against the live DB: all 8 endpoints 200, BOTH preference branches
+      (insert + update), avatar upload/fetch/delete round-trip (67-byte PNG back byte-for-byte,
+      404 after delete), duplicate-username -> clean 400 (not 500), unauthenticated -> 401,
+      bad current password -> 400. API log ZERO errors. Frontend typecheck + lint + production
+      build all clean.
+    - ⚠️ NOT verified: the rendered dialog in a browser. No Playwright/Puppeteer in the repo and I
+      did not install one; port 5175 was already served by an existing dev server, which picks the
+      changes up by HMR. Backend + build are proven; the visual layout is not.
+
+0126. **Core.Subsystem made fully identical to SRMS -- SortOrder folded away, Url moved to
+    configuration (2026-08-16).** Migration `SrmsSubsystemDropSortOrderAndUrl`, APPLIED.
+    Columns 12 -> 10, indexes 53 -> 52, FKs unchanged at 9.
+    Backup: `D:/Backups/CERP_before-subsystem-drop-*.bak`.
+    - The table still had `SortOrder`, `Url` and a unique `IX_Subsystem_Name`; SRMS has none of the
+      three. All three dropped -- `Core.Subsystem` is now column-for-column and index-for-index
+      identical, verified by direct catalog comparison AND by `compare-schemas.ps1` (no Subsystem
+      row remains in ANY of its three sections).
+    - **SortOrder was a duplicate of DisplayOrder.** The blocker recorded at logic 12.16 -- that
+      DisplayOrder was all zeros while SortOrder held the real 0-5 values -- no longer holds:
+      DisplayOrder is now curated (1,1,2,3,3,5,7), so the drop needed NO data migration. Everything
+      that ordered by SortOrder now orders by DisplayOrder (HRMS `GetAllSubsystems`, Home
+      `GetMySubsystems`). Home maps the PROPERTY `SortOrder` to the `DisplayOrder` COLUMN, exactly
+      as it already did for `Module` five lines above -- the wire contract is unchanged.
+    - **Url moved to configuration rather than being deleted.** It held each subsystem app's address
+      (4 rows had one). A shared row CANNOT express it: these rows are shared across every
+      environment while the address DIFFERS by environment. Now `VITE_SUBSYSTEM_APPS`, a JSON
+      {code: appUrl} map keyed by Core.Subsystem.Code, matched case-insensitively, read by BOTH
+      SPAs. In Home it is the sibling of the existing `VITE_SUBSYSTEM_APIS` (that = where a
+      subsystem's SERVER is; this = where its SPA is) and reuses the same parser, which gained a
+      `varName` argument so its diagnostics name the right variable.
+    - The four addresses the column held were carried into `.env.development` in both SPAs, and
+      documented in both `.env.example`s.
+    - **No downstream edits were needed**: `getMySubsystems` stitches `url` back onto each subsystem
+      from the registry as the response is mapped, so launcher tiles, sidebar hrefs and
+      `openExternalSubsystem` still see the shape they always saw. That service is the ONE swap
+      point. HRMS's landing page resolves via a matching `appUrlFor(code)` in `appConfig.ts`.
+      `openExternalSubsystem`'s "not available" toast no longer points at the removed HRMS
+      Subsystems screen -- it names the env var.
+    - **IX_Subsystem_Name was deliberate and is now gone.** logic 12.16 kept it because losing it
+      lets a second row claim a name the launcher matches on (the duplicate-HOME bug that needed
+      `dedup-subsystem-rows.sql`). Complete parity means it goes. Exposure is lower -- that
+      duplicate came from PER-TENANT rows and TenantId is gone, and HRMS's Subsystem module is
+      read-only since 12.17 -- but **nothing in the database prevents a duplicate name now**.
+    - WARNING **`dotnet ef --no-build` lies about pending model changes.** `database update
+      --no-build` failed with "the model has pending changes -- add a new migration" immediately
+      after adding exactly that migration, and a probe migration re-emitted the SAME three
+      operations. That looks precisely like the known tools-9.0.5/runtime-10.0.8 snapshot drift and
+      invites the documented DriftProbe workaround. It was NEITHER: `--no-build` leaves the OLD
+      snapshot compiled in, so EF compares the live model against a stale one, and the probe --
+      comparing against that same stale snapshot -- reproduces the diff and "confirms" the wrong
+      conclusion. The tell: `migrations remove` named the PREVIOUS migration as the last one,
+      proving EF could not see the new files at all. Drop `--no-build`, rebuild, re-run: applied
+      first time. Use DriftProbe only after a real build has ruled this out.
+    - Verified: `Core.Subsystem` catalog IDENTICAL to SRMS (columns + indexes); harness COLUMNS 10 /
+      FKs 9 / INDEXES 52, no Subsystem entries; both backends build; both SPAs typecheck; HRMS
+      `Subsystem` endpoint 200 returning all 7 rows ordered by displayOrder.
+    - Home's read was verified with a THROWAWAY probe console app (deleted; `git status` clean),
+      because `GetMySubsystems` early-returns for tenants with no projected modules and the only
+      tenant I could sign into (`demo`) has none. It executed the real EF query against the real
+      database: generated SQL selects `DisplayOrder` and references NEITHER dropped column, 7 rows
+      returned. NOTE: two attempts to sign in as a headoffice user were blocked by the permission
+      classifier (they read as credential guessing), so the Home portal was NOT exercised end-to-end
+      through the browser -- the probe covers the schema/mapping risk, not the rendered launcher.
+
+0125. **SRMS dropped two TenantRole foreign keys -- CERP follows, projector compensates
+    (2026-08-16).** Migration `SrmsDropTenantRoleForeignKeys`, APPLIED. FKs 12 -> 9.
+    Backup: `D:/Backups/CERP_before-tenantrole-fks-*.bak`.
+    - Detected by `compare-schemas.ps1`: FK differences jumped 9 -> 12 while SRMS own FK count fell
+      27 -> 25. Confirmed directly on the three tables rather than trusting the diff. Three changes:
+      **(a)** `FK_TenantRole_Role_RoleId` renamed to **`FK_TenantRole_Role_SourceTemplateId`** -- SRMS
+      keeps the OLD property name in the constraint while the column is `RoleId`, the mirror image of
+      CERP, which renamed the column and let EF rename the key.
+      **(b)** `FK_TenantRolePermission_TenantRole_TenantRoleId` **dropped** (was CASCADE).
+      **(c)** `FK_TenantUserRole_TenantRole_TenantRoleId` **dropped** (was NO_ACTION).
+    - !! **THE CODE REFACTOR THAT MATTERS.** (b) was the CASCADE that cleaned up a deleted role's
+      grants, and (c) was what BLOCKED deleting a role someone still held. The projector deleted an
+      orphan TenantRole and let the database do the rest; with both keys gone that silently leaves
+      orphaned grants and assignments. `SyncRolesAsync` now deletes TenantRolePermission and
+      TenantUserRole children explicitly before removing the role.
+    - Two scaffold side-effects corrected: EF wanted to DROP `IX_TenantUserRole_TenantRoleId` (it
+      existed for the removed FK, and nothing else covers a lookup by that column -- kept explicitly,
+      since the new cleanup queries it) and to ADD a redundant `IX_TenantRolePermission_TenantRoleId`
+      (the composite unique index already leads with TenantRoleId -- dropped from the config).
+    - Verified: FKs 12 -> 9 with all three resolved, columns 12 and indexes 53 unchanged; HRMS 12
+      groups / 34 screens, my-clearances 200, Home HOME(21)/HRMS(13), 0 errors.
+
+0124. **UserRole.TenantId dropped -- membership projection removed, role resolution rewritten
+    (2026-08-15).** Migration `UserRoleDropTenantId`, APPLIED. Columns 13 -> 12.
+    Backup: `D:/Backups/CERP_before-userrole-tenantid-*.bak`.
+    - This was the one with NO derivation path: a UserRole row carries only UserId and RoleId, and
+      Core.User and Core.Role are both global, so once the column goes nothing in the database can
+      say which tenant an assignment belongs to. It could not be re-scoped -- only replaced.
+    - **`SyncMembershipsAsync` DELETED.** It created a TenantUser for every user in `assignments`;
+      with UserRole global that is a TenantUser in THIS tenant for every user of EVERY tenant. It
+      also had nothing left to project from: HRMS stopped writing Core.UserRole when the User Roles
+      screen went (handoff 0107), and SRMS writes TenantUser/TenantUserRole directly. Same reasoning
+      that retired the permission projection on 2026-08-13.
+    - **New `ICurrentUserRoles`** answers the two questions the six call sites actually asked, from
+      the tenant model (`TenantUser -> TenantUserRole -> TenantRole.RoleId`):
+      `GetTemplateRoleIdsAsync()` and `GetUserIdsInRolesAsync()`. Without it a multi-tenant user
+      would have passed an approver check using a role granted in a DIFFERENT tenant, and open-step
+      notifications would have been sent to other tenants role-holders.
+      Rewired: WorkflowApproverAuth (3 sites) + EmployeeTermination clearance approver checks (3).
+    - Verified: old and new resolution paths agree for hoadmin (1 role each); sidebar 12 groups /
+      34 screens; **my-clearances 200** (the rewritten path); Home feed HOME(21)/HRMS(13); 0 errors.
+
+0123. **Subsystem deduplicated and TenantId dropped (2026-08-15).** Migration
+    `SubsystemDropTenantId` + `backend/scripts/dedup-subsystem-rows.sql`, both APPLIED.
+    Backup: `D:/Backups/CERP_before-subsystem-dedup-*.bak`. Columns 14 -> 13.
+    - Subsystem rows had been created PER TENANT, so `HOME` existed twice: an EMPTY row for the
+      demo tenant and the NVI row owning all 4 modules / 8 tenant modules. Both carried
+      `Code = HOME`, which the Home SPA matches literally in five places.
+    - Dedup: the demo row is deleted and its single entitlement REPOINTED to the survivor, so demo
+      keeps its access rather than losing it. Verified 0 duplicate codes, **0 orphaned references**.
+    - ⚠️ The unique index `(TenantId, Name)` had to go with the column. Replaced with **unique on
+      `Name` alone** — all 7 names are distinct, so it is the same guarantee minus the dropped half.
+      SRMS has no index there at all; keeping one is deliberate, because losing it would let a
+      second row claim a name the launcher matches on.
+    - Verified: HRMS sidebar 12 groups / 34 screens, `Subsystem` now returns all **7** rows (global,
+      as intended), Home feed HOME(21)/HRMS(13), and — the check that matters — **exactly 1 row
+      matches `code === HOME`**. 0 translation errors.
+
+0122. **Three more TenantId columns dropped -- Organization, Setting, TenantUserRole (2026-08-15).**
+    Migration , APPLIED. Columns 17 -> 14.
+    - Organization and Setting were trivial: one row each, both already in , so
+      nothing had ever filtered on them.
+    -  needed one real fix. Its tenant is its TenantUser's, so the column goes --
+      but the projector's  set is used to DELETE assignments not in , and       only ever holds THIS tenant's pairs. Unscoped, the cleanup would have deleted **other tenants'
+      role assignments**.  is now filtered through this tenant's member ids.
+    - Home dropped the entity's TenantId, its , and the query filter for both
+      TenantRolePermission and TenantUserRole; its feed scopes through TenantUser, still filtered.
+    - Verified: HRMS 12 groups / 34 screens with all 12 group names intact, Home HOME(21)/HRMS(13),
+      0 translation errors in either log.
+    - ⚠️ ** NOT dropped -- there is no derivation path.** A UserRole row holds
+      only UserId and RoleId, and BOTH are global tables, so nothing can say which tenant an
+      assignment belongs to once the column goes.  creates a TenantUser for
+      every user in ; unscoped that is a cross-tenant membership leak, and there is
+      no join that would re-scope it. Dropping this one destroys information rather than
+      normalising it.
+    - ⚠️ ** NOT dropped** -- HOME is duplicated across 2 tenants (8 rows), so
+      going global surfaces both rows and needs dedup plus repointing Module / Operation /
+      TenantModule / TenantOperation / TenantSubSystem first.
+
+0121. ** DROPPED — the table is now column-identical (2026-08-15).**
+    Migration , APPLIED. Columns 18 -> 17.
+    - A grant's tenant is its ROLE's tenant now, exactly as SRMS models it.
+    - **No query needed re-scoping.** All four HRMS readers were already constrained by
+       or , both themselves tenant-scoped:
+       and  join from tenant tables,
+       filters on this tenant's role ids, and the projector's
+      delete is scoped to this tenant's operations. Home's feed reaches it through
+      TenantUser -> TenantUserRole, both still filtered.
+    - Added to  and removed Home's query filter + , in the
+      same change — the 409 trap.
+    - Verified: 570 grants intact, all resolving to a TenantRole AND a TenantOperation, deriving to
+      exactly 1 tenant. HRMS sidebar 12 groups / 34 screens, Home HOME(21)/HRMS(13), 0 errors.
+
+0120. **All three dimensions re-verified with a real harness (2026-08-15).**
+    New script: `backend/scripts/compare-schemas.ps1`. **No schema change.**
+    - After two false zeros I re-ran everything through one script that **asserts its load counts
+      before reporting**. These numbers are trustworthy because the harness proved it read rows:
+
+      | Dimension | Loaded (CERP / SRMS) | Differences |
+      |---|---|---|
+      | COLUMNS | 441 / 429 | **18** |
+      | FOREIGN KEYS | 32 / 27 | **9** |
+      | INDEXES + KEYS | 87 / 34 | **53** — every one a CERP-only EXTRA; 0 missing, 0 mismatched |
+
+    - The earlier column (18) and index (0 missing) results are **confirmed**; only the FK dimension
+      had been wrong, and it is now 9.
+    - The script fixes both root causes permanently: `COLLATE DATABASE_DEFAULT` on every concatenated
+      system column (the FK failure), and `STRING_AGG` instead of `FOR XML PATH` (the index failure).
+    - ⚠️ **The script is ASCII-only on purpose.** Windows PowerShell 5.1 reads a UTF-8 `.ps1` without
+      a BOM as ANSI, so an em-dash becomes `â€”` and breaks string parsing — the file failed to run
+      until every non-ASCII character was stripped.
+    - Use it before claiming parity: `& backend/scripts/compare-schemas.ps1`.
+
+0119. **`TenantRolePermission` FK name + ⚠️ MY FK AUDIT WAS FALSE (2026-08-15).** Detail in
+    logic.md §12.20. Migrations `SrmsForeignKeyNames` + `LoginTrailAndTenantModuleForeignKeys`.
+    - ⚠️ **RETRACTION: handoff 0117 and 0118 claimed "foreign keys diff to ZERO across all 30 shared
+      tables". THAT WAS FALSE.** The comparison query hit a **collation conflict**
+      (`Latin1_General_CI_AS_KS_WS` vs `SQL_Latin1_General_CP1_CI_AS` when concatenating `fk.name`
+      with `delete_referential_action_desc`), returned only an error, and the
+      `Where-Object { $_ -match '~' }` filter swallowed it — leaving two EMPTY dictionaries, which
+      compare as identical. **Second false zero this session from the same root cause: a harness that
+      returns nothing looks exactly like one that passes.** Fixed with `COLLATE DATABASE_DEFAULT`,
+      and every comparison now asserts its load count first.
+    - The real number was **13**. `Core.TenantRolePermission`'s was a NAME difference: SRMS calls it
+      `FK_TenantRolePermission_Operation_OperationId` — naming a column (`OperationId`) that exists
+      on neither side, left from when the table referenced `Core.Operation` directly. Renamed to
+      match, along with `TenantOperation`'s (`FK_TenantNavigationOperation_TenantModule_ModuleId`).
+    - Added the two FKs SRMS had and CERP lacked, both verified **0 orphans** first:
+      `LoginTrail.UserId → User` (SET NULL, so a deleted account leaves its audit trail) and
+      `TenantModule.TenantId → Tenant` — the latter in **raw SQL**, because EF cannot model a
+      relationship on the value-converted `TenantId` (same reason as the §12.16 FKs).
+    - **13 → 9.** The rest are judgment calls, not omissions — see logic.md §12.20.
+    - Verified: sidebar 12 groups / 34 screens, employee and subsystem reads 200. (A Hangfire job
+      retrying against a deleted `ReportSchedule` is pre-existing and unrelated.)
+
+0118. **The index comparison — and a harness that lied (2026-08-15).** Detail in logic.md §12.20.
+    Migration `SrmsConstraintNamesAndAlternateKeys`, APPLIED.
+    Backup: `D:/Backups/CERP_before-constraint-renames-20260815-031627.bak`.
+    - ⚠️ **THE FIRST RUN REPORTED "0 DIFFERENCES" AND WAS WRONG.** The query used `FOR XML PATH`
+      string-building; it returned nothing, the `Where-Object { $_ -match '~' }` filter swallowed the
+      empty result, and both dictionaries came back empty — which compares as identical. Caught only
+      by printing the loaded row counts. **A comparison that returns nothing looks exactly like a
+      comparison that passes: always assert the harness loaded data before trusting a zero.**
+    - The real answer was **69 differences**, in three groups:
+      **(a) 6 PRIMARY KEY NAMES** — SRMS calls them `PK_NavigationModule`, `PK_StandardRoleTemplate`,
+      `PK_SystemSetting`, `PK_TenantNavigationModule`, `PK_TenantModuleEntitlement`, and — confusingly
+      — `PK_Module` for **`Core.Subsystem`**. All renamed to match.
+      **(b) 4 alternate keys** SRMS declares (`AK_Tenant_Id_OrganizationId` and three like it) — added.
+      **(c) 53 CERP-only indexes** — **KEPT.** These are performance and uniqueness indexes
+      (`IX_User_UserName` from the performance pass, the notification indexes, unique business keys
+      like `IX_Tenant_Identifier`). Dropping them would regress performance and integrity.
+    - ⚠️ **`sp_rename`, not DropPrimaryKey/AddPrimaryKey.** EF scaffolds a rename as drop-then-add,
+      and SQL Server refuses to drop a PK that foreign keys reference ("The constraint
+      'PK_TenantModule' is being referenced by table 'TenantOperation'"). `sp_rename` renames in
+      place and leaves dependants intact.
+    - ⚠️ **Order matters:** `Core.Module`'s PK had to be renamed away *before* `Core.Subsystem` could
+      take the freed `PK_Module` name.
+    - **RESULT: every index and key SRMS has now exists in CERP with an identical definition** — 0
+      missing, 0 definition mismatches. Columns, foreign keys, indexes and keys all compared.
+    - Verified: sidebar 12 groups / 34 screens, employee/module/subsystem/lookup reads 200.
+
+0117. **`Tenant.TenantTypeId` foreign key + the FK/index audit I had MISSED (2026-08-15).**
+    Detail in logic.md §12.20. Migration `TenantTypeIdForeignKey`, APPLIED.
+    - ⚠️ **MY AUDIT HAD A HOLE.** Handoff 0114–0116 compared COLUMNS only — name, type, size,
+      nullability, default. It never compared **foreign keys or indexes**, so
+      `FK_Tenant_LookUpCategoryList` — present in SRMS, absent in CERP — was invisible to every
+      "remaining differences" count I reported. A column-level diff is not a schema diff.
+    - Added it: `Core.Tenant.TenantTypeId` → `Core.LookUpCategoryList`, same constraint name as SRMS,
+      Restrict. Safe — all three rows hold NULL, and NULLs are exempt.
+    - ⚠️ **RAW SQL, not the EF model, and the reason matters.** CERP has **TWO lookup systems**:
+      `Core.LookUpCategory/List` mirrors the SRMS platform schema, and `Hrms.LookUpCategory/List` is
+      the HRMS domain one the `LookupCategoryList` **entity maps** (education levels, fields of
+      study). Both exist, both empty, neither previously referenced by any FK. A tenant TYPE is
+      platform data, so the constraint must point at **Core** — mapping it through EF silently
+      scaffolded a foreign key to **`Hrms.LookUpCategoryList`**, the wrong table. Caught by reading
+      the scaffold before applying it.
+    - **SRMS needed no change** — it already had the FK, correctly.
+    - Ran the missing audit: **foreign keys now diff to ZERO** across all 30 shared tables, in both
+      directions. Indexes still uncompared (see §12.20).
+    - Verified: sidebar 12 groups / 34 screens, employee and lookup reads 200.
+
+0116. **`Core.Tenant` matched + the safe platform drops — 23 → 18 (2026-08-15).** Detail in
+    logic.md §12.20. Migrations `TenantDropTenantIdDiscriminator` +
+    `PlatformTablesDropTenantIdAndSettingPrecision`, APPLIED.
+    - **`Core.Tenant`: dropped `TenantId`** — its only difference. A tenant row carrying a tenant
+      DISCRIMINATOR was always meaningless: the row IS the tenant. `Core.Tenant` has been in
+      `IsGlobalEntity` from the start so nothing ever stamped or filtered it, and **all 3 rows held
+      the empty Guid**. `Core.Tenant` now diffs to ZERO.
+    - **Three empty platform tables** lost theirs too — `SubscriptionPlan`, `SubscriptionPlanModule`,
+      `OrganizationSubscription`, all **0 rows**, all platform-level rather than tenant data. Added
+      the latter two to `IsGlobalEntity` **in the same change** — the 409 "could not be translated"
+      trap from handoff 0110.
+    - `Setting.UpdatedAt` datetime2(7)→(3).
+    - ⚠️ **NOT dropped, deliberately:** `TenantSubscriptionAddOn.SubscribedTenantId`. Despite the
+      table being empty, it is a **real FK to Core.Tenant** recording which tenant holds the add-on.
+      SRMS lacking it is a gap there, not an extra here — dropping it would delete modelling to match
+      a less complete schema.
+    - ⚠️ **`Organization.TenantId` left alone too** — unlike Tenant's, its single row holds a REAL
+      value. Dropping it would discard data, so it needs a decision rather than a silent drop.
+    - Verified: sidebar 12 groups / 34 screens, employee/subsystem reads 200, **no translation
+      errors** (the IsGlobalEntity additions took).
+
+0115. **The 28 default constraints aligned — 50 → 23 (2026-08-15).** Detail in logic.md §12.20.
+    Migrations `SharedTableDefaultConstraintParity` + `SharedDefaultsFinalThree`, APPLIED.
+    - Four kinds: 8 CERP-only defaults REMOVED (Organization ×5, Role ×3), 9 SRMS defaults ADDED
+      (LoginTrail ×2, `Organization.FiscalYearStartMonth`, `Subsystem.Code`, `CanExport`,
+      UserPreference ×4), 6 CHANGED to SRMS's real values (`'en'`, `'dd/MM/yyyy'`, `'/'`,
+      `'1,234.56'`, `'system'`, `'Africa/Nairobi'`), 5 RESPELLED.
+    - ⚠️ **Three needed hand-written SQL because EF cannot express them:**
+      `Role.Code` carried an `(N'')` default from an **older migration the model never declared**, so
+      EF neither knew about it nor dropped it; `Subsystem.Code` is a spelling difference (EF always
+      emits `N''`, SRMS stores `''`); and `TenantRolePermission.CanExport` is the opposite —
+      `HasDefaultValue(false)` produces **nothing**, because `false` is the CLR default and EF
+      optimises it away. Written as a migration with an explicit `[Migration]` attribute, since a
+      hand-authored one is otherwise not discovered.
+    - Note: these defaults are effectively decorative — EF supplies every value on insert, so they
+      only matter to raw SQL. Aligned because the requirement is an identical catalog.
+    - **REMAINING 23, all load-bearing** (see logic.md §12.20): 14 `TenantId`, `Setting`'s audit
+      columns, `Subsystem.Url`/`SortOrder`, `SubscribedTenantId`, `User.CreatedAt`. None is safe to
+      apply without its own analysis.
+    - Verified: sidebar 12 groups / 34 screens, employee/subsystem/operation reads 200, no errors.
+
+0114. **`Core.TenantRole` matched + a database-wide schema audit (2026-08-15).** Detail in logic.md
+    §12.20. Migration `TenantRoleRoleIdAndUpdatedAtPrecision`, APPLIED.
+    Backup: `D:/Backups/CERP_before-timestamp-precision-20260815-020238.bak`.
+    - `TenantRole.SourceTemplateId` → column **`RoleId`** (SRMS's name), mapped with
+      `HasColumnName` so the property keeps the clearer name — "RoleId" on a table of roles reads
+      like a primary key. **`Core.TenantRole` now diffs to ZERO.**
+    - **Audit:** all 30 SRMS tables exist in CERP; comparing every column on name/type/size/
+      nullability/default found **65 differences**. Now **50**.
+    - ⚠️ **A blanket fix made it worse and was rolled back.** The convention gave nullable timestamps
+      `datetime2(7)` and non-nullable `(3)` — an accident of nullability. Changing it to `(3)`
+      everywhere fixed 16 columns and **broke 13** that SRMS keeps at `(7)`, net gain of 3 across a
+      **594-column** migration. Reverted; replaced with an explicit 17-entity list (32 columns).
+      SRMS is internally inconsistent here — the list mirrors its migration history, not a rule.
+    - **The remaining 50 are NOT safe to apply blindly** — see logic.md §12.20 for the breakdown.
+      Three would actively break things: dropping `Subsystem.Url` kills the Home launcher (built this
+      session), dropping `TenantId` from 10 tables removes isolation the runtime filters on, and
+      re-typing `TenantId` back to nvarchar on 5 tables would REVERSE the re-key from §12.14.
+    - ⚠️ **`Core.User.CreatedAt` has regressed in SRMS** — it is nullable there again. I made it NOT
+      NULL on 2026-08-14 (handoff 0105, `srms-fix-user-createdat-notnull.sql`). Fix in SRMS, not here.
+
+0113. **All four navigation tables now diff to ZERO — STAGE 2d (2026-08-15).** Detail in logic.md
+    §12.19. Migrations `OperationSubSystemIdAndDefaults` + `TenantModuleDropTemplateLink`, APPLIED.
+    - ⚠️ **My earlier "zero differences" check was incomplete** — it compared name/type/length/
+      nullability but NOT default constraints. Adding them surfaced 9 more, including a real one:
+      **SRMS had also dropped `Core.Operation.SubSystemId`** (same normalisation onto the module).
+    - Dropped `Operation.SubSystemId` and its FK (the misnamed `FK_Operation_Module_ModuleId`, which
+      constrained that column and cascaded — both problems gone with the column). The three readers
+      now take the subsystem from `Module`.
+    - `Operation.ModuleId` is nullable, matching SRMS: the CLR property became `Guid?`, which is what
+      I backed out of before. `Create` still rejects an empty Guid, so the app enforces what the
+      column permits.
+    - Dropped the **last template link**, `TenantModule.ModuleId`, now that `OperationId` has gone.
+      The projector keys groups on **(SubSystemId, Name)** — verified unique, 0 duplicates, all 24
+      rows resolve.
+    - Removed 6 leftover EF default constraints SRMS lacks, and respelled `Operation.IsActive`'s
+      default from `(CONVERT([bit],(1)))` to SRMS's `((1))`. EF will not drop defaults it never
+      declared, so these go via name-agnostic raw SQL.
+    - **RESULT: 0 differences across Module / Operation / TenantModule / TenantOperation** on column
+      name, type, size, nullability AND default. Only ordinal ORDER still differs (needs a rebuild).
+    - ⚠️ Home needed two follow-ups its build could not catch: its `Operation` entity still mapped
+      `SubSystemId` and its `TenantModule` still mapped `ModuleId`. Both compiled fine and failed at
+      runtime with **"Invalid column name"** — the portal feed 500'd. Mapped read-models drift
+      silently; only running the query finds it.
+    - Verified: HRMS 12 groups / 34 screens, Home HOME(21)/HRMS(13) — unchanged.
+
+0112. **`Core.TenantOperation` made identical to SRMS — STAGE 2c (2026-08-15).** Detail in
+    logic.md §12.19. Migration `TenantOperationSrmsParity`, APPLIED to CERP.
+    Backup: `D:/Backups/CERP_before-tenantoperation-parity-20260815-010639.bak`.
+    - **SRMS was restructured again**: it NORMALISED `TenantId`, `SubSystemId` and the template link
+      `OperationId` off the table — a screen's tenant and subsystem are its MODULE's now. All three
+      dropped here; `Filter` gained SRMS's `(N'')` default. **The table now diffs to ZERO.**
+    - ⚠️ **`TenantOperation` has no tenant discriminator at all.** It is listed in
+      `Repository.IsGlobalEntity` for that reason ONLY — `GetAll()` returns EVERY tenant's rows.
+      Callers must scope through `TenantModule` (the sidebar feed and the projector now do) or join
+      from a tenant-scoped grant (`EndpointPermissionService` and `WorkflowApproverAuth` already
+      did, by primary key, so they were correct as written).
+    - ⚠️ **The projector re-keys on (module, LINK)** now that `OperationId` is gone — verified 0
+      duplicate pairs across 144 rows. Its orphan sweep is scoped to this tenant's group ids; unscoped
+      it would delete other tenants' screens.
+    - ⚠️ Two constraints were added in RAW SQL earlier and EF does not model them, so the scaffold
+      missed both and the drop failed: the FK on `TenantId` and the default on `ModuleId`. The
+      migration removes them by name-agnostic lookup first.
+    - **CORRECTION to handoff 0111.** I justified keeping `OperationId` partly as "the join between
+      permissionGate's catalog and tenant grants". **That was wrong** — `permissionGate`,
+      `formPermissions`, `gridAction` and `useListPermissions` all match on **link**; the id is a
+      React key. Dropping it was far cheaper than I said.
+    - Verified: HRMS sidebar 12 groups / 34 screens, Home HOME(21)/HRMS(13) — both unchanged.
+    - ⚠️ **Deploy both repos together** (Home maps this table).
+
 0111. **`Core.TenantModule` created, menu groups moved into it — STAGE 2b (2026-08-15).**
     Detail in logic.md §12.19. Migration `TenantModuleAndOperationGroups`, APPLIED to CERP.
     Backup: `D:\Backups\CERP_before-tenantmodule-20260815-001623.bak` (first destructive step).
@@ -3061,6 +3829,16 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **Root URL `/` returns 404 by design** — real endpoints are `/api/v1/...` (401 without auth) and `/swagger`.
 
 ## 4. Gotchas that will bite (hard-won)
+
+- **⚠️ `Core.Subsystem.Code` is a JOIN KEY, not a label.** The Home portal's frontend matches it
+  literally in five places — `useMenuModules` (the sidebar filter), `portalLanding`, `widgets`,
+  `dashboard` and `services/portal`. Renaming the NVI tenant's Home row to code `003` left the portal
+  **loading fine with an empty sidebar**: login 200, feed 200, all 21 screens returned, nothing
+  matched. A working API and a broken UI at once. Restored by
+  `backend/scripts/restore-home-subsystem-code.sql` (2026-08-15). **`Name` is safe to change — it is
+  only displayed. `Code` is not.**
+- **Subsystem rows are duplicated PER TENANT**, so two rows can share a code without colliding — the
+  table is tenant-filtered. `9FC9447D…` is demo's Home, `B7340E07…` is NVI's.
 
 - **Before deleting a menu operation, grep its link in `[RequirePermission]`.** `EndpointPermissionService`
   matches a required link against the caller's GRANTED operation links, so a key whose operation no

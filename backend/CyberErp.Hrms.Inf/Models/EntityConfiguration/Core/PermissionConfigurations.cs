@@ -21,16 +21,16 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // Core.TenantModule.
             builder.Ignore(m => m.TenantId);
 
-            builder.HasKey(m => m.Id);
+            builder.HasKey(m => m.Id).HasName("PK_NavigationModule");   // SRMS's constraint name
 
             // Lengths and nullability match cybererp_srms exactly (2026-08-15): nvarchar(100) /
             // nvarchar(200) / nvarchar(100), all NOT NULL. The longest module name is 29 characters,
             // so narrowing Name and Icon from 200 loses nothing.
             builder.Property(m => m.Name).IsRequired().HasMaxLength(100);
-            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100).HasDefaultValue(string.Empty);
-            builder.Property(m => m.Filter).IsRequired().HasMaxLength(200).HasDefaultValue(string.Empty);
-            builder.Property(m => m.DisplayOrder).HasDefaultValue(0);   // was SortOrder
-            builder.Property(m => m.IsActive).IsRequired().HasDefaultValue(true);
+            builder.Property(m => m.Icon).IsRequired().HasMaxLength(100);
+            builder.Property(m => m.Filter).IsRequired().HasMaxLength(200);
+            builder.Property(m => m.DisplayOrder);   // was SortOrder — no DB default, as in SRMS
+            builder.Property(m => m.IsActive).IsRequired();
 
             // SRMS spells the column SubSystemId (capital S), as Core.Operation already does here.
             // Mapped rather than renamed so the C# property stays SubsystemId across the codebase.
@@ -61,13 +61,19 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("Subsystem", "Core");
 
-            builder.HasKey(s => s.Id);
+            // ⚠️ SRMS calls this PK_Module — a leftover from when its SubSystem entity was named
+            // Module. Copied verbatim for catalog parity; it collides with nothing because CERP's
+            // own Module PK is renamed to PK_NavigationModule in the same migration.
+            builder.HasKey(s => s.Id).HasName("PK_Module");
 
             builder.Property(s => s.Name).IsRequired().HasMaxLength(100);
-            builder.Property(s => s.Code).IsRequired().HasMaxLength(50);
-            builder.Property(s => s.SortOrder).HasDefaultValue(0);
-            // Where the subsystem's app lives — the Home portal's launcher tiles deep-link here.
-            builder.Property(s => s.Url).HasMaxLength(400);
+            builder.Property(s => s.Code).IsRequired().HasMaxLength(50).HasDefaultValue(string.Empty);
+
+            // ⚠️ SortOrder and Url are GONE (2026-08-16) — SRMS has neither, and this table is now
+            // column-for-column identical to it. SortOrder duplicated DisplayOrder, which survives.
+            // Url held each subsystem app's address; that is deployment configuration, not shared
+            // tenant data, so both SPAs resolve it from VITE_SUBSYSTEM_APPS keyed by Code. See the
+            // remarks on the Subsystem entity before adding either back.
 
             // SRMS platform alignment (2026-08-14, logic.md §12.13). The six columns SRMS carries
             // that CERP lacked; defaults keep existing rows and new inserts valid without a value.
@@ -78,7 +84,17 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(s => s.IsActive).IsRequired().HasDefaultValue(true);
             builder.Property(s => s.LandingPath).IsRequired().HasMaxLength(250).HasDefaultValue(string.Empty);
 
-            builder.HasIndex(s => new { s.TenantId, s.Name }).IsUnique();
+            // ⚠️ TenantId is GONE (2026-08-15) — SRMS has none. Subsystem rows had been created PER
+            // TENANT, which is why HOME existed twice; the duplicate was merged away first by
+            // scripts/dedup-subsystem-rows.sql. The catalogue is one global list now.
+            builder.Ignore(s => s.TenantId);
+
+            // ⚠️ NO index on Name. IX_Subsystem_Name was dropped on 2026-08-16 so this table matches
+            // SRMS exactly — SRMS has no index here at all. It had guarded against a second row
+            // claiming a name the launcher matches on; nothing enforces that now. The exposure is
+            // small because the duplicate it originally cleaned up (HOME twice) came from the
+            // per-tenant rows, and TenantId is gone, and HRMS's Subsystem module is read-only —
+            // SRMS owns writes to this catalogue. A duplicate can now only come from a manual insert.
         }
     }
 
@@ -117,21 +133,13 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.NoAction);
             builder.Navigation(o => o.Module).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-            // ⚠️ The subsystem FK is CASCADE and is called FK_Operation_Module_ModuleId — both
-            // copied from SRMS verbatim, per the "identical structure" requirement. The name is a
-            // MISNOMER there (a leftover from a rename; it constrains SubSystemId, not ModuleId) and
-            // the cascade means deleting a subsystem takes its whole menu with it, which CERP
-            // previously refused with Restrict. Kept identical deliberately — do not "fix" either
-            // without changing SRMS first, or the databases diverge again.
-            builder.HasOne<Subsystem>()
-                .WithMany()
-                .HasForeignKey(o => o.SubSystemId)
-                .HasConstraintName("FK_Operation_Module_ModuleId")
-                .OnDelete(DeleteBehavior.Cascade);
-
+            // ⚠️ SubSystemId is GONE (2026-08-15). SRMS normalised it onto Core.Module, so a screen's
+            // subsystem is its module's — read it through the Module navigation. Its foreign key went
+            // with it: that was the one confusingly named FK_Operation_Module_ModuleId, which
+            // constrained SubSystemId rather than ModuleId and cascaded. Both problems solved by the
+            // column no longer existing.
             builder.HasIndex(o => o.ModuleId);
-            builder.HasIndex(o => o.SubSystemId);
-            builder.HasIndex(o => new { o.SubSystemId, o.ModuleId, o.DisplayOrder });
+            builder.HasIndex(o => new { o.ModuleId, o.DisplayOrder });
         }
     }
 

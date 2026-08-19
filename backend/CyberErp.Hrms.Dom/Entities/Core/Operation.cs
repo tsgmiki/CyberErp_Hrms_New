@@ -14,8 +14,9 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
  * modules across USING THEIR OWN Ids: every parent operation's Id already equalled its module's, so
  * all 144 children were already pointing at a valid Core.Module row.
  *
- * The 24 parent rows were REMOVED on 2026-08-15 once Core.TenantModule existed to hold the tenant
- * copies of the groups, so ModuleId is NOT NULL here exactly as it is in SRMS.
+ * The 24 group rows were REMOVED on 2026-08-15 once Core.TenantModule existed to hold the tenant
+ * copies. `SubSystemId` went too: SRMS normalised it onto the module, so a screen's subsystem is
+ * its module's.
  *
  * `TenantId` is KEPT, unlike SRMS — see the note on User.
  */
@@ -24,17 +25,12 @@ public class Operation : BaseEntity
     /// <summary>
     /// The Core.Module this screen belongs to.
     ///
-    /// <para>⚠️ CERP has this NOT NULL; SRMS leaves it nullable (holding 0 nulls, as CERP does).
-    /// This is the one place the two schemas deliberately differ on a shared column, and CERP is the
-    /// STRICTER side — it can hold anything SRMS can. Matching SRMS exactly would mean making the
-    /// CLR property <c>Guid?</c>, since EF refuses to map a nullable column to a non-nullable Guid,
-    /// and that would reintroduce null handling everywhere for no gain now that groups live in
-    /// Core.Module.</para>
+    /// <para>Nullable to match cybererp_srms exactly, which never tightened it (0 nulls there, 0
+    /// here). Nothing in this codebase can create a screen without a module — <see cref="Create"/>
+    /// rejects an empty Guid — so the application enforces what the column permits.</para>
     /// </summary>
-    public Guid ModuleId { get; private set; }
+    public Guid? ModuleId { get; private set; }
 
-    /// <summary>The subsystem this screen belongs to; denormalised from its module.</summary>
-    public Guid SubSystemId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     /// <summary>The route the screen grants, e.g. "/employee".</summary>
     public string Link { get; private set; } = string.Empty;
@@ -58,7 +54,6 @@ public class Operation : BaseEntity
         string filter,
         string icon,
         int displayOrder = 0,
-        Guid? subSystemId = null,
         bool isActive = true)
     {
         if (moduleId == Guid.Empty)
@@ -73,7 +68,6 @@ public class Operation : BaseEntity
         return new Operation
         {
             ModuleId = moduleId,
-            SubSystemId = subSystemId ?? Guid.Empty,
             Name = name,
             Link = link,
             Filter = filter,
@@ -90,8 +84,7 @@ public class Operation : BaseEntity
         string link,
         string filter,
         string icon,
-        int? displayOrder = null,
-        Guid? subSystemId = null)
+        int? displayOrder = null)
     {
         if (moduleId == Guid.Empty)
             throw new ArgumentException("Module ID cannot be empty.", nameof(moduleId));
@@ -109,16 +102,6 @@ public class Operation : BaseEntity
         Icon = icon;
         if (displayOrder.HasValue)
             DisplayOrder = displayOrder.Value;
-        if (subSystemId.HasValue)
-            SubSystemId = subSystemId.Value;
-        base.Update();
-    }
-
-    /// <summary>Keeps the denormalised subsystem in step when the row moves to another parent.</summary>
-    public void SetSubSystem(Guid subSystemId)
-    {
-        if (SubSystemId == subSystemId) return;
-        SubSystemId = subSystemId;
         base.Update();
     }
 

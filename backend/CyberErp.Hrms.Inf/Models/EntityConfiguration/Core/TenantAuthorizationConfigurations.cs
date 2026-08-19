@@ -22,6 +22,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("TenantRole", "Core");
             builder.HasKey(r => r.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(r => new { r.Id, r.TenantId }).HasName("AK_TenantRole_Id_TenantId");
 
             builder.Property(r => r.Code).IsRequired().HasMaxLength(80);
             builder.Property(r => r.Name).IsRequired().HasMaxLength(100);
@@ -29,8 +31,16 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
 
             // The template is a soft link: deleting a global Role must not delete tenants' instances,
             // which may since have been customised.
+            // The constraint NAME is SRMS's: it still says SourceTemplateId even though the column is
+            // RoleId — the mirror image of CERP, which renamed the column and let EF rename the key.
             builder.HasOne<Role>().WithMany()
-                .HasForeignKey(r => r.SourceTemplateId).OnDelete(DeleteBehavior.SetNull);
+                .HasForeignKey(r => r.SourceTemplateId)
+                .HasConstraintName("FK_TenantRole_Role_SourceTemplateId")
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // SRMS names this column RoleId; the property stays SourceTemplateId because "RoleId" on
+            // a table of roles reads like a primary key. Mapped, not renamed (2026-08-15).
+            builder.Property(r => r.SourceTemplateId).HasColumnName("RoleId");
 
             builder.HasIndex(r => new { r.TenantId, r.Code }).IsUnique();
         }
@@ -45,7 +55,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<TenantModule> builder)
         {
             builder.ToTable("TenantModule", "Core");
-            builder.HasKey(m => m.Id);
+            builder.HasKey(m => m.Id).HasName("PK_TenantNavigationModule");   // SRMS's name
 
             builder.Property(m => m.Name).IsRequired().HasMaxLength(200);
             builder.Property(m => m.Icon).IsRequired().HasMaxLength(100);
@@ -55,13 +65,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.HasOne<Subsystem>().WithMany()
                 .HasForeignKey(m => m.SubSystemId).OnDelete(DeleteBehavior.Restrict);
 
-            // ModuleId is the CERP-only template link (see the entity note). Restrict, so deleting a
-            // template module cannot silently orphan a tenant's group.
-            builder.HasOne<Module>().WithMany()
-                .HasForeignKey(m => m.ModuleId).OnDelete(DeleteBehavior.Restrict);
-
-            // One copy per (tenant, source module) — the same rule TenantOperation uses.
-            builder.HasIndex(m => new { m.TenantId, m.ModuleId }).IsUnique();
+            // No template link — SRMS keeps none. A copy is keyed to its template by
+            // (SubSystemId, Name), which is unique in both tables.
+            builder.HasIndex(m => new { m.TenantId, m.SubSystemId, m.Name }).IsUnique();
         }
     }
 
@@ -75,21 +81,26 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(o => o.Name).IsRequired().HasMaxLength(200);
             builder.Property(o => o.Link).IsRequired().HasMaxLength(500);
             builder.Property(o => o.Icon).IsRequired().HasMaxLength(100);
-            builder.Property(o => o.Filter).IsRequired().HasMaxLength(500);
+            builder.Property(o => o.Filter).IsRequired().HasMaxLength(500).HasDefaultValue(string.Empty);
             builder.Property(o => o.UpdatedAt).HasColumnType("datetime2(3)");
 
-            builder.HasOne<Operation>().WithMany()
-                .HasForeignKey(o => o.OperationId).OnDelete(DeleteBehavior.Restrict);
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: the tenant lives on the GROUP, and a
+            // screen's tenant is its module's. Nothing here can be filtered by tenant directly —
+            // see the warning in Repository.IsGlobalEntity.
+            builder.Ignore(o => o.TenantId);
 
             // ModuleId now points at the TENANT's group, not the global module, and is NOT NULL:
             // every row here is a screen since groups moved to TenantModule (2026-08-15).
+            // SRMS's constraint name, from its TenantNavigationOperation era.
             builder.HasOne<TenantModule>().WithMany()
-                .HasForeignKey(o => o.ModuleId).OnDelete(DeleteBehavior.NoAction);
+                .HasForeignKey(o => o.ModuleId)
+                .HasConstraintName("FK_TenantNavigationOperation_TenantModule_ModuleId")
+                .OnDelete(DeleteBehavior.NoAction);
 
-            // One instance per (tenant, source operation).
-            builder.HasIndex(o => new { o.TenantId, o.OperationId }).IsUnique();
+            // One copy per (module, link) — the natural key now that OperationId is gone.
+            builder.HasIndex(o => new { o.ModuleId, o.Link }).IsUnique();
             // The permission check resolves by LINK, so that lookup gets its own index.
-            builder.HasIndex(o => new { o.TenantId, o.Link });
+            builder.HasIndex(o => o.Link);
         }
     }
 
@@ -100,12 +111,29 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantRolePermission", "Core");
             builder.HasKey(p => p.Id);
 
-            builder.HasOne<TenantRole>().WithMany()
-                .HasForeignKey(p => p.TenantRoleId).OnDelete(DeleteBehavior.Cascade);
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: a grant's tenant is its ROLE's tenant.
+            // Every reader was already constrained by TenantRoleId or TenantOperationId, both of
+            // which are themselves tenant-scoped, so no query needed re-scoping. But the entity MUST
+            // be listed in Repository.IsGlobalEntity, or the tenant filter references an unmapped
+            // member and every read fails with a 409 "could not be translated".
+            builder.Ignore(p => p.TenantId);
+
+            // ⚠️ NO foreign key to TenantRole. SRMS dropped it, so CERP does too (2026-08-15) — and
+            // it was the CASCADE that used to clean up a deleted role's grants. The database no
+            // longer does that, so TenantAuthorizationProjector deletes the children explicitly
+            // before removing an orphan role. Do not rely on the database here.
+            //
+            // No index is added for the lost FK: IX_TenantRolePermission_TenantRoleId_TenantOperationId
+            // already leads with TenantRoleId, so lookups by role are covered.
             // NoAction on the second leg: two cascade paths into the same table is a multiple-cascade
             // -path error in SQL Server, and the role side is the one that should cascade.
+            // ⚠️ SRMS calls this FK_TenantRolePermission_Operation_OperationId — a name that refers
+            // to a column (OperationId) existing on neither side, left over from when the table
+            // referenced Core.Operation directly. Copied verbatim for catalog parity.
             builder.HasOne<TenantOperation>().WithMany()
-                .HasForeignKey(p => p.TenantOperationId).OnDelete(DeleteBehavior.NoAction);
+                .HasForeignKey(p => p.TenantOperationId)
+                .HasConstraintName("FK_TenantRolePermission_Operation_OperationId")
+                .OnDelete(DeleteBehavior.NoAction);
 
             builder.HasIndex(p => new { p.TenantRoleId, p.TenantOperationId }).IsUnique();
         }
@@ -117,6 +145,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         {
             builder.ToTable("TenantUser", "Core");
             builder.HasKey(u => u.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(u => new { u.Id, u.TenantId }).HasName("AK_TenantUser_Id_TenantId");
 
             builder.Property(u => u.Status).IsRequired().HasMaxLength(30);
 
@@ -135,12 +165,25 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.ToTable("TenantUserRole", "Core");
             builder.HasKey(r => r.Id);
 
+            // ⚠️ TenantId is GONE (2026-08-15), matching SRMS: the row's tenant is its TenantUser's.
+            // Listed in Repository.IsGlobalEntity, so GetAll() spans every tenant — the projector's
+            // `held` set is scoped through this tenant's members for exactly that reason. Without
+            // that scoping its cleanup would delete OTHER tenants' role assignments.
+            builder.Ignore(r => r.TenantId);
+
             builder.Property(r => r.AssignedBy);   // uniqueidentifier, as in SRMS
 
             builder.HasOne<TenantUser>().WithMany()
                 .HasForeignKey(r => r.TenantUserId).OnDelete(DeleteBehavior.Cascade);
-            builder.HasOne<TenantRole>().WithMany()
-                .HasForeignKey(r => r.TenantRoleId).OnDelete(DeleteBehavior.NoAction);
+            // ⚠️ NO foreign key to TenantRole — SRMS dropped it (2026-08-15). It used to BLOCK
+            // deleting a role that someone still held; now nothing does, so the projector removes
+            // these rows itself before deleting an orphan role.
+            //
+            // The index is kept EXPLICITLY. EF created it for the foreign key and would drop it with
+            // the relationship, but nothing else covers a lookup by TenantRoleId here
+            // (IX_TenantUserRole_TenantUserId_TenantRoleId leads with TenantUserId), and the
+            // projector's cleanup queries exactly that column.
+            builder.HasIndex(r => r.TenantRoleId);
 
             builder.HasIndex(r => new { r.TenantUserId, r.TenantRoleId }).IsUnique();
         }
@@ -151,7 +194,7 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<TenantSubSystem> builder)
         {
             builder.ToTable("TenantSubSystem", "Core");
-            builder.HasKey(s => s.Id);
+            builder.HasKey(s => s.Id).HasName("PK_TenantModuleEntitlement");   // SRMS's name
 
             builder.Property(s => s.SourceType).IsRequired().HasMaxLength(30);
             builder.Property(s => s.Status).IsRequired().HasMaxLength(30);

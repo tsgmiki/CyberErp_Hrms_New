@@ -9,6 +9,14 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         public void Configure(EntityTypeBuilder<Tenant> builder)
         {
             builder.HasKey(t => t.Id);
+            // SRMS declares this alternate key so composite foreign keys can target it.
+            builder.HasAlternateKey(t => new { t.Id, t.OrganizationId }).HasName("AK_Tenant_Id_OrganizationId");
+
+            // ⚠️ TenantId is GONE (2026-08-15). A tenant row carrying a tenant DISCRIMINATOR was
+            // always meaningless — the row IS the tenant, and Core.Tenant has been in
+            // Repository.IsGlobalEntity from the start, so nothing ever stamped or filtered it. All
+            // three rows held the empty Guid. SRMS has no such column.
+            builder.Ignore(t => t.TenantId);
 
             builder.Property(t => t.Name)
                 .IsRequired()
@@ -24,6 +32,17 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
             builder.HasIndex(t => t.OrganizationId);
 
+            /*
+             * TenantTypeId references Core.LookUpCategoryList — the PLATFORM lookup table, the one
+             * SRMS constrains with FK_Tenant_LookUpCategoryList.
+             *
+             * ⚠️ NOT mapped through EF, and that is deliberate. CERP has TWO lookup systems:
+             * Core.LookUpCategory/List mirrors the SRMS platform schema, and Hrms.LookUpCategory/List
+             * is the HRMS domain one the LookupCategoryList ENTITY maps (education levels, fields of
+             * study). A tenant TYPE is platform data, so the constraint has to point at the Core
+             * table — which EF cannot express while the entity maps the Hrms one. Added in raw SQL by
+             * the TenantTypeIdForeignKey migration instead.
+             */
             builder.Property(t => t.TenantTypeId);
             builder.Property(t => t.CurrencyOverride);
             builder.Property(t => t.LocaleOverride);

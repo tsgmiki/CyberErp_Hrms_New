@@ -182,6 +182,10 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();
             services.AddScoped<IGetAllEmployees, GetAllEmployees>();
             services.AddScoped<IGetMyEmployee, GetMyEmployee>();
+            // Display preferences (read-only here — the Home portal owns editing them).
+            services.AddScoped<
+                Features.Core.UserPreferences.IGetMyPreferences,
+                Features.Core.UserPreferences.GetMyPreferences>();
             services.AddScoped<IGetMyProfile, GetMyProfile>();
             services.AddScoped<IUpdateMyProfile, UpdateMyProfile>();
             services.AddScoped<IGetProfileChangeFields, GetProfileChangeFields>();
@@ -708,6 +712,9 @@ namespace CyberErp.Hrms.App
 
             // Per-operation endpoint authorization (enforces RolePermission.CanView on [RequirePermission] actions)
             services.AddScoped<Common.Authorization.IEndpointPermissionService, Common.Authorization.EndpointPermissionService>();
+            // Resolves the caller's TEMPLATE role ids from the tenant model. Scoped, so its per-request
+            // memoisation holds for the whole request.
+            services.AddScoped<Common.Authorization.ICurrentUserRoles, Common.Authorization.CurrentUserRoles>();
             services.AddScoped<Common.Authorization.ITenantAuthorizationProjector, Common.Authorization.TenantAuthorizationProjector>();
             services.AddScoped<Features.Core.Settings.IGetSetting, Features.Core.Settings.GetSetting>();
             services.AddScoped<Features.Core.Settings.ISaveSetting, Features.Core.Settings.SaveSetting>();

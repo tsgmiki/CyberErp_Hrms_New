@@ -13,7 +13,9 @@ import { useSignals } from "@preact/signals-react/runtime";
  */
 export function useMenuModules() {
   useSignals();
-  const selectedSubsystem = store.ModuleData.value.name;
+  // The ABBREVIATION, not the display name — see store/module.tsx. Empty when the user came
+  // straight from the Home portal, in which case the sidebar falls back to its own subsystem.
+  const selectedSubsystem = store.ModuleData.value.abbreviation;
 
   const { data: modules, isLoading } = useQuery({
     queryKey: ["moduleWithOperations"],

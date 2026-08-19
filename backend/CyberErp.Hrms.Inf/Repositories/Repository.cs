@@ -58,9 +58,22 @@ namespace CyberErp.Hrms.Inf.Repositories
         // an unmapped member. That surfaces as a 409 on a plain GET with "could not be translated",
         // which reads like a concurrency conflict and is not one. "Module" joined the list on
         // 2026-08-15 when it lost TenantId; "Operation" for the same reason on 2026-08-13.
+        // ⚠️⚠️ "TenantOperation" IS NOT GLOBAL DATA — it is listed here only because SRMS parity
+        // removed its TenantId column (2026-08-15). The tenant lives on Core.TenantModule now, so a
+        // screen's tenant is its module's. That means GetAll() on this ONE entity returns EVERY
+        // TENANT'S ROWS, and it is the caller's job to constrain them:
+        //
+        //   * join TenantModule (the sidebar feed does), or
+        //   * join from TenantRolePermission / TenantUser, which are still tenant-scoped and
+        //     constrain by primary key (the permission service and workflow approver check do).
+        //
+        // A bare `tenantOperations.GetAll().Where(...)` is a CROSS-TENANT READ. Anything that
+        // enumerates or DELETES rows must scope through the group first — see SyncOperationsAsync.
         private static bool IsGlobalEntity(Type t) =>
             t.Name is "Tenant" or "SubscriptionPlan" or "LookupCategory" or "LookupCategoryList"
-                   or "User" or "Role" or "Operation" or "Module" or "Organization" or "Setting";
+                   or "User" or "Role" or "Operation" or "Module" or "Organization" or "Setting"
+                   or "TenantOperation" or "OrganizationSubscription" or "SubscriptionPlanModule"
+                   or "TenantRolePermission" or "TenantUserRole" or "Subsystem" or "UserRole";
 
         private IQueryable<T> ApplyTenantFilter(IQueryable<T> query)
         {

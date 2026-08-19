@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.Dom.Constants;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -90,6 +91,22 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return links.Select(Normalize).ToHashSet();
         }
 
-        private static string Normalize(string s) => (s ?? string.Empty).TrimStart('/').ToLowerInvariant();
+        /// <summary>
+        /// Reduces a link to its comparison key: no leading slash, lower case, and WITHOUT this
+        /// subsystem's catalogue namespace.
+        ///
+        /// <para>⚠️ The namespace matters. Operation links are stored namespaced by their owning
+        /// subsystem (<c>/hrms/setting</c>), because one catalogue serves them all; the links declared
+        /// on <see cref="RequirePermissionAttribute"/> are bare (<c>"setting"</c>). Comparing the two
+        /// verbatim never matches, so EVERY gated endpoint answered 403 to callers who did hold the
+        /// grant. Both sides come through here.</para>
+        /// </summary>
+        private static string Normalize(string s)
+        {
+            var key = (s ?? string.Empty).TrimStart('/').ToLowerInvariant();
+            return key.StartsWith(Subsystems.LinkNamespace, StringComparison.Ordinal)
+                ? key[Subsystems.LinkNamespace.Length..]
+                : key;
+        }
     }
 }

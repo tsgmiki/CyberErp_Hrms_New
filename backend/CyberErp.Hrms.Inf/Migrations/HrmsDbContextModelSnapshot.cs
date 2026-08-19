@@ -4115,7 +4115,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -6406,8 +6406,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("EventType")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Login");
 
                     b.Property<string>("FailureReason")
                         .HasMaxLength(500)
@@ -6432,7 +6434,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -6446,14 +6448,20 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("UserNameAttempted")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("nvarchar(200)")
+                        .HasDefaultValue("");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Date");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "Date")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_LoginTrail_UserId_Date");
 
                     b.HasIndex("UserNameAttempted", "EventType");
 
@@ -6491,7 +6499,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -6538,7 +6546,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -7104,28 +7112,20 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("DisplayOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
+                        .HasColumnType("int");
 
                     b.Property<string>("Filter")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Icon")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
+                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -7147,7 +7147,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("PK_NavigationModule");
 
                     b.HasIndex("SubsystemId");
 
@@ -7256,7 +7257,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<Guid>("ModuleId")
+                    b.Property<Guid?>("ModuleId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Name")
@@ -7269,9 +7270,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<Guid>("SubSystemId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2(3)");
 
@@ -7282,9 +7280,7 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasIndex("ModuleId");
 
-                    b.HasIndex("SubSystemId");
-
-                    b.HasIndex("SubSystemId", "ModuleId", "DisplayOrder");
+                    b.HasIndex("ModuleId", "DisplayOrder");
 
                     b.ToTable("Operation", "Core");
                 });
@@ -7320,9 +7316,7 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Currency")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("nchar(3)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nchar(3)");
 
                     b.Property<string>("DataRetentionPolicy")
                         .HasMaxLength(1000)
@@ -7330,31 +7324,29 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("DateFormat")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("DefaultLanguage")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("en");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<int>("FiscalYearStartMonth")
-                        .HasColumnType("int");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("Industry")
                         .HasMaxLength(150)
@@ -7370,10 +7362,8 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Locale")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<byte[]>("Logo")
                         .HasColumnType("varbinary(max)");
@@ -7439,18 +7429,13 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Timezone")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -7511,16 +7496,16 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("SubscriptionPlanId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "OrganizationId")
+                        .HasName("AK_OrganizationSubscription_Id_OrganizationId");
 
                     b.HasIndex("OrganizationId");
 
@@ -9693,15 +9678,11 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)")
-                        .HasDefaultValue("");
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsPlatformRole")
                         .ValueGeneratedOnAdd()
@@ -9719,12 +9700,13 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("varbinary(8)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("PK_StandardRoleTemplate");
 
                     b.HasIndex("Code");
 
@@ -10147,16 +10129,14 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("PK_SystemSetting");
 
                     b.ToTable("Setting", "Core");
                 });
@@ -10321,9 +10301,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("TrialDays")
                         .HasColumnType("int");
 
@@ -10361,11 +10338,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<Guid>("SubscriptionPlanId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -10392,8 +10366,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Code")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasColumnType("nvarchar(50)")
+                        .HasDefaultValue("");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2(3)");
@@ -10439,28 +10415,14 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<int>("SortOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(0);
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Url")
-                        .HasMaxLength(400)
-                        .HasColumnType("nvarchar(400)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "Name")
-                        .IsUnique();
+                    b.HasKey("Id")
+                        .HasName("PK_Module");
 
                     b.ToTable("Subsystem", "Core");
                 });
@@ -11147,9 +11109,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<DateTime?>("SubscriptionStartDate")
                         .HasColumnType("datetime2(7)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid?>("TenantTypeId")
                         .HasColumnType("uniqueidentifier");
 
@@ -11167,6 +11126,9 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "OrganizationId")
+                        .HasName("AK_Tenant_Id_OrganizationId");
 
                     b.HasIndex("Identifier")
                         .IsUnique();
@@ -11204,9 +11166,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<Guid>("ModuleId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -11229,13 +11188,12 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Id");
-
-                    b.HasIndex("ModuleId");
+                    b.HasKey("Id")
+                        .HasName("PK_TenantNavigationModule");
 
                     b.HasIndex("SubSystemId");
 
-                    b.HasIndex("TenantId", "ModuleId")
+                    b.HasIndex("TenantId", "SubSystemId", "Name")
                         .IsUnique();
 
                     b.ToTable("TenantModule", "Core");
@@ -11258,8 +11216,10 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.Property<string>("Filter")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasColumnType("nvarchar(500)")
+                        .HasDefaultValue("");
 
                     b.Property<string>("Icon")
                         .IsRequired()
@@ -11282,19 +11242,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
-                    b.Property<Guid>("OperationId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
-
-                    b.Property<Guid>("SubSystemId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2(3)");
@@ -11304,13 +11255,9 @@ namespace CyberErp.Hrms.Inf.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ModuleId");
+                    b.HasIndex("Link");
 
-                    b.HasIndex("OperationId");
-
-                    b.HasIndex("TenantId", "Link");
-
-                    b.HasIndex("TenantId", "OperationId")
+                    b.HasIndex("ModuleId", "Link")
                         .IsUnique();
 
                     b.ToTable("TenantOperation", "Core");
@@ -11350,18 +11297,22 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("varbinary(8)");
 
                     b.Property<Guid?>("SourceTemplateId")
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uniqueidentifier")
+                        .HasColumnName("RoleId");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "TenantId")
+                        .HasName("AK_TenantRole_Id_TenantId");
 
                     b.HasIndex("SourceTemplateId");
 
@@ -11406,9 +11357,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("TenantOperationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -11416,7 +11364,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -11474,12 +11422,13 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("datetime2(7)");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Id");
+                    b.HasKey("Id")
+                        .HasName("PK_TenantModuleEntitlement");
 
                     b.HasIndex("SubSystemId");
 
@@ -11611,7 +11560,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -11654,7 +11603,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -11663,6 +11612,9 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "TenantId")
+                        .HasName("AK_TenantUser_Id_TenantId");
 
                     b.HasIndex("UserId");
 
@@ -11695,9 +11647,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("TenantRoleId")
                         .HasColumnType("uniqueidentifier");
 
@@ -11705,7 +11654,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -12662,12 +12611,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("AccountStatus")
-                        .IsRequired()
+                    b.Property<bool>("AccountStatus")
                         .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("Active");
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2(3)");
@@ -12721,7 +12668,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("nvarchar(255)");
 
                     b.Property<string>("PhoneNumber")
-                        .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
@@ -12776,7 +12722,9 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("ApprovalNotifications")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2(3)");
@@ -12789,32 +12737,38 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("dd/MM/yyyy");
 
                     b.Property<bool>("EmailNotifications")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("InAppNotifications")
-                        .HasColumnType("bit");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("LandingPage")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("/");
 
                     b.Property<string>("Language")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("en");
 
                     b.Property<string>("NumberFormat")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("1,234.56");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -12830,14 +12784,14 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("system");
 
                     b.Property<string>("TimeZone")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)")
-                        .HasDefaultValue("");
+                        .HasDefaultValue("Africa/Nairobi");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2(7)");
@@ -12876,11 +12830,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
+                        .HasColumnType("datetime2(3)");
 
                     b.Property<string>("UpdatedBy")
                         .HasColumnType("nvarchar(max)");
@@ -14507,6 +14458,15 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.LoginTrail", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_LoginTrail_User_UserId");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.LookupCategoryList", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.LookupCategory", null)
@@ -14609,15 +14569,7 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .WithMany()
                         .HasForeignKey("ModuleId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("FK_NavigationOperation_Module_ModuleId");
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Subsystem", null)
-                        .WithMany()
-                        .HasForeignKey("SubSystemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_Operation_Module_ModuleId");
 
                     b.Navigation("Module");
                 });
@@ -15212,12 +15164,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantModule", b =>
                 {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Module", null)
-                        .WithMany()
-                        .HasForeignKey("ModuleId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Subsystem", null)
                         .WithMany()
                         .HasForeignKey("SubSystemId")
@@ -15231,13 +15177,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .WithMany()
                         .HasForeignKey("ModuleId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Operation", null)
-                        .WithMany()
-                        .HasForeignKey("OperationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_TenantNavigationOperation_TenantModule_ModuleId");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantRole", b =>
@@ -15245,7 +15186,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Role", null)
                         .WithMany()
                         .HasForeignKey("SourceTemplateId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_TenantRole_Role_SourceTemplateId");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantRolePermission", b =>
@@ -15254,13 +15196,8 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .WithMany()
                         .HasForeignKey("TenantOperationId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TenantRole", null)
-                        .WithMany()
-                        .HasForeignKey("TenantRoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_TenantRolePermission_Operation_OperationId");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantSubSystem", b =>
@@ -15317,12 +15254,6 @@ namespace CyberErp.Hrms.Inf.Migrations
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.TenantUserRole", b =>
                 {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TenantRole", null)
-                        .WithMany()
-                        .HasForeignKey("TenantRoleId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TenantUser", null)
                         .WithMany()
                         .HasForeignKey("TenantUserId")

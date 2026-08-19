@@ -80,11 +80,18 @@ namespace CyberErp.Hrms.App.Common.Authorization
             // before those joins are resolved.
             if (written > 0) await unitOfWork.SaveChangesAsync();
 
-            // ⚠️ NO permission projection. Core.RolePermission was retired on 2026-08-13 and the admin
-            // screen now writes TenantRolePermission directly, so there is nothing left to project
-            // FROM. A sweep here would be actively destructive: it would treat every hand-edited grant
-            // as one with no template behind it and delete the lot.
-            written += await SyncMembershipsAsync(tenantId.Value, ct);
+            // ⚠️ NEITHER PERMISSIONS NOR MEMBERSHIPS ARE PROJECTED, for the same reason twice over.
+            //
+            // Core.RolePermission was retired on 2026-08-13, and Core.UserRole lost its TenantId on
+            // 2026-08-15 — which makes it GLOBAL. Projecting memberships from it would have created a
+            // TenantUser in THIS tenant for every user of EVERY tenant, and no join exists that could
+            // re-scope it: a UserRole row carries only UserId and RoleId, and both of those tables are
+            // global too. Nothing writes Core.UserRole from HRMS any more either — the User Roles
+            // screen went in handoff 0107 — so there was nothing left to project FROM.
+            //
+            // Memberships are written directly into TenantUser / TenantUserRole by SRMS. Do not add a
+            // sweep back for either: with no template table behind them, every hand-written row would
+            // look orphaned and be deleted.
             written += await SyncSubsystemsAsync(tenantId.Value, ct);
             if (written > 0) await unitOfWork.SaveChangesAsync();
 
@@ -129,7 +136,26 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var orphans = existing
                 .Where(r => r.SourceTemplateId.HasValue && !templateIds.Contains(r.SourceTemplateId.Value))
                 .ToList();
-            foreach (var orphan in orphans) { tenantRoles.Delete(orphan); written++; }
+
+            // ⚠️ THE CHILDREN ARE DELETED BY HAND, because the database no longer does it.
+            //
+            // TenantRolePermission -> TenantRole used to CASCADE, and TenantUserRole -> TenantRole
+            // used to BLOCK the delete outright. SRMS dropped BOTH foreign keys on 2026-08-15 and
+            // CERP followed for parity, so deleting a role now silently leaves its grants and its
+            // holders' assignments behind — rows that grant nothing and point at nothing.
+            foreach (var orphan in orphans)
+            {
+                var grants = await tenantRolePermissions.GetAll()
+                    .Where(p => p.TenantRoleId == orphan.Id).ToListAsync(ct);
+                foreach (var grant in grants) { tenantRolePermissions.Delete(grant); written++; }
+
+                var assignments = await tenantUserRoles.GetAll()
+                    .Where(a => a.TenantRoleId == orphan.Id).ToListAsync(ct);
+                foreach (var assignment in assignments) { tenantUserRoles.Delete(assignment); written++; }
+
+                tenantRoles.Delete(orphan);
+                written++;
+            }
 
             return written;
         }
@@ -148,26 +174,15 @@ namespace CyberErp.Hrms.App.Common.Authorization
             var existing = await tenantModules.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // The groups this tenant actually needs: the ones its own screens belong to.
-            var needed = await tenantOperations.GetAll()
-                .Join(operations.GetAll(), t => t.OperationId, o => o.Id, (t, o) => o.ModuleId)
-                .Distinct()
-                .ToListAsync(ct);
+            // Keyed on (subsystem, name): TenantModule carries no template link, because SRMS carries
+            // none. The pair is unique in both tables — verified 0 duplicates across all 24 rows.
+            var templateByKey = templates
+                .ToDictionary(m => (m.SubsystemId, (m.Name ?? string.Empty).Trim()), m => m);
 
-            foreach (var moduleId in needed)
+            foreach (var row in existing)
             {
-                var template = templates.FirstOrDefault(m => m.Id == moduleId);
-                if (template is null) continue;
-
-                var row = existing.FirstOrDefault(m => m.ModuleId == moduleId);
-                if (row is null)
-                {
-                    await tenantModules.AddAsync(TenantModule.Create(
-                        tenantId, template.SubsystemId, template.Id, template.Name, template.Icon,
-                        template.DisplayOrder, template.IsActive, template.Filter));
-                    written++;
+                if (!templateByKey.TryGetValue((row.SubSystemId, row.Name.Trim()), out var template))
                     continue;
-                }
 
                 if (row.SyncFromTemplate(template.SubsystemId, template.Name, template.Icon,
                         template.DisplayOrder, template.Filter, template.IsActive))
@@ -180,34 +195,52 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return written;
         }
 
-        /// <summary>Operation -> TenantOperation, keyed by OperationId. A copy, not a reference.</summary>
+        /// <summary>
+        /// Operation -> TenantOperation, keyed by (module, LINK).
+        ///
+        /// <para>⚠️ The key used to be <c>OperationId</c>, the template link on the copy. SRMS has no
+        /// such column and CERP dropped it on 2026-08-15, so the natural key does the job: a link is
+        /// unique within a group, and it is what every permission check already matches on.</para>
+        ///
+        /// <para>⚠️ <c>TenantOperation</c> also lost its TenantId, so <c>GetAll()</c> now spans EVERY
+        /// tenant. Everything below is scoped through THIS tenant's group ids — without that the
+        /// orphan sweep at the end would delete other tenants' screens.</para>
+        /// </summary>
         private async Task<int> SyncOperationsAsync(Guid tenantId, CancellationToken ct)
         {
             var templates = await operations.GetAll().ToListAsync(ct);
-            var existing = await tenantOperations.GetAll().ToListAsync(ct);
             var written = 0;
 
-            // Template module id -> THIS tenant's copy of that group. The screen's ModuleId points at
-            // the tenant row, not the template, so every projection has to go through this map.
-            var groupByTemplate = await tenantModules.GetAll()
-                .ToDictionaryAsync(m => m.ModuleId, m => m.Id, ct);
+            // Template module -> THIS tenant's copy of that group, keyed on (subsystem, name) since
+            // there is no template link column any more.
+            var groups = await tenantModules.GetAll().ToListAsync(ct);
+            var groupByTemplate = groups
+                .ToDictionary(m => (m.SubSystemId, m.Name.Trim()), m => m.Id);
+            var myGroupIds = groups.Select(m => m.Id).ToHashSet();
+            var moduleById = await modules.GetAll().ToDictionaryAsync(m => m.Id, m => m, ct);
 
-            // ⚠️ UPDATES ONLY, for the same reason as the roles above: Core.Operation lost its
-            // TenantId, so `templates` spans every tenant. A copy is made where the operation is
-            // CREATED — see CreateOperationHandler and SeedDefaultMenu.
+            // ⚠️ SCOPED BY GROUP, not by tenant filter — the filter no longer exists on this table.
+            var existing = await tenantOperations.GetAll()
+                .Where(o => myGroupIds.Contains(o.ModuleId))
+                .ToListAsync(ct);
+
+            // What this tenant SHOULD have: one copy per template whose group it holds, keyed by
+            // (tenant group, link).
+            // ModuleId is nullable on the template (SRMS leaves the column nullable), but no code
+            // path can produce a null and there are none in either database — skip defensively.
+            var wanted = new Dictionary<(Guid, string), Dom.Entities.Core.Operation>();
+            foreach (var t in templates)
+            {
+                if (!t.ModuleId.HasValue || !moduleById.TryGetValue(t.ModuleId.Value, out var mod)) continue;
+                if (!groupByTemplate.TryGetValue((mod.SubsystemId, mod.Name.Trim()), out var groupId)) continue;
+                wanted[(groupId, (t.Link ?? string.Empty).Trim())] = t;
+            }
+
             foreach (var row in existing)
             {
-                var template = templates.FirstOrDefault(t => t.Id == row.OperationId);
-                if (template is null) continue;
+                if (!wanted.TryGetValue((row.ModuleId, row.Link.Trim()), out var template)) continue;
 
-                // The template owns DisplayOrder, IsActive and SubSystemId, so everything copies
-                // straight across. ModuleId is TRANSLATED: the template names a Core.Module, the copy
-                // must name this tenant's TenantModule. A screen whose group was never projected is
-                // skipped rather than repointed at nothing.
-                if (!groupByTemplate.TryGetValue(template.ModuleId, out var tenantModuleId))
-                    continue;
-
-                var changed = row.SyncFromTemplate(template.SubSystemId, tenantModuleId,
+                var changed = row.SyncFromTemplate(row.ModuleId,
                     template.Name ?? string.Empty, template.Link ?? string.Empty, template.Icon,
                     template.DisplayOrder, template.Filter);
 
@@ -226,8 +259,11 @@ namespace CyberErp.Hrms.App.Common.Authorization
                 }
             }
 
-            var templateIds = templates.Select(t => t.Id).ToHashSet();
-            var orphans = existing.Where(o => !templateIds.Contains(o.OperationId)).ToList();
+            // A copy whose template is gone grants access to a screen nobody can reach. Scoped to
+            // this tenant's groups above, so it can only ever remove OUR rows.
+            var orphans = existing
+                .Where(o => !wanted.ContainsKey((o.ModuleId, o.Link.Trim())))
+                .ToList();
             foreach (var orphan in orphans)
             {
                 // Grants pointing at it must go first — the FK is NoAction, not cascade.
@@ -241,66 +277,6 @@ namespace CyberErp.Hrms.App.Common.Authorization
             return written;
         }
 
-        /// <summary>UserRole -> TenantUser (membership) + TenantUserRole (the roles held in it).</summary>
-        private async Task<int> SyncMembershipsAsync(Guid tenantId, CancellationToken ct)
-        {
-            var roleMap = await tenantRoles.GetAll()
-                .Where(r => r.SourceTemplateId != null)
-                .ToDictionaryAsync(r => r.SourceTemplateId!.Value, r => r.Id, ct);
-
-            var assignments = await userRoles.GetAll().ToListAsync(ct);
-            var members = await tenantUsers.GetAll().ToListAsync(ct);
-            var held = await tenantUserRoles.GetAll().ToListAsync(ct);
-            var written = 0;
-
-            // 1. Membership rows for everyone holding a role in this tenant.
-            foreach (var userId in assignments.Select(a => a.UserId).Distinct())
-            {
-                if (members.Any(m => m.UserId == userId)) continue;
-                var member = TenantUser.Create(tenantId, userId);
-                await tenantUsers.AddAsync(member);
-                members.Add(member);
-                written++;
-            }
-            if (written > 0) await unitOfWork.SaveChangesAsync();
-
-            // 2. The roles each member holds.
-            var wanted = new HashSet<(Guid, Guid)>();
-            foreach (var assignment in assignments)
-            {
-                if (!roleMap.TryGetValue(assignment.RoleId, out var tenantRoleId)) continue;
-                var member = members.FirstOrDefault(m => m.UserId == assignment.UserId);
-                if (member is null) continue;
-                wanted.Add((member.Id, tenantRoleId));
-
-                if (held.Any(h => h.TenantUserId == member.Id && h.TenantRoleId == tenantRoleId)) continue;
-                await tenantUserRoles.AddAsync(TenantUserRole.Create(member.Id, tenantRoleId));
-                written++;
-            }
-
-            // Same guard as the grants: only template-backed roles are reconciled, so a bespoke role
-            // held by a user survives a projection instead of looking like a revoked assignment.
-            var projectedRoleIds = roleMap.Values.ToHashSet();
-            var revoked = held
-                .Where(h => projectedRoleIds.Contains(h.TenantRoleId))
-                .Where(h => !wanted.Contains((h.TenantUserId, h.TenantRoleId)))
-                .ToList();
-            foreach (var row in revoked) { tenantUserRoles.Delete(row); written++; }
-
-            // 3. A membership with no roles left grants nothing; drop it so the tables stay honest.
-            var stillHolding = wanted.Select(w => w.Item1)
-                .Concat(held.Except(revoked).Select(h => h.TenantUserId))
-                .ToHashSet();
-            foreach (var member in members.Where(m => !stillHolding.Contains(m.Id)).ToList())
-            {
-                tenantUsers.Delete(member);
-                written++;
-            }
-
-            return written;
-        }
-
-        /// <summary>Every subsystem the tenant can reach today stays reachable.</summary>
         private async Task<int> SyncSubsystemsAsync(Guid tenantId, CancellationToken ct)
         {
             var all = await subsystems.GetAll().Select(s => s.Id).ToListAsync(ct);

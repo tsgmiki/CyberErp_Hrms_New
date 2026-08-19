@@ -10,7 +10,7 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
  * Today `Role`, `Operation` and `RolePermission` are single global tables. In this model the global
  * rows become TEMPLATES and each tenant gets its own instances:
  *
- *     Role      -> TenantRole        (SourceTemplateId points back at the template)
+ *     Role      -> TenantRole        (SourceTemplateId -> the RoleId column, points at the template)
  *     Operation -> TenantOperation   (a per-tenant COPY: own Name/Link/Icon/DisplayOrder/IsActive)
  *     RolePermission -> TenantRolePermission (+ CanExport, which the old model lacks)
  *     UserRole  -> TenantUser + TenantUserRole (a user can belong to several tenants)
@@ -49,7 +49,12 @@ public static class TenantSubSystemSources
 /// </summary>
 public class TenantRole : BaseEntity, IAggregateRoot
 {
-    /// <summary>The global <see cref="Role"/> this was instantiated from; null for a bespoke role.</summary>
+    /// <summary>
+    /// The global <see cref="Role"/> this was instantiated from; null for a bespoke role.
+    ///
+    /// <para>Mapped to the column <c>RoleId</c>, which is what cybererp_srms calls it. The property
+    /// keeps the clearer name — "RoleId" on a table whose rows ARE roles reads like the primary key.</para>
+    /// </summary>
     public Guid? SourceTemplateId { get; private set; }
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
@@ -122,17 +127,13 @@ public class TenantRole : BaseEntity, IAggregateRoot
 /// now live here, which is why <c>TenantOperation.ModuleId</c> became NOT NULL and points at this
 /// table.</para>
 ///
-/// <para>⚠️ <see cref="ModuleId"/> is a CERP EXTRA — SRMS's tenant copies carry no link back to the
-/// template at all (0 of its 220 rows share an Id with one). It is kept for exactly the reason
-/// <see cref="TenantOperation.OperationId"/> is: the projector needs to know which template a copy
-/// came from, and the UI reports template ids as the stable identifier. Deliberate superset,
-/// recorded in the extras list.</para>
+/// <para>It carries no link back to <see cref="Module"/> — SRMS keeps none, and CERP matched it on
+/// 2026-08-15. The projector keys a copy to its template on <b>(SubSystemId, Name)</b>, which is
+/// unique: verified 0 duplicate pairs across both tables.</para>
 /// </summary>
 public class TenantModule : BaseEntity
 {
     public Guid SubSystemId { get; private set; }
-    /// <summary>The global <see cref="Module"/> this mirrors. CERP extra — see the note above.</summary>
-    public Guid ModuleId { get; private set; }
 
     public string Name { get; private set; } = string.Empty;
     public string Icon { get; private set; } = string.Empty;
@@ -143,18 +144,15 @@ public class TenantModule : BaseEntity
 
     private TenantModule() : base() { }
 
-    public static TenantModule Create(Guid owningTenantId, Guid subSystemId, Guid moduleId,
+    public static TenantModule Create(Guid owningTenantId, Guid subSystemId,
         string name, string? icon, int displayOrder, bool isActive, string? filter = null)
     {
         if (owningTenantId == Guid.Empty)
             throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
-        if (moduleId == Guid.Empty)
-            throw new ArgumentException("Source module is required.", nameof(moduleId));
         return new TenantModule
         {
             TenantId = owningTenantId.ToString(),
             SubSystemId = subSystemId,
-            ModuleId = moduleId,
             Name = name?.Trim() ?? string.Empty,
             Icon = icon?.Trim() ?? string.Empty,
             DisplayOrder = displayOrder,
@@ -203,12 +201,14 @@ public class TenantModule : BaseEntity
 /// </summary>
 public class TenantOperation : BaseEntity
 {
-    public Guid SubSystemId { get; private set; }
-    /// <summary>The global <see cref="Operation"/> this mirrors. A CERP extra; SRMS has no such link.</summary>
-    public Guid OperationId { get; private set; }
     /// <summary>
-    /// The <see cref="TenantModule"/> this screen sits under — NOT the global module. Non-null since
-    /// 2026-08-15: groups moved to TenantModule, so every remaining row here is a screen.
+    /// The <see cref="TenantModule"/> this screen sits under — NOT the global module.
+    ///
+    /// <para>⚠️ This is the ONLY key on the row. <c>SubSystemId</c>, <c>OperationId</c> and the
+    /// <c>TenantId</c> discriminator were all dropped on 2026-08-15 to match cybererp_srms, which
+    /// normalised them onto the group: a screen's tenant and subsystem are its MODULE's. Every query
+    /// therefore has to reach this table through <see cref="TenantModule"/> or through a
+    /// tenant-scoped grant — see the warning on Repository.IsGlobalEntity.</para>
     /// </summary>
     public Guid ModuleId { get; private set; }
 
@@ -223,18 +223,13 @@ public class TenantOperation : BaseEntity
 
     private TenantOperation() : base() { }
 
-    public static TenantOperation Create(Guid owningTenantId, Guid subSystemId, Guid operationId,
-        Guid moduleId, string name, string link, string? icon, int displayOrder, bool isActive)
+    public static TenantOperation Create(Guid moduleId, string name, string link, string? icon,
+        int displayOrder, bool isActive)
     {
-        if (owningTenantId == Guid.Empty)
-            throw new ArgumentException("Tenant is required.", nameof(owningTenantId));
-        if (operationId == Guid.Empty)
-            throw new ArgumentException("Source operation is required.", nameof(operationId));
+        if (moduleId == Guid.Empty)
+            throw new ArgumentException("Tenant module is required.", nameof(moduleId));
         return new TenantOperation
         {
-            TenantId = owningTenantId.ToString(),
-            SubSystemId = subSystemId,
-            OperationId = operationId,
             ModuleId = moduleId,
             Name = name?.Trim() ?? string.Empty,
             Link = link?.Trim() ?? string.Empty,
@@ -252,7 +247,7 @@ public class TenantOperation : BaseEntity
     /// rename a tenant's copy of a screen, so there is no local edit to protect. Add one here the
     /// moment such a screen exists, or the first template edit will overwrite it.</para>
     /// </summary>
-    public bool SyncFromTemplate(Guid subSystemId, Guid moduleId, string name, string link,
+    public bool SyncFromTemplate(Guid moduleId, string name, string link,
         string? icon, int displayOrder, string? filter)
     {
         var newName = (name ?? string.Empty).Trim();
@@ -260,11 +255,10 @@ public class TenantOperation : BaseEntity
         var newIcon = (icon ?? string.Empty).Trim();
         var newFilter = (filter ?? string.Empty).Trim();
 
-        if (SubSystemId == subSystemId && ModuleId == moduleId && Name == newName && Link == newLink
+        if (ModuleId == moduleId && Name == newName && Link == newLink
             && Icon == newIcon && DisplayOrder == displayOrder && Filter == newFilter)
             return false;
 
-        SubSystemId = subSystemId;
         ModuleId = moduleId;
         Name = newName;
         Link = newLink;
