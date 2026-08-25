@@ -94,6 +94,11 @@ export type {
   MergeFieldModel,
   GeneratedDocumentModel,
 } from "./masters/DocumentTemplateModel";
+export type { default as NotificationTemplateModel } from "./masters/NotificationTemplateModel";
+export type {
+  NotificationEventModel,
+  NotificationRecipientModel,
+} from "./masters/NotificationTemplateModel";
 export type {
   WorkflowDefinitionModel,
   WorkflowStepModel,

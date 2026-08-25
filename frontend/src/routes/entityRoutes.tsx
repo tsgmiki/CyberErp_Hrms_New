@@ -46,6 +46,7 @@ const MyTripsPage = memo(lazy(() => import("@/pages/admin/myTrips")));
 const EmployeeFieldPage = memo(lazy(() => import("@/pages/admin/employeeField")));
 const FormBuilderPage = memo(lazy(() => import("@/pages/admin/formBuilder")));
 const DocumentTemplatePage = memo(lazy(() => import("@/pages/admin/documentTemplate")));
+const NotificationTemplatePage = memo(lazy(() => import("@/pages/admin/notificationTemplate")));
 const WorkflowDefinitionPage = memo(lazy(() => import("@/pages/admin/workflowDefinition")));
 const ClearanceDepartmentPage = memo(lazy(() => import("@/pages/admin/clearanceDepartment")));
 const WorkforcePlanPage = memo(lazy(() => import("@/pages/admin/workforcePlan")));
@@ -154,6 +155,7 @@ export const ENTITY_ROUTES: EntityRouteDef[] = [
   { path: "employeeField", Page: EmployeeFieldPage },
   { path: "formBuilder", Page: FormBuilderPage },
   { path: "documentTemplate", Page: DocumentTemplatePage },
+  { path: "notificationTemplate", Page: NotificationTemplatePage },
   { path: "workflowDefinition", Page: WorkflowDefinitionPage },
   { path: "clearanceDepartment", Page: ClearanceDepartmentPage },
   { path: "workforcePlan", Page: WorkforcePlanPage },
