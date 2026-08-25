@@ -123,6 +123,27 @@
 
 ## 1. Most recent changes (latest first)
 
+0146. **Automated e-mails become user-defined (2026-08-25).** HRMS repo, migration
+    `20260825191134_AddUserDefinedNotifications` — APPLIED. See logic §12.42.
+    - Replaces three separate kinds of hardcoding: the SUBJECT/BODY at 29 `SendAsync` sites, the
+      RECIPIENT each notifier resolved for itself, and WHICH events notify at all.
+    - Three tables: `Hrms.NotificationEvent` (seeded catalogue + its merge tokens),
+      `NotificationTemplate` (subject/body, optionally scoped to a workflow step),
+      `NotificationRecipient` (rules, not addresses). `INotificationDispatcher` merges and routes.
+    - ⚠️ Reuses `IWorkflowApproverAuth` for CurrentApprover and `IOrgManagerResolver` for
+      RequesterManager, so a notification cannot disagree with the approver inbox or invent a second
+      definition of the reporting line. `ResolvedManager.EmployeeIds` is a LIST.
+    - ⚠️ `LeaveNotifier` dispatches but FALLS BACK to its hardcoded mail when no template exists —
+      shipping the feature must not silently switch existing notifications off.
+    - ⚠️ Most-specific template wins (step → workflow → general), or a general and a step-specific
+      template would both fire and double-mail.
+    - ⚠️ To/Cc/Bcc is stored but not honoured: `IEmailService.SendAsync` takes ONE recipient, so
+      every address gets its own copy (which is the privacy-safe behaviour for AllEmployees).
+    - Verified live end to end: migration applied, 3 events seeded, a
+      "Leave approved → Requester + AllEmployees" template created through the API and read back
+      with both rules intact (3 events / 1 template / 2 recipients on disk).
+
+
 0145. **Core.TenantSubSystem.Status becomes a bit (2026-08-19).** HRMS repo, migration
     `20260819160000_TenantSubSystemStatusBit`. See logic §12.41. Restore point:
     `C:\Temp\CERP_before_tenantsubsystem_status_bit.bak`.

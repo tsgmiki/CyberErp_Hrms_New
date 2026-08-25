@@ -106,6 +106,13 @@ namespace CyberErp.Hrms.App
             // Phase 2: leave balances (ledger) + leave requests (workflow-backed)
             services.AddScoped<Features.Core.Leaves.ILeaveBalanceService, Features.Core.Leaves.LeaveBalanceService>();
             services.AddScoped<Features.Core.Leaves.ILeaveNotifier, Features.Core.Leaves.LeaveNotifier>();
+            services.AddScoped<Common.Services.INotificationDispatcher, Features.Core.Notifications.NotificationDispatcher>();
+            services.AddScoped<Features.Core.Notifications.IGetNotificationEvents, Features.Core.Notifications.GetNotificationEvents>();
+            services.AddScoped<Features.Core.Notifications.IGetAllNotificationTemplates, Features.Core.Notifications.GetAllNotificationTemplates>();
+            services.AddScoped<Features.Core.Notifications.IGetNotificationTemplateById, Features.Core.Notifications.GetNotificationTemplateById>();
+            services.AddScoped<Features.Core.Notifications.ISaveNotificationTemplate, Features.Core.Notifications.SaveNotificationTemplate>();
+            services.AddScoped<Features.Core.Notifications.IDeleteNotificationTemplate, Features.Core.Notifications.DeleteNotificationTemplate>();
+            services.AddScoped<Features.Core.Notifications.ISeedNotificationEvents, Features.Core.Notifications.SeedNotificationEvents>();
             services.AddScoped<Features.Core.Leaves.IGetLeaveBalances, Features.Core.Leaves.GetLeaveBalances>();
             services.AddScoped<Features.Core.Leaves.ISetLeaveBalance, Features.Core.Leaves.SetLeaveBalance>();
             services.AddScoped<Features.Core.Leaves.ISubmitLeaveRequest, Features.Core.Leaves.SubmitLeaveRequest>();

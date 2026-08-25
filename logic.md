@@ -3756,3 +3756,60 @@ inventing a terminal one a row may never have been in.
 
 Surface: the entity, its EF mapping, the seed script, and `TenantAuthorizationProjector` — the only
 place that creates these rows. Neither SPA references the entity, and Home's backend does not either.
+
+### 12.42 Notifications become user-defined: content, recipients and events
+
+Every automated e-mail was compiled in, in three independent ways:
+
+1. **Content.** 29 `SendAsync(...)` sites across 12 files built subject and body with string
+   interpolation. Changing a word meant a code change, a rebuild and a deploy.
+2. **Recipients.** Each notifier decided who got it. `LeaveNotifier` resolved the requester's own
+   address and sent only there; there was no recipient-list concept anywhere in the module.
+3. **Which events notify at all.** Only where a notifier happened to exist — and notably there was
+   NO "leave submitted → approver" mail, only an in-app portal alert.
+
+#### The model
+
+| Table | What it is |
+|---|---|
+| `Hrms.NotificationEvent` | The catalogue of moments the code can notify on. **Seeded, never user-created** — an admin cannot write a template against an event the code never raises. Each row publishes the merge tokens available to it. |
+| `Hrms.NotificationTemplate` | The admin's subject + body for one event, optionally narrowed to `(WorkflowDefinitionId, StepOrder)` so "approved by HR" can read differently from "approved by the line manager". |
+| `Hrms.NotificationRecipient` | WHO receives it — rules, not addresses: Requester, CurrentApprover, RequesterManager, Role, OrganizationUnit, Employee, AllEmployees, Address. |
+
+`INotificationDispatcher` picks the template, merges the tokens, resolves the rules to addresses and
+sends. It never throws, and a missing template is not an error — it means the client has not asked to
+be told about that event.
+
+#### Reuse, not reinvention
+
+Two existing services do the hard resolution, and using them is what keeps the notification honest:
+
+- `IWorkflowApproverAuth.ResolveApproverUserIdsAsync` for `CurrentApprover` — the same resolution
+  that decides WHO MAY APPROVE, so the message cannot disagree with the approver's inbox.
+- `IOrgManagerResolver.ResolveImmediateManagerAsync` for `RequesterManager` — one definition of the
+  reporting line, not two. ⚠️ It returns `EmployeeIds` (a LIST): a unit can have several managerial
+  staff and the resolver returns all of them.
+
+#### Template selection is most-specific-wins
+
+A general "leave approved" template and a step-specific one BOTH match the HR step. Sending both
+would double-mail, so the buckets are tried in order — step, then workflow, then general — and the
+first non-empty one wins.
+
+#### ⚠️ An unknown token merges to EMPTY
+
+Leaving `{{EmployeeName}}` in place would put a literal placeholder in a message to staff, which
+reads as a broken system. A thin sentence reads as an oversight. The editor's token palette exists so
+an admin never has to guess which tokens an event publishes.
+
+#### ⚠️ The fallback is deliberate
+
+`LeaveNotifier` dispatches first and falls back to its original hardcoded mail when no template is
+configured. Making the feature available must not be the same as switching existing notifications
+off. Once a `Leave.Approved` template exists, the fallback stops running.
+
+#### ⚠️ To/Cc/Bcc is modelled but not yet honoured
+
+`IEmailService.SendAsync` takes a single recipient, so every address gets its own copy. That is also
+the privacy-safe behaviour for `AllEmployees`, where a real Cc would publish the whole staff address
+list — but it is a gap between the schema and delivery until the send contract grows those fields.
