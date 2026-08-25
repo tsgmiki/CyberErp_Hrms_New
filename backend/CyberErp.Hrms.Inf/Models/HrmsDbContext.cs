@@ -268,6 +268,9 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<WorkflowInstance> WorkflowInstance { get; set; }
     public DbSet<WorkflowActionLog> WorkflowActionLog { get; set; }
     public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
+    public DbSet<NotificationEvent> NotificationEvent { get; set; }
+    public DbSet<NotificationTemplate> NotificationTemplate { get; set; }
+    public DbSet<NotificationRecipient> NotificationRecipient { get; set; }
     public DbSet<OfferLetterTemplate> OfferLetterTemplate { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -624,6 +627,9 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new WorkflowInstanceConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowActionLogConfiguration());
         modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationEventConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationRecipientConfiguration());
         modelBuilder.ApplyConfiguration(new OfferLetterTemplateConfiguration());
     }
 }

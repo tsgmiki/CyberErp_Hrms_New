@@ -123,6 +123,57 @@
 
 ## 1. Most recent changes (latest first)
 
+0147. **Email Templates admin screen, and the catalogue row that makes it visible (2026-08-25).**
+    HRMS repo, no migration. NEW `components/admin/notificationTemplate/{index,list,form}.tsx`,
+    `pages/admin/notificationTemplate.tsx`, `services/admin/notificationTemplate/`,
+    `models/masters/NotificationTemplateModel.ts`, route in `entityRoutes`, and
+    `backend/scripts/seed-notification-template-operation.sql`.
+    - Standard shape: `{index,list,form}` + EntityModuleShell/EntityListShell/useEntityRouteModule,
+      service factories, config-driven FormProvider for the flat fields.
+    - Two things the template machinery cannot express, hand-rendered: the TOKEN PALETTE (the
+      selected event's tokens as clickable chips — an unpublished token merges to blank, a failure
+      invisible until a real message goes out thin) and the RECIPIENT-RULE BUILDER (repeating rows;
+      each kind declares what it `needs`, so a Role rule cannot be saved without a role).
+    - ⚠️ Raw `<select>`/`<input>` in the repeating rows is the ESTABLISHED pattern for child rows
+      here (`workflowDefinition/form.tsx` does the same); the FormProvider rule governs the flat form.
+    - ⚠️ The rich-text field reports through `onHtmlChange`, not `onChange` — it hands back an HTML
+      string, not a DOM event.
+    - ⚠️ **The screen was invisible for two DATA reasons, not code**: the sidebar is built from
+      Core.TenantOperation so a screen with no operation row is not in the menu, AND the controller
+      is gated on `notificationTemplate`, which denies EVERYONE while nobody holds it. The seed
+      script adds the operation to the template catalogue and the tenant copy and grants it to
+      HR Admin with all six privileges. `Filter` is NOT NULL on both catalogue tables (existing rows
+      store an empty string) — the insert fails without it.
+    - ⚠️ **Four palette classes I first used emit NOTHING**, two of them copied from
+      `workflowDefinition/list.tsx` — that screen's seed button still has no border colour or hover.
+      HRMS defines no `hover:` variants for palette colours at all; hover states must use utilities
+      that exist in theme.css (`hover:opacity-70/80/90`, `hover:bg-muted`, `hover:text-foreground`).
+      Verified all 12 classes on the new screens against the BUILT stylesheet.
+    - Verified in the browser as `tatekg`: sidebar shows System → Email Templates, the screen opens
+      (not /unauthorized, not 404), Add is enabled, the event picker is populated, and a
+      "Leave approved → Requester + AllEmployees" template saved and read back with both rules.
+
+0146. **Automated e-mails become user-defined (2026-08-25).** HRMS repo, migration
+    `20260825191134_AddUserDefinedNotifications` — APPLIED. See logic §12.42.
+    - Replaces three separate kinds of hardcoding: the SUBJECT/BODY at 29 `SendAsync` sites, the
+      RECIPIENT each notifier resolved for itself, and WHICH events notify at all.
+    - Three tables: `Hrms.NotificationEvent` (seeded catalogue + its merge tokens),
+      `NotificationTemplate` (subject/body, optionally scoped to a workflow step),
+      `NotificationRecipient` (rules, not addresses). `INotificationDispatcher` merges and routes.
+    - ⚠️ Reuses `IWorkflowApproverAuth` for CurrentApprover and `IOrgManagerResolver` for
+      RequesterManager, so a notification cannot disagree with the approver inbox or invent a second
+      definition of the reporting line. `ResolvedManager.EmployeeIds` is a LIST.
+    - ⚠️ `LeaveNotifier` dispatches but FALLS BACK to its hardcoded mail when no template exists —
+      shipping the feature must not silently switch existing notifications off.
+    - ⚠️ Most-specific template wins (step → workflow → general), or a general and a step-specific
+      template would both fire and double-mail.
+    - ⚠️ To/Cc/Bcc is stored but not honoured: `IEmailService.SendAsync` takes ONE recipient, so
+      every address gets its own copy (which is the privacy-safe behaviour for AllEmployees).
+    - Verified live end to end: migration applied, 3 events seeded, a
+      "Leave approved → Requester + AllEmployees" template created through the API and read back
+      with both rules intact (3 events / 1 template / 2 recipients on disk).
+
+
 0145. **Core.TenantSubSystem.Status becomes a bit (2026-08-19).** HRMS repo, migration
     `20260819160000_TenantSubSystemStatusBit`. See logic §12.41. Restore point:
     `C:\Temp\CERP_before_tenantsubsystem_status_bit.bak`.

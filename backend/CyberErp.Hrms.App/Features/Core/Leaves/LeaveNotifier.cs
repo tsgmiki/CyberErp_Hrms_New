@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -36,6 +37,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<LeaveBalance> ledgers,
         IRepository<Employee> employees,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<LeaveNotifier> logger) : ILeaveNotifier
     {
         public async Task AnnualLeaveApprovedAsync(Guid annualLeaveHeaderId)
@@ -138,8 +140,35 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 "\n\nThe request has now left your pending list. You can find it under the leave tab of your " +
                 "employee profile.\n\nThis is an automated message — please do not reply.";
 
+            // The ADMINISTRATOR's template wins, if they wrote one. It decides both the wording and
+            // WHO hears about it — the requester, HR, the whole company — none of which this class
+            // gets to assume any more.
+            var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                NotificationEvents.LeaveApproved,
+                new Dictionary<string, string?>
+                {
+                    ["EmployeeName"] = employee.Name,
+                    ["LeaveType"] = leaveName,
+                    ["TotalDays"] = totalDays.ToString("0.##"),
+                    ["StartDate"] = dates.Count > 0 ? dates[0].StartDate.ToString("dd MMM yyyy") : null,
+                    ["EndDate"] = dates.Count > 0 ? dates[^1].EndDate.ToString("dd MMM yyyy") : null,
+                },
+                RequesterEmployeeId: employeeId));
+
+            if (dispatched > 0)
+            {
+                logger.LogInformation(
+                    "Leave approval: {Count} configured notification(s) sent for employee {EmployeeId}.",
+                    dispatched, employeeId);
+                return;
+            }
+
+            // ⚠️ FALLBACK, on purpose. A client who has not written a template yet must not silently
+            // stop being told their leave was approved — making the feature available should not be
+            // the same as switching the old behaviour off. Once a template exists for
+            // Leave.Approved, this line stops running.
             var sent = await emailService.SendAsync(employee.Email!, subject, body);
-            logger.LogInformation("Leave approval e-mail to {Email} for employee {EmployeeId}: {Result}",
+            logger.LogInformation("Leave approval e-mail to {Email} for employee {EmployeeId}: {Result} (no template configured)",
                 employee.Email, employeeId, sent ? "sent" : "not sent (mail disabled or failed)");
         }
     }
