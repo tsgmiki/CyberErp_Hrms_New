@@ -123,6 +123,47 @@
 
 ## 1. Most recent changes (latest first)
 
+0152. **Department heads could raise a Hiring Request for ANY unit — "HR admin" becomes a role
+    (2026-08-26).** HRMS repo, no migration, no Home change. See logic §12.47.
+    NEW `App/Common/Authorization/HrRoles.cs`; `PerformanceVisibilityService` +
+    `HrScreens` docs touched.
+    - Reported against HOME, fixed in HRMS: Home has no hiring-request backend, it calls the HRMS
+      API, and its form ALREADY asks for `OrganizationUnit/my-units`. Nothing in Home was wrong.
+    - Both halves were already correct — `SaveHiringRequest`'s guard and `my-units`' filter both
+      read `if (!scope.IsAdmin && !scope.UnitIds.Contains(...))`. They were fed a wrong `IsAdmin`.
+    - ⚠️ **Root cause: `IsAdminAsync` inferred "HR admin" from HOLDING THE EMPLOYEE REGISTER**, on
+      the stated assumption it is "held only by Administrator and HR Admin". Measured in CERP:
+      HR Admin 142 screens, **Department Manager 141**, HR Officer 141, UserRole 25,
+      **Administrator 0**. The only screen separating HR Admin from Department Manager is
+      `/hrms/notificationTemplate` (which I added yesterday). **No screen discriminates**, so no
+      screen can define this.
+    - ⚠️ **The same heuristic failed in the opposite direction**: the real `Administrator` role holds
+      NO screens, so it was never treated as HR admin either.
+    - This was the THIRD definition: `IsHeadOffice()` (§11) → screen grant → now role. Both proxies
+      broke as soon as the data stopped matching the guess.
+    - Fix: `HrRoles.OrganizationWide` = role CODES `ADMINISTRATOR`, `HR-ADMIN`, `HR-OFFICER`;
+      `IsAdminAsync` asks the tenant membership chain. ⚠️ Matched on `TenantRole.Code` (a seeded slug
+      mirrored from `Core.Role`), never `Name` — renaming a role in the UI must not move access.
+    - User decisions taken before implementing: department heads KEEP the Employees screen (scoped to
+      their team), and HR Officer KEEPS organisation-wide reach.
+    - Verified live, old vs new, per role: Department Manager ADMIN→**scoped**, HR Admin ADMIN→ADMIN,
+      HR Officer ADMIN→ADMIN, UserRole scoped→scoped, Administrator scoped→ADMIN. And through the
+      API after the change: `tatekg` (HR-ADMIN) still **121** units, `takele(dr)a` (UserRole,
+      managerial) still **61** — both branches of the new predicate exercised, no regression.
+    - ⚠️ **NOT exercised**: no login as an actual Department Manager (`gibril` is the only one and
+      does not use the default password), and the hiring-request POST guard itself — `UserRole` has
+      no `/hrms/hiringRequest` grant, so no testable non-admin holder exists. The guard consumes the
+      SAME scope object `my-units` does, which is verified.
+    - ⚠️ **`gibril` has no linked employee**, so after this fix they resolve to an EMPTY subtree and
+      can raise no hiring request at all. Correct by the rule (no unit = no jurisdiction) but it makes
+      the employee link a prerequisite for the role. Tell the client.
+    - ⚠️ **`Administrator` holds zero screen permissions**, so those 3 users are refused by the
+      endpoint gate everywhere regardless of this change. Separate config gap.
+    - ⚠️ **Left deliberately unfixed**: `GrievanceHandlers` (Resolve/Close) still reads
+      `HrScreens.EmployeeRegister` as "is HR", so a department head can resolve or close ANY
+      grievance — including one about themselves. Separate authorization decision; documented in
+      `HrScreens` and logic §12.47.
+
 0151. **Workflow definition: approver pickers become searchable comboboxes (2026-08-26).** HRMS repo,
     frontend only, one file: `components/admin/workflowDefinition/form.tsx`. See logic §12.46.
     - The three native `<select>`s (user / role / dynamic approver) are now `DropDownField`, the
