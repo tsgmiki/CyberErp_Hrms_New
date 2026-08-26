@@ -3933,3 +3933,42 @@ The guard now sits immediately before the fallback send. The same reordering was
 
 The general rule: **a precondition of the hardcoded fallback must never gate the dispatcher.** They
 have different recipients, so they need different guards.
+
+### 12.45 Approvals are gated on one shared operation, not on each module
+
+A line manager who is the *designated approver* for a leave request could not approve it. The 403
+came from the endpoint gate, not from the approval engine.
+
+Every approve/reject in the system goes through the **generic `WorkflowController`**, which carries
+`[RequirePermission("workflow")]`. It does not matter that the request is a leave request and the
+approver holds `/hrms/annualLeave` with every privilege — the endpoint they must call is gated on
+`/hrms/workflow`, and `UserRole` had no grant for it.
+
+Two distinct checks stand between a user and an approval, and they fail differently:
+
+| Check | Where | Failure |
+|---|---|---|
+| Do you hold Approve on `/hrms/workflow`? | `PermissionAuthorizationFilter` | **403**, before any business logic |
+| Are you the approver for *this* step? | `IWorkflowApproverAuth` | **400** "not an authorized approver for step X" |
+
+`backend/scripts/grant-userrole-workflow.sql` grants `UserRole` **View + Approve** on that
+operation. Both `approve` and `reject` derive `PermissionAccess.Approve`, so those two privileges
+cover the whole approver journey; Add/Edit/Delete/Export are deliberately withheld.
+
+#### ⚠️ The trade-off is real and deliberate
+
+`UserRole` is held by ~490 accounts. Granting it `/hrms/workflow` also grants the workflow
+**tracking list** and its stats, because they live on the same controller behind the same operation.
+Approval authority itself does not widen — the engine's approver check is untouched — but tenant-wide
+visibility of workflow runs does.
+
+Narrowing it would mean splitting `WorkflowController` so that "act on my own approvals" and "see
+every run in the tenant" sit behind different operations. That is the fix if the visibility ever
+matters more than the simplicity.
+
+#### ⚠️ Two general templates for one event BOTH send
+
+Most-specific-wins (§12.42) picks step over workflow over general — but *within* a bucket every
+matching template fires. Two general `Leave.Approved` templates therefore double-mail. That is
+intended (an admin may want two different audiences), but it makes an accidental duplicate expensive,
+so an edit that silently creates rather than updates is worth watching for.

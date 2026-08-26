@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0150. **UserRole gains /hrms/workflow, which unblocks approvals — and the approved-path proof
+    (2026-08-26).** HRMS repo, NO code change: one new script,
+    `backend/scripts/grant-userrole-workflow.sql`. APPLIED to CERP.
+    - Approvals do not run through each module's controller: every approve/reject goes through the
+      generic `WorkflowController`, gated on `/hrms/workflow`. HR Admin / HR Officer / Department
+      Manager held it; `UserRole` did not — so a line manager who WAS the designated approver was
+      refused 403 before the engine could even check them.
+    - Grants **View + Approve only**. Both `approve` and `reject` derive `PermissionAccess.Approve`,
+      so those two cover the whole approver journey; Add/Edit/Delete/Export are withheld.
+    - ⚠️ **This is a real widening**: `UserRole` is held by ~490 accounts, so all of them now see the
+      workflow TRACKING list and stats. That is the cost of gating approvals on one shared
+      operation; narrowing it would mean splitting the controller. The engine's approver check is
+      unaffected — a non-approver still gets 400 "not an authorized approver for step X".
+    - Idempotent (NOT EXISTS + top-up, never downgrade); re-ran it to confirm one row, not two.
+    - **This closed the §12.44 gap.** Verified live: line manager `takele(dr)a` approved step 1
+      (200, previously 403), `tatekg` approved step 2 as unit manager, and the log then showed
+      `Leave.Approved` templates being EVALUATED — the exact path that, before the 0149 guard fix,
+      returned before dispatching. Both rules resolved to 0 addresses (no employee has one) and the
+      fallback's new message fired, which is the correct end state for this data.
+    - ⚠️ **A duplicate template I created was my own error, not a product bug**: an earlier PUT read a
+      file from a path node and bash disagreed about, so it posted without an id and CREATED a
+      second `Leave.Approved` row — and two general templates for one event BOTH send. Re-tested the
+      update path with a clean payload: same id returned, count unchanged. Duplicate deleted.
+    - Cleanup: the approved test leave DEBITED the ledger (approval applies the outcome, unlike
+      submission), so `Taken` was restored to 0 alongside deleting the rows. Verified 0 left behind.
+
 0149. **The remaining hardcoded e-mails move to the dispatcher (2026-08-26).** HRMS repo, NO
     migration (the new recipient kind is a string conversion). See logic §12.44.
     - Migrated 15 events across 5 notifiers: `MovementNotifier` (4), `TerminationNotifier` (4),
@@ -4061,17 +4087,14 @@
     (its `bool` drives Approved→Sent and it carries a PDF), `ReportScheduleHandlers` (the user's own
     scheduled-report config + attachment) and the Settings **test message** (a relay probe).
     Templating any of them would break what they are for.
-  - **The approved path is not runtime-verified.** Reaching it needs a designated approver to hold
-    `/hrms/workflow`, which `UserRole` does not; escalating a real user's privileges to test was
-    not appropriate. Submitted-path dispatch IS verified end to end.
+  - ~~The approved path is not runtime-verified~~ — **DONE (0150)**: verified end to end once
+    `UserRole` held `/hrms/workflow`.
   - **The Other Leave submitted hop is wired but unexercised** (the only active setting is a
     180-working-day maternity block).
   - **To/Cc/Bcc is stored but not honoured**: `IEmailService.SendAsync` takes one recipient. This
     now also bounds `EventSubject`.
-  - ⚠️ **Line managers cannot approve anything unless their role holds `/hrms/workflow`.** Approvals
-    run through the generic `WorkflowController`, which is gated on that operation; `UserRole` has no
-    grant for it, so a designated approver gets 403. HR Admin / HR Officer / Department Manager do
-    hold it. Role configuration, not a code defect — but the client should be told.
+  - ~~Line managers cannot approve anything~~ — **FIXED 2026-08-26 (0150)** by
+    `backend/scripts/grant-userrole-workflow.sql`. ⚠️ Other environments still need the script run.
   - `workflowDefinition/list.tsx` still carries 2 dead palette classes (`border-primary/40`,
     `hover:bg-primary/20`) — its seed button has no border colour or hover.
 
