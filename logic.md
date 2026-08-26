@@ -4752,3 +4752,31 @@ kind, which is why it cannot free a seat someone still holds.
 employees is active**. That is the exit flow correctly reopening a seat while the historical employee
 row keeps its `PositionId`. No active employee sits in a position marked vacant, so the two
 directions now agree.
+
+### 12.62 SetLeaveBalance: the read rule was the wrong rule for the write
+
+The audit's proven finding (§12.55) was `SetLeaveBalance` — an ordinary employee wrote a **999-day
+entitlement** for a colleague outside their line. It is the worst of the 26 because it is an `Add`:
+no existing record is needed, so there is nothing to be "in scope" of.
+
+#### ⚠️ Copying the neighbouring check would have left the hole half open
+
+`GetLeaveBalances`, immediately above it, guards with `CanAccessEmployeeAsync` — self, their manager,
+or HR. That is right for READING a balance and wrong for SETTING one, because it permits **self**: an
+employee could still have granted themselves the entitlement. An opening balance is policy, not a
+self-service field, so the write requires `scope.IsAdmin`.
+
+The lesson generalises to the rest of the audit list: the guard next door is a hint, not the answer.
+
+#### ⚠️ The check runs FIRST, before validation
+
+Two reasons, both learned the hard way in this codebase:
+
+- The `NotFoundException` checks below it would otherwise let an unauthorised caller probe which
+  employee and leave-type ids exist.
+- A guard sitting behind a validator is one a deny test never reaches — twice in §12.52 and §12.53 a
+  refusal test returned a FluentValidation error instead of the access error, which reads like a pass
+  if you are not careful.
+
+Verified live: ordinary staff setting it for a colleague **400**, for **themselves** **400**, HR
+**200**. Reads are untouched — own balances still 200, out-of-scope still refused.
