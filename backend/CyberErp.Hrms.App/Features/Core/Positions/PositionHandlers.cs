@@ -153,8 +153,12 @@ namespace CyberErp.Hrms.App.Features.Core.Positions
             if (!string.IsNullOrWhiteSpace(request.SearchText))
             {
                 var term = request.SearchText.Trim();
+                // The ORG UNIT is searchable because pickers display it: the transfer-request target
+                // combobox shows the unit under each position, and a term that is visible in the list
+                // but matches nothing reads as a broken search.
                 query = query.Where(x => x.Code.Contains(term) ||
-                                         (x.PositionClass != null && x.PositionClass.Title.Contains(term)));
+                                         (x.PositionClass != null && x.PositionClass.Title.Contains(term)) ||
+                                         (x.OrganizationUnit != null && x.OrganizationUnit.Name.Contains(term)));
             }
 
             var total = await query.CountAsync();
