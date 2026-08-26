@@ -123,6 +123,29 @@
 
 ## 1. Most recent changes (latest first)
 
+0159. **Staff can withdraw their own enrollment — the first `Access` override in the codebase
+    (2026-08-26).** HRMS repo, one line + docs on `TrainingControllers.Withdraw`. No migration, no
+    permission change. See logic §12.54.
+    - `POST /TrainingEnrollment/{id}/withdraw` derived **Edit** ("withdraw" is not an Add token), and
+      Edit on this controller pair also means `RecordParticipation` and certificate issue/renew —
+      HR functions. Granting staff Edit to reach one self-service action would have opened three.
+    - Fix: `[RequirePermission("trainingSession", "myTraining", Access = PermissionAccess.Add)]` on
+      the action. `RequirePermissionAttribute.Access` existed for exactly this and had **never been
+      used**; the filter documents the verb derivation as "a sane default, not a claim to be right
+      everywhere".
+    - ⚠️ **An action attribute REPLACES the controller's, it does not merge.** `ResolveAttribute`
+      returns the action-level one and never looks at the controller, and the filter treats an empty
+      `OperationLinks` as NOT GATED (`opt-in: no attribute → not permission-gated`). Both links must
+      be repeated — an override that forgets them silently UNGATES the endpoint.
+    - ⚠️ The handler was already correct: `WithdrawTrainingEnrollment` restricts the row to its owner,
+      their manager, or HR. (My 0156 note calling it unscoped was another bad grep — the class is
+      `WithdrawTrainingEnrollment`, not `WithdrawEnrollment`.) The override changes WHO MAY CALL the
+      endpoint, not WHOSE enrollment they may touch.
+    - Verified live as `takele(dr)a`: withdraw own **200** (row reads `Withdrawn`), withdraw
+      someone else's **400** "You cannot withdraw this enrollment"; `PUT participation` **403**,
+      certificate `renew` **403**, `DELETE` enrollment **403**; `tatekg` (HR) withdraws anyone's
+      **200**. Test course/session/enrollments deleted — all four training tables back to 0 rows.
+
 0158. **Staff can self-enroll in training (2026-08-26).** HRMS repo, no code change: the existing
     `backend/scripts/grant-userrole-self-service.sql` now grants `/hrms/myTraining` **View + Add**.
     APPLIED to CERP. See logic §12.53.
@@ -136,11 +159,7 @@
       enrolling an employee outside their line **400** "The employee is outside your scope";
       certificate **400** "Only HR administrators can manage certificates"; `PUT participation`
       (an Edit endpoint) **403** at the gate. `tatekg` (HR) still creates certificates **200**.
-    - ⚠️ **Enrolling works; WITHDRAWING does not.** `POST /TrainingEnrollment/{id}/withdraw` derives
-      **Edit**, and Edit on this operation also unlocks `RecordParticipation` and certificate
-      issue/renew — HR functions. Splitting them needs an explicit `Access` on the withdraw action
-      (the attribute supports it), NOT a wider grant. Until then a staff member must ask HR to
-      withdraw them.
+    - ~~Enrolling works; WITHDRAWING does not~~ — **DONE in 0159** via an explicit `Access` override.
     - ⚠️ **The validator runs BEFORE the authorization check** — the first certificate-refusal test
       returned a FluentValidation error, not the access error. Same trap as 0157's guard ordering: a
       deny test needs a payload valid enough to reach the check being tested.
