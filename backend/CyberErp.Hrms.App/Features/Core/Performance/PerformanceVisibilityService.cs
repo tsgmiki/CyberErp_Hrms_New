@@ -43,7 +43,9 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
         IRepository<Employee> employees,
         IRepository<OrganizationUnit> units,
         IRepository<WorkflowDefinition> definitions,
-        IEndpointPermissionService permissions,
+        IRepository<TenantUser> tenantUsers,
+        IRepository<TenantUserRole> tenantUserRoles,
+        IRepository<TenantRole> tenantRoles,
         IWorkflowApproverAuth approverAuth) : IPerformanceVisibilityService
     {
         private VisibilityScope? _scope;                              // scoped service — one computation per request
@@ -77,6 +79,19 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             return _scope = new VisibilityScope { IsAdmin = isAdmin, EmployeeId = myEmp, IsManager = isManager, UnitIds = unitIds };
         }
 
+        /// <summary>
+        /// True when the caller holds a role whose CODE is in <see cref="HrRoles.OrganizationWide"/>,
+        /// through the tenant-scoped membership chain. Every repository call is already filtered to
+        /// the signed-in tenant, so a user who belongs to several tenants is judged only on the roles
+        /// they hold in this one.
+        /// </summary>
+        private async Task<bool> HasOrganizationWideRoleAsync(Guid userId) =>
+            await tenantUsers.GetAll()
+                .Where(tu => tu.UserId == userId && tu.Status)
+                .Join(tenantUserRoles.GetAll(), tu => tu.Id, tur => tur.TenantUserId, (tu, tur) => tur.TenantRoleId)
+                .Join(tenantRoles.GetAll(), roleId => roleId, r => r.Id, (roleId, r) => r.Code)
+                .AnyAsync(code => HrRoles.OrganizationWide.Contains(code));
+
         public async Task<bool> CanAccessEmployeeAsync(Guid employeeId)
         {
             var scope = await GetScopeAsync();
@@ -91,25 +106,31 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             return _accessCache[employeeId] = unitId.HasValue && scope.UnitIds.Contains(unitId.Value);
         }
 
-        /// <summary>HR admin: head office, or an explicit User/Role approver configured on the Appraisal
-        /// definition's HrSignOff step (an OPEN step does NOT make everyone an admin).</summary>
+        /// <summary>HR admin: a role carrying organisation-wide HR authority, or an explicit
+        /// User/Role approver configured on the Appraisal definition's HrSignOff step (an OPEN step
+        /// does NOT make everyone an admin).</summary>
         private async Task<bool> IsAdminAsync(Guid? userId)
         {
             if (userId is null) return false;
 
-            // HR admin is a PERMISSION, not head-office status.
+            // HR admin is a ROLE, and it has taken two attempts to say so.
             //
-            // This used to read `if (currentUser.IsHeadOffice()) return true;`. That flag is set from
-            // the employee's branch, and in a single-branch tenant — where the one branch is flagged
-            // IsHeadOffice — it is true for EVERY employee-linked user. The result was that the 73
-            // scoping checks written as `if (!scope.IsAdmin) narrow(...)` never narrowed anything:
-            // ordinary staff saw the whole organisation's employees, appraisals, goals and leave
-            // (logic.md §11). The employee register is held only by Administrator and HR Admin, so it
-            // says what this method always meant to say.
+            // It first read `if (currentUser.IsHeadOffice()) return true;`. That flag comes from the
+            // employee's branch, and in a single-branch tenant — where the one branch is flagged
+            // IsHeadOffice — it is true for EVERY employee-linked user, so the ~73 checks written as
+            // `if (!scope.IsAdmin) narrow(...)` never narrowed anything (logic §11).
+            //
+            // It was then replaced by "holds the employee register", on the stated assumption that
+            // only Administrator and HR Admin would ever hold that screen. ⚠️ That assumption is not
+            // the client's to keep: in CERP the Department Manager role holds 141 of the 142 screens
+            // HR Admin holds, employee register included — so every department head was an
+            // organisation-wide administrator, and could raise a hiring request for any unit in the
+            // company (logic §12.47). No screen grant discriminates here, so no screen can define
+            // this.
             //
             // Head-office status still drives BRANCH scoping elsewhere (ICurrentUserService); it just
             // no longer doubles as "this person is HR".
-            if (await permissions.HasAnyAsync(HrScreens.EmployeeRegister)) return true;
+            if (await HasOrganizationWideRoleAsync(userId.Value)) return true;
 
             var approvers = await definitions.GetAll()
                 .Where(d => d.EntityType == WorkflowEntityTypes.Appraisal && d.IsActive)

@@ -4012,3 +4012,69 @@ adding an approver it would keep displaying them. Each carries
 
 `remark` (the username) is not decoration either: the local filter matches on `name` **and**
 `remark`, so typing a username finds the row when the display name would not.
+
+### 12.47 "HR admin" is a ROLE — the third attempt to say so
+
+A Department Head could raise a Hiring Request for **any** department in the company. Both halves of
+the feature were written correctly; they were fed a wrong answer.
+
+`HiringRequestHandlers.SaveHiringRequest` guards the write, and `OrganizationUnit/my-units` scopes
+the picker the Home form offers. Both say the same thing:
+
+```csharp
+if (!scope.IsAdmin && !scope.UnitIds.Contains(unitId)) → refuse / narrow
+```
+
+So `IsAdmin` decides everything, and `PerformanceVisibilityService.IsAdminAsync` computed it from
+**holding the employee register screen**:
+
+```csharp
+if (await permissions.HasAnyAsync(HrScreens.EmployeeRegister)) return true;   // "employee"
+```
+
+#### ⚠️ Why a screen grant cannot mean "HR"
+
+That line carried a stated assumption — the employee register is "held only by Administrator and
+HR Admin". It is not the code's assumption to make. Measured in CERP:
+
+| Role | Screens held | Holds `/hrms/employee` |
+|---|---|---|
+| HR Admin | 142 | yes |
+| **Department Manager** | **141** | **yes** |
+| HR Officer | 141 | yes |
+| UserRole | 25 | no |
+| Administrator | **0** | no |
+
+The only screen separating HR Admin from Department Manager is `/hrms/notificationTemplate`. **No
+screen discriminates**, so no screen can define this — and the same heuristic had a second, opposite
+failure: the actual **Administrator** role holds nothing, so it was never "HR admin" either.
+
+This was the third definition. It began as `currentUser.IsHeadOffice()`, which in a single-branch
+tenant is true for every employee-linked user (§11); that was replaced by the screen grant; both are
+proxies for a role, and both broke the moment the data stopped matching the guess.
+
+#### The fix
+
+`HrRoles.OrganizationWide` names the role **codes** that act for the whole organisation —
+`ADMINISTRATOR`, `HR-ADMIN`, `HR-OFFICER` — and `IsAdminAsync` asks the tenant membership chain
+whether the caller holds one.
+
+Matching is on `TenantRole.Code`, never `Name`: the code is a seeded slug mirrored from the global
+`Core.Role` catalogue, so renaming a role in the UI — which tenants do — cannot silently grant or
+revoke organisation-wide access.
+
+A department head is deliberately absent from that list. Their reach is their own unit subtree,
+resolved from the org structure exactly as it always was.
+
+#### ⚠️ What this does NOT fix
+
+`GrievanceHandlers` (Resolve / Close) still reads `HrScreens.EmployeeRegister` as "is HR", so a
+department head can resolve or close **any** grievance, including one about themselves. Who may
+resolve a grievance is a separate authorization decision and was left alone.
+
+#### ⚠️ A unit is jurisdiction — no unit, no requests
+
+`VisibilityScope.UnitIds` is populated only when the caller's linked employee is `IsManagerial` AND
+has a position in a unit. A Department Manager whose login is not linked to an employee now resolves
+to an empty subtree and can raise **no** hiring request at all. That is the rule working, not
+failing — but it makes the employee link a prerequisite for the role, not an optional nicety.

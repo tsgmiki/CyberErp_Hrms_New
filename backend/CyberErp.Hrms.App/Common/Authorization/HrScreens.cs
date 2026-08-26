@@ -19,10 +19,27 @@ namespace CyberErp.Hrms.App.Common.Authorization
     /// still holds before reusing one of these for a new guard: a link BOTH sides hold cannot
     /// discriminate, which is why grievances use <see cref="EmployeeRegister"/> — every employee holds
     /// <c>/grievance</c>, so it would have been useless here.</para>
+    ///
+    /// <para>⚠️ That verification is not optional, and <see cref="EmployeeRegister"/> now FAILS it —
+    /// see its own remarks. A screen grant discriminates only while the client keeps the two sides
+    /// apart, and nothing stops them granting an HR register to a manager role.</para>
     /// </summary>
     public static class HrScreens
     {
-        /// <summary>The HR employee register — held only by Administrator and HR Admin.</summary>
+        /// <summary>
+        /// The HR employee register.
+        ///
+        /// <para>⚠️ It does NOT identify HR. "Held only by Administrator and HR Admin" was an
+        /// assumption about how clients configure roles, and CERP disproves it: the Department
+        /// Manager role holds 141 of the 142 screens HR Admin holds, this one included. To ask
+        /// "does this person act for the whole organisation", use
+        /// <see cref="HrRoles.OrganizationWide"/> — see logic §12.47.</para>
+        ///
+        /// <para>⚠️ <c>GrievanceHandlers</c> (Resolve / Close) still reads this as "is HR", so a
+        /// department head can currently resolve or close ANY grievance — including one about
+        /// themselves. Left as-is deliberately: who may resolve a grievance is a separate
+        /// authorization decision from hiring-request scope.</para>
+        /// </summary>
         public static readonly string[] EmployeeRegister = ["employee"];
 
         /// <summary>HR loan register (staff hold <c>/myLoans</c>).</summary>
