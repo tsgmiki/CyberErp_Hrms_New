@@ -123,6 +123,164 @@
 
 ## 1. Most recent changes (latest first)
 
+0165. **Employee deletion deactivates the login, and AccountStatus is finally enforced (2026-08-27).**
+    HRMS repo, no migration. `EmployeeHandlers.DeleteEmployee` + `Inf/Repositories/Core/LoginRepository`.
+    See logic §12.60.
+    - Automatic creation (0161) had no teardown. `FK_User_Employee_EmployeeId` is **ON DELETE SET
+      NULL**, so deleting an employee left an ENABLED, unfindable account. `DeleteEmployee` now calls
+      `SetAccountStatus(false)` on the linked user BEFORE the delete — afterwards the link is gone.
+      The account is KEPT, not deleted: it owns login trails and audit references.
+    - ⚠️ **Nothing in the product read `AccountStatus`.** `LoginRepository` checked the password then
+      went straight to the tenant check, so a deactivated account — from anywhere, not just this
+      feature — could still sign in. Deactivation was a label, not a control.
+    - The check sits AFTER the password comparison, so a wrong password and a disabled account look
+      identical to someone guessing; the refusal is recorded in the login trail as "Account
+      deactivated".
+    - Verified both ways with a throwaway account holding a known hash: `AccountStatus=0` → **401**
+      "This account has been deactivated"; `=1` → signs in. Safe to add: all 510 accounts were active.
+    - Deleted the two orphans the user asked for (`stesema`, `stati`) plus their tenant membership.
+      `stati2` (employee `EM001s`) is untouched. Users 510 → 508, zero orphans, zero deactivated.
+    - ⚠️ **Pre-existing, NOT caused by this: 3 positions have `IsVacant = 0` with no employee.**
+      Deletion does release the position — verified directly (create → 0, delete → 1) — so these
+      predate the change. Worth a one-off reconciliation: establishment and recruitment count
+      vacancies.
+
+0164. **Templated e-mail was delivered as RAW MARKUP; template restyled (2026-08-27).** HRMS repo,
+    no migration. `Inf/Common/SmtpEmailService.cs` + the `Employee.AccountCreated` template body
+    (data). See logic §12.59.
+    - ⚠️ **Not a styling problem: `IsBodyHtml = false` was hardcoded.** EVERY notification template
+      is authored in a rich-text editor and stored as HTML, so all of them were being delivered as
+      their own source. Any polish was invisible.
+    - Fix: `LooksLikeHtml` detects markup (a SHORT LIST of block tags, not any `<`, so a plain body
+      containing "salary < 5000" is not mangled) and the message becomes multipart/alternative.
+    - ⚠️ **Detection, not a global flip** — the hardcoded notifiers (`LeaveNotifier`,
+      `MovementNotifier`…) still build plain text with `
+`, and HTML collapses whitespace, so
+      flipping the flag would have turned those into one run-on paragraph.
+    - ⚠️ **First attempt produced THREE parts** (text/plain with the raw markup, text/plain,
+      text/html): .NET turns `Body` into an alternate of its own once `AlternateViews` is non-empty.
+      Correct shape is Body = plain text + ONE text/html alternate. Verified from the generated .eml.
+    - **Verification trick worth reusing**: `Email__PickupDirectory=<dir>` makes SmtpClient write
+      `.eml` files instead of contacting a relay — MIME inspected and the HTML rendered to an image
+      with headless Chrome, without sending a single message.
+    - Template rewritten table-based, 600px, fully inline-styled (branded header, credentials panel
+      in monospace, amber "change your password" advisory, footer). No `<style>`, no web fonts, no
+      flexbox — Outlook supports none reliably.
+    - ~~The orphaned-account problem is visible in the data~~ — **DONE in 0165**: both deleted, and
+      employee deletion now deactivates the linked login.
+    - Test employees (ZZ-HTML-001/002) removed, positions re-vacated.
+
+0163. **Custom e-mail was being overridden by the default — login vs contact address split
+    (2026-08-26).** HRMS repo, no migration. `EmployeeAccountProvisioner`. See logic §12.58.
+    - Symptom: "Selamawit Seble Tati" was registered WITH an address and the account still used
+      `stati@cybersoft.com`, and the welcome mail went there.
+    - Cause: 0162's fallback is correct for the LOGIN (unique index; `lielitmichael@gmail.com` is
+      `rojer(dr)b`'s login) but 0161 passed ONE `email` variable to both the account AND the
+      notification. So a constraint on the login silently redirected the EMPLOYEE'S MAIL to a
+      placeholder domain they cannot read.
+    - Fix: `loginEmail` (unique-or-fallback) vs `contactEmail` (the employee's own address whenever
+      given). `User.Email` = login; the mail is delivered to contact; `{{Email}}` token = login, so
+      the message still says what to type when they differ.
+    - ⚠️ **This reverses 0162's stated reasoning.** I argued credentials must never go to an address
+      registered to another account. Too narrow: HR entered it ON THIS EMPLOYEE'S RECORD, and the
+      same wrong-inbox risk exists for ANY address typed. Refusing only the colliding subset bought
+      almost no safety and broke the main use case.
+    - Verified live, both branches: duplicate address → login `tdupemail@cybersoft.com` but mail
+      delivered to `noemail@gmail.com` (the employee's own); free address → used for BOTH
+      (`free.mail@example.invalid`). Test employees deleted, positions re-vacated.
+    - ⚠️ **Found while checking: deleting an employee ORPHANS their auto-created login.** The "Tesema"
+      employee was deleted and user `stesema` survives with `EmployeeId` NULL and
+      `AccountStatus = 1`. Automatic creation has no teardown. Not fixed — outside the request, and
+      deleting a login is the user's call.
+    - ⚠️ `stati`'s credentials mail already went to `stati@cybersoft.com` under the OLD code, so she
+      still has not received it. The password is not recoverable (hash only); getting her credentials
+      needs the account deleted and re-provisioned, or a password reset.
+
+0162. **Account provisioning failed on the first real registration — a second unique index
+    (2026-08-26).** HRMS repo, no migration. `EmployeeAccountProvisioner` +
+    `EmployeeController`. See logic §12.57.
+    - Symptom: registering "Selamawit Seble Tesema" created the employee and NO account, and sent no
+      mail. The log had it exactly: `SqlException 2601 ... unique index 'IX_User_NormalizedEmail'
+      ... (LIELITMICHAEL@GMAIL.COM)` — that address already belonged to the login `rojer(dr)b`.
+    - ⚠️ **My 0161 bug**: `Core.User` has TWO unique, non-tenant-scoped indexes —
+      `IX_User_NormalizedUserName` AND `IX_User_NormalizedEmail` (filtered `<> ''`). I built a
+      collision loop for the USERNAME and treated the e-mail as free text, so any employee whose
+      address was already in use lost the whole provisioning to a constraint violation.
+    - Fix: `ResolveUniqueEmailAsync` checks the address the same way and falls back to the generated
+      `[username]@cybersoft.com` (unique because the username is).
+    - ⚠️ **On a clash the credentials do NOT go to the requested address** — it is another ACCOUNT's
+      login address, and one person's password must not land in an inbox registered to someone else.
+      Both address and owning username are logged so HR can reconcile.
+    - ⚠️ **Consequence worth watching**: in that case the welcome mail goes to `@cybersoft.com`. If
+      that domain does not receive mail, **the employee never gets their password** and the log line
+      is the only signal.
+    - **NEW `POST /Employee/{id}/provision-account`** — the retry. Provisioning is fire-and-forget
+      and never throws, so a failure left an employee with no account and no way back. Idempotent,
+      gated on the employee register, returns the username/address created.
+    - Recovered the employee with it: `stesema` / `stesema@cybersoft.com`, role `UserRole`, mail
+      sent (`Your CyberERP account: stesema`). ⚠️ That mail went to the `@cybersoft.com` fallback,
+      so **Selamawit has probably not received it** — the address on her record,
+      `lielitmichael@gmail.com`, is `rojer(dr)b`'s login.
+
+0161. **Automatic account creation on employee registration (2026-08-26).** HRMS repo, NO migration.
+    NEW `App/Features/Core/Employees/EmployeeAccountProvisioner.cs`,
+    `App/Common/Services/IPasswordHasher.cs`, `Inf/Common/PasswordHasher.cs`; wired into
+    `CreateEmployee`, both DI files, and `NotificationEvents`. See logic §12.56.
+    - Registering an employee now creates the login: user + `TenantUser` + `TenantUserRole`
+      (`USERROLE` by CODE), random 14-char password, then the credentials e-mail.
+    - ⚠️ **"Last name" = `Person.GrandFatherName`, not `FatherName`.** The names are Ethiopian, so
+      this needed deciding: `Person.Create` takes first + grandfather as the two REQUIRED names
+      (father is optional) and every display name is `FirstName + " " + GrandFatherName`. So John
+      *Michael* Doe → `jdoe`. **This is the OPPOSITE of the migrated data**, where usernames read
+      `berhand` (Berhan **D**emeke). New accounts will not match the old convention — that follows
+      the requirement as written.
+    - Email: employee's address if given, else `[username]@cybersoft.com`. Collisions get a numeric
+      suffix, checked ACROSS tenants (a username is what you type to log in).
+    - Notification is `Employee.AccountCreated` with the address as `SubjectAddresses` — the
+      **EventSubject** rule is the only one that can reach a brand-new employee, and any other rule
+      would mail one person's password to someone else.
+    - ⚠️ **No hardcoded fallback** (unlike `LeaveNotifier`): credentials are content an admin should
+      have approved. No template ⇒ account still created + a loud warning naming the username.
+    - ⚠️ Runs AFTER `SaveChangesAsync` and **never throws** — the employee is already committed, and
+      a missing account is recoverable by hand. Idempotent on the employee link.
+    - Verified live end to end: "John Doe" with no email → user `jdoe` / `jdoe@cybersoft.com`, role
+      `UserRole`, linked; log shows `Employee.AccountCreated ... resolved to 1 recipient` and
+      `Email sent: 'Your CyberERP account: jdoe'`. A SECOND "John Doe" WITH an explicit address →
+      `jdoe2` / that address (both collision and custom-email branches).
+    - Test employees/users/persons deleted and positions re-vacated: back to 490 employees,
+      507 users, 807 vacant positions.
+    - ⚠️ **I left one config row in CERP**: a `Employee.AccountCreated` template ("Welcome - your
+      CyberERP login") with an EventSubject rule. Without it the feature creates accounts but sends
+      nothing. Reword or delete it as you like.
+    - ⚠️ Security limits, all pre-existing but now on a hotter path: plaintext password by e-mail,
+      NO force-change-on-first-login flag on `User`, and `Encryption.GenerateHash` still empty-salted
+      (which is why the password is random per account, not a shared default).
+
+0160. **Permission audit across the remaining modules (2026-08-26).** HRMS repo, NO code change —
+    an audit plus reusable tooling: `backend/scripts/permission-audit-index.cjs` and
+    `permission-audit.cjs`. See logic §12.55 for the full table.
+    - Measures the gap §12.51 predicted: `UserRole` (496 of 507 accounts) holds all six privileges on
+      ~20 operations, so the endpoint gate admits ordinary staff on most writes and the HANDLER is the
+      only defence.
+    - **118 write endpoints reachable by an ordinary employee: 86 guarded, 26 with NO actor check,
+      4 existence-only, 2 unresolved.**
+    - Concentrated in **recruitment / workforce planning** (`JobRequisition` 8, `WorkforcePlan` 6,
+      `HiringRequest` 3) — they enforce document STATUS but never ask who is calling — plus the
+      cancel/delete tails of leave, appraisal, movement, termination and disciplinary.
+    - ⚠️ **PROVEN, not inferred**: as `takele(dr)a` (ordinary UserRole) `SetLeaveBalance` wrote a
+      **999-day entitlement** for an employee outside their line. Row deleted immediately; verified
+      `LeaveBalance` back to 345 rows. **Fix this one first** — it is an `Add`, so it needs no
+      existing record.
+    - The rest were probed with invalid payloads (safe: the answer that matters is 403 vs not). All 15
+      probed returned 400/404, **never 403** — the gate admits, the handler decides.
+    - ⚠️ **The audit was wrong twice before it was right; both traps are in §12.55.** (a) A
+      METHOD-level `[RequirePermission]` covers ONE action, not the rest of the controller —
+      attributing a GET's `myProfile` gate to the writes below produced 21 phantom findings including
+      "staff can create job grades", which is actually **403**. (b) Business-state checks
+      (`EnsureNoRunningAsync`, `EnsureStartableAsync`, `EnsureEmployeeVisibleAsync`) read like guards
+      but never ask WHO is calling.
+    - No fixes applied — the audit was the ask. `git status` shows only docs + the two scripts.
+
 0159. **Staff can withdraw their own enrollment — the first `Access` override in the codebase
     (2026-08-26).** HRMS repo, one line + docs on `TrainingControllers.Withdraw`. No migration, no
     permission change. See logic §12.54.

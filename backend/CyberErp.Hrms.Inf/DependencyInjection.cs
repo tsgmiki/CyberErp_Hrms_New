@@ -38,6 +38,7 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<IEmailConfiguration, EmailConfiguration>();
             services.AddScoped<EmailDispatchJob>();
             services.AddScoped<IEmailService, QueuedEmailService>();
+            services.AddScoped<IPasswordHasher, PasswordHasher>();
             // PDF letter rendering (QuestPDF) — stateless, safe as a singleton
             services.AddSingleton<IPdfService, QuestPdfService>();
 
