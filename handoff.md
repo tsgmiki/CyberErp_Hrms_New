@@ -123,6 +123,39 @@
 
 ## 1. Most recent changes (latest first)
 
+0153. **Searchable Target Position picker (both SPAs) + Home forms close on save (2026-08-26).**
+    HRMS repo (backend `PositionHandlers`, `transferRequest/form.tsx`) AND Home repo
+    (`transferRequest/form.tsx`, `template/useEntityCrudModule.ts`, `hiringRequest/form.tsx`,
+    `appraisal/scoring.tsx`). No migration. See logic §12.48.
+    - **Target Position** → `DropDownField` in BOTH SPAs (identical component in each repo).
+      ⚠️ It was `take: 300` against **807 vacant positions** — 507 unreachable. Search is therefore
+      SERVER-side (`param`/`setParam`), not a client filter over a fixed page.
+    - ⚠️ `displayValue={meta.toPositionName}`: on an existing request the target is no longer vacant,
+      so it is absent from the options and the field would otherwise render blank.
+    - Backend: `GetAllPositions` now also searches the **org unit name**, because the option displays
+      it — "Avian" went 7 → 13 matches. Affects every Position list consumer (a widening, not a
+      narrowing).
+    - **Home auto-close**: root cause was `useEntityCrudModule.setId("")` blanking the id while
+      `showForm` stayed true, leaving an EMPTY form after save with the refreshed grid hidden behind
+      it. `useEntityRouteModule` always navigated back; the two now agree. `addHandler` uses the raw
+      setter so opening a blank form is not read as "finished".
+    - Coverage of all 11 Home forms: 6 already called `setId("")` (fixed by the hook); 3 self-service
+      forms already called `onDone()` (untouched); `hiringRequest` gained it; `appraisal` — below.
+    - ⚠️ **Judgement call**: `appraisal/scoring.tsx` is a multi-step signing flow, so only the
+      standalone `save` closes. `saveThen` persists scores as the first half of a transition and
+      deliberately does NOT close — ejecting the user mid-signing would be worse than the bug.
+      `hiringRequest` splits the same way (Save closes; Submit/Close keep you on the record).
+    - Verified in a real headless browser against both dev servers, logged in as `tatekg`:
+      no `<select>` remains; 50 options on open; typing `Avian` → 13 (matches the API exactly);
+      picking fills the field. Then in Home: filled a transfer request, saved → **form closed and the
+      grid refreshed to "1 records"** showing the row with the position chosen via the new combobox.
+      Test record deleted, verified 0 left.
+    - ⚠️ Harness note: `DropDownField` opens on `onFocus`, which TOGGLES — a programmatic
+      `.focus()` does not reach React's handler here, and firing focus twice opens then closes it.
+      Use a real `Input.dispatchMouseEvent` click, or the menu looks permanently empty.
+    - Not exercised: the appraisal screen itself (needs an appraisal mid-cycle) and the HRMS transfer
+      form's save path (auto-close was scoped to Home).
+
 0152. **Department heads could raise a Hiring Request for ANY unit — "HR admin" becomes a role
     (2026-08-26).** HRMS repo, no migration, no Home change. See logic §12.47.
     NEW `App/Common/Authorization/HrRoles.cs`; `PerformanceVisibilityService` +

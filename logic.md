@@ -4078,3 +4078,42 @@ resolve a grievance is a separate authorization decision and was left alone.
 has a position in a unit. A Department Manager whose login is not linked to an employee now resolves
 to an empty subtree and can raise **no** hiring request at all. That is the rule working, not
 failing — but it makes the employee link a prerequisite for the role, not an optional nicety.
+
+### 12.48 Two forms of "the list is bigger than the box"
+
+Two UI changes that look cosmetic and are not.
+
+#### The Target Position picker hid most of its data
+
+The transfer-request form offered vacant positions from a native `<select>` fed `take: 300`. There
+are **807** vacant positions, so 507 could not be chosen at all.
+
+Turning it into the standard searchable combobox (`DropDownField`) makes that worse before it makes
+it better: a select is visibly finite, but a search box promises to search everything, so
+"No data found" reads as "this position does not exist". Same trap as §12.46. So this picker searches
+**server-side** — `param`/`setParam`, one query per term, no fixed page to fall off.
+
+The option shows `code — class title` with the **org unit** beneath it, so `GetAllPositions` now
+searches the unit name too. A term that is visible in the list but matches nothing is indistinguishable
+from a broken search: "Avian" went from 7 matches to 13.
+
+#### A saved form that stays open looks like a save that did not happen
+
+`useEntityCrudModule.setId("")` blanked the record id but left `showForm` true. Forms call it to mean
+"this save is complete", so after saving you were left on an **empty form** — no confirmation, and the
+freshly-refreshed grid hidden behind it.
+
+Its URL-driven twin `useEntityRouteModule` had always navigated back to the list on the same call.
+The two now agree: clearing the id closes the form and returns to the grid. `addHandler` uses the raw
+state setter, because opening a blank form is exactly the case where a cleared id must NOT be read as
+"finished".
+
+#### ⚠️ Not every save is the end of the task
+
+`appraisal/scoring.tsx` is a multi-step signing flow: score → submit → employee / manager / reviewer /
+HR sign. Only the standalone **Save** closes. `saveThen` also persists scores, but as the first half
+of a transition — closing there would eject the user mid-flow, before they can see the appraisal reach
+its new stage.
+
+`hiringRequest` splits the same way: its Draft **Save** closes, while the Submit / Close lifecycle
+actions report through separate state and keep you on the record.

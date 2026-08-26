@@ -1,12 +1,13 @@
 "use client";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Save, ArrowLeftRight, ClipboardCheck, CheckCircle2, AlertTriangle } from "lucide-react";
 import type { EmployeeMovementModel } from "@/models";
 import { getTransferRequest, saveTransferRequest, assessTransfer } from "@/services/admin/transferRequest";
 import getAllPosition from "@/services/admin/position/getAll";
 import EmployeePicker from "@/components/common/employeePicker";
+import DropDownField from "@/components/ui/dropDownField";
 import { EntityFormTabs } from "@/components/common/tabs/entityFormTabs";
 import { transferKindOptions } from "@/constants/orgStructure";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -32,8 +33,28 @@ function TransferRequestForm({ id, setId }: { id: string; setId: (id: string) =>
   });
 
   // Open (vacant) positions only — the movement targets an unoccupied seat.
-  const [posParam] = useState({ ...parameterInitialData, take: 300, isVacant: true });
-  const { data: positions } = useQuery({ queryKey: ["positions", posParam], queryFn: () => getAllPosition(posParam) });
+  //
+  // ⚠️ SERVER-side search (`param`/`setParam` on the combobox below). There are ~800 vacant
+  // positions; a fixed page filtered in the browser silently finds nothing for anything outside it,
+  // and a search box that answers "No data found" for a position that plainly exists is worse than
+  // the select it replaced. Typing narrows this query instead.
+  const [posParam, setPosParam] = useState({ ...parameterInitialData, take: 50, isVacant: true });
+  const { data: positions, isFetching: positionsFetching } = useQuery({
+    queryKey: ["positions", posParam],
+    queryFn: () => getAllPosition(posParam),
+    placeholderData: keepPreviousData,
+  });
+
+  // The combobox filters on `name` and shows `remark` beneath it, so the unit rides along as the
+  // secondary line rather than being crammed into one string.
+  const positionOptions = useMemo(
+    () => (positions?.data ?? []).map((p: any) => ({
+      id: p.id,
+      name: `${p.code} — ${p.positionClassTitle ?? ""}`.trim(),
+      remark: p.organizationUnitName ?? undefined,
+    })),
+    [positions],
+  );
 
   useEffect(() => {
     if (record) setMeta({ ...record, effectiveDate: record.effectiveDate?.slice(0, 10) });
@@ -127,15 +148,22 @@ function TransferRequestForm({ id, setId }: { id: string; setId: (id: string) =>
                 </div>
                 <div className="sm:col-span-2">
                   <label className={LABEL}>{t("Target Position (vacant)")} *</label>
-                  <select className={INPUT} disabled={!editable} value={meta.toPositionId ?? ""} onChange={(e) => set("toPositionId", e.target.value)}>
-                    <option value="">{t("Select a vacant position")}</option>
-                    {meta.toPositionId && !(positions?.data ?? []).some((p) => p.id === meta.toPositionId) && (
-                      <option value={meta.toPositionId}>{meta.toPositionName ?? t("Current target")}</option>
-                    )}
-                    {(positions?.data ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>{p.code} — {p.positionClassTitle ?? ""} {p.organizationUnitName ? `(${p.organizationUnitName})` : ""}</option>
-                    ))}
-                  </select>
+                  {/* `displayValue` carries the saved target's name: on an existing request the
+                      position is no longer vacant, so it is absent from the options and the field
+                      would otherwise render blank. */}
+                  <DropDownField
+                    type="dropDown"
+                    name="toPositionId"
+                    disabled={!editable}
+                    placeholder={t("Select a vacant position") as string}
+                    value={meta.toPositionId ?? ""}
+                    displayValue={meta.toPositionName ?? ""}
+                    data={positionOptions as never}
+                    param={posParam as never}
+                    setParam={setPosParam as never}
+                    isLoading={positionsFetching}
+                    onSelect={(_n, item) => set("toPositionId", item?.id ?? "")}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>{t("Preferred Start Date")} *</label>
