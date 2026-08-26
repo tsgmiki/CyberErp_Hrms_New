@@ -69,6 +69,16 @@ public enum RecipientKind
 
     /// <summary>A literal address, for distribution lists and external parties.</summary>
     Address,
+
+    /// <summary>
+    /// Whoever the event is INHERENTLY addressed to, supplied by the raising code rather than
+    /// configured — the candidate an interview was scheduled with, for instance.
+    ///
+    /// <para>⚠️ Needed because not every subject is an employee. Without it, an admin who creates a
+    /// template for a candidate-facing event would silently cut the candidate out of their own
+    /// message: the template would win over the hardcoded fallback and route only to staff.</para>
+    /// </summary>
+    EventSubject,
 }
 
 /// <summary>

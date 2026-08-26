@@ -22,7 +22,7 @@ export interface NotificationEventModel {
  */
 export interface NotificationRecipientModel {
   id?: string;
-  /** Requester | CurrentApprover | RequesterManager | Role | OrganizationUnit | Employee | AllEmployees | Address */
+  /** Requester | CurrentApprover | RequesterManager | Role | OrganizationUnit | Employee | AllEmployees | Address | EventSubject */
   kind: string;
   /** The role / unit / employee this rule points at — only for those kinds. */
   targetId?: string | null;

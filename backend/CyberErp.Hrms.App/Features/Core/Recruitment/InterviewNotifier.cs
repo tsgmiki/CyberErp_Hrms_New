@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<Candidate> candidateRepository,
         IRepository<JobRequisition> requisitionRepository,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<InterviewNotifier> logger) : IInterviewNotifier
     {
         private sealed record Context(string Email, string CandidateName, string VacancyTitle);
@@ -67,12 +69,45 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             return string.Join("\n", parts);
         }
 
+        /// <summary>
+        /// Dispatches the administrator-defined message for a candidate-facing interview event.
+        ///
+        /// <para>⚠️ The candidate's address rides in as <c>SubjectAddresses</c> and is reachable only
+        /// through an <c>EventSubject</c> recipient rule. A template built purely from staff rules
+        /// would take over from the hardcoded mail and cut the candidate out of their own
+        /// invitation — the token palette and the event description both call this out.</para>
+        /// </summary>
+        private Task<int> DispatchAsync(string eventKey, Interview interview, Context ctx,
+            DateTime? previousStart = null, DateTime? previousEnd = null) =>
+            dispatcher.DispatchAsync(new NotificationContext(
+                eventKey,
+                new Dictionary<string, string?>
+                {
+                    ["CandidateName"] = ctx.CandidateName,
+                    ["VacancyTitle"] = ctx.VacancyTitle,
+                    ["Round"] = interview.Round.ToString(),
+                    ["InterviewDate"] = interview.ScheduledStart.ToString("dd MMM yyyy"),
+                    ["StartTime"] = interview.ScheduledStart.ToString("HH:mm"),
+                    ["EndTime"] = interview.ScheduledEnd.ToString("HH:mm"),
+                    ["Mode"] = interview.Format.ToString(),
+                    ["Location"] = string.IsNullOrWhiteSpace(interview.Location)
+                        ? interview.MeetingLink : interview.Location,
+                    ["PreviousDate"] = previousStart?.ToString("dd MMM yyyy"),
+                    ["PreviousTime"] = previousStart is null ? null
+                        : $"{previousStart:HH:mm}–{previousEnd:HH:mm}",
+                },
+                EntityType: nameof(Interview),
+                EntityId: interview.Id,
+                SubjectAddresses: [ctx.Email]));
+
         public async Task ScheduledAsync(Interview interview)
         {
             try
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
                 if (ctx is null) return;
+                if (await DispatchAsync(NotificationEvents.InterviewScheduled, interview, ctx) > 0) return;
+
                 await emailService.SendAsync(ctx.Email,
                     $"Interview Invitation — {ctx.VacancyTitle}",
                     $"""
@@ -103,6 +138,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
                 if (ctx is null) return;
+                if (await DispatchAsync(NotificationEvents.InterviewRescheduled, interview, ctx, oldStart, oldEnd) > 0) return;
+
                 await emailService.SendAsync(ctx.Email,
                     $"Interview Rescheduled — {ctx.VacancyTitle}",
                     $"""
@@ -134,6 +171,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
                 if (ctx is null) return;
+                if (await DispatchAsync(NotificationEvents.InterviewCancelled, interview, ctx) > 0) return;
+
                 await emailService.SendAsync(ctx.Email,
                     $"Interview Cancelled — {ctx.VacancyTitle}",
                     $"""

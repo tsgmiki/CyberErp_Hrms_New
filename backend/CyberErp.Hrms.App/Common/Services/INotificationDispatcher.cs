@@ -18,6 +18,10 @@ namespace CyberErp.Hrms.App.Common.Services
     /// <param name="StepOrder">The step the event fired on, for step-scoped templates and CurrentApprover.</param>
     /// <param name="EntityType">Governed entity type, for the portal alert's deep link.</param>
     /// <param name="EntityId">Governed entity id, for the portal alert's deep link.</param>
+    /// <param name="SubjectAddresses">
+    /// Addresses the event is inherently addressed to, for the EventSubject rule — a candidate, an
+    /// external party, anyone who is not an employee and so cannot be resolved from the org data.
+    /// </param>
     public sealed record NotificationContext(
         string EventKey,
         IReadOnlyDictionary<string, string?> Tokens,
@@ -25,7 +29,8 @@ namespace CyberErp.Hrms.App.Common.Services
         Guid? WorkflowDefinitionId = null,
         int? StepOrder = null,
         string? EntityType = null,
-        Guid? EntityId = null);
+        Guid? EntityId = null,
+        IReadOnlyList<string>? SubjectAddresses = null);
 
     /// <summary>
     /// Sends the administrator-defined notification for an event: picks the template, merges the

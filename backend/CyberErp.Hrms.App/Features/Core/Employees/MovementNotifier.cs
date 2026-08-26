@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -29,25 +30,30 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Position> positionRepository,
         IOrgManagerResolver managerResolver,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<MovementNotifier> logger) : IMovementNotifier
     {
         public Task SubmittedAsync(Guid movementId) => NotifyAsync(movementId,
+            NotificationEvents.MovementSubmitted,
             "submitted for approval",
             "Your {0} request effective {1} has been submitted and routed for approval.");
 
         public Task ApprovedAsync(Guid movementId) => NotifyAsync(movementId,
+            NotificationEvents.MovementApproved,
             "approved",
             "Your {0} effective {1} has been APPROVED. It will be applied on the effective date.");
 
         public Task ExecutedAsync(Guid movementId) => NotifyAsync(movementId,
+            NotificationEvents.MovementExecuted,
             "executed",
             "Your {0} effective {1} has been applied — your organizational records now reflect the new assignment.");
 
         public Task CancelledAsync(Guid movementId) => NotifyAsync(movementId,
+            NotificationEvents.MovementCancelled,
             "cancelled",
             "Your {0} request effective {1} has been cancelled/rejected. The process is terminated.");
 
-        private async Task NotifyAsync(Guid movementId, string eventLabel, string bodyTemplate)
+        private async Task NotifyAsync(Guid movementId, string eventKey, string eventLabel, string bodyTemplate)
         {
             try
             {
@@ -60,10 +66,28 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .Select(e => new
                     {
                         e.Email,
+                        e.EmployeeNumber,
                         Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
                     })
                     .FirstOrDefaultAsync();
                 if (employee is null) return;
+
+                // The administrator's template wins when one is configured. Falling back otherwise
+                // is deliberate: making the feature available must not switch existing mail off.
+                var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                    eventKey,
+                    new Dictionary<string, string?>
+                    {
+                        ["EmployeeName"] = employee.Name,
+                        ["EmployeeNumber"] = employee.EmployeeNumber,
+                        ["MovementType"] = movement.MovementType.ToString(),
+                        ["EffectiveDate"] = movement.EffectiveDate.ToString("dd MMM yyyy"),
+                        ["Reason"] = movement.Reason,
+                    },
+                    RequesterEmployeeId: movement.EmployeeId,
+                    EntityType: nameof(EmployeeMovement),
+                    EntityId: movement.Id));
+                if (dispatched > 0) return;
 
                 var subject = $"{movement.MovementType} {eventLabel} — {employee.Name}";
                 var body = string.Format(bodyTemplate, movement.MovementType, movement.EffectiveDate.ToString("dd MMM yyyy"))

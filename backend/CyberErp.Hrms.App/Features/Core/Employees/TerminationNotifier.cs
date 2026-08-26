@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -29,25 +30,30 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> employeeRepository,
         IOrgManagerResolver managerResolver,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<TerminationNotifier> logger) : ITerminationNotifier
     {
         public Task SubmittedAsync(Guid terminationId) => NotifyAsync(terminationId,
+            NotificationEvents.ExitSubmitted,
             "exit request submitted",
             "A {0} exit case (last working day {1}) has been submitted and routed for approval.");
 
         public Task ApprovedAsync(Guid terminationId) => NotifyAsync(terminationId,
+            NotificationEvents.ExitApproved,
             "exit approved — clearance opened",
             "The {0} exit case (last working day {1}) has been APPROVED. The departmental clearance checklist is now open.");
 
         public Task SettledAsync(Guid terminationId) => NotifyAsync(terminationId,
+            NotificationEvents.ExitSettled,
             "exit settled",
             "The {0} exit case (last working day {1}) has been SETTLED. The employment record is now inactive.");
 
         public Task CancelledAsync(Guid terminationId) => NotifyAsync(terminationId,
+            NotificationEvents.ExitCancelled,
             "exit cancelled",
             "The {0} exit case (last working day {1}) has been cancelled/rejected. The process is terminated.");
 
-        private async Task NotifyAsync(Guid terminationId, string eventLabel, string bodyTemplate)
+        private async Task NotifyAsync(Guid terminationId, string eventKey, string eventLabel, string bodyTemplate)
         {
             try
             {
@@ -60,11 +66,28 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .Select(e => new
                     {
                         e.Email,
+                        e.EmployeeNumber,
                         UnitId = e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null,
                         Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
                     })
                     .FirstOrDefaultAsync();
                 if (employee is null) return;
+
+                // Template first, hardcoded mail as the fallback — see MovementNotifier.
+                var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                    eventKey,
+                    new Dictionary<string, string?>
+                    {
+                        ["EmployeeName"] = employee.Name,
+                        ["EmployeeNumber"] = employee.EmployeeNumber,
+                        ["TerminationType"] = termination.TerminationType.ToString(),
+                        ["LastWorkingDate"] = termination.LastWorkingDate.ToString("dd MMM yyyy"),
+                        ["Reason"] = termination.Reason,
+                    },
+                    RequesterEmployeeId: termination.EmployeeId,
+                    EntityType: nameof(EmployeeTermination),
+                    EntityId: termination.Id));
+                if (dispatched > 0) return;
 
                 var subject = $"{termination.TerminationType} {eventLabel} — {employee.Name}";
                 var body = string.Format(bodyTemplate, termination.TerminationType,

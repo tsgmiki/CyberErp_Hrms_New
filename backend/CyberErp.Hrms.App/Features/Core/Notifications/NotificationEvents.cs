@@ -18,6 +18,31 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
         public const string LeaveApproved = "Leave.Approved";
         public const string LeaveRejected = "Leave.Rejected";
 
+        // ---- Personnel movement (transfer / promotion / redeployment) -------------------------
+        public const string MovementSubmitted = "Movement.Submitted";
+        public const string MovementApproved = "Movement.Approved";
+        public const string MovementExecuted = "Movement.Executed";
+        public const string MovementCancelled = "Movement.Cancelled";
+
+        // ---- Exit / termination ---------------------------------------------------------------
+        public const string ExitSubmitted = "Exit.Submitted";
+        public const string ExitApproved = "Exit.Approved";
+        public const string ExitSettled = "Exit.Settled";
+        public const string ExitCancelled = "Exit.Cancelled";
+
+        // ---- Disciplinary ---------------------------------------------------------------------
+        public const string DisciplinarySubmitted = "Disciplinary.Submitted";
+        public const string DisciplinaryApproved = "Disciplinary.Approved";
+        public const string DisciplinaryCancelled = "Disciplinary.Cancelled";
+
+        // ---- Recruitment (CANDIDATE-facing: use the EventSubject recipient rule) ---------------
+        public const string InterviewScheduled = "Interview.Scheduled";
+        public const string InterviewRescheduled = "Interview.Rescheduled";
+        public const string InterviewCancelled = "Interview.Cancelled";
+
+        // ---- Trip ------------------------------------------------------------------------------
+        public const string TripSettlementOverdue = "Trip.SettlementOverdue";
+
         /// <summary>
         /// The seed set. Applied idempotently by <c>SeedNotificationEvents</c> — an existing row is
         /// refreshed (name / tokens can improve) but never duplicated, and rows are never deleted,
@@ -39,6 +64,83 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
                 "EmployeeName,EmployeeNumber,LeaveType,TotalDays,StartDate,EndDate,RequestDate,ApproverName,StepName,Reason",
                 "Raised when a leave request is refused at any approval step.",
                 IsWorkflowEvent: true),
+
+            // ---- Personnel movement -----------------------------------------------------------
+            new(MovementSubmitted, "Personnel movement submitted", "Movement",
+                "EmployeeName,EmployeeNumber,MovementType,EffectiveDate,Reason",
+                "Raised when a transfer / promotion / redeployment is submitted and routed for approval.",
+                IsWorkflowEvent: true),
+
+            new(MovementApproved, "Personnel movement approved", "Movement",
+                "EmployeeName,EmployeeNumber,MovementType,EffectiveDate,Reason",
+                "Raised when a personnel movement completes its approval workflow. It is applied on the effective date.",
+                IsWorkflowEvent: true),
+
+            new(MovementExecuted, "Personnel movement executed", "Movement",
+                "EmployeeName,EmployeeNumber,MovementType,EffectiveDate,Reason",
+                "Raised when a movement reaches its effective date and the organizational records are updated."),
+
+            new(MovementCancelled, "Personnel movement cancelled", "Movement",
+                "EmployeeName,EmployeeNumber,MovementType,EffectiveDate,Reason",
+                "Raised when a movement is cancelled or rejected and the process terminates.",
+                IsWorkflowEvent: true),
+
+            // ---- Exit -------------------------------------------------------------------------
+            new(ExitSubmitted, "Exit case submitted", "Exit",
+                "EmployeeName,EmployeeNumber,TerminationType,LastWorkingDate,Reason",
+                "Raised when an exit case is submitted and routed for approval.",
+                IsWorkflowEvent: true),
+
+            new(ExitApproved, "Exit approved - clearance opened", "Exit",
+                "EmployeeName,EmployeeNumber,TerminationType,LastWorkingDate,Reason",
+                "Raised when an exit case is approved and the departmental clearance checklist opens.",
+                IsWorkflowEvent: true),
+
+            new(ExitSettled, "Exit settled", "Exit",
+                "EmployeeName,EmployeeNumber,TerminationType,LastWorkingDate,Reason",
+                "Raised when an exit case is settled and the employment record becomes inactive."),
+
+            new(ExitCancelled, "Exit cancelled", "Exit",
+                "EmployeeName,EmployeeNumber,TerminationType,LastWorkingDate,Reason",
+                "Raised when an exit case is cancelled or rejected and the process terminates.",
+                IsWorkflowEvent: true),
+
+            // ---- Disciplinary -----------------------------------------------------------------
+            new(DisciplinarySubmitted, "Disciplinary case raised", "Disciplinary",
+                "EmployeeName,EmployeeNumber,ViolationType,MeasureType,ViolationDate,EffectiveDate",
+                "Raised when a disciplinary case is opened for an employee and routed for review.",
+                IsWorkflowEvent: true),
+
+            new(DisciplinaryApproved, "Disciplinary case confirmed", "Disciplinary",
+                "EmployeeName,EmployeeNumber,ViolationType,MeasureType,ViolationDate,EffectiveDate",
+                "Raised when a disciplinary case is reviewed and confirmed.",
+                IsWorkflowEvent: true),
+
+            new(DisciplinaryCancelled, "Disciplinary case cancelled", "Disciplinary",
+                "EmployeeName,EmployeeNumber,ViolationType,MeasureType,ViolationDate,EffectiveDate",
+                "Raised when a disciplinary case is cancelled or voided.",
+                IsWorkflowEvent: true),
+
+            // ---- Recruitment ------------------------------------------------------------------
+            // ⚠️ These are addressed to a CANDIDATE, who is not an employee and cannot be resolved
+            // from org data. Templates for them need an EventSubject recipient rule, or the
+            // candidate never receives their own interview invitation.
+            new(InterviewScheduled, "Interview scheduled", "Recruitment",
+                "CandidateName,VacancyTitle,InterviewDate,StartTime,EndTime,Mode,Location",
+                "Raised when an interview is booked with a candidate. Addressed to the candidate (EventSubject)."),
+
+            new(InterviewRescheduled, "Interview rescheduled", "Recruitment",
+                "CandidateName,VacancyTitle,InterviewDate,StartTime,EndTime,Mode,Location,PreviousDate,PreviousTime",
+                "Raised when a booked interview moves to a new slot. Addressed to the candidate (EventSubject)."),
+
+            new(InterviewCancelled, "Interview cancelled", "Recruitment",
+                "CandidateName,VacancyTitle,InterviewDate,StartTime,EndTime,Mode,Location",
+                "Raised when a booked interview is cancelled. Addressed to the candidate (EventSubject)."),
+
+            // ---- Trip -------------------------------------------------------------------------
+            new(TripSettlementOverdue, "Travel advance overdue for settlement", "Trip",
+                "EmployeeName,EmployeeNumber,TripNumber,AdvanceAmount,Currency,DueDate",
+                "Raised by the daily reminder job for every travel advance past its settlement deadline."),
         ];
     }
 

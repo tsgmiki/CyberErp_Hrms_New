@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -28,21 +29,25 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Position> positionRepository,
         IOrgManagerResolver managerResolver,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<DisciplinaryNotifier> logger) : IDisciplinaryNotifier
     {
         public Task SubmittedAsync(Guid measureId) => NotifyAsync(measureId,
+            NotificationEvents.DisciplinarySubmitted,
             "raised",
             "A disciplinary case ({0}) has been raised for {1} and routed for review.");
 
         public Task ApprovedAsync(Guid measureId) => NotifyAsync(measureId,
+            NotificationEvents.DisciplinaryApproved,
             "confirmed",
             "The disciplinary case ({0}) for {1} has been reviewed and CONFIRMED.");
 
         public Task CancelledAsync(Guid measureId) => NotifyAsync(measureId,
+            NotificationEvents.DisciplinaryCancelled,
             "cancelled",
             "The disciplinary case ({0}) for {1} has been cancelled/voided.");
 
-        private async Task NotifyAsync(Guid measureId, string eventLabel, string bodyTemplate)
+        private async Task NotifyAsync(Guid measureId, string eventKey, string eventLabel, string bodyTemplate)
         {
             try
             {
@@ -54,11 +59,33 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .Where(e => e.Id == measure.EmployeeId)
                     .Select(e => new
                     {
+                        e.EmployeeNumber,
                         Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber,
                         UnitId = e.Position != null ? (Guid?)e.Position.OrganizationUnitId : null
                     })
                     .FirstOrDefaultAsync();
-                if (subject is null || subject.UnitId is null) return;
+                if (subject is null) return;
+
+                // Template first, hardcoded mail as the fallback — see MovementNotifier.
+                // ⚠️ Dispatched BEFORE the unit-manager guard below: an administrator's rules need
+                // not involve the unit manager, so a subject with no unit must not silence them.
+                var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                    eventKey,
+                    new Dictionary<string, string?>
+                    {
+                        ["EmployeeName"] = subject.Name,
+                        ["EmployeeNumber"] = subject.EmployeeNumber,
+                        ["ViolationType"] = measure.ViolationType,
+                        ["MeasureType"] = measure.MeasureType.ToString(),
+                        ["ViolationDate"] = measure.ViolationDate.ToString("dd MMM yyyy"),
+                        ["EffectiveDate"] = measure.EffectiveDate?.ToString("dd MMM yyyy"),
+                    },
+                    RequesterEmployeeId: measure.EmployeeId,
+                    EntityType: nameof(DisciplinaryMeasure),
+                    EntityId: measure.Id));
+                if (dispatched > 0) return;
+
+                if (subject.UnitId is null) return;
 
                 var mailSubject = $"Disciplinary case {eventLabel} — {subject.Name}";
                 var body = string.Format(bodyTemplate, measure.ViolationType, subject.Name);

@@ -51,6 +51,9 @@ const RECIPIENT_KINDS: {
   { id: "OrganizationUnit", name: "Everyone in a unit", hint: "By position", needs: "unit" },
   { id: "AllEmployees", name: "All employees", hint: "Every active employee with an address" },
   { id: "Address", name: "A specific address", hint: "Distribution list or external party", needs: "address" },
+  // Recruitment events are addressed to a CANDIDATE, who is not an employee and cannot be resolved
+  // from org data. Without this rule a template would quietly cut them out of their own message.
+  { id: "EventSubject", name: "Who the event is about", hint: "e.g. the candidate — set by the event itself" },
 ];
 
 const BLANK: NotificationTemplateModel = {

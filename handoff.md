@@ -123,6 +123,41 @@
 
 ## 1. Most recent changes (latest first)
 
+0149. **The remaining hardcoded e-mails move to the dispatcher (2026-08-26).** HRMS repo, NO
+    migration (the new recipient kind is a string conversion). See logic §12.44.
+    - Migrated 15 events across 5 notifiers: `MovementNotifier` (4), `TerminationNotifier` (4),
+      `DisciplinaryNotifier` (3), `InterviewNotifier` (3), `TripSettlementReminder` (1). Each
+      dispatches first and falls back to its original hardcoded mail when no template exists.
+    - ⚠️ **Three sites deliberately NOT migrated**, because they are not notifications:
+      `OfferDelivery` (PDF attachment, and its `bool` drives Approved→Sent), `ReportScheduleHandlers`
+      (the user's own scheduled-report config + attachment) and the Settings **test message** (a
+      relay probe — a known-good payload is the point).
+    - ⚠️ **NEW `RecipientKind.EventSubject`.** Interview mail goes to a CANDIDATE, who is not an
+      employee, so no rule could name them: an admin's template would have won over the hardcoded
+      mail and cut the candidate out of their own invitation. The raising code now supplies
+      `NotificationContext.SubjectAddresses`. Added to the admin UI's rule picker too.
+    - ⚠️ **Found en route: an early return that silently cancelled the dispatcher.**
+      `LeaveNotifier.SendAsync` returned when the REQUESTER had no address — before dispatching. That
+      guard belongs to the fallback, which can only reach the requester; ahead of the dispatch it let
+      one missing address cancel rules addressed to HR or the whole company. With 0 of 490 employees
+      carrying an address, **no `Leave.Approved` template could ever have fired.** Guard moved to
+      immediately before the fallback send; `DisciplinaryNotifier`'s `UnitId is null` return had the
+      same shape and was moved too. General rule: a precondition of the FALLBACK must never gate the
+      DISPATCHER — different recipients need different guards.
+    - ⚠️ **My previous backlog entry was wrong**: `OtherLeaveApprovedAsync` DOES dispatch — it routes
+      through the shared `SendAsync` helper, which dispatches `Leave.Approved`. Corrected in §2.
+    - Verified: backend builds clean, `npx tsc -b` clean, and `POST /NotificationTemplate/seed-defaults`
+      seeded 15 new events (18 total, across Leave / Movement / Exit / Disciplinary / Recruitment /
+      Trip). Test leave request and the temporary template rule removed afterwards; verified 0 rows
+      left behind.
+    - ⚠️ **The approved path is NOT runtime-verified.** Reaching it needs a designated approver to
+      hold `/hrms/workflow`; `UserRole` does not, so the resolved approver gets 403. Escalating a
+      real user's privileges to run a test was not appropriate, so it was left unexercised.
+    - ⚠️ **Found: line managers cannot approve anything.** Approvals run through the generic
+      `WorkflowController`, gated on `/hrms/workflow`. HR Admin / HR Officer / Department Manager
+      hold it; `UserRole` does not — so a designated approver holding only `UserRole` is refused.
+      Role configuration, not a code defect, but the client needs to know.
+
 0148. **"Leave submitted → the approver", and the address fallback that makes it deliver
     (2026-08-26).** HRMS repo, no migration. See logic §12.43. Touches `LeaveNotifier`,
     `AnnualLeaveHandlers`, `OtherLeaveHandlers`, `NotificationDispatcher`.
@@ -4019,16 +4054,24 @@
 
 ## 2. Outstanding tasks / backlog
 
-- **User-defined notifications — what is still hardcoded (see logic §12.42, §12.43):**
+- **User-defined notifications — what remains (see logic §12.42, §12.43, §12.44):**
   - **No employee in CERP has an e-mail address** (0 of 490), so nothing is deliverable yet however
     the templates are configured. This is a DATA task for the client, not a code task.
-  - **~27 `SendAsync` sites are still hardcoded.** Only the leave notifier dispatches; the rest build
-    subject and body inline. Migrate them event by event, each with a seeded `NotificationEvent`.
-  - **`OtherLeaveApprovedAsync` does not dispatch at all** — it still calls the hardcoded `SendAsync`
-    only, unlike the annual path which dispatches first and falls back.
+  - **Three `SendAsync` sites are deliberately NOT migrated** (logic §12.44): `OfferDelivery`
+    (its `bool` drives Approved→Sent and it carries a PDF), `ReportScheduleHandlers` (the user's own
+    scheduled-report config + attachment) and the Settings **test message** (a relay probe).
+    Templating any of them would break what they are for.
+  - **The approved path is not runtime-verified.** Reaching it needs a designated approver to hold
+    `/hrms/workflow`, which `UserRole` does not; escalating a real user's privileges to test was
+    not appropriate. Submitted-path dispatch IS verified end to end.
   - **The Other Leave submitted hop is wired but unexercised** (the only active setting is a
     180-working-day maternity block).
-  - **To/Cc/Bcc is stored but not honoured**: `IEmailService.SendAsync` takes one recipient.
+  - **To/Cc/Bcc is stored but not honoured**: `IEmailService.SendAsync` takes one recipient. This
+    now also bounds `EventSubject`.
+  - ⚠️ **Line managers cannot approve anything unless their role holds `/hrms/workflow`.** Approvals
+    run through the generic `WorkflowController`, which is gated on that operation; `UserRole` has no
+    grant for it, so a designated approver gets 403. HR Admin / HR Officer / Department Manager do
+    hold it. Role configuration, not a code defect — but the client should be told.
   - `workflowDefinition/list.tsx` still carries 2 dead palette classes (`border-primary/40`,
     `hover:bg-primary/20`) — its seed button has no border colour or hover.
 
