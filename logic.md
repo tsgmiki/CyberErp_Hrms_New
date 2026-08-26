@@ -3972,3 +3972,43 @@ Most-specific-wins (§12.42) picks step over workflow over general — but *with
 matching template fires. Two general `Leave.Approved` templates therefore double-mail. That is
 intended (an admin may want two different audiences), but it makes an accidental duplicate expensive,
 so an edit that silently creates rather than updates is worth watching for.
+
+### 12.46 A searchable combobox over a PAGED list is a trap
+
+The workflow-definition form picked approvers from three native `<select>`s. They are now the
+project's standard searchable combobox (`DropDownField` — the same control `MultiSelectField` wraps),
+so an administrator types to filter instead of scrolling a flat list.
+
+The component swap is the easy half. The trap is what a search box *implies*.
+
+Those selects were fed `take: 100`. A native select is visibly finite — you scroll it, you see what
+is there. A search box is not: it promises to search everything, so when a user types a colleague's
+name and gets **"No data found"**, they conclude the user does not exist. Verified in the browser:
+before this change, typing `tate` against 499 users returned nothing, because `tatekg` sorts outside
+the first 100.
+
+So each picker is matched to the size of its list:
+
+| Picker | Rows | Mode |
+|---|---|---|
+| User | ~499 | **Server-side** — `param`/`setParam` puts `DropDownField` in remote-search mode (`if (param) return data` disables the local filter and each keystroke re-queries) |
+| Dynamic (org units) | 121 + 3 synthetic | **Client-side**, loaded whole (`take: 500`) |
+| Role | 5 | **Client-side** |
+
+#### ⚠️ Why org units are NOT server-side
+
+The dynamic picker's list is org units *plus* three synthetic entries — Subject, Immediate Manager,
+Second-Level Manager — that exist only in the browser. Remote search would filter the units on the
+server while those three floated free of the search term. Loading all 121 keeps one coherent list
+that filters as a whole. It was also silently truncated at 100 before, so 21 units could not be
+chosen at all.
+
+#### ⚠️ The pickers must RESET after each pick
+
+These are add-controls, not bound fields: `DropDownField` holds the chosen label internally, so after
+adding an approver it would keep displaying them. Each carries
+`key={`s${i}-user-${step.approvers.length}`}` so it remounts and clears — the same trick
+`MultiSelectField` uses for its add-picker.
+
+`remark` (the username) is not decoration either: the local filter matches on `name` **and**
+`remark`, so typing a username finds the row when the display name would not.
