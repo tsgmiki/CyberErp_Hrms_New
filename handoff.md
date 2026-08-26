@@ -123,6 +123,40 @@
 
 ## 1. Most recent changes (latest first)
 
+0157. **Ownership checks on the exit-case write handlers (2026-08-26).** HRMS repo, no migration.
+    `EmployeeTerminationHandlers` (Cancel, Finalize) + `EmployeeReinstatementHandlers` (Reinstate).
+    See logic §12.52.
+    - ⚠️ **My 0156 list of five was WRONG — two were already correct.** The flag came from grepping
+      `CanAccessEmployeeAsync|scope|IsAdmin`, which misses a guard behind a shared helper:
+      `SaveTrainingCertificate` calls `TrainingCertificateShared.EnsureAdminAsync` (IsAdmin), and
+      `UpdateTerminationClearance` calls `TerminationShared.EvaluateClearanceApproverAsync` (the
+      department's configured approvers). Neither was touched.
+    - ⚠️ **`EnsureEmployeeVisibleAsync` is NOT an authorization check** — it only proves the employee
+      EXISTS in the branch-filtered repository, which in a single-branch tenant is everyone. Two of
+      the three unguarded handlers looked protected because they call it. Same shape of mistake as
+      §11's `IsHeadOffice()`: existence is not permission.
+    - Now enforced: **Cancel** → `CanAccessEmployeeAsync` (self / their manager / HR — withdrawing an
+      exit is the same right as raising one); **Finalize** → `IsAdmin` (settlement deactivates
+      employment and releases final pay); **Reinstate** → `IsAdmin` (restores employment and
+      re-occupies a position).
+    - ⚠️ Finalize needed its own check DESPITE already requiring every assigned clearance to be
+      Cleared: those sign-offs prove the checks were done by authorized approvers, not who is
+      pressing the button — an employee could otherwise settle their own exit once clearance
+      completed.
+    - Verified no background caller first: all three are invoked ONLY from
+      `EmployeeTerminationController` (no Hangfire job, no workflow handler), so an interactive-user
+      check cannot strand an automation.
+    - Verified live as `takele(dr)a` (ordinary staff, managerial, 61-unit subtree) against a case
+      OUTSIDE their line: cancel **400** "You can only cancel exit cases for yourself or your team",
+      finalize **400** "Only HR can finalize an exit case", reinstate **400** "Only HR can reinstate
+      an employee" — and `tatekg` (HR) still cancels the same case **200**.
+    - ⚠️ **Guard ORDER decides what a test proves.** The first run looked like a pass and was not:
+      cancel was rejected by `IWorkflowGate.EnsureNoRunningAsync` and reinstate by its FluentValidation
+      validator, both BEFORE the new checks. And the first cancel that did get through returned 200
+      CORRECTLY — the subject was in the caller's own subtree. A deny rule must be tested with a
+      subject it should actually deny.
+    - Test terminations deleted; 0 rows remain (there were 0 before).
+
 0156. **UserRole gains My Training; My Exit needed nothing — and permission links turn out to be
     NAMESPACE-INSENSITIVE (2026-08-26).** HRMS repo, no code change: one script,
     `backend/scripts/grant-userrole-self-service.sql`. APPLIED to CERP. See logic §12.51.
@@ -148,9 +182,8 @@
         handler can resolve a grievance." Test grievance deleted (0 rows remain).
     - ⚠️ **The real exposure is handler-level, not gate-level.** UserRole already passes the gate for
       Delete/Approve on ~20 operations, so what protects the data is each handler's own
-      `CanAccessEmployeeAsync`. The ones that SKIP it are worth auditing:
-      `CancelEmployeeTermination`, `FinalizeTermination`, `ReinstateEmployee`,
-      `UpdateTerminationClearance`, `SaveTrainingCertificate`. Not done — flagged only.
+      `CanAccessEmployeeAsync`. ~~Five handlers skip it~~ — **DONE in 0157**, and only THREE actually
+      did: `SaveTrainingCertificate` and `UpdateTerminationClearance` were already guarded.
 
 0155. **My Exit / Resignation Request worked only for HR — a self-service screen was borrowing the
     Training module's permission (2026-08-26).** HOME repo, one file:

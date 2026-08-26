@@ -4254,3 +4254,58 @@ actually protects the data is each handler's own `CanAccessEmployeeAsync` check.
 skip it — `CancelEmployeeTermination`, `FinalizeTermination`, `ReinstateEmployee`,
 `UpdateTerminationClearance`, `SaveTrainingCertificate` — are the ones worth auditing, not the
 catalogue.
+
+### 12.52 Ownership checks on the exit-case write handlers
+
+§12.51 flagged five handlers as skipping the ownership check. **Two of them were already correct** —
+the flag came from grepping for `CanAccessEmployeeAsync|scope|IsAdmin`, which misses a guard that
+lives behind a shared helper:
+
+| Handler | Guard it already had | Verdict |
+|---|---|---|
+| `SaveTrainingCertificate` | `TrainingCertificateShared.EnsureAdminAsync` → `scope.IsAdmin` | already correct |
+| `UpdateTerminationClearance` | `TerminationShared.EvaluateClearanceApproverAsync` → the department's configured approvers | already correct |
+
+Three genuinely had none, and now do.
+
+#### ⚠️ `EnsureEmployeeVisibleAsync` is not an authorization check
+
+Two of the three *looked* guarded because they call it. All it does is:
+
+```csharp
+if (!await employees.GetAll().AnyAsync(e => e.Id == employeeId))
+    throw new NotFoundException(...);
+```
+
+It proves the employee EXISTS in the branch-filtered repository. In a single-branch tenant that is
+every employee, so as authorization it is a no-op — the same shape of mistake as §11's
+`IsHeadOffice()`. Existence is not permission.
+
+#### What each now enforces
+
+| Handler | Rule | Why |
+|---|---|---|
+| `CancelEmployeeTermination` | `CanAccessEmployeeAsync` — self, their manager, or HR | Withdrawing an exit case is the same right as raising one, so it reuses the rule the save and read paths already use |
+| `FinalizeEmployeeTermination` | `scope.IsAdmin` | Settlement makes the employment record inactive and releases the final payment |
+| `ReinstateEmployee` | `scope.IsAdmin` | Reinstatement restores employment and re-occupies a position — never self, never a line manager |
+
+⚠️ Finalize deserves the explicit check even though it already required every assigned clearance to
+be `Cleared`. Those sign-offs prove the CHECKS were done by authorized approvers; they say nothing
+about who presses the button, so without this an employee could settle their own exit the moment
+clearance completed.
+
+All three are called only from `EmployeeTerminationController` — no Hangfire job, no workflow
+handler — so an interactive-user check cannot strand a background caller. That was verified before
+adding them.
+
+#### ⚠️ Guard ORDER decides what a test proves
+
+The first attempt looked like a pass and was not:
+
+- `cancel` was rejected by `IWorkflowGate.EnsureNoRunningAsync` before reaching the new check.
+- `reinstate` was rejected by its FluentValidation validator before reaching it.
+
+And the first cancel attempt that did get through returned 200 — correctly. The test subject was in
+the caller's own subtree, so `CanAccessEmployeeAsync` legitimately passed. **Verifying a deny rule
+needs a subject the rule should actually deny**: with an employee outside the caller's line, cancel
+returns *"You can only cancel exit cases for yourself or your team."* while HR still succeeds.

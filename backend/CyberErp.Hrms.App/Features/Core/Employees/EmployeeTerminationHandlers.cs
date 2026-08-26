@@ -467,6 +467,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     // ---- Finalize (system automations) -------------------------------------------
     public class FinalizeEmployeeTermination(
         IRepository<EmployeeTermination> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<TerminationClearance> clearanceRepository,
         IRepository<ClearanceDepartment> clearanceDepartmentRepository,
         IRepository<Employee> employeeRepository,
@@ -477,6 +478,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     {
         public async Task FinalizeAsync(Guid id)
         {
+            // Settling an exit makes the employment record inactive and releases the final payment —
+            // an HR act. The clearance sign-offs below prove the CHECKS were done by authorized
+            // approvers; they say nothing about who is pressing this button, and without this an
+            // employee could settle their own exit the moment clearance completed.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("id", "Only HR can finalize an exit case.");
+
             var termination = await TerminationShared.GetWithClearancesAsync(repository, id);
             if (termination.Status != TerminationStatus.ClearanceInProgress)
                 throw new ValidationException("status", $"Only a clearance-in-progress termination can be finalized (current: {termination.Status}).");
@@ -722,6 +730,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     public class CancelEmployeeTermination(
         IRepository<EmployeeTermination> repository,
         IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ITerminationNotifier notifier,
         ILogger<CancelEmployeeTermination> logger) : ICancelEmployeeTermination
@@ -733,6 +742,12 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var termination = await repository.GetAll().FirstOrDefaultAsync(t => t.Id == id)
                 ?? throw new NotFoundException(nameof(EmployeeTermination), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, termination.EmployeeId);
+            // ⚠️ EnsureEmployeeVisibleAsync only proves the employee EXISTS in the branch-filtered
+            // repository — in a single-branch tenant that is every employee, so it is not an
+            // authorization check. Withdrawing an exit case is the same right as raising one: the
+            // employee themselves, their manager, or HR.
+            if (!await visibility.CanAccessEmployeeAsync(termination.EmployeeId))
+                throw new ValidationException("id", "You can only cancel exit cases for yourself or your team.");
             if (termination.Status is TerminationStatus.Settled or TerminationStatus.Cancelled)
                 throw new ValidationException("status", $"A {termination.Status} termination can no longer be cancelled.");
 

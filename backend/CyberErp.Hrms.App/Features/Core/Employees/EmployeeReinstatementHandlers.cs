@@ -133,6 +133,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class ReinstateEmployee(
         IRepository<Employee> employeeRepository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<EmployeeTermination> terminationRepository,
         IRepository<Position> positionRepository,
         IValidator<ReinstateEmployeeDto> validator,
@@ -144,6 +145,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, dto.EmployeeId);
+            // ⚠️ That call only proves the employee exists. Reinstatement restores employment and
+            // re-occupies a position — HR only, never self-service and never a line manager.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException(nameof(dto.EmployeeId), "Only HR can reinstate an employee.");
 
             var employee = await employeeRepository.GetAll().FirstOrDefaultAsync(e => e.Id == dto.EmployeeId)
                 ?? throw new NotFoundException(nameof(Employee), dto.EmployeeId.ToString());
