@@ -4201,3 +4201,56 @@ with no "not linked" message and no unauthorized page.
 
 `MyCompensation` shows the same sentence on its error path, but its endpoint is properly self-scoped
 — 200 for both roles. `myExit` was the only screen resolving identity through `getCpdSummary`.
+
+### 12.51 Permission links are NAMESPACE-INSENSITIVE — query for both forms
+
+Granting `UserRole` the My Training and My Exit screens turned up a trap that had already produced
+two wrong conclusions in this repo's own notes.
+
+`IEndpointPermissionService.Normalize()` strips the leading slash **and** the `hrms/` namespace:
+
+```csharp
+var key = (s ?? "").TrimStart('/').ToLowerInvariant();
+return key.StartsWith(Subsystems.LinkNamespace) ? key[Subsystems.LinkNamespace.Length..] : key;
+```
+
+So `/myExit` and `/hrms/myExit` are the **same permission**, and grants across rows are **unioned**.
+Both forms exist in `Core.TenantOperation`, and `UserRole` holds most of its catalogue in the
+un-namespaced form:
+
+```
+/annualLeave  /appraisal  /clearanceApprovals  /disciplinaryCase  /grievance
+/hiringRequest  /myCompensation  /myExit  /myLoans  /myTrips  /transferRequest  …   — all six privileges
+```
+
+#### ⚠️ What this broke
+
+Querying `WHERE Link = '/hrms/x'` alone and concluding "the role has nothing" is wrong, and it
+happened twice while fixing the hiring-request and grievance scopes:
+
+- "UserRole has no `/hrms/hiringRequest` grant, so no testable non-admin holder exists" — false. It
+  holds `/hiringRequest`, and the test ran fine once that was noticed.
+- The same reasoning was used to declare the grievance refusal branch untestable.
+
+**Always query `Link IN ('/x', '/hrms/x')`,** or normalise before comparing.
+
+#### ⚠️ A namespaced row cannot restrict an un-namespaced one
+
+Adding `/hrms/myExit` with View+Add, intending to withhold Edit, achieved nothing — `/myExit` already
+granted all six, and the union wins. A row that looks like a restriction but is not is worse than no
+row, so it was removed. **To narrow a permission you must edit the row that grants it.**
+
+#### The grant that was actually needed
+
+Only `/hrms/myTraining` (View), which no form of the link granted before. Deliberately View-only:
+`myTraining` gates controllers shared with the HR training registers, and `SaveTrainingCertificate`
+is unscoped, so `Add` would let staff issue certificates for anybody. Staff can therefore see their
+training record but not self-enroll until that handler checks ownership.
+
+#### ⚠️ The real exposure is handler-level, not gate-level
+
+Because `UserRole` already passes the endpoint gate for Delete and Approve on ~20 operations, what
+actually protects the data is each handler's own `CanAccessEmployeeAsync` check. The handlers that
+skip it — `CancelEmployeeTermination`, `FinalizeTermination`, `ReinstateEmployee`,
+`UpdateTerminationClearance`, `SaveTrainingCertificate` — are the ones worth auditing, not the
+catalogue.

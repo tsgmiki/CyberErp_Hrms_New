@@ -123,6 +123,35 @@
 
 ## 1. Most recent changes (latest first)
 
+0156. **UserRole gains My Training; My Exit needed nothing — and permission links turn out to be
+    NAMESPACE-INSENSITIVE (2026-08-26).** HRMS repo, no code change: one script,
+    `backend/scripts/grant-userrole-self-service.sql`. APPLIED to CERP. See logic §12.51.
+    - ⚠️ **`Normalize()` strips the leading `/` AND the `hrms/` namespace**, so `/myExit` and
+      `/hrms/myExit` are the SAME permission and grants across rows are UNIONED. `UserRole` holds
+      most of its catalogue UN-namespaced (`/annualLeave`, `/grievance`, `/hiringRequest`,
+      `/transferRequest`, `/appraisal`, `/myExit` … all six privileges).
+    - **myExit needed NO grant** — already held with all six. I first inserted a namespaced
+      View+Add row intending to withhold Edit; it changed nothing (Edit endpoints still 400, not
+      403), so it was REMOVED. ⚠️ A namespaced row cannot restrict an un-namespaced one; to narrow a
+      permission you must edit the row that grants it.
+    - **myTraining (View) was the real gap**: `GET /TrainingCpd` **403 → 200**, plus enrollments and
+      certificates. Add/Edit/Delete deliberately withheld — `myTraining` gates controllers shared
+      with the HR training registers and `SaveTrainingCertificate` is UNSCOPED, so Add would let
+      staff issue certificates for anybody (verified still 403).
+      **Consequence: staff can see their training record but cannot self-enroll.**
+    - ⚠️ **This trap had already produced two wrong conclusions in these notes** — see the
+      corrections struck into 0152 and 0154. **Always query `Link IN ('/x','/hrms/x')`.**
+    - **Closed two verification gaps as a result:**
+      - Hiring-request scope guard (0152): `takele(dr)a` out-of-scope → **400** with the scope
+        message, in-scope → **200**. Test row deleted.
+      - Grievance refusal branch (0154): `takele(dr)a` as grievant → **400** "Only HR or the assigned
+        handler can resolve a grievance." Test grievance deleted (0 rows remain).
+    - ⚠️ **The real exposure is handler-level, not gate-level.** UserRole already passes the gate for
+      Delete/Approve on ~20 operations, so what protects the data is each handler's own
+      `CanAccessEmployeeAsync`. The ones that SKIP it are worth auditing:
+      `CancelEmployeeTermination`, `FinalizeTermination`, `ReinstateEmployee`,
+      `UpdateTerminationClearance`, `SaveTrainingCertificate`. Not done — flagged only.
+
 0155. **My Exit / Resignation Request worked only for HR — a self-service screen was borrowing the
     Training module's permission (2026-08-26).** HOME repo, one file:
     `components/admin/myExit/index.tsx`. No backend change, no migration. See logic §12.50.
@@ -165,13 +194,15 @@
       the case. Both now refused.
     - Verified live as HR Admin after the change: submit → **resolve 200** → **close 200**, status
       `Closed` on disk. Test grievance deleted (0 rows remain, and there were 0 before).
-    - ⚠️ **NOT exercised**: the refusal branch. It needs an account holding `/hrms/grievance` that is
-      NOT org-wide HR — only Department Manager qualifies, and `gibril` (its one user) does not use
-      the default password. Same blocker as 0152.
-    - ⚠️ **`UserRole` does NOT hold `/hrms/grievance`** (only Department Manager / HR Admin /
-      HR Officer do), so ordinary staff cannot reach these endpoints at all — "the grievant" in
-      *"only the grievant or HR can close"* is a branch almost nobody can take. The `HrScreens`
-      remark claiming "every employee holds /grievance" describes intent, not this tenant.
+    - ⚠️ **PARTLY CORRECTED (0156)**: `UserRole` DOES reach the grievance endpoints (via the
+      un-namespaced `/grievance`), so the refusal branch was tested after all — `takele(dr)a`, as the
+      grievant and neither HR nor the handler, is refused with **400** "Only HR or the assigned
+      handler can resolve a grievance." ⚠️ This does NOT discriminate old code from new (takele holds
+      no employee register either way); it proves the guard refuses correctly. The old-vs-new case
+      still needs a Department Manager login.
+    - ⚠️ **CORRECTED (0156)**: `UserRole` DOES hold `/grievance` (un-namespaced), so ordinary staff
+      reach these endpoints normally and "the grievant" is a live branch. The `HrScreens` remark
+      "every employee holds /grievance" is accurate after all.
     - ⚠️ There are **zero grievance rows**, so none of this has bitten anyone yet.
 
 0153. **Searchable Target Position picker (both SPAs) + Home forms close on save (2026-08-26).**
@@ -234,10 +265,13 @@
       HR Officer ADMIN→ADMIN, UserRole scoped→scoped, Administrator scoped→ADMIN. And through the
       API after the change: `tatekg` (HR-ADMIN) still **121** units, `takele(dr)a` (UserRole,
       managerial) still **61** — both branches of the new predicate exercised, no regression.
-    - ⚠️ **NOT exercised**: no login as an actual Department Manager (`gibril` is the only one and
-      does not use the default password), and the hiring-request POST guard itself — `UserRole` has
-      no `/hrms/hiringRequest` grant, so no testable non-admin holder exists. The guard consumes the
-      SAME scope object `my-units` does, which is verified.
+    - ⚠️ **CORRECTION (0156): "UserRole has no `/hrms/hiringRequest` grant" was WRONG** — it holds
+      the UN-namespaced `/hiringRequest`, and `Normalize()` treats the two as one permission. The
+      POST guard is therefore **now verified**: as `takele(dr)a` (managerial, 61-unit subtree, not
+      org-wide HR) an out-of-scope unit returns **400** "You can only raise hiring requests for your
+      own department and its sub-departments", and an in-scope unit returns **200**.
+      Still not exercised: a login as an actual Department Manager (`gibril` does not use the
+      default password).
     - ⚠️ **`gibril` has no linked employee**, so after this fix they resolve to an EMPTY subtree and
       can raise no hiring request at all. Correct by the rule (no unit = no jurisdiction) but it makes
       the employee link a prerequisite for the role. Tell the client.
