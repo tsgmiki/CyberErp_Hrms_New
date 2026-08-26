@@ -1,10 +1,11 @@
 "use client";
 import FormProviders from "@/components/common/formProvider/formProvider";
-import { memo, useCallback, useEffect, useState } from "react";
+import DropDownField from "@/components/ui/dropDownField";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import type { WorkflowDefinitionModel, WorkflowStepModel, WorkflowApproverModel } from "@/models";
 import { StatusMessage } from "../../common/statusMessage/status";
 import React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { X, UserRound, Shield, GitBranch } from "lucide-react";
 import { saveWorkflowDefinition, getWorkflowDefinition } from "@/services/admin/workflow";
@@ -25,7 +26,15 @@ import {
 const FormProvider = memo(FormProviders);
 
 const MAX_STEPS = 10;
+/** Roles are a handful — the whole list is safe to hold and filter in the browser. */
 const lookupParam = { ...parameterInitialData, take: 100 };
+/**
+ * Org units are ~121 today. Loaded whole so the combobox can filter them locally ALONGSIDE the
+ * three synthetic "dynamic approver" entries, which have no server-side equivalent to search.
+ */
+const orgUnitParam = { ...parameterInitialData, take: 500 };
+/** The starting page for the user picker; typing narrows it SERVER-side from here. */
+const userPageSize = 50;
 
 interface StepDraft {
   name: string;
@@ -63,18 +72,51 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
     enabled: typeof id != "undefined" && id != "",
   });
 
-  const { data: users } = useQuery({
-    queryKey: ["users", lookupParam],
-    queryFn: () => getAllUser(lookupParam),
+  // ⚠️ Users are searched on the SERVER. There are ~499 of them, so a client-side filter over a
+  // fixed page silently finds nothing for anyone outside it — and a search box that returns
+  // "No data found" for a user who plainly exists is worse than the old select, which at least
+  // looked finite. `param`/`setParam` puts DropDownField into server-search mode.
+  const [userParam, setUserParam] = useState({ ...parameterInitialData, take: userPageSize });
+  const { data: users, isFetching: usersFetching } = useQuery({
+    queryKey: ["users", userParam],
+    queryFn: () => getAllUser(userParam),
+    placeholderData: keepPreviousData,
   });
   const { data: roles } = useQuery({
     queryKey: ["roles", lookupParam],
     queryFn: () => getAllRole(lookupParam),
   });
   const { data: orgUnits } = useQuery({
-    queryKey: ["organizationUnits", lookupParam],
-    queryFn: () => getAllOrganizationUnit(lookupParam),
+    queryKey: ["organizationUnits", orgUnitParam],
+    queryFn: () => getAllOrganizationUnit(orgUnitParam),
   });
+
+  // The combobox filters on `name` (and `remark`), so the options are shaped for it once rather
+  // than per render. `remark` is not decoration: it widens what a search term can match — typing a
+  // username or an org path finds the row when the display name alone would not.
+  const userOptions = useMemo(
+    () => (users?.data ?? []).map((u: any) => ({
+      id: u.id, name: u.fullName || u.userName, remark: u.userName && u.userName !== u.fullName ? u.userName : undefined,
+    })),
+    [users],
+  );
+  const roleOptions = useMemo(
+    () => (roles?.data ?? []).map((r: any) => ({ id: r.id, name: r.name })),
+    [roles],
+  );
+  // The three synthetic entries resolve per request from the org structure at decision time; the
+  // unit rows below them name a specific unit's manager.
+  const dynamicOptions = useMemo(
+    () => [
+      { id: "__subject__", name: t("Subject (the employee themselves)") },
+      { id: "__immediate__", name: t("Immediate Manager (requester's chain)") },
+      { id: "__second__", name: t("Second-Level Manager (manager's manager)") },
+      ...(orgUnits?.data ?? []).map((u: any) => ({
+        id: u.id, name: `${t("Manager of")} ${u.name}`,
+      })),
+    ],
+    [orgUnits, t],
+  );
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -157,9 +199,6 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
     }
   }, [formState]);
 
-  const selectClass =
-    "h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground";
-
   return (
     <div className="text-foreground">
       {pending && <Loading />}
@@ -239,66 +278,69 @@ function WorkflowDefinitionForm(props: { id: string; setId: (id: string) => void
                   placeholder={`${t("Step")} ${i + 1} — ${t("name")}`}
                   className="h-9 min-w-48 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground"
                 />
-                <select
-                  className={selectClass}
+                {/* Searchable: the user list is fetched with take:100, which is far too many to
+                    scan in a native select. `key` includes the approver count so the picker
+                    REMOUNTS after each pick and clears its search text — this is an add-control,
+                    not a bound field, so it must never keep showing the last thing added. */}
+                <DropDownField
+                  key={`s${i}-user-${step.approvers.length}`}
+                  compact
+                  type="dropDown"
+                  name={`step-${i}-user`}
                   value=""
-                  onChange={(e) => {
-                    const u = (users?.data ?? []).find((x) => x.id === e.target.value);
-                    if (u?.id) addApprover(i, { approverType: "User", approverId: u.id, displayName: u.fullName });
+                  displayValue=""
+                  placeholder={t("+ Add user approver") as string}
+                  data={userOptions as never}
+                  param={userParam as never}
+                  setParam={setUserParam as never}
+                  isLoading={usersFetching}
+                  onSelect={(_n, item) => {
+                    if (item?.id) addApprover(i, { approverType: "User", approverId: item.id, displayName: item.name });
                   }}
-                >
-                  <option value="">{t("+ Add user approver")}</option>
-                  {(users?.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>{u.fullName}</option>
-                  ))}
-                </select>
-                <select
-                  className={selectClass}
+                />
+                <DropDownField
+                  key={`s${i}-role-${step.approvers.length}`}
+                  compact
+                  type="dropDown"
+                  name={`step-${i}-role`}
                   value=""
-                  onChange={(e) => {
-                    const r = (roles?.data ?? []).find((x) => x.id === e.target.value);
-                    if (r?.id) addApprover(i, { approverType: "Role", approverId: r.id, displayName: r.name });
+                  displayValue=""
+                  placeholder={t("+ Add role approver") as string}
+                  data={roleOptions as never}
+                  onSelect={(_n, item) => {
+                    if (item?.id) addApprover(i, { approverType: "Role", approverId: item.id, displayName: item.name });
                   }}
-                >
-                  <option value="">{t("+ Add role approver")}</option>
-                  {(roles?.data ?? []).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
-                </select>
-                <select
-                  className={selectClass}
+                />
+                <DropDownField
+                  key={`s${i}-dynamic-${step.approvers.length}`}
+                  compact
+                  type="dropDown"
+                  name={`step-${i}-dynamic`}
                   value=""
-                  onChange={(e) => {
+                  displayValue=""
+                  placeholder={t("+ Add dynamic approver") as string}
+                  data={dynamicOptions as never}
+                  onSelect={(_n, item) => {
                     // Dynamic / self approvers resolve per request from the org structure at decision time.
-                    if (e.target.value === "__immediate__") {
+                    if (item?.id === "__immediate__") {
                       addApprover(i, { approverType: "ImmediateManager", approverId: EMPTY_APPROVER_ID, displayName: "Immediate Manager" });
                       return;
                     }
-                    if (e.target.value === "__second__") {
+                    if (item?.id === "__second__") {
                       addApprover(i, { approverType: "SecondLevelManager", approverId: EMPTY_APPROVER_ID, displayName: "Second-Level Manager" });
                       return;
                     }
-                    if (e.target.value === "__subject__") {
+                    if (item?.id === "__subject__") {
                       addApprover(i, { approverType: "Subject", approverId: EMPTY_APPROVER_ID, displayName: "Subject (the employee)" });
                       return;
                     }
-                    const u = (orgUnits?.data ?? []).find((x) => x.id === e.target.value);
-                    if (u?.id)
-                      addApprover(i, {
-                        approverType: "UnitManager",
-                        approverId: u.id,
-                        displayName: `Manager of ${u.name}`,
-                      });
+                    // Anything else is an org unit; its option name is already "Manager of X", which
+                    // is exactly the displayName the chip and the approver list show.
+                    if (item?.id) {
+                      addApprover(i, { approverType: "UnitManager", approverId: item.id, displayName: item.name });
+                    }
                   }}
-                >
-                  <option value="">{t("+ Add dynamic approver")}</option>
-                  <option value="__subject__">{t("Subject (the employee themselves)")}</option>
-                  <option value="__immediate__">{t("Immediate Manager (requester's chain)")}</option>
-                  <option value="__second__">{t("Second-Level Manager (manager's manager)")}</option>
-                  {(orgUnits?.data ?? []).map((u) => (
-                    <option key={u.id} value={u.id}>{t("Manager of")} {u.name}</option>
-                  ))}
-                </select>
+                />
               </div>
 
               {/* Approver chips */}

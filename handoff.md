@@ -123,6 +123,35 @@
 
 ## 1. Most recent changes (latest first)
 
+0151. **Workflow definition: approver pickers become searchable comboboxes (2026-08-26).** HRMS repo,
+    frontend only, one file: `components/admin/workflowDefinition/form.tsx`. See logic §12.46.
+    - The three native `<select>`s (user / role / dynamic approver) are now `DropDownField`, the
+      project's standard searchable combobox — the same control `MultiSelectField` wraps. No new
+      component was written; this is the FRONTEND-UI-STANDARD fix as much as a feature.
+    - ⚠️ **The real bug was the paging, not the control.** They were fed `take: 100`. A native select
+      is visibly finite; a search box promises to search EVERYTHING, so "No data found" for a
+      colleague who plainly exists is worse than what it replaced. Verified in the browser: before
+      the fix, typing `tate` against 499 users returned nothing, because `tatekg` sorts past 100.
+    - Each picker is matched to its list size: **users → server-side** (`param`/`setParam` puts
+      DropDownField in remote-search mode); **org units → client-side but loaded whole**
+      (`take: 500`; 121 exist, so 21 were previously unselectable); **roles → client-side** (5).
+    - ⚠️ **Org units are deliberately NOT server-side**: the dynamic list is units PLUS three
+      browser-only synthetic entries (Subject / Immediate Manager / Second-Level Manager). Remote
+      search would filter the units while those three floated free of the search term.
+    - ⚠️ Each picker carries `key={`s${i}-…-${step.approvers.length}`}` so it REMOUNTS and clears
+      after every pick — they are add-controls, and DropDownField otherwise keeps showing the last
+      thing chosen. Same trick `MultiSelectField` uses.
+    - `remark` = username, which widens the local filter (it matches `name` OR `remark`).
+    - Verified in a real headless browser against the running dev server: all three render inline;
+      user search `tate` → "Tatek Wolde / tatekg" (was "No data found"); role `hr` → HR Admin +
+      HR Officer; dynamic unfiltered → **124** options (121 units + 3 synthetic, i.e. past the old
+      100 cap), `manager` → 123 with "Subject…" correctly excluded. Picking adds the chip, clears
+      the picker and closes the menu. `tsc -b` clean; eslint 0 errors and **no new warnings**.
+    - ⚠️ Harness note: the SPA's `.env` points at **:55900**, not the default :5014 — a browser test
+      must run the API on 55900 (`-- --urls http://localhost:55900`) or every login silently fails.
+      Also: counting `document.querySelectorAll("ul li")` counts EVERY open menu; scope to the
+      picker's own `<ul>` or the numbers are wrong.
+
 0150. **UserRole gains /hrms/workflow, which unblocks approvals — and the approved-path proof
     (2026-08-26).** HRMS repo, NO code change: one new script,
     `backend/scripts/grant-userrole-workflow.sql`. APPLIED to CERP.
