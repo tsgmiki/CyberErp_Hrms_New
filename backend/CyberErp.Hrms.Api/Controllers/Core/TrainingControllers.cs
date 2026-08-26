@@ -188,7 +188,21 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public async Task<IActionResult> Feedback(Guid id, [FromBody] TrainingFeedbackDto dto)
         { await feedbackHandler.SubmitAsync(id, dto); return Ok(new { message = "Feedback recorded" }); }
 
+        /// <summary>
+        /// Withdraw from a session. Requires <b>Add</b>, not the derived Edit.
+        ///
+        /// <para>⚠️ Withdrawing is the other half of enrolling — one self-service capability — but the
+        /// suffix "withdraw" is not an Add token, so the verb derivation asks for Edit. Edit on THIS
+        /// controller pair also means RecordParticipation and certificate issue/renew, which are HR
+        /// functions, so granting staff Edit to reach this one action would open all three. Naming
+        /// the privilege here is the split the derivation cannot express; the handler still restricts
+        /// the row to its owner, their manager, or HR.</para>
+        ///
+        /// <para>The action attribute REPLACES the controller's, so both operation links are
+        /// repeated — dropping them would gate this on nothing.</para>
+        /// </summary>
         [HttpPost("{id:guid}/withdraw")]
+        [RequirePermission("trainingSession", "myTraining", Access = PermissionAccess.Add)]
         public async Task<IActionResult> Withdraw(Guid id) { await withdrawHandler.WithdrawAsync(id); return Ok(new { message = "Enrollment withdrawn" }); }
 
         [HttpDelete("{id:guid}")]

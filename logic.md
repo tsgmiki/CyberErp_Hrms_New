@@ -4332,19 +4332,65 @@ Verified as ordinary staff: self-enroll **200**; enrolling an employee outside t
 manage certificates"*; recording participation (an `Edit` endpoint) **403** at the gate. HR still
 creates certificates normally.
 
-#### ⚠️ Enrolling is possible; withdrawing is not
+#### Withdrawing — the first `Access` override in the codebase
 
-`POST /TrainingEnrollment/{id}/withdraw` carries a suffix that is not an Add token, so it derives
+`POST /TrainingEnrollment/{id}/withdraw` carries a suffix that is not an Add token, so it derived
 **Edit** — and `Edit` on this operation also unlocks `RecordParticipation` (marking attendance) and
-certificate `issue` / `renew`, which are HR functions. Granting Edit to reach withdraw would open all
-four.
-
-Splitting them needs an explicit `Access` on the withdraw action (the attribute supports it; the
-verb derivation is documented as "a sane default, not a claim to be right everywhere"), not a wider
-grant. Until then a staff member who enrolls must ask HR to withdraw them.
+certificate `issue` / `renew`, which are HR functions. Granting Edit to reach withdraw would have
+opened all four. See §12.54.
 
 #### ⚠️ The validator runs before the authorization check
 
 Testing the certificate refusal with an incomplete payload returned a FluentValidation error, not the
 access error — the same trap as §12.52's guard ordering. A deny test must send a payload valid enough
 to reach the check it is testing.
+
+### 12.54 Naming a privilege where the verb derivation cannot: withdraw
+
+Withdrawing from a training session is the other half of enrolling — one self-service capability —
+but the two derive different privileges:
+
+| Route | Suffix | Derives | Why |
+|---|---|---|---|
+| `POST /TrainingEnrollment` | none | **Add** | a bare POST is the create endpoint |
+| `POST /TrainingEnrollment/{id}/withdraw` | `withdraw` | **Edit** | not an Add token; it acts on a row that exists |
+
+The derivation is right in general and wrong here. `Edit` on this controller pair also means
+`RecordParticipation` and certificate `issue` / `renew` — HR functions — so granting staff Edit to
+reach one self-service action would have opened three others.
+
+`RequirePermissionAttribute.Access` exists for exactly this, and the filter documents the derivation
+as "a sane default, not a claim to be right everywhere". This is its **first** use in the codebase:
+
+```csharp
+[HttpPost("{id:guid}/withdraw")]
+[RequirePermission("trainingSession", "myTraining", Access = PermissionAccess.Add)]
+```
+
+#### ⚠️ An action attribute REPLACES the controller's, it does not merge
+
+`ResolveAttribute` returns the action-level attribute if there is one and never looks at the
+controller. Both operation links must therefore be repeated — writing
+`[RequirePermission(Access = PermissionAccess.Add)]` would leave `OperationLinks` empty, and the
+filter treats an empty list as **not gated at all**:
+
+```csharp
+if (attribute is null || attribute.OperationLinks.Count == 0) return;   // opt-in
+```
+
+An override that forgets the links silently ungates the endpoint — the opposite of what it was added
+to do.
+
+#### The gate is not the only guard
+
+`WithdrawTrainingEnrollment` already restricted the row to its owner, their manager, or HR:
+
+```csharp
+if (entity.EmployeeId != scope.EmployeeId && !await visibility.CanAccessEmployeeAsync(entity.EmployeeId))
+    throw new ValidationException(nameof(id), "You cannot withdraw this enrollment.");
+```
+
+So the override changes *who may call the endpoint*, not *whose enrollment they may touch*. Verified:
+staff withdraw their own **200** (status `Withdrawn`), someone else's **400** *"You cannot withdraw
+this enrollment"*, while `participation`, certificate `renew` and `DELETE` all stay **403**, and HR
+withdraws anyone's normally.
