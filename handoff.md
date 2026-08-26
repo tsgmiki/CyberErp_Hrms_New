@@ -123,6 +123,33 @@
 
 ## 1. Most recent changes (latest first)
 
+0155. **My Exit / Resignation Request worked only for HR — a self-service screen was borrowing the
+    Training module's permission (2026-08-26).** HOME repo, one file:
+    `components/admin/myExit/index.tsx`. No backend change, no migration. See logic §12.50.
+    - ⚠️ **The error message was FALSE.** It said "Your account is not linked to an employee record";
+      490 of 507 accounts ARE linked, including every account that saw it.
+    - Cause: `myExit` resolved "who am I" via `getCpdSummary()` — the TRAINING CPD endpoint, gated
+      on `myTraining`. `UserRole` does not hold `/hrms/myTraining` (only Department Manager /
+      HR Admin / HR Officer do), so it 403'd, `myEmployeeId` stayed undefined, and the screen fell
+      through to its hardcoded "not linked" paragraph.
+    - Reproduced exactly against the API: `takele(dr)a` (UserRole) → **403**, `tatekg` (HR Admin) →
+      **200**.
+    - ⚠️ **Two faults, and the misdiagnosis is the worse one**: identity must come from a
+      `[SelfScoped]` endpoint, and a PERMISSION failure must never be reported as a DATA failure —
+      it sends an admin to check the employee link while the real cause is a role grant.
+    - Fix: use `getMyEmployeeStatus()` (wraps `[SelfScoped]` `Employee/me`), which CLASSIFIES the
+      outcome linked / unlinked / unauthenticated / unreachable, plus `SelfServiceGate` to render the
+      right message per cause. Same `["myEmployeeStatus"]` cache key as Annual Leave, Other Leave and
+      My Profile, so "who am I" is still asked once per dashboard load. My Exit was the ONLY screen
+      that had not adopted this.
+    - Verified in a real browser, both roles: `takele(dr)a` and `tatekg` each reach the resignation
+      form — no "not linked" text, no unauthorized page. `tsc -b` and eslint clean.
+    - Checked and NOT affected: `MyCompensation` prints the same sentence on its error path, but its
+      endpoint is properly self-scoped (200 for both roles). `myExit` was the only screen resolving
+      identity through `getCpdSummary`.
+    - ⚠️ Not exercised: the genuine "unlinked" branch — 17 accounts have no employee link, but none of
+      them uses the default password.
+
 0154. **Grievance resolve/close follow the same correction (2026-08-26).** HRMS repo, no migration.
     `GrievanceHandlers`, plus the now-stale remarks in `HrScreens` and logic §12.47. See §12.49.
     - 0152 fixed `PerformanceVisibilityService` only; `GrievanceHandlers` carried its OWN copy of the
