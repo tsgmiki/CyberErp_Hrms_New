@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Mail;
+using System.Text.RegularExpressions;
+using System.Web;
 using CyberErp.Hrms.App.Common.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -70,13 +72,30 @@ namespace CyberErp.Hrms.Inf.Common
                     if (LooksLikeEmail(configuredFrom)) replyTo = configuredFrom;
                 }
 
+                // ⚠️ HTML is DETECTED, not assumed. Notification templates are authored in a
+                // rich-text editor and are always HTML; the hardcoded notifiers still build plain
+                // text with newline line breaks, and sending those as HTML would collapse every one.
+                // Sending HTML as plain text is what shipped, and it delivered raw "<p>" markup to
+                // employees.
+                var isHtml = LooksLikeHtml(body);
+
+                // ⚠️ Body carries the PLAIN text and the HTML goes in as the single alternate view.
+                // Setting Body to the HTML *and* adding alternates emits the markup twice — once as
+                // a stray text/plain part — because .NET turns Body into an alternate of its own as
+                // soon as the collection is non-empty.
                 using var message = new MailMessage
                 {
                     From = new MailAddress(fromAddress ?? "no-reply@localhost", fromName),
                     Subject = subject,
-                    Body = body,
+                    Body = isHtml ? HtmlToPlainText(body) : body,
                     IsBodyHtml = false
                 };
+                if (isHtml)
+                {
+                    // multipart/alternative: the plain body for clients that will not render HTML
+                    // (which is what employees were seeing), the HTML for those that will.
+                    message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(body, null, "text/html"));
+                }
                 message.To.Add(to);
                 if (replyTo is not null) message.ReplyToList.Add(new MailAddress(replyTo, fromName));
                 foreach (var a in attachments ?? [])
@@ -135,5 +154,31 @@ namespace CyberErp.Hrms.Inf.Common
         /// <summary>A minimal address check — enough to tell a mailbox login from an API-key login.</summary>
         private static bool LooksLikeEmail(string? value) =>
             !string.IsNullOrWhiteSpace(value) && value.Contains('@') && value.IndexOf('@') < value.LastIndexOf('.');
+
+        /// <summary>
+        /// Whether the body is HTML. Deliberately matches a SHORT LIST OF BLOCK TAGS rather than any
+        /// "&lt;", so a plain-text body that happens to contain a comparison ("salary &lt; 5000")
+        /// is not mistaken for markup and stripped of its line breaks.
+        /// </summary>
+        private static bool LooksLikeHtml(string? body) =>
+            !string.IsNullOrWhiteSpace(body) &&
+            Regex.IsMatch(body, @"<\s*(html|body|table|div|p|br|h[1-6]|ul|ol|li|span|strong|b|em|i|a)\b[^>]*>",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// A readable text/plain alternate for an HTML body: block tags become line breaks, the rest
+        /// is dropped and entities decoded. Not a full converter — it only has to be legible in a
+        /// client that refuses HTML.
+        /// </summary>
+        private static string HtmlToPlainText(string html)
+        {
+            var text = Regex.Replace(html, @"<\s*(br|/p|/div|/h[1-6]|/li|/tr)\s*/?>", "\n",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+            text = HttpUtility.HtmlDecode(text);
+            text = Regex.Replace(text, @"[ \t]+", " ");
+            text = Regex.Replace(text, @"(\s*\n\s*){3,}", "\n\n");
+            return text.Trim();
+        }
     }
 }
