@@ -4066,11 +4066,11 @@ revoke organisation-wide access.
 A department head is deliberately absent from that list. Their reach is their own unit subtree,
 resolved from the org structure exactly as it always was.
 
-#### ⚠️ What this does NOT fix
+#### The same proxy elsewhere — since fixed
 
-`GrievanceHandlers` (Resolve / Close) still reads `HrScreens.EmployeeRegister` as "is HR", so a
-department head can resolve or close **any** grievance, including one about themselves. Who may
-resolve a grievance is a separate authorization decision and was left alone.
+`GrievanceHandlers` (Resolve / Close) read the same screen grant as "is HR". Both now key on
+`scope.IsAdmin`, which is what `GrievanceShared.LoadGatedAsync` above them had always used — see
+§12.49. No guard in the codebase treats a screen grant as an identity any more.
 
 #### ⚠️ A unit is jurisdiction — no unit, no requests
 
@@ -4117,3 +4117,37 @@ its new stage.
 
 `hiringRequest` splits the same way: its Draft **Save** closes, while the Submit / Close lifecycle
 actions report through separate state and keep you on the record.
+
+### 12.49 Grievance resolve/close follows the same correction
+
+§12.47 replaced "holds the employee register" with "holds an organisation-wide HR role", but only in
+`PerformanceVisibilityService`. `GrievanceHandlers` carried its own copy of the old proxy:
+
+```csharp
+if (!await permissions.HasAnyAsync(HrScreens.EmployeeRegister) && entity.AssignedToEmployeeId != scope.EmployeeId)
+```
+
+Both `Resolve` and `Close` now ask `scope.IsAdmin` — the same value `GrievanceShared.LoadGatedAsync`
+directly above them had **always** used. The file was asking two different questions about the same
+word, and the load gate had the right one. Neither handler needs `IEndpointPermissionService` any
+more, so the dependency and the now-dead `Common.Authorization` using are gone.
+
+#### What actually changes
+
+The §12.47 fix had already closed most of this, because `LoadGatedAsync` gates on `scope.IsAdmin`: a
+department head stopped being able to open other people's grievances the moment that changed. What
+remained was the narrower case of someone who legitimately passes the load gate:
+
+| Caller | Before | Now |
+|---|---|---|
+| A department head who is the **grievant** | could **resolve their own grievance** (the screen grant read as HR) | refused — resolving needs HR or the assigned handler |
+| A department head who is the **assigned handler** | could **close** the case | refused — closing is the grievant accepting, or HR filing |
+
+#### ⚠️ Two data facts that bound all of this
+
+`UserRole` does **not** hold `/hrms/grievance` — only Department Manager, HR Admin and HR Officer do.
+So in CERP ordinary staff cannot reach the grievance endpoints at all, and "the grievant" in
+*"only the grievant or HR can close"* is currently a branch that almost nobody can take. The
+`HrScreens` remark claiming "every employee holds `/grievance`" describes an intent, not this tenant.
+
+There are also **zero grievance rows**, so none of this has bitten anyone yet.

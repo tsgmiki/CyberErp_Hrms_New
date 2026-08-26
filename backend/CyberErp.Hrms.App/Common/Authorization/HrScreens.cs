@@ -35,10 +35,9 @@ namespace CyberErp.Hrms.App.Common.Authorization
         /// "does this person act for the whole organisation", use
         /// <see cref="HrRoles.OrganizationWide"/> — see logic §12.47.</para>
         ///
-        /// <para>⚠️ <c>GrievanceHandlers</c> (Resolve / Close) still reads this as "is HR", so a
-        /// department head can currently resolve or close ANY grievance — including one about
-        /// themselves. Left as-is deliberately: who may resolve a grievance is a separate
-        /// authorization decision from hiring-request scope.</para>
+        /// <para><c>GrievanceHandlers</c> used to read this as "is HR" and now keys on
+        /// <c>VisibilityScope.IsAdmin</c> like everything else. No guard in the codebase treats this
+        /// screen as an identity any more — keep it that way.</para>
         /// </summary>
         public static readonly string[] EmployeeRegister = ["employee"];
 

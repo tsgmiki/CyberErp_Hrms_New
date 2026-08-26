@@ -123,6 +123,30 @@
 
 ## 1. Most recent changes (latest first)
 
+0154. **Grievance resolve/close follow the same correction (2026-08-26).** HRMS repo, no migration.
+    `GrievanceHandlers`, plus the now-stale remarks in `HrScreens` and logic §12.47. See §12.49.
+    - 0152 fixed `PerformanceVisibilityService` only; `GrievanceHandlers` carried its OWN copy of the
+      old proxy (`permissions.HasAnyAsync(HrScreens.EmployeeRegister)` = "is HR"). Both Resolve and
+      Close now ask `scope.IsAdmin` — the same value `GrievanceShared.LoadGatedAsync` DIRECTLY ABOVE
+      them had always used. The file was asking two different questions about the same word.
+    - `IEndpointPermissionService` dropped from both handlers (unused after the change), and the
+      dead `Common.Authorization` using removed — verified by building without it.
+    - **No guard in the codebase treats a screen grant as an identity any more.**
+    - What actually changed: 0152 had already closed most of it, because `LoadGatedAsync` gates on
+      `scope.IsAdmin`. The residue was a department head who legitimately passes that gate — as
+      **grievant** they could resolve their own grievance; as **assigned handler** they could close
+      the case. Both now refused.
+    - Verified live as HR Admin after the change: submit → **resolve 200** → **close 200**, status
+      `Closed` on disk. Test grievance deleted (0 rows remain, and there were 0 before).
+    - ⚠️ **NOT exercised**: the refusal branch. It needs an account holding `/hrms/grievance` that is
+      NOT org-wide HR — only Department Manager qualifies, and `gibril` (its one user) does not use
+      the default password. Same blocker as 0152.
+    - ⚠️ **`UserRole` does NOT hold `/hrms/grievance`** (only Department Manager / HR Admin /
+      HR Officer do), so ordinary staff cannot reach these endpoints at all — "the grievant" in
+      *"only the grievant or HR can close"* is a branch almost nobody can take. The `HrScreens`
+      remark claiming "every employee holds /grievance" describes intent, not this tenant.
+    - ⚠️ There are **zero grievance rows**, so none of this has bitten anyone yet.
+
 0153. **Searchable Target Position picker (both SPAs) + Home forms close on save (2026-08-26).**
     HRMS repo (backend `PositionHandlers`, `transferRequest/form.tsx`) AND Home repo
     (`transferRequest/form.tsx`, `template/useEntityCrudModule.ts`, `hiringRequest/form.tsx`,
@@ -192,10 +216,7 @@
       the employee link a prerequisite for the role. Tell the client.
     - ⚠️ **`Administrator` holds zero screen permissions**, so those 3 users are refused by the
       endpoint gate everywhere regardless of this change. Separate config gap.
-    - ⚠️ **Left deliberately unfixed**: `GrievanceHandlers` (Resolve/Close) still reads
-      `HrScreens.EmployeeRegister` as "is HR", so a department head can resolve or close ANY
-      grievance — including one about themselves. Separate authorization decision; documented in
-      `HrScreens` and logic §12.47.
+    - ~~Left deliberately unfixed: `GrievanceHandlers` Resolve/Close~~ — **DONE in 0154.**
 
 0151. **Workflow definition: approver pickers become searchable comboboxes (2026-08-26).** HRMS repo,
     frontend only, one file: `components/admin/workflowDefinition/form.tsx`. See logic §12.46.

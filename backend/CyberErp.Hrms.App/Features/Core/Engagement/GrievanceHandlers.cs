@@ -1,4 +1,3 @@
-using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -158,7 +157,6 @@ namespace CyberErp.Hrms.App.Features.Core.Engagement
     public class ResolveGrievance(
         IRepository<Grievance> repository,
         IPerformanceVisibilityService visibility,
-        IEndpointPermissionService permissions,
         ILogger<ResolveGrievance> logger) : IResolveGrievance
     {
         public async Task ResolveAsync(Guid id, ResolveGrievanceDto dto)
@@ -167,7 +165,11 @@ namespace CyberErp.Hrms.App.Features.Core.Engagement
                 throw new ValidationException(nameof(dto.Resolution), "A resolution summary is required.");
 
             var (scope, entity) = await GrievanceShared.LoadGatedAsync(repository, visibility, id);
-            if (!await permissions.HasAnyAsync(HrScreens.EmployeeRegister) && entity.AssignedToEmployeeId != scope.EmployeeId)
+            // "HR" is the ROLE, via scope.IsAdmin — the same definition the load gate above already
+            // uses. It previously asked whether the caller holds the EMPLOYEE REGISTER screen, which
+            // in CERP the Department Manager role also holds, so a department head counted as HR on
+            // their own grievance (logic §12.47).
+            if (!scope.IsAdmin && entity.AssignedToEmployeeId != scope.EmployeeId)
                 throw new ValidationException(nameof(id), "Only HR or the assigned handler can resolve a grievance.");
             if (entity.Status is GrievanceStatus.Resolved or GrievanceStatus.Closed)
                 throw new ValidationException(nameof(id), $"The grievance is already {entity.Status}.");
@@ -182,14 +184,14 @@ namespace CyberErp.Hrms.App.Features.Core.Engagement
     public class CloseGrievance(
         IRepository<Grievance> repository,
         IPerformanceVisibilityService visibility,
-        IEndpointPermissionService permissions,
         ILogger<CloseGrievance> logger) : ICloseGrievance
     {
         public async Task CloseAsync(Guid id)
         {
             var (scope, entity) = await GrievanceShared.LoadGatedAsync(repository, visibility, id);
             // Closure confirms the outcome — the grievant accepts it, or HR closes the file.
-            if (!await permissions.HasAnyAsync(HrScreens.EmployeeRegister) && entity.EmployeeId != scope.EmployeeId)
+            // Same correction as ResolveGrievance: "HR" is the role, not a screen grant.
+            if (!scope.IsAdmin && entity.EmployeeId != scope.EmployeeId)
                 throw new ValidationException(nameof(id), "Only the grievant or HR can close a grievance.");
             if (entity.Status != GrievanceStatus.Resolved)
                 throw new ValidationException(nameof(id), $"Only a resolved grievance can be closed (current: {entity.Status}).");
