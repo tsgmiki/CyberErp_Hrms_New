@@ -1,6 +1,6 @@
 /*
  * Gives ordinary staff (the UserRole role) the My Training screen:
- *   /hrms/myTraining → View   (CPD summary, own enrollments, own certificates)
+ *   /hrms/myTraining → View + Add   (CPD summary, own enrollments and certificates; self-enroll)
  *
  * WHY ONLY myTraining
  *   myExit was ALSO requested and needs NO grant: UserRole already holds `/myExit` with all six
@@ -16,21 +16,28 @@
  *   and more are all held UN-namespaced with all six privileges. Query for `/hrms/x` alone and you
  *   will wrongly conclude the role has nothing.
  *
- * WHY VIEW ONLY
+ * WHY VIEW + ADD, AND NOT MORE
  *   `myTraining` gates controllers SHARED with the HR-side training registers
  *   ([RequirePermission("trainingSession", "myTraining")] and ("trainingCertificate",
  *   "myTraining")), and a privilege is derived from the HTTP verb, so one grant covers every
- *   endpoint deriving it. The reads are safe — GetAllTrainingEnrollments, GetAllTrainingCertificates
- *   and GetCpdSummary all re-check the caller with CanAccessEmployeeAsync, which for a non-manager
- *   means SELF ONLY. These are deliberately withheld:
+ *   endpoint deriving it. Both privileges granted here are safe because every endpoint behind them
+ *   re-checks the caller in its own handler:
  *
- *     Add    → POST /TrainingCertificate (SaveTrainingCertificate) is UNSCOPED, so Add would let
- *              staff create training certificates for anybody.
- *     Edit   → participation, issue, renew, withdraw — HR functions, unscoped.
+ *     View → GetAllTrainingEnrollments, GetAllTrainingCertificates and GetCpdSummary all call
+ *            CanAccessEmployeeAsync, which for a non-manager means SELF ONLY.
+ *     Add  → exactly two endpoints derive it ("enroll" is an Add token, so is a bare POST):
+ *              POST /TrainingEnrollment   → EnrollTraining calls CanAccessEmployeeAsync, so a staff
+ *                                           member can enroll THEMSELVES (a manager, their team).
+ *              POST /TrainingCertificate  → SaveTrainingCertificate calls
+ *                                           TrainingCertificateShared.EnsureAdminAsync, so a
+ *                                           non-HR caller is refused by the handler.
+ *
+ *   ⚠️ Still withheld:
+ *     Edit   → RecordParticipation (marking attendance), certificate issue/renew, and withdraw.
+ *              The first three are HR functions. CONSEQUENCE: a staff member can enroll but cannot
+ *              WITHDRAW themselves — withdraw derives Edit, and granting it would unlock the other
+ *              three too. Splitting that needs an explicit Access on the action, not a wider grant.
  *     Delete → not needed by any self-service screen.
- *
- *   CONSEQUENCE: staff can SEE their training record but cannot self-enroll. To allow that, add an
- *   ownership check to SaveTrainingCertificate first, then grant Add.
  *
  * Idempotent: guarded by NOT EXISTS, and an existing row is topped up rather than duplicated.
  */
@@ -49,7 +56,7 @@ INSERT INTO Core.TenantRolePermission
      CanView, CanAdd, CanEdit, CanDelete, CanApprove, CanExport,
      CreatedAt, UpdatedAt, CreatedBy, UpdatedBy, RowVersion)
 SELECT NEWID(), r.Id, o.Id,
-       1, 0, 0, 0, 0, 0,
+       1, 1, 0, 0, 0, 0,
        SYSUTCDATETIME(), SYSUTCDATETIME(), @by, @by, @rv
 FROM Core.TenantOperation o
 CROSS JOIN Core.TenantRole r
@@ -60,11 +67,11 @@ WHERE o.Link = @link AND r.Name = @role
 
 -- Top up an existing row; never downgrade a privilege the tenant granted deliberately.
 UPDATE p
-SET CanView = 1, UpdatedAt = SYSUTCDATETIME(), UpdatedBy = @by
+SET CanView = 1, CanAdd = 1, UpdatedAt = SYSUTCDATETIME(), UpdatedBy = @by
 FROM Core.TenantRolePermission p
 JOIN Core.TenantRole r ON r.Id = p.TenantRoleId AND r.Name = @role
 JOIN Core.TenantOperation o ON o.Id = p.TenantOperationId AND o.Link = @link
-WHERE p.CanView = 0;
+WHERE p.CanView = 0 OR p.CanAdd = 0;
 
 COMMIT;
 

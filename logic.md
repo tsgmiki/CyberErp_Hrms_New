@@ -4242,18 +4242,20 @@ row, so it was removed. **To narrow a permission you must edit the row that gran
 
 #### The grant that was actually needed
 
-Only `/hrms/myTraining` (View), which no form of the link granted before. Deliberately View-only:
-`myTraining` gates controllers shared with the HR training registers, and `SaveTrainingCertificate`
-is unscoped, so `Add` would let staff issue certificates for anybody. Staff can therefore see their
-training record but not self-enroll until that handler checks ownership.
+Only `/hrms/myTraining`, which no form of the link granted before.
+
+⚠️ It was first granted **View only**, on the stated grounds that `SaveTrainingCertificate` is
+unscoped so `Add` would let staff issue certificates for anybody. **That premise was false** — the
+handler calls `TrainingCertificateShared.EnsureAdminAsync`, so it refuses a non-HR caller regardless
+of the grant. `Add` was therefore added; see §12.53.
 
 #### ⚠️ The real exposure is handler-level, not gate-level
 
 Because `UserRole` already passes the endpoint gate for Delete and Approve on ~20 operations, what
-actually protects the data is each handler's own `CanAccessEmployeeAsync` check. The handlers that
-skip it — `CancelEmployeeTermination`, `FinalizeTermination`, `ReinstateEmployee`,
-`UpdateTerminationClearance`, `SaveTrainingCertificate` — are the ones worth auditing, not the
-catalogue.
+actually protects the data is each handler's own check. ⚠️ The list of five named here was wrong —
+`UpdateTerminationClearance` and `SaveTrainingCertificate` were already guarded, and the other three
+were fixed in §12.52. Audit the HANDLERS, not the catalogue — but grep for the shared helpers too
+(`EnsureAdminAsync`, `EvaluateClearanceApproverAsync`), or you will miscount as I did.
 
 ### 12.52 Ownership checks on the exit-case write handlers
 
@@ -4309,3 +4311,40 @@ And the first cancel attempt that did get through returned 200 — correctly. Th
 the caller's own subtree, so `CanAccessEmployeeAsync` legitimately passed. **Verifying a deny rule
 needs a subject the rule should actually deny**: with an employee outside the caller's line, cancel
 returns *"You can only cancel exit cases for yourself or your team."* while HR still succeeds.
+
+### 12.53 Staff self-enrollment: the grant that was safe all along
+
+§12.51 withheld `Add` on `/hrms/myTraining` to stop staff issuing training certificates to anybody.
+**The premise was wrong.** `SaveTrainingCertificate` opens with
+`TrainingCertificateShared.EnsureAdminAsync(visibility)` — a `scope.IsAdmin` check — so the endpoint
+was never reachable by ordinary staff no matter what the catalogue said.
+
+`Add` is now granted, which unlocks exactly two endpoints (`enroll` is an Add token, and so is a bare
+`POST`):
+
+| Endpoint | Handler check | Effect for staff |
+|---|---|---|
+| `POST /TrainingEnrollment` | `CanAccessEmployeeAsync` | **enroll themselves** (a manager, their team) |
+| `POST /TrainingCertificate` | `EnsureAdminAsync` | refused — HR only |
+
+Verified as ordinary staff: self-enroll **200**; enrolling an employee outside their line **400**
+*"The employee is outside your scope"*; creating a certificate **400** *"Only HR administrators can
+manage certificates"*; recording participation (an `Edit` endpoint) **403** at the gate. HR still
+creates certificates normally.
+
+#### ⚠️ Enrolling is possible; withdrawing is not
+
+`POST /TrainingEnrollment/{id}/withdraw` carries a suffix that is not an Add token, so it derives
+**Edit** — and `Edit` on this operation also unlocks `RecordParticipation` (marking attendance) and
+certificate `issue` / `renew`, which are HR functions. Granting Edit to reach withdraw would open all
+four.
+
+Splitting them needs an explicit `Access` on the withdraw action (the attribute supports it; the
+verb derivation is documented as "a sane default, not a claim to be right everywhere"), not a wider
+grant. Until then a staff member who enrolls must ask HR to withdraw them.
+
+#### ⚠️ The validator runs before the authorization check
+
+Testing the certificate refusal with an incomplete payload returned a FluentValidation error, not the
+access error — the same trap as §12.52's guard ordering. A deny test must send a payload valid enough
+to reach the check it is testing.

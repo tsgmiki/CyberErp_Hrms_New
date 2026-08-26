@@ -123,6 +123,29 @@
 
 ## 1. Most recent changes (latest first)
 
+0158. **Staff can self-enroll in training (2026-08-26).** HRMS repo, no code change: the existing
+    `backend/scripts/grant-userrole-self-service.sql` now grants `/hrms/myTraining` **View + Add**.
+    APPLIED to CERP. See logic §12.53.
+    - ⚠️ **0156 withheld Add on a false premise.** It claimed `SaveTrainingCertificate` is unscoped;
+      it is not — it opens with `TrainingCertificateShared.EnsureAdminAsync` (`scope.IsAdmin`), so
+      staff could never reach it whatever the catalogue says. Same miscount as 0157.
+    - `Add` unlocks exactly two endpoints ("enroll" is an Add token, and so is a bare POST):
+      `POST /TrainingEnrollment` → `EnrollTraining` calls `CanAccessEmployeeAsync`, so staff enroll
+      THEMSELVES (a manager, their team); `POST /TrainingCertificate` → refused by the handler.
+    - Verified live as `takele(dr)a` against a session created for the test: self-enroll **200**;
+      enrolling an employee outside their line **400** "The employee is outside your scope";
+      certificate **400** "Only HR administrators can manage certificates"; `PUT participation`
+      (an Edit endpoint) **403** at the gate. `tatekg` (HR) still creates certificates **200**.
+    - ⚠️ **Enrolling works; WITHDRAWING does not.** `POST /TrainingEnrollment/{id}/withdraw` derives
+      **Edit**, and Edit on this operation also unlocks `RecordParticipation` and certificate
+      issue/renew — HR functions. Splitting them needs an explicit `Access` on the withdraw action
+      (the attribute supports it), NOT a wider grant. Until then a staff member must ask HR to
+      withdraw them.
+    - ⚠️ **The validator runs BEFORE the authorization check** — the first certificate-refusal test
+      returned a FluentValidation error, not the access error. Same trap as 0157's guard ordering: a
+      deny test needs a payload valid enough to reach the check being tested.
+    - Test course, session, enrollment and certificates deleted; all four tables back to 0 rows.
+
 0157. **Ownership checks on the exit-case write handlers (2026-08-26).** HRMS repo, no migration.
     `EmployeeTerminationHandlers` (Cancel, Finalize) + `EmployeeReinstatementHandlers` (Reinstate).
     See logic §12.52.
@@ -172,7 +195,8 @@
       certificates. Add/Edit/Delete deliberately withheld — `myTraining` gates controllers shared
       with the HR training registers and `SaveTrainingCertificate` is UNSCOPED, so Add would let
       staff issue certificates for anybody (verified still 403).
-      **Consequence: staff can see their training record but cannot self-enroll.**
+      ⚠️ **That premise was WRONG and Add was granted in 0158** — `SaveTrainingCertificate` calls
+      `EnsureAdminAsync`, so it refuses non-HR regardless of the grant.
     - ⚠️ **This trap had already produced two wrong conclusions in these notes** — see the
       corrections struck into 0152 and 0154. **Always query `Link IN ('/x','/hrms/x')`.**
     - **Closed two verification gaps as a result:**
