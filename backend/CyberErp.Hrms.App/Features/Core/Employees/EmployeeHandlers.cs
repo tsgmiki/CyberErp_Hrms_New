@@ -168,6 +168,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Position> positionRepository,
         IRepository<SalaryScale> salaryScaleRepository,
         ICustomFieldService customFields,
+        IEmployeeAccountProvisioner accountProvisioner,
         IValidator<CreateEmployeeDto> validator,
         ILogger<CreateEmployee> logger) : ICreateEmployee
     {
@@ -210,6 +211,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             await repository.SaveChangesAsync();
             logger.LogInformation("Created Employee {Id} ({Number}) with Person {PersonId}", entity.Id, entity.EmployeeNumber, person.Id);
+
+            // Registering an employee also gives them a login. AFTER the save, because the
+            // provisioner reads the employee back and links the account to a row that must exist.
+            // It never throws: a failure there leaves the employee registered and is recoverable by
+            // creating the account by hand.
+            await accountProvisioner.ProvisionAsync(entity.Id);
+
             return entity.Id;
         }
     }
@@ -283,6 +291,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         IRepository<Employee> repository,
         IRepository<EmployeeDependent> dependentRepository,
         IRepository<Position> positionRepository,
+        IRepository<User> users,
         ICustomFieldService customFields,
         ILogger<DeleteEmployee> logger) : IDeleteEmployee
     {
@@ -300,6 +309,22 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             // Custom-field values are polymorphic (no cascade FK) — remove them explicitly.
             await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Employee, id);
+
+            // ⚠️ Deactivate the login BEFORE deleting the employee. FK_User_Employee_EmployeeId is
+            // ON DELETE SET NULL, so the moment the employee goes the account is orphaned and can no
+            // longer be found by this link — automatic provisioning would otherwise leave an ENABLED
+            // account behind for every deleted employee (logic §12.60). The account is kept, not
+            // deleted: it owns audit trails, and removing it would rewrite history.
+            var linked = await users.GetAllWithoutTenantFilter().FirstOrDefaultAsync(u => u.EmployeeId == id);
+            if (linked is not null)
+            {
+                linked.SetAccountStatus(false);
+                users.UpdateAsync(linked);
+                logger.LogInformation(
+                    "Deactivated account {UserName} ({UserId}) because employee {EmployeeId} is being deleted.",
+                    linked.UserName, linked.Id, id);
+            }
+
             repository.Delete(entity);
 
             // The vacated position reopens unless another employee still holds it.

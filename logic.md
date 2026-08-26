@@ -4394,3 +4394,328 @@ So the override changes *who may call the endpoint*, not *whose enrollment they 
 staff withdraw their own **200** (status `Withdrawn`), someone else's **400** *"You cannot withdraw
 this enrollment"*, while `participation`, certificate `renew` and `DELETE` all stay **403**, and HR
 withdraws anyone's normally.
+
+### 12.55 Permission audit: what the endpoint gate does NOT protect
+
+`UserRole` is held by 496 of 507 accounts and carries **all six privileges on ~20 operations**
+(§12.51). The endpoint gate therefore lets ordinary staff through on a great many writes, and the
+only thing between them and another employee's data is each handler's own check. This audit measured
+that gap rather than guessing at it.
+
+**Method** — reproducible, and checked into `backend/scripts/`:
+
+1. `permission-audit-index.cjs` indexes all 745 handler classes in `App/Features`.
+2. `permission-audit.cjs` walks every controller action, resolves its **effective**
+   `[RequirePermission]` (action-level overrides class-level, exactly as `ResolveAttribute` does),
+   derives the privilege from the verb + route suffix (or an explicit `Access`), keeps only the
+   writes `UserRole` can actually invoke, resolves handler → interface → implementation through
+   `DependencyInjection.cs`, and scans the implementation for an actor check.
+
+**Result — 118 write endpoints reachable by an ordinary employee:**
+
+| | count |
+|---|---|
+| guarded (re-checks the actor) | 86 |
+| **no actor check at all** | **26** |
+| existence check only (not authorization) | 4 |
+| unresolved, needs eyes | 2 |
+
+| Controller | Endpoint | Privilege | Handler | Guard |
+|---|---|---|---|---|
+| `JobRequisitionController` | `POST /` | Add | `SaveJobRequisition` | **none** |
+| `JobRequisitionController` | `PUT /` | Edit | `SaveJobRequisition` | **none** |
+| `JobRequisitionController` | `POST {id:guid}/submit` | Edit | `SubmitJobRequisition` | **none** |
+| `JobRequisitionController` | `PUT posting` | Edit | `SetRequisitionPosting` | **none** |
+| `JobRequisitionController` | `POST {id:guid}/post` | Edit | `PostJobRequisition` | **none** |
+| `JobRequisitionController` | `POST {id:guid}/close` | Edit | `CloseJobRequisition` | **none** |
+| `JobRequisitionController` | `POST {id:guid}/cancel` | Edit | `CancelJobRequisition` | **none** |
+| `JobRequisitionController` | `DELETE {id:guid}` | Delete | `DeleteJobRequisition` | **none** |
+| `WorkforcePlanController` | `POST /` | Add | `SaveWorkforcePlan` | **none** |
+| `WorkforcePlanController` | `PUT /` | Edit | `SaveWorkforcePlan` | **none** |
+| `WorkforcePlanController` | `POST {id:guid}/populate` | Edit | `PopulateWorkforcePlan` | **none** |
+| `WorkforcePlanController` | `POST {id:guid}/submit` | Edit | `SubmitWorkforcePlan` | **none** |
+| `WorkforcePlanController` | `POST {id:guid}/new-version` | Edit | `CreateWorkforcePlanVersion` | **none** |
+| `WorkforcePlanController` | `DELETE {id:guid}` | Delete | `DeleteWorkforcePlan` | **none** |
+| `EmployeeMovementController` | `POST execute-due` | Edit | `?` | unresolved |
+| `EmployeeMovementController` | `POST {id:guid}/execute` | Edit | `?` | unresolved |
+| `EmployeeMovementController` | `POST {id:guid}/cancel` | Edit | `CancelEmployeeMovement` | existence only |
+| `EmployeeMovementController` | `DELETE {id:guid}` | Delete | `DeleteEmployeeMovement` | existence only |
+| `HiringRequestController` | `POST {id:guid}/submit` | Edit | `SubmitHiringRequest` | **none** |
+| `HiringRequestController` | `POST {id:guid}/close` | Edit | `CloseHiringRequest` | **none** |
+| `HiringRequestController` | `DELETE {id:guid}` | Delete | `DeleteHiringRequest` | **none** |
+| `LeaveRequestController` | `POST /` | Add | `SubmitLeaveRequest` | **none** |
+| `LeaveRequestController` | `POST cancel` | Edit | `CancelLeaveRequest` | **none** |
+| `AppraisalPeerController` | `POST invite` | Edit | `InviteAppraisalPeers` | **none** |
+| `AppraisalPeerController` | `DELETE {id:guid}` | Delete | `RemoveAppraisalPeerReview` | **none** |
+| `EmployeeTerminationController` | `DELETE {id:guid}` | Delete | `DeleteEmployeeTermination` | existence only |
+| `AnnualLeaveController` | `POST cancel` | Edit | `CancelAnnualLeave` | **none** |
+| `LeaveBalanceController` | `POST /` | Add | `SetLeaveBalance` | **none** |
+| `OtherLeaveController` | `POST cancel` | Edit | `CancelOtherLeave` | **none** |
+| `AppraisalController` | `DELETE {id:guid}` | Delete | `DeleteAppraisal` | **none** |
+| `DisciplinaryMeasureController` | `DELETE {id:guid}` | Delete | `DeleteDisciplinaryMeasure` | existence only |
+| `TripRequestController` | `POST run-settlement-reminders` | Edit | `TripSettlementReminder` | **none** |
+
+#### Proven, not inferred
+
+`SetLeaveBalance` was exercised end to end: as an ordinary `UserRole` employee, a **999-day leave
+entitlement** was written for an employee outside the caller's line, and the row landed. It was
+deleted immediately afterwards.
+
+The other rows were probed with deliberately invalid payloads — a safe test, because the answer that
+matters is **403 versus anything else**. All 15 probed endpoints returned 400 or 404, never 403:
+the gate admits the caller and the handler is the sole defence.
+
+#### ⚠️ Three ways this audit was WRONG before it was right
+
+Worth recording, because each produced a confident false claim:
+
+1. **Grepping for inline checks misses shared helpers.** `EnsureAdminAsync`,
+   `EvaluateClearanceApproverAsync` and `EnsureCanActAsync` are all real actor checks. An earlier
+   pass called five handlers unguarded when three were; the appraisal handlers looked unguarded until
+   `workflowService.EnsureCanActAsync(appraisal)` was noticed.
+2. **A method-level `[RequirePermission]` covers ONE action, not the rest of the controller.**
+   Attributing a `GET`'s `myProfile` gate to the `POST`/`PUT`/`DELETE` below it produced 21 phantom
+   findings — including "staff can create job grades", which returns **403** in reality. Rebuilding
+   the audit around actions rather than gate lines removed them.
+3. **Business-state checks are not authorization.** `workflowGate.EnsureNoRunningAsync`,
+   `EnsureStartableAsync`, `EnsureReferencesExistAsync` and `EnsureEmployeeVisibleAsync` all read like
+   guards and none of them asks *who is calling*.
+
+#### The shape of the remaining risk
+
+The unguarded set is dominated by **recruitment and workforce planning** (`JobRequisition` 8,
+`WorkforcePlan` 6, `HiringRequest` 3) — these enforce document status but never ask whether the
+caller owns the plan or requisition. Then the **cancel/delete tails** of leave, appraisal, movement,
+termination and disciplinary, where a record id is the only thing needed.
+
+`SetLeaveBalance` is the outlier worth fixing first: it is an `Add`, so no existing record is even
+required, and it rewrites entitlement directly.
+
+### 12.56 Automatic account creation on employee registration
+
+Registering an employee now also creates their login. `CreateEmployee` calls
+`IEmployeeAccountProvisioner` **after** `SaveChangesAsync`, because the provisioner reads the
+employee back and links the account to a row that has to exist.
+
+| Requirement | Implementation |
+|---|---|
+| Account + password | `User.Create` with a random 14-character password, hashed through the new `IPasswordHasher` |
+| Default role | `TenantUser` + `TenantUserRole` against the tenant role whose **Code** is `USERROLE` |
+| Username | `[first letter of first name][last name]`, lowercased, non-alphanumerics stripped → `jdoe` |
+| Email | the employee's address if given, otherwise `[username]@cybersoft.com` |
+| Notification | dispatched as `Employee.AccountCreated` through the Email Templates module |
+
+#### ⚠️ "Last name" is GrandFatherName, not FatherName
+
+The names here are Ethiopian — `FirstName`, `FatherName`, `GrandFatherName` — so "last name" needs
+deciding rather than assuming. `Person.Create` takes **first + grandfather** as its two REQUIRED
+names and `FatherName` is optional, and every display name in the codebase is built as
+`FirstName + " " + GrandFatherName` ("Berhan Meshesha"). GrandFatherName is the family name, so
+John *Michael* Doe becomes `jdoe`.
+
+⚠️ This is the OPPOSITE of the convention in the migrated data, where usernames read `berhand`
+(Berhan **D**emeke) — first name plus father's initial. New accounts will not look like the old ones.
+That follows the requirement as written.
+
+#### The credentials mail is EventSubject-only
+
+`Employee.AccountCreated` publishes `UserName` and `Password`, and the address rides in as
+`SubjectAddresses`. A brand-new employee cannot be resolved by any other recipient rule yet — and a
+rule pointing anywhere else would mail one person's password to another. The seeded event says so in
+its description.
+
+⚠️ There is deliberately **no hardcoded fallback**, unlike `LeaveNotifier`. Credentials are exactly
+the content an administrator should have approved the wording of. If no template is configured the
+account is still created and a loud warning names the username, so HR can deliver the password by
+hand.
+
+#### ⚠️ Never fails the registration
+
+The provisioner catches everything and returns null. The employee is already committed at that point;
+losing the account is recoverable by hand, whereas failing the registration is not what was asked
+for. It is also idempotent — if a user is already linked to the employee, it does nothing.
+
+#### ⚠️ Security limits worth knowing
+
+- A **plaintext password travels by e-mail**. There is no "must change password on first login" flag
+  on `User`, so nothing forces a rotation; the template text asks for one, which is not the same
+  thing.
+- `Encryption.GenerateHash` still uses an **empty salt**, so identical passwords hash identically.
+  That is why the generated password is random per account rather than a shared default.
+- The default `@cybersoft.com` address is a placeholder domain. If it does not receive mail, the
+  message is queued and lost, and the account exists with credentials nobody has.
+
+### 12.57 The first live registration failed: a unique index the username check did not cover
+
+Registering "Selamawit Seble Tesema" created the employee and **no account**. The log named it
+exactly:
+
+```
+[ERR] Account provisioning failed for employee cca3e0f0…; the employee record stands.
+  SqlException 2601: Cannot insert duplicate key row in object 'Core.User'
+  with unique index 'IX_User_NormalizedEmail'. The duplicate key value is (LIELITMICHAEL@GMAIL.COM).
+```
+
+The employee was registered with an address that already belonged to the login `rojer(dr)b`.
+
+#### ⚠️ Two unique indexes, one check
+
+`Core.User` carries **two** unique, NON-tenant-scoped indexes:
+
+| Index | Unique | Scope |
+|---|---|---|
+| `IX_User_NormalizedUserName` | yes | global |
+| `IX_User_NormalizedEmail` | yes (filtered `<> ''`) | global |
+
+§12.56 built a collision loop for the username and treated the e-mail as free text. Any employee
+whose address was already in use therefore lost the whole provisioning — account, role and welcome
+mail — to a constraint violation.
+
+`ResolveUniqueEmailAsync` now checks the address the same way and falls back to the generated
+`[username]@cybersoft.com`, which is unique because the username already is.
+
+#### ⚠️ The fallback deliberately does NOT mail the requested address
+
+On a clash the credentials go to the fallback address, not to the one HR typed. That address is
+another **account's login**, and one person's password must not be delivered to an inbox registered
+to someone else. The clash is logged with both the address and the owning username so HR can
+reconcile it.
+
+The consequence is worth stating plainly: when this happens the welcome mail goes to
+`@cybersoft.com`, and **if that domain does not receive mail the employee never gets their
+password**. The log line is the only signal.
+
+#### The failure mode this exposed: no way back
+
+Provisioning is fire-and-forget and never throws, so a failure leaves an employee registered with no
+account and — as originally written — no retry. `POST /Employee/{id}/provision-account` closes that:
+idempotent, gated on the employee register, and it returns the username and address it created. It
+is what recovered this employee (`stesema` / `stesema@cybersoft.com`, role `UserRole`).
+
+### 12.58 The account's login address and the employee's inbox are two different things
+
+Registering "Selamawit Seble Tati" with a custom address produced an account whose e-mail was
+`stati@cybersoft.com` — the default — and the welcome mail went there too. The address had been
+provided, so the default should not have applied.
+
+#### What was actually happening
+
+§12.57 made the LOGIN address fall back when the requested one was already taken
+(`IX_User_NormalizedEmail` is unique and global; `lielitmichael@gmail.com` belongs to `rojer(dr)b`).
+That part is a database constraint and cannot be avoided — two logins cannot share an address.
+
+The mistake was sending the credentials to that fallback as well. §12.56 passed one `email` variable
+to both the account and the notification, so a constraint on the LOGIN silently redirected the
+EMPLOYEE'S MAIL to a placeholder domain they cannot read. The employee had given a perfectly good
+address; nothing about the index says they should not be written to at it.
+
+#### The split
+
+| | Value | Constraint |
+|---|---|---|
+| `loginEmail` | requested if free, else `[username]@cybersoft.com` | **must be unique** — `IX_User_NormalizedEmail` |
+| `contactEmail` | the employee's own address whenever they gave one | none — it is just a recipient |
+
+`User.Email` takes `loginEmail`; the notification is delivered to `contactEmail`; and the
+`{{Email}}` token carries `loginEmail`, so the message still tells the reader what to type when the
+two differ. When no address was given both are the generated one, exactly as before.
+
+⚠️ §12.57 argued the opposite — that credentials must never go to an address registered to another
+account. That reasoning was too narrow: HR entered the address ON THIS EMPLOYEE'S RECORD, and the
+same "wrong inbox" risk exists for any address they type. Refusing only the subset that happens to
+collide with a login bought almost no safety and cost the main use case.
+
+#### ⚠️ Deleting an employee leaves the account behind
+
+Found while checking this: the "Tesema" employee was deleted, and the auto-created login `stesema`
+survived with `EmployeeId` NULL and `AccountStatus = 1`. Automatic creation has no matching teardown,
+so removing an employee now leaves an orphaned, enabled login. Nothing in the request covered
+deletion — flagged, not fixed.
+
+### 12.59 Templated mail was being delivered as raw markup
+
+The account-creation e-mail arrived looking like this:
+
+```
+<p>Dear Selamawit Tati (EM001s),</p><p>Your account has been created.</p>…
+```
+
+Not a styling problem — `SmtpEmailService` hardcoded **`IsBodyHtml = false`**. Every notification
+template is authored in a rich-text editor and stored as HTML, so all of them were being delivered as
+their own source. The polish was invisible because nothing was ever rendered.
+
+#### ⚠️ HTML is detected, not assumed
+
+Flipping the flag globally would have broken the other senders: the hardcoded notifiers
+(`LeaveNotifier`, `MovementNotifier`, …) build plain text with `\n` breaks, and HTML collapses
+whitespace, so their messages would have arrived as one run-on paragraph.
+
+`LooksLikeHtml` matches a short list of block tags rather than any `<`, so a plain-text body
+containing a comparison ("salary < 5000") is not mistaken for markup.
+
+#### ⚠️ Body carries the PLAIN text; HTML is the alternate
+
+The first attempt set `Body` to the HTML *and* added both alternate views, which produced **three**
+parts — `text/plain` (containing the raw markup), `text/plain`, `text/html`. .NET turns `Body` into an
+alternate of its own as soon as `AlternateViews` is non-empty.
+
+The correct shape, verified from the generated `.eml`:
+
+```
+Content-Type: multipart/alternative
+  Content-Type: text/plain    ← HtmlToPlainText(body)
+  Content-Type: text/html     ← the template
+```
+
+`HtmlToPlainText` turns block-closing tags into line breaks, strips the rest and decodes entities —
+enough to be legible in a client that refuses HTML, which is exactly the case that was broken.
+
+#### Verifying mail without sending any
+
+`Email:PickupDirectory` makes `SmtpClient` write `.eml` files instead of talking to a relay, and it
+can be set per-run with `Email__PickupDirectory=<dir>`. That is how the MIME structure above was
+checked, and how the HTML was rendered to an image for review — no message left the machine and no
+inbox was touched.
+
+#### The template
+
+Rewritten as table-based, 600px, fully inline-styled: branded header bar, greeting, a bordered panel
+with the username / temporary password / account address in monospace, an amber advisory to change
+the password, and a footer. No `<style>` block, no web fonts, no flexbox — Outlook supports none of
+them reliably.
+
+### 12.60 Deleting an employee now deactivates their login — and "deactivated" now means something
+
+Automatic account creation (§12.56) had no counterpart on deletion. `FK_User_Employee_EmployeeId` is
+**ON DELETE SET NULL**, so removing an employee silently orphaned their account: `EmployeeId` went
+null, `AccountStatus` stayed `1`, and nothing in the product could find it by the employee link any
+more. Two such logins had already accumulated.
+
+`DeleteEmployee` now finds the linked user and calls `SetAccountStatus(false)` **before** deleting the
+employee — after the delete the link is gone and the account is unfindable. The account is kept
+rather than deleted: it owns login trails and audit references, and removing it would rewrite
+history.
+
+#### ⚠️ Nothing read AccountStatus, so deactivation was a label
+
+`LoginRepository` verified the password, then went straight to the tenant check. An account could be
+deactivated anywhere in the product — this feature, the Users screen — and still sign in.
+
+The check now sits **after** the password comparison, so a wrong password and a disabled account are
+indistinguishable to someone guessing, and the refusal is written to the login trail as
+"Account deactivated".
+
+Verified both directions with a throwaway account holding a known hash:
+
+| `AccountStatus` | Result |
+|---|---|
+| `0` | **401** — "This account has been deactivated. Contact your administrator." |
+| `1` | signs in normally |
+
+Safe to introduce: all 510 accounts were active, so nobody was locked out by the new check.
+
+#### ⚠️ Pre-existing, not caused by this: 3 positions occupied by nobody
+
+`Hrms.Position` has 3 rows with `IsVacant = 0` and no employee holding them. Deletion **does** release
+the position — verified directly (create → `IsVacant 0`, delete → `IsVacant 1`) — so these predate
+the change. Worth a one-off reconciliation, since establishment and recruitment both count vacancies.

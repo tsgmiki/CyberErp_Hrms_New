@@ -64,6 +64,18 @@ public class LoginRepository(
                     throw new UnauthorizedException("Invalid username or password");
                 }
 
+                // ⚠️ Checked AFTER the password, so a wrong password and a disabled account are not
+                // distinguishable to someone guessing. Until now nothing read AccountStatus at all:
+                // an account could be deactivated anywhere in the product and still sign in, which
+                // made "deactivate" a label rather than a control (logic §12.60).
+                if (!user.AccountStatus)
+                {
+                    _logger.LogWarning("Sign-in refused for deactivated account {UserName}", dto.UserName);
+                    await RecordLoginEventAsync(LoginTrail.Failure(
+                        dto.UserName ?? string.Empty, ClientIp(), UserAgent(), "Account deactivated"));
+                    throw new UnauthorizedException("This account has been deactivated. Contact your administrator.");
+                }
+
                 // Branch scope + head-office visibility are DERIVED from the linked employee's branch:
                 // a user tied to a REGULAR branch is scoped to that branch, while a user assigned to the
                 // branch flagged Head Office — or one with no employee at all (tenant owner / unlinked

@@ -43,6 +43,9 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
         // ---- Trip ------------------------------------------------------------------------------
         public const string TripSettlementOverdue = "Trip.SettlementOverdue";
 
+        // ---- Employee lifecycle (CREDENTIALS: addressed to the new account itself) --------------
+        public const string EmployeeAccountCreated = "Employee.AccountCreated";
+
         /// <summary>
         /// The seed set. Applied idempotently by <c>SeedNotificationEvents</c> — an existing row is
         /// refreshed (name / tokens can improve) but never duplicated, and rows are never deleted,
@@ -141,6 +144,14 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
             new(TripSettlementOverdue, "Travel advance overdue for settlement", "Trip",
                 "EmployeeName,EmployeeNumber,TripNumber,AdvanceAmount,Currency,DueDate",
                 "Raised by the daily reminder job for every travel advance past its settlement deadline."),
+
+            // ---- Employee lifecycle -----------------------------------------------------------
+            // ⚠️ This template carries a PASSWORD. It needs an EventSubject ("Who the event is
+            // about") recipient rule — on a brand-new employee no other rule can resolve them yet,
+            // and any rule pointing elsewhere would send someone else's credentials to a third party.
+            new(EmployeeAccountCreated, "Employee account created - credentials", "Employee",
+                "EmployeeName,EmployeeNumber,UserName,Password,Email",
+                "Raised when registering an employee automatically creates their login. Addressed to the new account (EventSubject)."),
         ];
     }
 

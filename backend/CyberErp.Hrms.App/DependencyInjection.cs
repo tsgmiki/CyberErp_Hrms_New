@@ -184,6 +184,7 @@ namespace CyberErp.Hrms.App
 
             // Employee Data Management (HRMS §3.2)
             services.AddScoped<ICreateEmployee, CreateEmployee>();
+            services.AddScoped<Features.Core.Employees.IEmployeeAccountProvisioner, Features.Core.Employees.EmployeeAccountProvisioner>();
             services.AddScoped<IUpdateEmployee, UpdateEmployee>();
             services.AddScoped<IDeleteEmployee, DeleteEmployee>();
             services.AddScoped<IGetEmployeeById, GetEmployeeById>();

@@ -19,7 +19,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetUpcomingRetirements upcomingRetirementsHandler,
         IGetMyEmployee myEmployeeHandler,
         IGetMyProfile myProfileHandler,
-        IUpdateMyProfile updateMyProfileHandler) : BaseController
+        IUpdateMyProfile updateMyProfileHandler,
+        IEmployeeAccountProvisioner accountProvisioner) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<EmployeeDto>> GetAll([FromQuery] GetAllRequest request)
@@ -62,6 +63,24 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpPost]
         public Task<Guid> Create([FromBody] CreateEmployeeDto dto)
             => createHandler.CreateAsync(dto);
+
+        /// <summary>
+        /// Creates the login for an employee who does not have one yet — the RETRY for automatic
+        /// provisioning.
+        ///
+        /// <para>⚠️ Provisioning runs fire-and-forget on registration and never throws, so a failure
+        /// (a duplicate e-mail, a missing role, no tenant) leaves the employee registered with no
+        /// account and, without this, no way back. Idempotent: an employee who already has a login
+        /// is left alone.</para>
+        /// </summary>
+        [HttpPost("{id:guid}/provision-account")]
+        public async Task<IActionResult> ProvisionAccount(Guid id)
+        {
+            var account = await accountProvisioner.ProvisionAsync(id);
+            return account is null
+                ? Ok(new { message = "No account was created — the employee already has one, or provisioning failed. See the log." })
+                : Ok(new { message = "Account created.", account.UserName, account.Email, account.Notified });
+        }
 
         [HttpPut]
         public async Task<IActionResult> Update([FromBody] UpdateEmployeeDto dto)
