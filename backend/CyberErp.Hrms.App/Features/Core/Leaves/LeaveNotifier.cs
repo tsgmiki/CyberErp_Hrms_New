@@ -232,7 +232,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             }
         }
 
-        /// <summary>Composes and sends the one message. Silent (logged) when the employee has no address.</summary>
+        /// <summary>
+        /// Dispatches the administrator's Leave.Approved template and, only if none is configured,
+        /// falls back to the original hardcoded message to the requester.
+        /// </summary>
         private async Task SendAsync(
             Guid employeeId, string leaveName, decimal totalDays,
             IReadOnlyList<(DateTime StartDate, DateTime EndDate)> dates)
@@ -242,19 +245,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .Select(e => new
                 {
                     e.Email,
+                    e.EmployeeNumber,
                     Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
                 })
                 .FirstOrDefaultAsync();
 
-            if (employee is null || string.IsNullOrWhiteSpace(employee.Email))
-            {
-                // Not an error: plenty of employee records carry no address. Log it so an unexplained
-                // "I was never told" can be traced to the missing address rather than to the mail.
-                logger.LogInformation(
-                    "Leave approved for employee {EmployeeId} but no e-mail address is on file; no message sent.",
-                    employeeId);
-                return;
-            }
+            if (employee is null) return;
 
             var when = dates.Count == 0
                 ? ""
@@ -279,6 +275,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 new Dictionary<string, string?>
                 {
                     ["EmployeeName"] = employee.Name,
+                    ["EmployeeNumber"] = employee.EmployeeNumber,
                     ["LeaveType"] = leaveName,
                     ["TotalDays"] = totalDays.ToString("0.##"),
                     ["StartDate"] = dates.Count > 0 ? dates[0].StartDate.ToString("dd MMM yyyy") : null,
@@ -298,6 +295,21 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             // stop being told their leave was approved — making the feature available should not be
             // the same as switching the old behaviour off. Once a template exists for
             // Leave.Approved, this line stops running.
+            //
+            // ⚠️ The address check belongs HERE, not before the dispatch. It gates only this
+            // hardcoded mail, which can reach nobody but the requester. Checking it earlier let one
+            // employee's missing address silently cancel an administrator's template — including
+            // rules addressed to HR or the whole company, who have nothing to do with that address.
+            if (string.IsNullOrWhiteSpace(employee.Email))
+            {
+                // Not an error: plenty of employee records carry no address. Log it so an unexplained
+                // "I was never told" can be traced to the missing address rather than to the mail.
+                logger.LogInformation(
+                    "Leave approved for employee {EmployeeId} but no e-mail address is on file, and no template is configured; no message sent.",
+                    employeeId);
+                return;
+            }
+
             var sent = await emailService.SendAsync(employee.Email!, subject, body);
             logger.LogInformation("Leave approval e-mail to {Email} for employee {EmployeeId}: {Result} (no template configured)",
                 employee.Email, employeeId, sent ? "sent" : "not sent (mail disabled or failed)");

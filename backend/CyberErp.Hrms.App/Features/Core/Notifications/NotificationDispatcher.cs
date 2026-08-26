@@ -145,6 +145,13 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
                         if (!string.IsNullOrWhiteSpace(rule.Address)) addresses.Add(rule.Address.Trim());
                         break;
 
+                    case RecipientKind.EventSubject:
+                        // Supplied by the raising code, not configured — the only way to reach a
+                        // non-employee (a candidate) once a template overrides the hardcoded mail.
+                        foreach (var a in context.SubjectAddresses ?? [])
+                            if (!string.IsNullOrWhiteSpace(a)) addresses.Add(a.Trim());
+                        break;
+
                     case RecipientKind.Requester:
                         if (context.RequesterEmployeeId is Guid requester)
                             AddAll(addresses, await EmployeeAddressesAsync([requester]));

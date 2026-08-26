@@ -3872,3 +3872,64 @@ told" is answerable from the log without a working relay:
 The feature is correct but currently undeliverable in this database: every employee row has a NULL
 Email. Templates can be configured now; delivery starts working when HR captures addresses. Worth
 saying out loud before a client configures a template and concludes the system is broken.
+
+### 12.44 Migrating the remaining hardcoded e-mails, and the two traps it exposed
+
+§12.42 counted 29 `SendAsync` sites and migrated only the leave notifier. This migrates the rest that
+are genuinely NOTIFICATIONS, and deliberately leaves three that are not.
+
+#### What moved
+
+| Notifier | Events |
+|---|---|
+| `MovementNotifier` | `Movement.Submitted` / `.Approved` / `.Executed` / `.Cancelled` |
+| `TerminationNotifier` | `Exit.Submitted` / `.Approved` / `.Settled` / `.Cancelled` |
+| `DisciplinaryNotifier` | `Disciplinary.Submitted` / `.Approved` / `.Cancelled` |
+| `InterviewNotifier` | `Interview.Scheduled` / `.Rescheduled` / `.Cancelled` |
+| `TripSettlementReminder` | `Trip.SettlementOverdue` |
+
+Each keeps the established shape: dispatch first, and fall back to the original hardcoded mail when
+no template is configured, so shipping the feature never switches existing notifications off.
+
+#### ⚠️ What deliberately did NOT move
+
+Three sites send mail but are not notifications, and templating them would break what they are for:
+
+- **`OfferDelivery`** — carries the offer letter as a **PDF attachment**, and its `bool` return
+  **drives a state transition** (Approved → Sent, application → OfferPending). The dispatcher returns
+  a count and has no attachment channel, so routing this through it would lose the letter and the
+  delivery confirmation the state machine depends on.
+- **`ReportScheduleHandlers`** — the subject and body are the *user's own* scheduled-report
+  configuration, plus an attachment. There is nothing hardcoded to liberate.
+- **The Settings test message** — a diagnostic probe of the SMTP relay. Making its content
+  configurable defeats the purpose of a known-good payload.
+
+#### ⚠️ Trap 1 — a candidate is not an employee
+
+Interview mail is addressed to a CANDIDATE. Every recipient rule resolved employees or logins, so an
+administrator who wrote an `Interview.Scheduled` template would have taken over from the hardcoded
+mail and **cut the candidate out of their own invitation** — the template wins, and no rule could
+name them.
+
+Hence `RecipientKind.EventSubject`: the raising code supplies the addresses the event is inherently
+about (`NotificationContext.SubjectAddresses`), and the admin decides whether to include them. It is
+the only rule whose value comes from the event rather than the configuration.
+
+#### ⚠️ Trap 2 — an early return that silently cancelled the dispatcher
+
+`LeaveNotifier.SendAsync` began with:
+
+```csharp
+if (employee is null || string.IsNullOrWhiteSpace(employee.Email)) return;   // ← before the dispatch
+```
+
+That guard belongs to the **fallback**, which can only ever reach the requester. Sitting ahead of the
+dispatch it meant one employee's missing address cancelled the administrator's whole template —
+including rules addressed to HR or the entire company, who have nothing to do with that address. With
+0 of 490 employees carrying an address, **no `Leave.Approved` template could ever have fired**.
+
+The guard now sits immediately before the fallback send. The same reordering was applied to
+`DisciplinaryNotifier`, whose `subject.UnitId is null` early return had the identical shape.
+
+The general rule: **a precondition of the hardcoded fallback must never gate the dispatcher.** They
+have different recipients, so they need different guards.

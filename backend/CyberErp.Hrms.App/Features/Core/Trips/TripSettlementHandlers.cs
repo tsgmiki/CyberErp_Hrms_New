@@ -3,6 +3,7 @@ using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Features.Core.Performance;
+using CyberErp.Hrms.App.Features.Core.Notifications;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -166,7 +167,9 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public class TripSettlementReminder(
         IRepository<TripRequest> repository,
         IRepository<User> userRepository,
+        IRepository<Employee> employeeRepository,
         IEmailService emailService,
+        INotificationDispatcher dispatcher,
         ILogger<TripSettlementReminder> logger) : ITripSettlementReminder
     {
         public async Task<int> RunAsync()
@@ -183,6 +186,32 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
             {
                 var dueBy = t.EndDate.Date.AddDays(TripSettlement.SettlementDueDays);
                 if (today <= dueBy) continue;   // not yet overdue
+
+                // Template first, hardcoded mail as the fallback — see MovementNotifier.
+                var who = await employeeRepository.GetAll().AsNoTracking()
+                    .Where(e => e.Id == t.EmployeeId)
+                    .Select(e => new
+                    {
+                        e.EmployeeNumber,
+                        Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
+                    })
+                    .FirstOrDefaultAsync();
+
+                var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                    NotificationEvents.TripSettlementOverdue,
+                    new Dictionary<string, string?>
+                    {
+                        ["EmployeeName"] = who?.Name,
+                        ["EmployeeNumber"] = who?.EmployeeNumber,
+                        ["TripNumber"] = t.TripNumber,
+                        ["AdvanceAmount"] = t.AdvanceAmount.ToString("N2"),
+                        ["Currency"] = t.Currency,
+                        ["DueDate"] = dueBy.ToString("dd MMM yyyy"),
+                    },
+                    RequesterEmployeeId: t.EmployeeId,
+                    EntityType: nameof(TripRequest),
+                    EntityId: t.Id));
+                if (dispatched > 0) { sent += dispatched; continue; }
                 var email = await users.Where(u => u.EmployeeId == t.EmployeeId && u.Email != "").Select(u => u.Email).FirstOrDefaultAsync();
                 if (string.IsNullOrWhiteSpace(email)) continue;
                 var ok = await emailService.SendAsync(email, $"Settle your travel advance — {t.TripNumber}",
