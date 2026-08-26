@@ -123,6 +123,22 @@
 
 ## 1. Most recent changes (latest first)
 
+0167. **SetLeaveBalance is HR-only (2026-08-27).** HRMS repo, no migration.
+    `LeaveBalanceHandlers.SetLeaveBalance`. See logic §12.62. **Closes the audit's PROVEN finding**
+    (0160 / §12.55), where ordinary staff wrote a 999-day entitlement for a colleague.
+    - ⚠️ **Copying the neighbouring guard would have left it half open.** `GetLeaveBalances` right
+      above uses `CanAccessEmployeeAsync` (self / manager / HR) — correct for READING, wrong for
+      SETTING, because it permits SELF: an employee could still have granted themselves the
+      entitlement. An opening balance is policy, so the write requires `scope.IsAdmin`. Generalises
+      to the other 25: **the guard next door is a hint, not the answer.**
+    - ⚠️ **The check runs FIRST, before validation** — the NotFound checks would otherwise let an
+      unauthorised caller probe which employee / leave-type ids exist, and a guard behind a validator
+      is one a deny test never reaches (bitten twice: §12.52, §12.53).
+    - Verified live: staff → colleague **400**, staff → **themselves 400**, HR **200**. Reads
+      untouched (own **200**, out-of-scope refused). Test row deleted; `LeaveBalance` back to 345.
+    - Still open from the audit: **25** unguarded write endpoints, concentrated in `JobRequisition`
+      (8), `WorkforcePlan` (6) and `HiringRequest` (3).
+
 0166. **Reconciled position vacancy: 3 seats reopened (2026-08-27).** HRMS repo, no code change —
     one script, `backend/scripts/reconcile-position-vacancy.sql`. APPLIED to CERP. See logic §12.61.
     - BA2-02 / BA2-03 / BA2-04 ("Assistant Production Technologist II", Live Bacterial Vaccine
@@ -286,8 +302,7 @@
       cancel/delete tails of leave, appraisal, movement, termination and disciplinary.
     - ⚠️ **PROVEN, not inferred**: as `takele(dr)a` (ordinary UserRole) `SetLeaveBalance` wrote a
       **999-day entitlement** for an employee outside their line. Row deleted immediately; verified
-      `LeaveBalance` back to 345 rows. **Fix this one first** — it is an `Add`, so it needs no
-      existing record.
+      `LeaveBalance` back to 345 rows. **FIXED in 0167.**
     - The rest were probed with invalid payloads (safe: the answer that matters is 403 vs not). All 15
       probed returned 400/404, **never 403** — the gate admits, the handler decides.
     - ⚠️ **The audit was wrong twice before it was right; both traps are in §12.55.** (a) A

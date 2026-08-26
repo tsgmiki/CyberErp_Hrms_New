@@ -96,10 +96,23 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<LeaveType> leaveTypes,
         IRepository<Employee> employees,
         IRepository<FiscalYear> fiscalYears,
+        Performance.IPerformanceVisibilityService visibility,
         IValidator<SetLeaveBalanceDto> validator) : ISetLeaveBalance
     {
         public async Task SetAsync(SetLeaveBalanceDto dto)
         {
+            // ⚠️ HR ONLY, and checked BEFORE anything else.
+            //
+            // The read path next door uses CanAccessEmployeeAsync, which is right for reading a
+            // balance and WRONG for setting one: it permits self, so an employee could grant
+            // themselves an entitlement. An opening balance is policy, not a self-service field.
+            //
+            // First, not after validation, for two reasons: the NotFound checks below would
+            // otherwise let an unauthorised caller probe which employee and leave-type ids exist,
+            // and a guard sitting behind a validator is one a deny test never reaches (logic §12.52).
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("access", "Only HR can set an employee's leave balance.");
+
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
