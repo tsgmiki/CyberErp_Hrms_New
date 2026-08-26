@@ -4151,3 +4151,53 @@ So in CERP ordinary staff cannot reach the grievance endpoints at all, and "the 
 `HrScreens` remark claiming "every employee holds `/grievance`" describes an intent, not this tenant.
 
 There are also **zero grievance rows**, so none of this has bitten anyone yet.
+
+### 12.50 A self-service screen must not borrow another module's permission
+
+Home's **My Exit / Resignation Request** worked for HR Admins and failed for everyone else with:
+
+> Your account is not linked to an employee record.
+
+The message was false. 490 of 507 accounts ARE linked, including every account that saw it.
+
+#### The chain
+
+`myExit` resolved "who am I" by calling `getCpdSummary()` — the **Training** module's CPD endpoint,
+whose controller carries `[RequirePermission("myTraining")]`. `UserRole` does not hold
+`/hrms/myTraining` (only Department Manager, HR Admin and HR Officer do), so:
+
+```
+GET /TrainingCpd  →  403 for ordinary staff, 200 for HR
+  → `me` undefined → `myEmployeeId` undefined
+    → the screen renders its hardcoded "not linked" paragraph
+```
+
+Reproduced exactly: `takele(dr)a` (UserRole) **403**, `tatekg` (HR Admin) **200**.
+
+#### ⚠️ Two separate faults, and the misdiagnosis is the worse one
+
+1. Identity came from a screen the caller has no reason to hold. A self-service screen answering
+   "who am I" must use a `[SelfScoped]` endpoint — one that bypasses the permission gate by design.
+2. A **permission** failure was reported as a **data** failure. That sends an administrator to check
+   the employee link, which is fine, while the actual cause is a role grant. A wrong error message
+   costs more than a missing one.
+
+#### The fix
+
+`Employee/me` is `[SelfScoped]` and documented to return an empty body only when the account truly
+has no employee link. Home already wrapped it in `getMyEmployeeStatus()`, which **classifies** the
+outcome — `linked` / `unlinked` / `unauthenticated` / `unreachable` — and `SelfServiceGate` renders
+the right message for each. Annual Leave, Other Leave and My Profile already used it; My Exit was the
+one screen that did not.
+
+It now uses the same probe, the same `["myEmployeeStatus"]` cache key (so "who am I" is still asked
+once per dashboard load) and the same gate. The "not linked" wording now appears only when it is
+true.
+
+Verified in a browser for both roles: `takele(dr)a` and `tatekg` each reach the resignation form,
+with no "not linked" message and no unauthorized page.
+
+#### Checked and NOT affected
+
+`MyCompensation` shows the same sentence on its error path, but its endpoint is properly self-scoped
+— 200 for both roles. `myExit` was the only screen resolving identity through `getCpdSummary`.
