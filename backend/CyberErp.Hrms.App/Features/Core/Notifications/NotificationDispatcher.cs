@@ -57,6 +57,12 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
                         continue;
                     }
 
+                    // The symmetric half of the line above: with the count logged on BOTH paths,
+                    // "who was told" is answerable from the log even without a working relay.
+                    logger.LogInformation(
+                        "Notification {EventKey}: template {TemplateId} resolved to {Recipients} recipient(s).",
+                        context.EventKey, template.Id, addresses.Count);
+
                     // ⚠️ Sent INDIVIDUALLY, one message per address. IEmailService takes a single
                     // recipient, so To/Cc/Bcc are recorded on the rule but every address currently
                     // receives its own copy — which is also the privacy-safe behaviour for the
@@ -209,13 +215,38 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
                 .Select(e => e.Email!)
                 .ToListAsync();
 
+        /// <summary>
+        /// Addresses for a set of LOGINS, falling back to the linked employee record.
+        ///
+        /// <para>⚠️ The fallback is not a nicety. A login's Email is optional and, in practice,
+        /// frequently blank — HR maintains the address on the EMPLOYEE. Without the fallback a
+        /// CurrentApprover rule resolves the right person and then silently reaches nobody, which
+        /// is indistinguishable from a misconfigured template.</para>
+        /// </summary>
         private async Task<List<string>> UserAddressesAsync(IReadOnlyCollection<Guid> userIds)
         {
             if (userIds.Count == 0) return [];
-            return await users.GetAllWithoutTenantFilter().AsNoTracking()
-                .Where(u => userIds.Contains(u.Id) && u.Email != "")
-                .Select(u => u.Email)
+
+            var logins = await users.GetAllWithoutTenantFilter().AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Email, u.EmployeeId })
                 .ToListAsync();
+
+            var found = logins
+                .Where(u => !string.IsNullOrWhiteSpace(u.Email))
+                .Select(u => u.Email!.Trim())
+                .ToList();
+
+            // Only the logins that came up empty fall through to their employee record.
+            var unresolved = logins
+                .Where(u => string.IsNullOrWhiteSpace(u.Email) && u.EmployeeId is not null)
+                .Select(u => u.EmployeeId!.Value)
+                .Distinct()
+                .ToList();
+
+            if (unresolved.Count > 0) found.AddRange(await EmployeeAddressesAsync(unresolved));
+
+            return found;
         }
 
         /// <summary>Everyone holding the role in this tenant, through the tenant-scoped membership chain.</summary>

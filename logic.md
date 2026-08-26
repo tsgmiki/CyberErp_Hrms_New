@@ -3813,3 +3813,62 @@ off. Once a `Leave.Approved` template exists, the fallback stops running.
 `IEmailService.SendAsync` takes a single recipient, so every address gets its own copy. That is also
 the privacy-safe behaviour for `AllEmployees`, where a real Cc would publish the whole staff address
 list — but it is a gap between the schema and delivery until the send contract grows those fields.
+
+### 12.43 "Leave submitted → the approver" and the address fallback that makes it deliver
+
+§12.42 listed the gap: there was NO submitted-leave e-mail at all, only the in-app portal alert. This
+closes it for both leave modules, and in doing so uncovered why a `CurrentApprover` rule could resolve
+the right person and still reach nobody.
+
+#### Order of operations is the whole trick
+
+`ILeaveNotifier.AnnualLeaveSubmittedAsync` / `OtherLeaveSubmittedAsync` are called **after**
+`IWorkflowService.StartIfDefinedAsync`, never before. A `CurrentApprover` rule resolves against
+`(WorkflowDefinitionId, StepOrder)`, and until the workflow starts there is no running instance and
+therefore no step — the rule would resolve to nobody every time.
+
+So the shared `DispatchSubmittedAsync` helper looks the instance up first and passes its
+`DefinitionId` + `CurrentStepOrder` into the dispatch context:
+
+```csharp
+var instance = await workflowInstances.GetAllWithoutTenantFilter().AsNoTracking()
+    .Where(w => w.EntityType == entityType && w.EntityId == entityId)
+    .OrderByDescending(w => w.CreatedAt)
+    .Select(w => new { w.DefinitionId, w.CurrentStepOrder, w.CurrentStepName })
+    .FirstOrDefaultAsync();
+```
+
+An entity type with no active workflow definition simply has no approver to tell. That is not an
+error, and nothing is sent.
+
+Unlike the approved path there is **no hardcoded fallback**, because there was never a hardcoded
+submitted-mail to preserve. No template configured ⇒ no message.
+
+#### ⚠️ A login's Email is usually blank — the address lives on the EMPLOYEE
+
+`CurrentApprover` resolves to USER ids (that is what the approver-auth service speaks), so
+`UserAddressesAsync` read `Core.User.Email` and stopped there. In CERP **0 of 490 employees and 487
+of 507 users carry any address**, and HR maintains the address on the employee record, not the login.
+
+The effect was a notification that resolved the correct approver and then silently reached nobody —
+indistinguishable in the log from a misconfigured template. `UserAddressesAsync` now falls back to
+the linked employee record for exactly those logins whose own Email is blank:
+
+```
+logins with an Email      -> use it
+logins without, but with EmployeeId -> EmployeeAddressesAsync(those employee ids)
+```
+
+The dispatcher also logs the resolved count on the SUCCESS path, not only the zero case, so "who was
+told" is answerable from the log without a working relay:
+
+```
+[INF] Notification Leave.Submitted: template <id> resolved to 1 recipient(s).
+[INF] Leave submitted AnnualLeave <id>: 1 configured notification(s) sent.
+```
+
+#### ⚠️ Nobody in CERP has an address
+
+The feature is correct but currently undeliverable in this database: every employee row has a NULL
+Email. Templates can be configured now; delivery starts working when HR captures addresses. Worth
+saying out loud before a client configures a template and concludes the system is broken.

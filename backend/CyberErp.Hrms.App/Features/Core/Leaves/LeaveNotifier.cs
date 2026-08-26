@@ -1,6 +1,7 @@
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Features.Core.Notifications;
+using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -10,9 +11,20 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     /// <summary>Approval e-mails to the employee who RAISED a leave request.</summary>
     public interface ILeaveNotifier
     {
+        /// <summary>
+        /// An annual-leave request has just entered its approval workflow — the hop that tells the
+        /// APPROVER there is something waiting. Call AFTER the workflow has started, so the running
+        /// instance exists to resolve the current step's approvers from.
+        /// </summary>
+        Task AnnualLeaveSubmittedAsync(Guid annualLeaveHeaderId);
         /// <summary>The requester's annual-leave request has been approved.</summary>
         Task AnnualLeaveApprovedAsync(Guid annualLeaveHeaderId);
         /// <summary>The requester's other-leave request has been approved.</summary>
+        /// <summary>
+        /// An other-leave request has just entered its approval workflow. Same contract as
+        /// <see cref="AnnualLeaveSubmittedAsync"/>: call AFTER the workflow has started.
+        /// </summary>
+        Task OtherLeaveSubmittedAsync(Guid otherLeaveHeaderId);
         Task OtherLeaveApprovedAsync(Guid otherLeaveHeaderId);
     }
 
@@ -36,10 +48,98 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IRepository<OtherLeaveHeader> otherLeave,
         IRepository<LeaveBalance> ledgers,
         IRepository<Employee> employees,
+        IRepository<WorkflowInstance> workflowInstances,
         IEmailService emailService,
         INotificationDispatcher dispatcher,
         ILogger<LeaveNotifier> logger) : ILeaveNotifier
     {
+        public async Task AnnualLeaveSubmittedAsync(Guid annualLeaveHeaderId)
+        {
+            try
+            {
+                // Same tenant-filter caveat as the approval path: this runs from the submitting
+                // request, but the header is read without the filter for consistency with the rest
+                // of this class.
+                var header = await annualLeave.GetAllWithoutTenantFilter().AsNoTracking()
+                    .Where(h => h.Id == annualLeaveHeaderId)
+                    .Select(h => new { h.Id, h.AnnualLeaveLedgerId, h.TotalLeaveDays })
+                    .FirstOrDefaultAsync();
+                if (header is null) return;
+
+                var employeeId = await ledgers.GetAllWithoutTenantFilter().AsNoTracking()
+                    .Where(b => b.Id == header.AnnualLeaveLedgerId)
+                    .Select(b => (Guid?)b.EmployeeId).FirstOrDefaultAsync();
+                if (employeeId is null) return;
+
+                var dates = await annualLeave.GetAllWithoutTenantFilter().AsNoTracking()
+                    .Where(h => h.Id == annualLeaveHeaderId)
+                    .SelectMany(h => h.Details.Select(d => new { d.StartDate, d.EndDate }))
+                    .ToListAsync();
+
+                await DispatchSubmittedAsync(
+                    WorkflowEntityTypes.AnnualLeave, annualLeaveHeaderId, employeeId.Value,
+                    "Annual leave", header.TotalLeaveDays,
+                    [.. dates.Select(d => (d.StartDate, d.EndDate))]);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Leave-submitted notification failed for annual leave {Id}; the request itself is unaffected.",
+                    annualLeaveHeaderId);
+            }
+        }
+
+        /// <summary>
+        /// Dispatches Leave.Submitted with the workflow coordinates, which is what lets a
+        /// "current approver" recipient rule resolve to the people actually holding this step.
+        ///
+        /// <para>⚠️ Without the running instance there is no step, so a CurrentApprover rule would
+        /// resolve to nobody. A request whose entity type has no active workflow definition simply
+        /// has no approver to tell — that is not an error, and nothing is sent.</para>
+        /// </summary>
+        private async Task DispatchSubmittedAsync(
+            string entityType, Guid entityId, Guid employeeId, string leaveName, decimal totalDays,
+            IReadOnlyList<(DateTime StartDate, DateTime EndDate)> dates)
+        {
+            var instance = await workflowInstances.GetAllWithoutTenantFilter().AsNoTracking()
+                .Where(w => w.EntityType == entityType && w.EntityId == entityId)
+                .OrderByDescending(w => w.CreatedAt)
+                .Select(w => new { w.DefinitionId, w.CurrentStepOrder, w.CurrentStepName })
+                .FirstOrDefaultAsync();
+
+            var employee = await employees.GetAllWithoutTenantFilter().AsNoTracking()
+                .Where(e => e.Id == employeeId)
+                .Select(e => new
+                {
+                    e.EmployeeNumber,
+                    Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
+                })
+                .FirstOrDefaultAsync();
+
+            var sent = await dispatcher.DispatchAsync(new NotificationContext(
+                NotificationEvents.LeaveSubmitted,
+                new Dictionary<string, string?>
+                {
+                    ["EmployeeName"] = employee?.Name,
+                    ["EmployeeNumber"] = employee?.EmployeeNumber,
+                    ["LeaveType"] = leaveName,
+                    ["TotalDays"] = totalDays.ToString("0.##"),
+                    ["StartDate"] = dates.Count > 0 ? dates[0].StartDate.ToString("dd MMM yyyy") : null,
+                    ["EndDate"] = dates.Count > 0 ? dates[^1].EndDate.ToString("dd MMM yyyy") : null,
+                    ["RequestDate"] = DateTime.UtcNow.ToString("dd MMM yyyy"),
+                    ["StepName"] = instance?.CurrentStepName,
+                },
+                RequesterEmployeeId: employeeId,
+                WorkflowDefinitionId: instance?.DefinitionId,
+                StepOrder: instance?.CurrentStepOrder,
+                EntityType: entityType,
+                EntityId: entityId));
+
+            logger.LogInformation(
+                "Leave submitted {EntityType} {EntityId}: {Count} configured notification(s) sent.",
+                entityType, entityId, sent);
+        }
+
         public async Task AnnualLeaveApprovedAsync(Guid annualLeaveHeaderId)
         {
             try
@@ -71,6 +171,37 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Annual leave approval e-mail failed for {Id}", annualLeaveHeaderId);
+            }
+        }
+
+        public async Task OtherLeaveSubmittedAsync(Guid otherLeaveHeaderId)
+        {
+            try
+            {
+                var header = await otherLeave.GetAllWithoutTenantFilter().AsNoTracking()
+                    .Where(h => h.Id == otherLeaveHeaderId)
+                    .Select(h => new
+                    {
+                        h.EmployeeId,
+                        h.TotalLeaveDays,
+                        LeaveName = h.Setting != null && h.Setting.LeaveType != null
+                            ? h.Setting.LeaveType.Name : "Leave",
+                        Dates = h.Details.OrderBy(d => d.StartDate)
+                            .Select(d => new { d.StartDate, d.EndDate }).ToList()
+                    })
+                    .FirstOrDefaultAsync();
+                if (header is null) return;
+
+                await DispatchSubmittedAsync(
+                    WorkflowEntityTypes.OtherLeave, otherLeaveHeaderId, header.EmployeeId,
+                    header.LeaveName, header.TotalLeaveDays,
+                    [.. header.Dates.Select(d => (d.StartDate, d.EndDate))]);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Leave-submitted notification failed for other leave {Id}; the request itself is unaffected.",
+                    otherLeaveHeaderId);
             }
         }
 

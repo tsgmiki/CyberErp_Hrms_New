@@ -112,6 +112,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IWorkflowService workflowService,
         Performance.IPerformanceVisibilityService visibility,
         IValidator<SaveAnnualLeaveDto> validator,
+        ILeaveNotifier notifier,
         ILogger<SubmitAnnualLeave> logger) : ISubmitAnnualLeave
     {
         public async Task<Guid> SubmitAsync(SaveAnnualLeaveDto dto)
@@ -247,6 +248,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             // debited ONLY by AnnualLeaveWorkflowHandler.OnApprovedAsync after the FINAL stage
             // approves (rejected / cancelled / pending requests never touch the balance).
             await workflowService.StartIfDefinedAsync(WorkflowEntityTypes.AnnualLeave, header.Id, dto.EmployeeId, summary);
+
+            // AFTER the workflow exists, never before: a "current approver" recipient rule resolves
+            // against the running instance step, so with no instance there is nobody to tell.
+            // Never throws - the notifier swallows its own failures, because a request must not
+            // fail because an e-mail could not be sent.
+            await notifier.AnnualLeaveSubmittedAsync(header.Id);
 
             logger.LogInformation("Annual leave {Id} submitted for approval ({Days}d across {Rows} line(s))",
                 header.Id, header.TotalLeaveDays, header.Details.Count);

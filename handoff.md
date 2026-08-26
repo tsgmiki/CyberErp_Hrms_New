@@ -123,6 +123,38 @@
 
 ## 1. Most recent changes (latest first)
 
+0148. **"Leave submitted → the approver", and the address fallback that makes it deliver
+    (2026-08-26).** HRMS repo, no migration. See logic §12.43. Touches `LeaveNotifier`,
+    `AnnualLeaveHandlers`, `OtherLeaveHandlers`, `NotificationDispatcher`.
+    - Closes the gap §12.42 named: there was no submitted-leave e-mail at all, only the in-app alert.
+      New `ILeaveNotifier.AnnualLeaveSubmittedAsync` / `OtherLeaveSubmittedAsync` over a shared
+      `DispatchSubmittedAsync`.
+    - ⚠️ Called AFTER `StartIfDefinedAsync`, never before: a `CurrentApprover` rule resolves against
+      `(WorkflowDefinitionId, StepOrder)`, so with no running instance there is no step and the rule
+      resolves to nobody. The helper reads the instance first and passes those coordinates in.
+    - ⚠️ No hardcoded fallback here (unlike the approved path) — there was never a hardcoded
+      submitted-mail to preserve. No template ⇒ no message.
+    - ⚠️ **The first live run resolved the right approver and reached NOBODY.** `CurrentApprover`
+      yields USER ids, and `UserAddressesAsync` read only `Core.User.Email` — but in CERP **0 of 490
+      employees and 487 of 507 users have any address**, because HR maintains it on the EMPLOYEE.
+      It now falls back to the linked employee record for logins whose own Email is blank.
+    - The dispatcher now logs the resolved count on the SUCCESS path too, not only the zero case;
+      previously "resolved but the relay failed" and "resolved to nobody" were indistinguishable.
+    - Verified live end to end (real submit as `tatekg` for NVI/030):
+      `resolved to 1 recipient(s)` → `Email queued (job 10015)` →
+      `'Approval needed: Annual leave for Berhan Meshesha (2 day(s))'` → `Email sent`. The address
+      resolved to `takele(dr)a`, the SAME user the engine sent the in-app "Approval required" alert
+      to — email routing and the approver inbox agree, which is the point of reusing
+      `ResolveApproverUserIdsAsync`. All test rows (headers, details, instances, action logs, in-app
+      notifications) deleted and the temporary employee address reverted to NULL; ledger `Taken`
+      unaffected (submission does not debit).
+    - ⚠️ **Other Leave is wired but NOT separately exercised**: it shares the verified helper and
+      reuses the projection from the working approved path, but the only active setting is Maternity
+      Leave, which validates as an all-at-once **180-working-day** block — not worth creating on a
+      real employee to test.
+    - ⚠️ **Nothing is deliverable in CERP yet**: every employee row has a NULL Email. Templates can be
+      configured now; delivery starts when HR captures addresses.
+
 0147. **Email Templates admin screen, and the catalogue row that makes it visible (2026-08-25).**
     HRMS repo, no migration. NEW `components/admin/notificationTemplate/{index,list,form}.tsx`,
     `pages/admin/notificationTemplate.tsx`, `services/admin/notificationTemplate/`,
@@ -3986,6 +4018,19 @@
    JobGrade alphanumeric validation + Salary-Scale dropdown theme fix, `createSaveService` numeric coercion.
 
 ## 2. Outstanding tasks / backlog
+
+- **User-defined notifications — what is still hardcoded (see logic §12.42, §12.43):**
+  - **No employee in CERP has an e-mail address** (0 of 490), so nothing is deliverable yet however
+    the templates are configured. This is a DATA task for the client, not a code task.
+  - **~27 `SendAsync` sites are still hardcoded.** Only the leave notifier dispatches; the rest build
+    subject and body inline. Migrate them event by event, each with a seeded `NotificationEvent`.
+  - **`OtherLeaveApprovedAsync` does not dispatch at all** — it still calls the hardcoded `SendAsync`
+    only, unlike the annual path which dispatches first and falls back.
+  - **The Other Leave submitted hop is wired but unexercised** (the only active setting is a
+    180-working-day maternity block).
+  - **To/Cc/Bcc is stored but not honoured**: `IEmailService.SendAsync` takes one recipient.
+  - `workflowDefinition/list.tsx` still carries 2 dead palette classes (`border-primary/40`,
+    `hover:bg-primary/20`) — its seed button has no border colour or hover.
 
 - ⚠️ **Security — raised 2026-08-10 (00EG).**
   - ~~A null branch grants head-office (HR-admin) visibility~~ — **FIXED 2026-08-10 (00EM).**

@@ -395,6 +395,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IWorkflowService workflowService,
         Performance.IPerformanceVisibilityService visibility,
         IValidator<SaveOtherLeaveDto> validator,
+        ILeaveNotifier notifier,
         ILogger<SubmitOtherLeave> logger) : ISubmitOtherLeave
     {
         /// <summary>Per-file ceiling, matching the medical-claim uploader.</summary>
@@ -557,6 +558,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             // Same approval mechanism as Annual Leave: the request stays Pending until the FINAL
             // stage approves (OtherLeaveWorkflowHandler applies the outcome).
             await workflowService.StartIfDefinedAsync(WorkflowEntityTypes.OtherLeave, header.Id, dto.EmployeeId, summary);
+
+            // AFTER the workflow starts, so a "current approver" recipient rule has a step to
+            // resolve against. Never before — there would be no approver to name.
+            await notifier.OtherLeaveSubmittedAsync(header.Id);
 
             logger.LogInformation("Other leave {Id} ({Name}) submitted for approval ({Days}d)",
                 header.Id, leaveName, header.TotalLeaveDays);
