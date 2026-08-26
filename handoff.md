@@ -123,6 +123,26 @@
 
 ## 1. Most recent changes (latest first)
 
+0166. **Reconciled position vacancy: 3 seats reopened (2026-08-27).** HRMS repo, no code change —
+    one script, `backend/scripts/reconcile-position-vacancy.sql`. APPLIED to CERP. See logic §12.61.
+    - BA2-02 / BA2-03 / BA2-04 ("Assistant Production Technologist II", Live Bacterial Vaccine
+      Production Section) sat `IsVacant = 0` with nobody in them. All three came from the
+      **2026-08-10 NVI import** with `UpdatedAt` still NULL — nothing had touched them since.
+    - ⚠️ That state is UNREACHABLE through the app: `IsVacant` is written in exactly two places, both
+      in `EmployeeHandlers` (assign sets false, remove recomputes). So occupied-with-no-employee is
+      stale import data by definition.
+    - Impact: `IsVacant` is the establishment gate — hiring requests, job requisitions, transfer
+      assessment, reinstatement and the transfer target-position picker all count vacancies from it.
+      Three open seats were invisible to recruitment.
+    - Result: vacant 806 → **809**, occupied 356 → **353**, and all 353 now have an employee.
+      Idempotent — verified a second run changes nothing.
+    - ⚠️ **The `NOT EXISTS` is the safety property**: a TERMINATED employee still referencing a
+      position keeps it occupied (the exit flow reopens it on settlement), so the script cannot free
+      a seat someone still holds.
+    - Also checked the inverse: 123 positions are marked VACANT while still referenced by an
+      employee, but **none of those employees is active** — that is the exit flow working. Both
+      directions now agree.
+
 0165. **Employee deletion deactivates the login, and AccountStatus is finally enforced (2026-08-27).**
     HRMS repo, no migration. `EmployeeHandlers.DeleteEmployee` + `Inf/Repositories/Core/LoginRepository`.
     See logic §12.60.
@@ -140,10 +160,7 @@
       "This account has been deactivated"; `=1` → signs in. Safe to add: all 510 accounts were active.
     - Deleted the two orphans the user asked for (`stesema`, `stati`) plus their tenant membership.
       `stati2` (employee `EM001s`) is untouched. Users 510 → 508, zero orphans, zero deactivated.
-    - ⚠️ **Pre-existing, NOT caused by this: 3 positions have `IsVacant = 0` with no employee.**
-      Deletion does release the position — verified directly (create → 0, delete → 1) — so these
-      predate the change. Worth a one-off reconciliation: establishment and recruitment count
-      vacancies.
+    - ~~Pre-existing: 3 positions have `IsVacant = 0` with no employee~~ — **DONE in 0166.**
 
 0164. **Templated e-mail was delivered as RAW MARKUP; template restyled (2026-08-27).** HRMS repo,
     no migration. `Inf/Common/SmtpEmailService.cs` + the `Employee.AccountCreated` template body

@@ -4714,8 +4714,41 @@ Verified both directions with a throwaway account holding a known hash:
 
 Safe to introduce: all 510 accounts were active, so nobody was locked out by the new check.
 
-#### ⚠️ Pre-existing, not caused by this: 3 positions occupied by nobody
+#### Pre-existing, not caused by this: 3 positions occupied by nobody
 
-`Hrms.Position` has 3 rows with `IsVacant = 0` and no employee holding them. Deletion **does** release
-the position — verified directly (create → `IsVacant 0`, delete → `IsVacant 1`) — so these predate
-the change. Worth a one-off reconciliation, since establishment and recruitment both count vacancies.
+`Hrms.Position` had 3 rows with `IsVacant = 0` and no employee holding them. Deletion **does** release
+the position — verified directly (create → `IsVacant 0`, delete → `IsVacant 1`) — so these predated
+the change. Reconciled in §12.61.
+
+### 12.61 Reconciling position vacancy
+
+Three positions sat with `IsVacant = 0` and nobody in them — BA2-02, BA2-03 and BA2-04, all
+"Assistant Production Technologist II" in the Live Bacterial Vaccine Production Section. All three
+arrived with the **2026-08-10 NVI import** and had `UpdatedAt` still NULL, so nothing had touched
+them since.
+
+That state is not reachable through the application. `IsVacant` is written in exactly two places,
+both in `EmployeeHandlers`: assigning an employee sets it false, removing one recomputes it. Nothing
+else touches it. So a position marked occupied with no employee row pointing at it is stale import
+data by definition.
+
+It mattered because `IsVacant` is the establishment gate — hiring requests, job requisitions,
+transfer assessment, reinstatement and the transfer form's target-position picker all count
+vacancies from it. Three genuinely open seats were invisible to recruitment.
+
+`backend/scripts/reconcile-position-vacancy.sql` reopens them. Vacant 806 → **809**, occupied
+356 → **353**, and every one of those 353 now has an employee. Idempotent — a second run changes
+nothing.
+
+#### ⚠️ The `NOT EXISTS` is the whole safety property
+
+A **terminated** employee still referencing a position keeps it occupied, and should: the exit flow
+reopens the seat when the case settles. The script only touches positions with no employee row of any
+kind, which is why it cannot free a seat someone still holds.
+
+#### The inverse was checked too, and is fine
+
+123 positions are marked **vacant** while still referenced by an employee — but **none of those
+employees is active**. That is the exit flow correctly reopening a seat while the historical employee
+row keeps its `PositionId`. No active employee sits in a position marked vacant, so the two
+directions now agree.
