@@ -25,7 +25,7 @@ function derive(verb, suffix) {
   }
   return "View";
 }
-const STRONG = /CanAccessEmployeeAsync|scope\.IsAdmin|GetScopeAsync|EnsureAdminAsync|EvaluateClearanceApproverAsync|LoadGatedAsync|ResolveApproverUserIdsAsync|approverAuth|HasAnyAsync|CurrentEmployeeId|scope\.EmployeeId|visibility\.|EnsureCanActAsync|CanActOnStageAsync|GetCurrentUserId|EnsureCanActOnUnitAsync|UnitScopeGuard/;
+const STRONG = /CanAccessEmployeeAsync|scope\.IsAdmin|GetScopeAsync|EnsureAdminAsync|EvaluateClearanceApproverAsync|LoadGatedAsync|ResolveApproverUserIdsAsync|approverAuth|HasAnyAsync|CurrentEmployeeId|scope\.EmployeeId|visibility\.|EnsureCanActAsync|CanActOnStageAsync|GetCurrentUserId|EnsureCanActOnUnitAsync|UnitScopeGuard|CanAdministerAsync|CanManageEmployeeAsync/;
 const WEAK = /EnsureEmployeeVisibleAsync|EnsurePersonVisibleAsync/;
 
 const di = fs.readFileSync("CyberErp.Hrms.App/DependencyInjection.cs", "utf8").replace(/\r\n/g, "\n");
@@ -102,8 +102,14 @@ for (const f of files) {
     const cls = iface ? diMap[iface] : null;
     const hbody = cls && classes[cls] ? classes[cls].body : null;
 
+    // A guard can live in the CONTROLLER ACTION rather than the handler (EmployeeMovement's
+    // execute endpoints check IsAdmin inline), so the action body counts too — otherwise those
+    // endpoints report as unresolved for ever and a later pass "rediscovers" them.
+    const actionGuarded = STRONG.test(body);
+
     let verdict;
-    if (!hbody) verdict = "UNRESOLVED";
+    if (actionGuarded) verdict = "guarded";
+    else if (!hbody) verdict = "UNRESOLVED";
     else if (STRONG.test(hbody)) verdict = "guarded";
     else if (WEAK.test(hbody)) verdict = "WEAK";
     else verdict = "NO GUARD";

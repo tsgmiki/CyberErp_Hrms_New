@@ -168,12 +168,18 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
         IRepository<TripRequest> repository,
         IRepository<User> userRepository,
         IRepository<Employee> employeeRepository,
+        IPerformanceVisibilityService visibility,
         IEmailService emailService,
         INotificationDispatcher dispatcher,
         ILogger<TripSettlementReminder> logger) : ITripSettlementReminder
     {
         public async Task<int> RunAsync()
         {
+            // Triggering this mails EVERY employee with an overdue advance across the tenant, so it
+            // is an HR action even though the daily Hangfire pass runs it unattended.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("access", "Only HR can run the settlement reminders.");
+
             var today = DateTime.UtcNow.Date;
             var overdue = await TripSettlement.OutstandingAdvances(repository.GetAll().AsNoTracking())
                 .Where(t => t.Status != TripRequestStatus.Requested)   // advance issued => already past Requested

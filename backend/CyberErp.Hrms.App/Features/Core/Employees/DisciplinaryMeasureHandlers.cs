@@ -365,6 +365,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class DeleteDisciplinaryMeasure(
         IRepository<DisciplinaryMeasure> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
         ICustomFieldService customFields,
@@ -377,6 +378,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(DisciplinaryMeasure), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, entity.EmployeeId);
+            // ⚠️ That call only proves the employee EXISTS (logic §12.52). A disciplinary record is
+            // evidence — deleting it is HR's call, never the subject's or their manager's.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("id", "Only HR can delete a disciplinary case.");
 
             await customFields.DeleteForOwnerAsync(EmployeeFieldOwnerType.Discipline, id);
             repository.Delete(entity);

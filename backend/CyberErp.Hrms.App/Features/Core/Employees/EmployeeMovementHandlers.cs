@@ -418,6 +418,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     // ---- Cancel -----------------------------------------------------------------
     public class CancelEmployeeMovement(
         IRepository<EmployeeMovement> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
         IMovementNotifier notifier,
@@ -430,6 +431,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var movement = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(EmployeeMovement), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, movement.EmployeeId);
+            // ⚠️ That call only proves the employee EXISTS (logic §12.52). Cancelling a movement is
+            // the same right as raising one: the employee, their manager, or HR.
+            if (!await visibility.CanAccessEmployeeAsync(movement.EmployeeId))
+                throw new ValidationException("id", "You can only cancel movements for yourself or your team.");
             if (movement.Status is not (MovementStatus.Pending or MovementStatus.Approved))
                 throw new ValidationException("status", $"A {movement.Status} movement can no longer be cancelled.");
 
@@ -444,6 +449,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     // ---- Delete (drafts only — executed history is immutable) --------------------
     public class DeleteEmployeeMovement(
         IRepository<EmployeeMovement> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
         ICustomFieldService customFields,
@@ -456,6 +462,9 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var movement = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(EmployeeMovement), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, movement.EmployeeId);
+            // Removing the RECORD (rather than cancelling the request) erases personnel history.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("id", "Only HR can delete a personnel movement.");
             if (movement.Status == MovementStatus.Completed)
                 throw new ValidationException("status", "Executed movements are part of the employee's history and cannot be deleted.");
 
