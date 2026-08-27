@@ -4780,3 +4780,50 @@ Two reasons, both learned the hard way in this codebase:
 
 Verified live: ordinary staff setting it for a colleague **400**, for **themselves** **400**, HR
 **200**. Reads are untouched — own balances still 200, out-of-scope still refused.
+
+### 12.63 The recruitment / workforce-planning cluster: one rule, seventeen endpoints
+
+`JobRequisition` (8), `WorkforcePlan` (6) and `HiringRequest` (3) accounted for 17 of the audit's 26
+unguarded writes. They shared a shape: every handler enforced document STATUS — draft, approved,
+posted — and none asked who was calling.
+
+They also shared an owner. All three entities carry an `OrganizationUnitId`, and `SaveHiringRequest`
+already guarded creation on it:
+
+```csharp
+if (!scope.IsAdmin && !scope.UnitIds.Contains(dto.OrganizationUnitId)) → refuse
+```
+
+So this is not a new policy — it is the rule the module already had, applied to the rest of the
+lifecycle. `UnitScopeGuard.EnsureCanActOnUnitAsync` holds the single definition rather than
+seventeen copies that drift.
+
+#### ⚠️ A NULL unit is HR-only, not "nothing to check"
+
+`WorkforcePlan.OrganizationUnitId` is nullable — an org-wide plan. Treating null as "no unit to
+verify, therefore allowed" would leave the WIDEST records the least protected, which is exactly
+backwards. No single manager owns an org-wide plan, so the guard admits HR only.
+
+#### Verified live, in both directions
+
+| Action | Ordinary manager | HR |
+|---|---|---|
+| hiring request submit / close / delete, **outside** their line | refused | allowed |
+| hiring request submit, **inside** their line | **passes the guard**, then fails the establishment rule | — |
+| org-wide workforce plan create / delete | refused, HR-only message | allowed |
+
+The middle row is the one that matters: an in-scope call reaching a *business* error proves the guard
+permits as well as denies. A rule that only ever refuses is indistinguishable from a broken endpoint.
+
+#### ⚠️ The guard goes before the validator
+
+`SaveWorkforcePlan` first placed it after `validator.ValidateAsync`, and the deny test came back as
+"Horizon must be Annual, MediumTerm or MultiYear" — a validation error, not an access error. Third
+time in this codebase (§12.52, §12.53, §12.62). It reads on the wire like a pass unless you look.
+
+#### The audit script had to learn the new guard
+
+`permission-audit.cjs` matches a list of guard idioms, and after this change it still reported all 17
+as unguarded, because `EnsureCanActOnUnitAsync(visibility, …)` matches none of them. Extending
+`STRONG` took the count from 87 to **104 of 118**. A guard the audit cannot see is a guard the next
+audit will "find" again.

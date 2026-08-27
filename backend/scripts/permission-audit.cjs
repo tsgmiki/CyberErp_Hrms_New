@@ -25,7 +25,7 @@ function derive(verb, suffix) {
   }
   return "View";
 }
-const STRONG = /CanAccessEmployeeAsync|scope\.IsAdmin|GetScopeAsync|EnsureAdminAsync|EvaluateClearanceApproverAsync|LoadGatedAsync|ResolveApproverUserIdsAsync|approverAuth|HasAnyAsync|CurrentEmployeeId|scope\.EmployeeId|visibility\.|EnsureCanActAsync|CanActOnStageAsync|GetCurrentUserId/;
+const STRONG = /CanAccessEmployeeAsync|scope\.IsAdmin|GetScopeAsync|EnsureAdminAsync|EvaluateClearanceApproverAsync|LoadGatedAsync|ResolveApproverUserIdsAsync|approverAuth|HasAnyAsync|CurrentEmployeeId|scope\.EmployeeId|visibility\.|EnsureCanActAsync|CanActOnStageAsync|GetCurrentUserId|EnsureCanActOnUnitAsync|UnitScopeGuard/;
 const WEAK = /EnsureEmployeeVisibleAsync|EnsurePersonVisibleAsync/;
 
 const di = fs.readFileSync("CyberErp.Hrms.App/DependencyInjection.cs", "utf8").replace(/\r\n/g, "\n");

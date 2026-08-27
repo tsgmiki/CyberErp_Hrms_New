@@ -1,3 +1,5 @@
+using CyberErp.Hrms.App.Features.Core.Performance;
+using CyberErp.Hrms.App.Common.Authorization;
 using System.Text;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
@@ -110,6 +112,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<SalaryScale> salaryScaleRepository,
         IRepository<Employee> employeeRepository,
         INumberSequenceService numberSequence,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         IValidator<SaveJobRequisitionDto> validator,
         ILogger<SaveJobRequisition> logger) : ISaveJobRequisition
@@ -169,6 +172,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var request = await hiringRequestRepository.GetAll()
                     .FirstOrDefaultAsync(r => r.Id == dto.HiringRequestId)
                 ?? throw new NotFoundException(nameof(HiringRequest), dto.HiringRequestId.ToString());
+            // The requisition inherits the hiring request's unit, so that is what owns it.
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, request.OrganizationUnitId, "raise requisitions");
             if (request.Status != HiringRequestStatus.Approved)
                 throw new ValidationException("hiringRequestId",
                     $"Requisitions can only be raised from an APPROVED hiring request (current: {request.Status}) — HC080.");
@@ -257,6 +262,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class SubmitJobRequisition(
         IRepository<JobRequisition> repository,
+        IPerformanceVisibilityService visibility,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
         ILogger<SubmitJobRequisition> logger) : ISubmitJobRequisition
@@ -267,6 +273,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var requisition = await repository.GetAll().FirstOrDefaultAsync(q => q.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, requisition.OrganizationUnitId, "submit requisitions");
             if (requisition.Status is not (RequisitionStatus.Draft or RequisitionStatus.Rejected))
                 throw new ValidationException("status", $"A {requisition.Status} requisition cannot be submitted.");
 
@@ -350,6 +357,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class SetRequisitionPosting(
         IRepository<JobRequisition> repository,
+        IPerformanceVisibilityService visibility,
         ILogger<SetRequisitionPosting> logger) : ISetRequisitionPosting
     {
         public async Task SetAsync(SetPostingDto dto)
@@ -361,6 +369,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var q = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(JobRequisition), dto.Id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, q.OrganizationUnitId, "edit requisition postings");
             if (q.Status is RequisitionStatus.Closed or RequisitionStatus.Cancelled)
                 throw new ValidationException("status", $"A {q.Status} requisition's posting can no longer change.");
 
@@ -373,12 +382,14 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class PostJobRequisition(
         IRepository<JobRequisition> repository,
+        IPerformanceVisibilityService visibility,
         ILogger<PostJobRequisition> logger) : IPostJobRequisition
     {
         public async Task PostAsync(Guid id)
         {
             var q = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, q.OrganizationUnitId, "publish requisitions");
             if (q.Status != RequisitionStatus.Approved)
                 throw new ValidationException("status", $"Only an approved requisition can be posted (current: {q.Status}).");
             if (string.IsNullOrWhiteSpace(q.PostingText))
@@ -396,6 +407,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobApplication> applicationRepository,
         IRepository<JobApplicationStageLog> stageLogRepository,
         IRepository<JobOffer> offerRepository,
+        IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser,
         ILogger<CloseJobRequisition> logger) : ICloseJobRequisition
     {
@@ -403,6 +415,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         {
             var q = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, q.OrganizationUnitId, "close requisitions");
             if (q.Status is not (RequisitionStatus.Approved or RequisitionStatus.Posted))
                 throw new ValidationException("status", $"Only an approved or posted requisition can be closed (current: {q.Status}).");
 
@@ -429,6 +442,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobApplication> applicationRepository,
         IRepository<JobApplicationStageLog> stageLogRepository,
         IRepository<JobOffer> offerRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ICurrentUserService currentUser,
         ILogger<CancelJobRequisition> logger) : ICancelJobRequisition
@@ -439,6 +453,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var q = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, q.OrganizationUnitId, "cancel requisitions");
             if (q.Status is RequisitionStatus.Closed or RequisitionStatus.Cancelled or RequisitionStatus.Posted)
                 throw new ValidationException("status", $"A {q.Status} requisition cannot be cancelled — close it instead.");
 
@@ -561,6 +576,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class DeleteJobRequisition(
         IRepository<JobRequisition> repository,
         IRepository<JobApplication> applicationRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<DeleteJobRequisition> logger) : IDeleteJobRequisition
     {
@@ -570,6 +586,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var q = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, q.OrganizationUnitId, "delete requisitions");
             if (q.Status is not (RequisitionStatus.Draft or RequisitionStatus.Rejected or RequisitionStatus.Cancelled))
                 throw new ValidationException("status",
                     $"A {q.Status} requisition is part of the recruitment record — close it instead of deleting.");

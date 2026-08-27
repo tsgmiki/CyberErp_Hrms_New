@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
@@ -108,6 +109,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class SubmitHiringRequest(
         IRepository<HiringRequest> repository,
         IRepository<Position> positionRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
         ILogger<SubmitHiringRequest> logger) : ISubmitHiringRequest
@@ -118,6 +120,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == id)
                 ?? throw new NotFoundException(nameof(HiringRequest), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, request.OrganizationUnitId, "submit hiring requests");
             if (request.Status is not (HiringRequestStatus.Draft or HiringRequestStatus.Rejected))
                 throw new ValidationException("status", $"A {request.Status} hiring request cannot be submitted.");
 
@@ -154,6 +157,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
     public class CloseHiringRequest(
         IRepository<HiringRequest> repository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<CloseHiringRequest> logger) : ICloseHiringRequest
     {
@@ -163,6 +167,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == id)
                 ?? throw new NotFoundException(nameof(HiringRequest), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, request.OrganizationUnitId, "close hiring requests");
             if (request.Status == HiringRequestStatus.Closed)
                 throw new ValidationException("status", "The hiring request is already closed.");
 
@@ -322,6 +327,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class DeleteHiringRequest(
         IRepository<HiringRequest> repository,
         IRepository<JobRequisition> requisitionRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<DeleteHiringRequest> logger) : IDeleteHiringRequest
     {
@@ -331,6 +337,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == id)
                 ?? throw new NotFoundException(nameof(HiringRequest), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, request.OrganizationUnitId, "delete hiring requests");
             if (request.Status is not (HiringRequestStatus.Draft or HiringRequestStatus.Rejected))
                 throw new ValidationException("status",
                     $"A {request.Status} hiring request is part of the recruitment record — close it instead of deleting.");
