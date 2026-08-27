@@ -119,11 +119,19 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         IWorkingCalendar calendar,
         ILeaveBalanceService balanceService,
         IWorkflowService workflowService,
+        Performance.IPerformanceVisibilityService visibility,
         IValidator<SaveLeaveRequestDto> validator,
         ILogger<SubmitLeaveRequest> logger) : ISubmitLeaveRequest
     {
         public async Task<Guid> SubmitAsync(SaveLeaveRequestDto dto)
         {
+            // Employees raise their own; a manager or HR may raise one for someone in scope — the
+            // same rule SubmitAnnualLeave already uses. AHEAD of validation: it only reads
+            // dto.EmployeeId, and a guard behind a validator is one a deny test never reaches
+            // (logic §12.62).
+            if (!await visibility.CanAccessEmployeeAsync(dto.EmployeeId))
+                throw new ValidationException("employeeId", "You can only submit leave for yourself or your team.");
+
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
@@ -272,6 +280,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     // ---- Cancel -------------------------------------------------------------
     public class CancelLeaveRequest(
         IRepository<LeaveRequest> repository,
+        Performance.IPerformanceVisibilityService visibility,
         ILeaveBalanceService balanceService,
         IWorkflowGate workflowGate,
         ILogger<CancelLeaveRequest> logger) : ICancelLeaveRequest
@@ -280,6 +289,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         {
             var request = await repository.GetAll().Include(r => r.Lines).FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(LeaveRequest), dto.Id.ToString());
+            if (!await visibility.CanAccessEmployeeAsync(request.EmployeeId))
+                throw new ValidationException("id", "You can only cancel leave for yourself or your team.");
 
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.LeaveRequest, request.Id);
 

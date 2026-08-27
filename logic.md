@@ -4827,3 +4827,64 @@ time in this codebase (§12.52, §12.53, §12.62). It reads on the wire like a p
 as unguarded, because `EnsureCanActOnUnitAsync(visibility, …)` matches none of them. Extending
 `STRONG` took the count from 87 to **104 of 118**. A guard the audit cannot see is a guard the next
 audit will "find" again.
+
+### 12.64 Closing the audit: 118 of 118 — and three that were never open
+
+The last batch. **Only 5 of the reported 8 were genuinely unguarded**; the other three were the
+audit's blind spot again:
+
+| Reported unguarded | Reality |
+|---|---|
+| `DeleteAppraisal` | already `workflowService.CanAdministerAsync()` |
+| `InviteAppraisalPeers` | already `CanAdministerAsync() \|\| CanManageEmployeeAsync(...)` |
+| `RemoveAppraisalPeerReview` | same |
+
+And the two long-standing "UNRESOLVED" rows — `EmployeeMovement` execute / execute-due — were
+guarded **inline in the controller action** (`if (!(await visibility.GetScopeAsync()).IsAdmin)`),
+which the audit never looked at because it only inspected handler classes.
+
+#### What was actually fixed — nine endpoints, three rules
+
+| Rule | Endpoints |
+|---|---|
+| `CanAccessEmployeeAsync` — self, their manager, or HR | leave submit; leave / annual-leave / other-leave cancel; movement cancel |
+| `scope.IsAdmin` — HR only | trip settlement-reminder run; movement, exit-case and disciplinary **delete** |
+
+The split follows what the action means, not what its neighbour does. **Cancelling** a request is the
+same right as raising it, so it takes the requester's rule. **Deleting the record** erases history —
+personnel movements, exit cases, disciplinary evidence — so it is HR's alone. And the settlement
+reminder mails every employee with an overdue advance across the tenant, which is an HR act even
+though the daily Hangfire pass runs it unattended.
+
+⚠️ `CancelAnnualLeave` needed care: the annual header carries the **ledger**, not the employee, so
+the owner is resolved through `LeaveBalance` before the check.
+
+#### ⚠️ Guard-before-validator, a fourth time
+
+`SubmitLeaveRequest` was written with the check after `ValidateAsync`, and the deny test returned
+"Leave type is required" for BOTH an in-scope and an out-of-scope subject — identical responses, no
+signal at all. Moved ahead of validation, it returns the access error for one and a validation error
+for the other. Four occurrences now (§12.52, §12.53, §12.62, here): **put the authorization check
+first unless it needs validated input.**
+
+#### The audit had to learn three things to reach 118/118
+
+Each time a guard idiom was invisible, the tool reported a false finding:
+
+1. `EnsureCanActOnUnitAsync` / `UnitScopeGuard` (§12.63)
+2. `CanAdministerAsync` / `CanManageEmployeeAsync`
+3. Guards living in the **controller action** rather than the handler
+
+`permission-audit.cjs` now checks the action body as well as the handler. That last change is what
+retired the two permanent "unresolved" rows — they were never a gap, only a gap in the instrument.
+
+#### Verified live
+
+Trip reminder: staff **refused**, HR **200**. Leave submit: out-of-line **refused**, own request
+passes the guard and fails validation. Annual-leave cancel: takele, as Berhan's **manager**, cancels
+successfully — the permit direction.
+
+⚠️ The three cancel **deny** paths were not exercised: cancelling needs an existing leave belonging
+to someone outside the caller's line, and the only such employee sits in a unit with no manager, so
+the leave workflow refuses to start there. They share the exact `CanAccessEmployeeAsync` call whose
+deny path is proven on submit.

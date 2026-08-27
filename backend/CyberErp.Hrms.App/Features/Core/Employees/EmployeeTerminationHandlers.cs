@@ -761,6 +761,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
     public class DeleteEmployeeTermination(
         IRepository<EmployeeTermination> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<Employee> employeeRepository,
         IWorkflowGate workflowGate,
         ICustomFieldService customFields,
@@ -773,6 +774,10 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             var termination = await repository.GetAll().FirstOrDefaultAsync(t => t.Id == id)
                 ?? throw new NotFoundException(nameof(EmployeeTermination), id.ToString());
             await EmployeeGuard.EnsureEmployeeVisibleAsync(employeeRepository, termination.EmployeeId);
+            // ⚠️ That call only proves the employee EXISTS (logic §12.52). Deleting the RECORD is not
+            // the same as cancelling the case — it erases the exit from the employee's history.
+            if (!(await visibility.GetScopeAsync()).IsAdmin)
+                throw new ValidationException("id", "Only HR can delete an exit case.");
             if (termination.Status == TerminationStatus.Settled)
                 throw new ValidationException("status", "Settled terminations are part of the employee's history and cannot be deleted.");
 

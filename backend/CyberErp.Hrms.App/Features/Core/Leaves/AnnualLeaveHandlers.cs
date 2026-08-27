@@ -265,6 +265,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     // ---- Cancel -------------------------------------------------------------
     public class CancelAnnualLeave(
         IRepository<AnnualLeaveHeader> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IRepository<LeaveBalance> ledgers,
         ILeaveBalanceService balanceService,
         IWorkflowGate workflowGate,
@@ -274,6 +275,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         {
             var header = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(AnnualLeaveHeader), dto.Id.ToString());
+            // ⚠️ The annual header carries the LEDGER, not the employee — resolve through it.
+            var ownerId = await ledgers.GetAll().Where(b => b.Id == header.AnnualLeaveLedgerId)
+                .Select(b => (Guid?)b.EmployeeId).FirstOrDefaultAsync();
+            if (ownerId is null || !await visibility.CanAccessEmployeeAsync(ownerId.Value))
+                throw new ValidationException("id", "You can only cancel leave for yourself or your team.");
 
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.AnnualLeave, header.Id);
 

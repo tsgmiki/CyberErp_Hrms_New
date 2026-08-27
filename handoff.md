@@ -123,6 +123,37 @@
 
 ## 1. Most recent changes (latest first)
 
+0169. **Permission audit closed: 118 of 118 (2026-08-27).** HRMS repo, no migration.
+    `LeaveRequestHandlers`, `AnnualLeaveHandlers`, `OtherLeaveHandlers`, `EmployeeMovementHandlers`,
+    `EmployeeTerminationHandlers`, `DisciplinaryMeasureHandlers`, `TripSettlementHandlers`, plus the
+    audit script. See logic §12.64.
+    - ⚠️ **Only 5 of the reported 8 were genuinely unguarded.** `DeleteAppraisal`,
+      `InviteAppraisalPeers` and `RemoveAppraisalPeerReview` already used
+      `CanAdministerAsync` / `CanManageEmployeeAsync` — the audit could not see those idioms.
+    - ⚠️ The two long-standing **UNRESOLVED** rows (`EmployeeMovement` execute / execute-due) were
+      guarded **inline in the CONTROLLER ACTION**, which the audit never inspected. Never a gap —
+      a gap in the instrument.
+    - Nine endpoints fixed under **three rules**: `CanAccessEmployeeAsync` for leave submit and the
+      three cancels + movement cancel (cancelling is the same right as raising); `IsAdmin` for the
+      trip settlement-reminder run and for movement / exit-case / disciplinary **delete** (deleting
+      the RECORD erases history, unlike cancelling the request).
+    - ⚠️ `CancelAnnualLeave` resolves the owner through `LeaveBalance` — the annual header carries
+      the LEDGER, not the employee.
+    - ⚠️ **Guard-before-validator, FOURTH time** (§12.52, §12.53, §12.62, §12.64): `SubmitLeaveRequest`
+      returned "Leave type is required" for BOTH in-scope and out-of-scope subjects — identical
+      responses, no signal. Rule: **authorization first unless it needs validated input.**
+    - Audit taught three idioms to reach 118/118: `UnitScopeGuard`, `CanAdministerAsync`/
+      `CanManageEmployeeAsync`, and guards living in the controller action. **A guard the audit
+      cannot see is one the next audit re-reports.**
+    - Verified live: trip reminder staff **refused** / HR **200**; leave submit out-of-line
+      **refused**, own request passes the guard then fails validation; annual-leave cancel by the
+      employee's **manager** succeeds (permit direction).
+    - ⚠️ **NOT exercised**: the three cancel DENY paths — that needs a leave belonging to someone
+      outside the caller's line, and the only such employee is in a unit with no manager, so the
+      leave workflow will not start there. Same `CanAccessEmployeeAsync` call whose deny path is
+      proven on submit.
+    - Test leave removed; the 5 remaining annual-leave headers are the client's own.
+
 0168. **Recruitment / workforce-planning cluster guarded — 17 endpoints (2026-08-27).** HRMS repo,
     no migration. NEW `App/Common/Authorization/UnitScopeGuard.cs`; `HiringRequestHandlers`,
     `JobRequisitionHandlers`, `WorkforcePlanHandlers`, `WorkforcePlanAnalyticsHandlers`, plus the
@@ -144,9 +175,7 @@
       `STRONG` gained `EnsureCanActOnUnitAsync|UnitScopeGuard`. **87 → 104 guarded of 118.**
     - Also fixed the null-unit message: splicing the action in produced "workforce plans that IS not
       tied…", so it is now its own sentence.
-    - **Remaining 8**: leave cancel ×3 + LeaveRequest create, Appraisal delete, AppraisalPeer
-      invite/delete, Trip run-settlement-reminders — plus 4 WEAK (EmployeeMovement ×2, termination
-      delete, disciplinary delete) and 2 unresolved (EmployeeMovement execute).
+    - ~~Remaining 8 + 4 weak + 2 unresolved~~ — **DONE in 0169. The audit is now 118/118.**
     - Test hiring requests and workforce plans removed; both tables back to 0 rows.
 
 0167. **SetLeaveBalance is HR-only (2026-08-27).** HRMS repo, no migration.

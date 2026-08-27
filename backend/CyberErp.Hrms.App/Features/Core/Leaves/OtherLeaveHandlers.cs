@@ -572,6 +572,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     // ---- Cancel -------------------------------------------------------------
     public class CancelOtherLeave(
         IRepository<OtherLeaveHeader> repository,
+        Performance.IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<CancelOtherLeave> logger) : ICancelOtherLeave
     {
@@ -579,6 +580,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         {
             var header = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(OtherLeaveHeader), dto.Id.ToString());
+            if (!await visibility.CanAccessEmployeeAsync(header.EmployeeId))
+                throw new ValidationException("id", "You can only cancel leave for yourself or your team.");
             await workflowGate.EnsureNoRunningAsync(WorkflowEntityTypes.OtherLeave, header.Id);
 
             // The balance is DERIVED from pending/approved requests against the static allocation,
