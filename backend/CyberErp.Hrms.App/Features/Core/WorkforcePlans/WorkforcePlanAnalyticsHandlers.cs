@@ -1,3 +1,5 @@
+using CyberErp.Hrms.App.Features.Core.Performance;
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Workflows;
@@ -152,6 +154,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
         IRepository<Position> positionRepository,
         IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<PositionClass> positionClassRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<PopulateWorkforcePlan> logger) : IPopulateWorkforcePlan
     {
@@ -163,6 +166,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
                     .Include(p => p.Lines)
                     .FirstOrDefaultAsync(p => p.Id == planId)
                 ?? throw new NotFoundException(nameof(WorkforcePlan), planId.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, plan.OrganizationUnitId, "populate workforce plans");
 
             var scope = await EstablishmentShared.ResolveSubtreeAsync(organizationUnitRepository, plan.OrganizationUnitId);
             var groups = await EstablishmentShared.QueryAsync(positionRepository, scope);

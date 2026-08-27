@@ -1,3 +1,5 @@
+using CyberErp.Hrms.App.Features.Core.Performance;
+using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -206,12 +208,18 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
         IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<PositionClass> positionClassRepository,
         IRepository<FiscalYear> fiscalYearRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         IValidator<SaveWorkforcePlanDto> validator,
         ILogger<SaveWorkforcePlan> logger) : ISaveWorkforcePlan
     {
         public async Task<Guid> SaveAsync(SaveWorkforcePlanDto dto)
         {
+            // Ahead of validation, like SetLeaveBalance: it only reads dto.OrganizationUnitId, and a
+            // guard behind a validator is one a deny test never reaches (logic §12.62).
+            // An ORG-WIDE plan (no unit) belongs to nobody's subtree, so this admits HR only.
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, dto.OrganizationUnitId, "plan headcount");
+
             var validation = await validator.ValidateAsync(dto);
             if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
 
@@ -361,6 +369,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
 
     public class DeleteWorkforcePlan(
         IRepository<WorkforcePlan> repository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate,
         ILogger<DeleteWorkforcePlan> logger) : IDeleteWorkforcePlan
     {
@@ -370,6 +379,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
 
             var plan = await repository.GetByIdAsync(id)
                 ?? throw new NotFoundException(nameof(WorkforcePlan), id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, plan.OrganizationUnitId, "delete workforce plans");
             if (plan.Status is not (WorkforcePlanStatus.Draft or WorkforcePlanStatus.Rejected))
                 throw new ValidationException("status",
                     $"A {plan.Status} plan is part of the planning record and cannot be deleted — archive it via a new version instead.");
@@ -384,6 +394,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
 
     public class SubmitWorkforcePlan(
         IRepository<WorkforcePlan> repository,
+        IPerformanceVisibilityService visibility,
         IWorkflowService workflowService,
         IWorkflowGate workflowGate,
         ILogger<SubmitWorkforcePlan> logger) : ISubmitWorkforcePlan
@@ -396,6 +407,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
                     .Include(p => p.Lines)
                     .FirstOrDefaultAsync(p => p.Id == dto.Id)
                 ?? throw new NotFoundException(nameof(WorkforcePlan), dto.Id.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, plan.OrganizationUnitId, "submit workforce plans");
 
             // Pre-checks as 400s (the domain re-enforces them as invariants).
             if (plan.Status is not (WorkforcePlanStatus.Draft or WorkforcePlanStatus.Rejected))
@@ -431,6 +443,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
 
     public class CreateWorkforcePlanVersion(
         IRepository<WorkforcePlan> repository,
+        IPerformanceVisibilityService visibility,
         IRepository<WorkforcePlanLine> lineRepository,
         ILogger<CreateWorkforcePlanVersion> logger) : ICreateWorkforcePlanVersion
     {
@@ -440,6 +453,7 @@ namespace CyberErp.Hrms.App.Features.Core.WorkforcePlans
                     .Include(p => p.Lines)
                     .FirstOrDefaultAsync(p => p.Id == sourcePlanId)
                 ?? throw new NotFoundException(nameof(WorkforcePlan), sourcePlanId.ToString());
+            await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, source.OrganizationUnitId, "version workforce plans");
 
             if (source.Status is WorkforcePlanStatus.Draft)
                 throw new ValidationException("status", "The plan is still a draft — edit it directly instead of creating a version.");

@@ -123,6 +123,32 @@
 
 ## 1. Most recent changes (latest first)
 
+0168. **Recruitment / workforce-planning cluster guarded — 17 endpoints (2026-08-27).** HRMS repo,
+    no migration. NEW `App/Common/Authorization/UnitScopeGuard.cs`; `HiringRequestHandlers`,
+    `JobRequisitionHandlers`, `WorkforcePlanHandlers`, `WorkforcePlanAnalyticsHandlers`, plus the
+    audit script. See logic §12.63.
+    - `JobRequisition` (8) + `WorkforcePlan` (6) + `HiringRequest` (3) were 17 of the audit's 26.
+      All enforced document STATUS and none asked WHO was calling.
+    - ⚠️ **Not a new policy**: all three entities carry `OrganizationUnitId` and `SaveHiringRequest`
+      already guarded creation on it. The rest of the lifecycle simply never asked. Extracted into
+      `UnitScopeGuard.EnsureCanActOnUnitAsync` so there is ONE definition, not 17 that drift.
+    - ⚠️ **A NULL unit (org-wide workforce plan) is HR-ONLY, not "nothing to check"** — treating null
+      as allowed would leave the WIDEST records the least protected.
+    - Verified live BOTH ways: out-of-line submit/close/delete refused, HR allowed, and an **in-scope**
+      submit passes the guard then fails the ESTABLISHMENT rule — that middle case is the proof the
+      guard permits as well as denies.
+    - ⚠️ **Guard-before-validator, third time** (§12.52, §12.53, §12.62): `SaveWorkforcePlan` first
+      had it after `ValidateAsync` and the deny test returned "Horizon must be Annual…" — a
+      validation error that reads like a pass. Moved ahead of validation.
+    - ⚠️ **The audit script had to learn the new guard**: it still reported all 17 as unguarded until
+      `STRONG` gained `EnsureCanActOnUnitAsync|UnitScopeGuard`. **87 → 104 guarded of 118.**
+    - Also fixed the null-unit message: splicing the action in produced "workforce plans that IS not
+      tied…", so it is now its own sentence.
+    - **Remaining 8**: leave cancel ×3 + LeaveRequest create, Appraisal delete, AppraisalPeer
+      invite/delete, Trip run-settlement-reminders — plus 4 WEAK (EmployeeMovement ×2, termination
+      delete, disciplinary delete) and 2 unresolved (EmployeeMovement execute).
+    - Test hiring requests and workforce plans removed; both tables back to 0 rows.
+
 0167. **SetLeaveBalance is HR-only (2026-08-27).** HRMS repo, no migration.
     `LeaveBalanceHandlers.SetLeaveBalance`. See logic §12.62. **Closes the audit's PROVEN finding**
     (0160 / §12.55), where ordinary staff wrote a 999-day entitlement for a colleague.
@@ -136,8 +162,8 @@
       is one a deny test never reaches (bitten twice: §12.52, §12.53).
     - Verified live: staff → colleague **400**, staff → **themselves 400**, HR **200**. Reads
       untouched (own **200**, out-of-scope refused). Test row deleted; `LeaveBalance` back to 345.
-    - Still open from the audit: **25** unguarded write endpoints, concentrated in `JobRequisition`
-      (8), `WorkforcePlan` (6) and `HiringRequest` (3).
+    - ~~Still open: 25 unguarded write endpoints~~ — the JobRequisition / WorkforcePlan /
+      HiringRequest cluster (17) done in **0168**; 8 remain.
 
 0166. **Reconciled position vacancy: 3 seats reopened (2026-08-27).** HRMS repo, no code change —
     one script, `backend/scripts/reconcile-position-vacancy.sql`. APPLIED to CERP. See logic §12.61.
