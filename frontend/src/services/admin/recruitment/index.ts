@@ -8,6 +8,7 @@ import isValidJson from "@/components/util/validateJson";
 import type {
   HiringRequestModel,
   RecruitmentBudgetRowModel,
+  VacantRoleModel,
   JobRequisitionModel,
   CandidateModel,
   EmployeeEducationModel,
@@ -112,6 +113,14 @@ export const submitHiringRequest = (id: string) => post(`HiringRequest/${id}/sub
 export const closeHiringRequest = (id: string) => post(`HiringRequest/${id}/close`);
 export const getRecruitmentBudgetMonitor = () =>
   api.get<RecruitmentBudgetRowModel[]>("HiringRequest/budget-monitor");
+/**
+ * The roles with a vacant seat in one unit. Mirrors the HC082 establishment gate exactly, so the
+ * picker offers only what a submit will accept.
+ */
+export const getVacantRoles = (organizationUnitId: string) =>
+  api.get<VacantRoleModel[]>(
+    `HiringRequest/vacant-roles?organizationUnitId=${encodeURIComponent(organizationUnitId)}`,
+  );
 
 /* ---- Job requisitions (HC084–HC088, HC091) ---------------------------------- */
 

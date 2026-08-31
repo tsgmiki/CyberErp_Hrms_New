@@ -14,8 +14,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IDeleteHiringRequest deleteHandler,
         ISubmitHiringRequest submitHandler,
         ICloseHiringRequest closeHandler,
+        IGetVacantRoles vacantRoleHandler,
         IGetRecruitmentBudgetMonitor budgetHandler) : BaseController
     {
+        /// <summary>
+        /// The roles with a vacant seat in one unit — the form's role picker.
+        ///
+        /// <para>Lives HERE rather than on <c>PositionClassController</c> so it inherits this
+        /// controller's <c>hiringRequest</c>/<c>jobRequisition</c> gate: whoever may raise the
+        /// request may read the roles it offers, with no extra grant to hand out.</para>
+        /// </summary>
+        [HttpGet("vacant-roles")]
+        public Task<List<VacantRoleDto>> GetVacantRoles([FromQuery] Guid organizationUnitId)
+            => vacantRoleHandler.GetAsync(organizationUnitId);
+
         [HttpGet]
         public Task<PaginatedResponse<HiringRequestDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);

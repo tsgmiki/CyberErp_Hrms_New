@@ -12,9 +12,9 @@ import {
   saveHiringRequest,
   submitHiringRequest,
   closeHiringRequest,
+  getVacantRoles,
 } from "@/services/admin/recruitment";
 import getAllOrganizationUnit from "@/services/admin/organizationUnit/getAll";
-import getAllPositionClass from "@/services/admin/positionClass/getAll";
 import { getAllWorkforcePlans } from "@/services/admin/workforcePlan";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
@@ -67,9 +67,17 @@ function HiringRequestForm(props: { id: string; setId: (id: string) => void }) {
     queryKey: ["organizationUnits", lookupParam],
     queryFn: () => getAllOrganizationUnit(lookupParam),
   });
-  const { data: classes } = useQuery({
-    queryKey: ["positionClasses", lookupParam],
-    queryFn: () => getAllPositionClass(lookupParam),
+  // ⚠️ Only the roles with a VACANT SEAT in the chosen unit, not the whole catalogue.
+  //
+  // This is the same predicate the HC082 establishment gate applies on SUBMIT, so what the picker
+  // offers is exactly what a submit will accept. Listing all ~800 position classes let a manager
+  // pick a role with no seat, save the draft, and only be refused later in the workflow.
+  //
+  // Keyed on the unit and disabled until one is chosen — the unit decides the list.
+  const { data: vacantRoles, isFetching: rolesLoading } = useQuery({
+    queryKey: ["vacantRoles", formData.organizationUnitId],
+    queryFn: () => getVacantRoles(formData.organizationUnitId as string),
+    enabled: !!formData.organizationUnitId,
   });
   const { data: plans } = useQuery({
     queryKey: ["workforcePlans", lookupParam],
@@ -100,7 +108,18 @@ function HiringRequestForm(props: { id: string; setId: (id: string) => void }) {
     setFormData((p) => ({ ...p, [name]: value }));
   }, []);
   const selectHandler = useCallback((name: string, r: any) => {
-    setFormData((p) => ({ ...p, [name]: r.id, [`${name.replace(/Id$/, "")}Name`]: r.name }));
+    setFormData((p) => {
+      const next = { ...p, [name]: r.id, [`${name.replace(/Id$/, "")}Name`]: r.name };
+      // ⚠️ Changing the unit invalidates the role: seats belong to a unit, so a role carried over
+      // from the previous one may have no vacancy here and would fail at submit. Cleared rather
+      // than left looking valid — both the id and the two display fields the picker reads.
+      if (name === "organizationUnitId" && p.organizationUnitId && p.organizationUnitId !== r.id) {
+        next.positionClassId = "";
+        next.positionClassTitle = "";
+        (next as any).positionClassName = "";
+      }
+      return next;
+    });
   }, []);
 
   const submitHandler = async (e: any) => {
@@ -175,8 +194,25 @@ function HiringRequestForm(props: { id: string; setId: (id: string) => void }) {
               name: "positionClassId", label: "Role (Position Class)", required: true, type: "dropDown",
               onSelect: selectHandler, value: formData.positionClassId,
               displayValue: formData.positionClassTitle ?? (formData as any).positionClassName,
-              disabled: readOnly, error: formState?.zodErrors?.positionClassId,
-              data: (classes?.data ?? []).map((c) => ({ id: c.id, name: c.title })) as never,
+              // Not pickable before a unit is chosen: the unit is what makes the list meaningful.
+              disabled: readOnly || !formData.organizationUnitId,
+              error: formState?.zodErrors?.positionClassId,
+              isLoading: rolesLoading,
+              // ⚠️ The empty state SAYS WHY. An unexplained blank picker is the exact bug this
+              // screen was just reported for; "no seats here" and "not loaded" must not look alike.
+              placeholder: !formData.organizationUnitId
+                ? "Choose a requesting unit first"
+                : rolesLoading
+                  ? "Loading roles…"
+                  : (vacantRoles ?? []).length === 0
+                    ? "No vacant seats in this unit — expand the establishment first"
+                    : "Select a role",
+              // The seat count is shown because it is the ceiling the request is checked against —
+              // it tells the manager what they may ask for before they are refused for asking.
+              data: (vacantRoles ?? []).map((c) => ({
+                id: c.id,
+                name: `${c.title} — ${c.vacantSeats} vacant`,
+              })) as never,
             },
             {
               name: "numberOfPositions", label: "Positions Requested", required: true, type: "text",

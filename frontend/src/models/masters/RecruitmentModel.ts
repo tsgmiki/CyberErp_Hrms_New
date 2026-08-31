@@ -25,6 +25,18 @@ export interface HiringRequestModel extends AbstractModel {
   requisitionedPositions?: number;
 }
 
+/**
+ * A role with at least one VACANT seat in a given unit — what the hiring-request role picker offers.
+ * `id` is the position-class id, because that is what the request stores.
+ */
+export interface VacantRoleModel {
+  id: string;
+  title: string;
+  code?: string;
+  /** Vacant seats of this role in the unit — the ceiling HC082 checks the request against. */
+  vacantSeats: number;
+}
+
 /** Per-unit recruitment budget/headcount monitor row (HC083). */
 export interface RecruitmentBudgetRowModel {
   organizationUnitId: string;
