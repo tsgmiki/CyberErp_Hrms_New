@@ -1,6 +1,7 @@
 using CyberErp.Hrms.App.Common.Authorization;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
+using CyberErp.Hrms.Dom.Constants;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
 using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationException;
@@ -65,8 +66,28 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IOrgManagerResolver managerResolver,
         ICurrentUserService currentUser) : IWorkflowApproverAuth
     {
-        /// <summary>Link of the operation that grants the right to act on workflow approvals.</summary>
-        private const string WorkflowOperationLink = "/workflow";
+        /// <summary>
+        /// Links of the operation that grants the right to act on workflow approvals — BOTH the
+        /// namespaced form the catalogue actually stores and the bare legacy form.
+        ///
+        /// <para>⚠️ This was the single string <c>"/workflow"</c>, compared verbatim against
+        /// <c>TenantOperation.Link</c>. Operation links are stored namespaced by their owning
+        /// subsystem — <c>/hrms/workflow</c> — so the comparison matched NOTHING, in every tenant.
+        /// <see cref="WorkflowApproveRoleIdsAsync"/> therefore returned an empty set and
+        /// <see cref="CanActOnOpenStepsAsync"/> answered false for everyone, which silently emptied
+        /// the approval inbox for every workflow whose current step has no configured approvers —
+        /// 22 of the 27 seeded definitions (logic §12.67).</para>
+        ///
+        /// <para>This is the same namespace trap the endpoint permission gate hit and documented in
+        /// <c>IEndpointPermissionService.Normalize</c>; this call site was missed because it builds
+        /// its own query instead of going through that service. Both forms are listed so the query
+        /// stays translatable — a normalizing method cannot run inside a LINQ-to-SQL predicate.</para>
+        /// </summary>
+        private static readonly string[] WorkflowOperationLinks =
+        [
+            "/" + Dom.Constants.Subsystems.LinkNamespace + "workflow",  // "/hrms/workflow" — what is stored
+            "/workflow",                                  // bare form, tolerated
+        ];
 
         // ---- Per-request memoisation --------------------------------------------------------
         // This service is SCOPED, so these live exactly one request. Every field below answers a
@@ -133,7 +154,17 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var approvers = await StepApproversAsync(definitionId, stepOrder);
 
             if (approvers.Count == 0)
-                return (true, []); // open step — anyone may act
+            {
+                // Open step — nobody was designated, so anyone entitled may act. With ONE exception:
+                // never the requester themselves. An unconfigured step must not become a way to
+                // approve your own request, which is the one outcome no approval chain can intend.
+                if (requesterEmployeeId.HasValue)
+                {
+                    var me = await CurrentEmployeeIdAsync();
+                    if (me.HasValue && me.Value == requesterEmployeeId.Value) return (false, []);
+                }
+                return (true, []);
+            }
 
             var userId = currentUser.GetCurrentUserId();
             var canDecide = false;
@@ -277,7 +308,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         private async Task<List<Guid>> WorkflowApproveRoleIdsAsync() =>
             await tenantRolePermissions.GetAll()
                 .Where(p => p.CanApprove)
-                .Join(tenantOperations.GetAll().Where(o => o.Link == WorkflowOperationLink && o.IsActive),
+                .Join(tenantOperations.GetAll().Where(o => WorkflowOperationLinks.Contains(o.Link) && o.IsActive),
                     p => p.TenantOperationId, o => o.Id, (p, o) => p.TenantRoleId)
                 .Join(tenantRoles.GetAll().Where(r => r.SourceTemplateId != null),
                     roleId => roleId, r => r.Id, (roleId, r) => r.SourceTemplateId!.Value)

@@ -4981,3 +4981,72 @@ direct SQL `GROUP BY` exactly; another unit's vacancies → `400` "You can only 
 own department and its sub-departments"; empty unit id → `[]`; HR admin → any unit. `permission-audit.cjs`
 still 118 / 118. **Not exercised end to end:** an actual create-and-submit against a listed role, which
 would have written a hiring request and started a workflow in the live NVI data.
+
+### 12.67 The approval inbox was empty for 22 of 27 workflows — a namespace, and a null
+
+Reported as: a submitted Hiring Request never reaches the approver's queue in HOME, "even though
+the workflow is properly configured". Two independent defects, either of which alone hides the
+request.
+
+**1. The operation link was compared un-namespaced.**
+
+```csharp
+private const string WorkflowOperationLink = "/workflow";   // never matches anything
+...
+.Join(tenantOperations.GetAll().Where(o => o.Link == WorkflowOperationLink && o.IsActive), …)
+```
+
+Operation links are stored namespaced by their owning subsystem — the row is **`/hrms/workflow`**.
+The join matched no rows, so `WorkflowApproveRoleIdsAsync` returned an empty list,
+`CanActOnOpenStepsAsync` short-circuited on `approveRoles.Count == 0`, and **every** user answered
+"not entitled to act on open steps". A step with no configured approvers therefore appeared in
+nobody's inbox, and `ResolveOpenStepRecipientsAsync` — the same rule — notified nobody either.
+
+This is the identical trap already documented in `IEndpointPermissionService.Normalize`, whose
+remarks note that comparing the two forms verbatim "never matches, so EVERY gated endpoint answered
+403". That fix normalized both sides; **this call site was missed because it builds its own query
+instead of going through the service**. Fixed by matching both forms — a normalizing method cannot
+run inside a LINQ-to-SQL predicate, so the namespaced and bare links go in as a translatable array.
+
+**2. Hiring requests started their workflow with no requester.**
+
+```csharp
+StartIfDefinedAsync(WorkflowEntityTypes.HiringRequest, request.Id, null, …)
+```
+
+`WorkflowInstance.EmployeeId` is the **routing key** for every manager-type approver:
+`EvaluateAsync` resolves Immediate/SecondLevel/UnitManager against it, and `GetMyApprovals`
+pre-filters dynamic steps on `x.EmployeeId != null` before evaluating them. A null makes
+"route to the requester's manager" unresolvable **whatever the definition says** — so fixing only
+defect 1 and then configuring a manager step would have re-hidden the request for a new reason.
+Every other module already passed it; HiringRequest and SalaryRevision did not.
+
+**⚠️ The premise was wrong in a way worth recording: the workflow was NOT configured.** "Hiring Need
+Approval" was active with three steps and **zero approvers**, and so were 21 others — only
+AnnualLeave, Appraisal, JobRequisition, OtherLeave and SalaryRevision carry approver rows (12 in
+total). Open-step fallback is the *normal* path in this tenant, which is why one bad string emptied
+almost every queue.
+
+**⚠️ And fixing it exposed a second-order problem.** `CanActOnOpenSteps` keys off approve-rights on
+`/hrms/workflow`, which **495 accounts** hold through `UserRole` (granted so designated approvers
+could clear the endpoint gate — §12.5x). With the link repaired, all 495 would see every unassigned
+step; verified live, the requester's own hiring request appeared in their own inbox. Worse,
+`EvaluateAsync` returned `(true, [])` for an open step with **no entitlement check at all**, so the
+decide path was already open to anyone who could reach the endpoint — that predates this fix, but
+the fix makes it findable.
+
+Two responses, chosen by the user:
+
+- **Configure real approvers** on Hiring Need Approval (`scripts/configure-hiringrequest-approvers.sql`)
+  so it stops relying on the fallback: step 1 `ImmediateManager`, steps 2–3 `UnitManager` anchored at
+  the HR department and the Finance Directorate, matching how Annual Leave already models its HR step.
+  ⚠️ Step 1 is **ImmediateManager, not UnitManager**: `UnitManager` anchors at the FIXED unit in
+  `ApproverId` and ignores the request's own unit, so it would route every hiring request to one
+  department's manager. Only the requester-relative type means "the directorate head above whoever
+  raised it".
+- **An open step is never your own request** — `EvaluateAsync` now refuses when the caller is the
+  requester, and the inbox mirrors the exclusion so it never lists an item the caller cannot action.
+
+Still open, deliberately: the other 21 definitions remain unconfigured, so their open steps stay
+visible to all 495 entitled accounts (minus the requester). Narrowing that entitlement is a policy
+decision, not a bug fix.

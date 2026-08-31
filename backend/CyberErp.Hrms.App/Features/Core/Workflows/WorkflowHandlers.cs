@@ -307,7 +307,11 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 bool mine;
                 if (stepApprovers.Count == 0)
                 {
-                    mine = canActOnOpenSteps;
+                    // ⚠️ …but never your own request. Mirrors the same exclusion in
+                    // WorkflowApproverAuth.EvaluateAsync, so the inbox shows exactly what the caller
+                    // may actually decide — an item you can see but cannot action is its own bug.
+                    mine = canActOnOpenSteps
+                        && !(x.EmployeeId.HasValue && myEmp.HasValue && x.EmployeeId.Value == myEmp.Value);
                 }
                 else
                 {

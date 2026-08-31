@@ -120,6 +120,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var request = await repository.GetAll().FirstOrDefaultAsync(r => r.Id == id)
                 ?? throw new NotFoundException(nameof(HiringRequest), id.ToString());
+            var scope = await visibility.GetScopeAsync();
             await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, request.OrganizationUnitId, "submit hiring requests");
             if (request.Status is not (HiringRequestStatus.Draft or HiringRequestStatus.Rejected))
                 throw new ValidationException("status", $"A {request.Status} hiring request cannot be submitted.");
@@ -138,8 +139,15 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             await repository.SaveChangesAsync();
 
             // Seeded chain: Directorate Head → HR → Finance (HC078); no definition → direct approval.
+            //
+            // ⚠️ THE REQUESTER'S EMPLOYEE ID IS THE ROUTING KEY, and this passed null. Every
+            // manager-type approver — ImmediateManager, SecondLevelManager, UnitManager — resolves
+            // against it, and the approval inbox skips any instance whose EmployeeId is null before
+            // it ever evaluates a dynamic step. So a null here makes "route to the requester's
+            // directorate head" unresolvable and the request invisible, no matter how the definition
+            // is configured (logic §12.67). Every other module already passes it.
             await workflowService.StartIfDefinedAsync(
-                WorkflowEntityTypes.HiringRequest, request.Id, null,
+                WorkflowEntityTypes.HiringRequest, request.Id, scope.EmployeeId,
                 $"Hiring Need — {request.RequestNumber}: {request.NumberOfPositions} × role (budget {request.EstimatedBudget:N0})");
 
             if (!await workflowGate.HasRunningAsync(WorkflowEntityTypes.HiringRequest, request.Id))
