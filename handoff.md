@@ -4693,6 +4693,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   Fiscal years FY 2018/2019 EC; an AnnualLeaveSetting for FY19+AL; Ethiopian holidays. Not created via the
   Employee UI, so they lack position/branch.
 
+- **A reference list gated on its MAINTENANCE screen breaks every screen that reads it** —
+  and it breaks them as an EMPTY DROPDOWN, not an error, because the form never renders the query's
+  error. `PositionClass` reads are now open to `hiringRequest` holders too (logic §12.65). When a
+  lookup goes blank for one role and fills for another, check the response code before the query.
+- **An action-level `[RequirePermission]` REPLACES the controller-level one** — always repeat the
+  original link alongside the new one, or you revoke the existing holder (logic §12.54).
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

@@ -14,11 +14,28 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetPositionClassById getByIdHandler,
         IGetAllPositionClasses getAllHandler) : BaseController
     {
+        /// <summary>
+        /// Readable by anyone who can raise a HIRING REQUEST, not only by whoever maintains the
+        /// catalogue.
+        ///
+        /// <para>⚠️ The role picker on the hiring-request form is this list. Gating it on
+        /// <c>positionClass</c> alone meant a department manager — who holds <c>hiringRequest</c> but
+        /// not the catalogue screen — got a 403 and an EMPTY dropdown with no error shown, which
+        /// reads as missing data rather than a refused request (logic §12.65). Same shape as
+        /// <c>JobGradeController</c>, which opens its reads to the employee and profile screens.</para>
+        ///
+        /// <para>⚠️ Reads only. Creating, editing and deleting a position class stay on
+        /// <c>positionClass</c> via the controller-level attribute. And because an action-level
+        /// attribute REPLACES the class-level one rather than adding to it, <c>positionClass</c> is
+        /// repeated here — omitting it would REVOKE the catalogue owner's own access (logic §12.54).</para>
+        /// </summary>
         [HttpGet]
+        [RequirePermission("positionClass", "hiringRequest")]
         public Task<PaginatedResponse<PositionClassDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);
 
         [HttpGet("{id:guid}")]
+        [RequirePermission("positionClass", "hiringRequest")]
         public Task<PositionClassDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
 
