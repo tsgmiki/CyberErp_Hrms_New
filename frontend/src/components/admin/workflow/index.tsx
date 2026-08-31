@@ -2,10 +2,11 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { GitPullRequestArrow, Check, X, History, ExternalLink, CalendarDays } from "lucide-react";
+import { GitPullRequestArrow, Check, X, History, ExternalLink, CalendarDays, Table2 } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
 import AnnualLeaveHistoryModal from "@/components/admin/annualLeave/historyModal";
+import RecruitmentDetails, { type RecruitmentKind } from "./recruitmentDetails";
 import { EntityListShell, useEntityList } from "@/template";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import type { WorkflowInstanceModel } from "@/models";
@@ -140,6 +141,7 @@ function WorkflowTracking() {
   const [history, setHistory] = useState<WorkflowInstanceModel | null>(null);
   // The LEAVE behind an annual-leave instance, as opposed to that instance's own step log.
   const [leaveFor, setLeaveFor] = useState<string | null>(null);
+  const [recruitmentFor, setRecruitmentFor] = useState<{ kind: RecruitmentKind; id: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const list = useEntityList({
@@ -240,6 +242,24 @@ function WorkflowTracking() {
                     ><X size={16} /></button>
                   </>
                 )}
+                {/* The whole request behind the decision — see recruitmentDetails.tsx. A hiring
+                    request or requisition commits headcount and budget, and the row alone carries
+                    only a one-line summary. It reads the /review endpoints, which authorise on
+                    being the current approver rather than on the recruitment menu permission. */}
+                {(() => {
+                  const k = (r.entityType ?? "").toLowerCase();
+                  const kind: RecruitmentKind | null =
+                    k === "hiringrequest" ? "hiringRequest"
+                      : k === "jobrequisition" ? "jobRequisition" : null;
+                  if (!kind || !r.entityId) return null;
+                  return (
+                    <button
+                      type="button" title={t("View Details")}
+                      onClick={() => setRecruitmentFor({ kind, id: r.entityId! })}
+                      className="rounded p-1 text-primary hover:bg-primary/10"
+                    ><Table2 size={15} /></button>
+                  );
+                })()}
                 {/* An approver deciding on a leave return needs the LEAVE, not just this
                     instance's step log: what was approved, what the employee actually took, and the
                     explanation they gave for the difference. The generic History stays beside it. */}
@@ -318,6 +338,13 @@ function WorkflowTracking() {
       {history && <HistoryModal instance={history} onClose={() => setHistory(null)} />}
       {leaveFor && (
         <AnnualLeaveHistoryModal annualLeaveId={leaveFor} onClose={() => setLeaveFor(null)} />
+      )}
+      {recruitmentFor && (
+        <RecruitmentDetails
+          kind={recruitmentFor.kind}
+          requestId={recruitmentFor.id}
+          onClose={() => setRecruitmentFor(null)}
+        />
       )}
     </div>
   );
