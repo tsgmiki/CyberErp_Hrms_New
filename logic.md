@@ -4888,3 +4888,50 @@ successfully — the permit direction.
 to someone outside the caller's line, and the only such employee sits in a unit with no manager, so
 the leave workflow refuses to start there. They share the exact `CanAccessEmployeeAsync` call whose
 deny path is proven on submit.
+
+### 12.65 An empty dropdown was a 403 in disguise
+
+Reported as a data bug: on the HOME **Hiring Request** form, the *Role (Position Class)* picker was
+empty for a department manager, "even though there are active vacant positions for that department".
+Nothing was wrong with the query or the data.
+
+`hiringRequest/form.tsx` fills that picker from `getAllPositionClass()` → `GET /api/v1/PositionClass`,
+and `PositionClassController` was gated, at the class level, on `positionClass` alone — the
+*catalogue-maintenance* screen, held by HR Admin, HR Officer and Department Manager. The reporting
+account (`rojer(dr)b`) holds `hiringRequest` but **not** `positionClass`, so the request came back
+`403 {"message":"You do not have permission to view this here."}` while `/OrganizationUnit/my-units`
+and `/WorkforcePlan` on the same form returned `200`. Two of three dropdowns filled; the third did
+not, and nothing said why.
+
+**The general shape, worth recognising again:** a screen's permission is not the union of the
+permissions its *lookups* need. Gating a reference list on the screen that maintains it silently
+breaks every other screen that has to read from it — and it breaks them as **missing data**, because
+React Query's error goes to a variable the form never renders. A refused request that looks like an
+empty result is worse than an error message.
+
+The fix follows the precedent already in `JobGradeController`, which opens its reads to the screens
+that consume the list (`[RequirePermission("jobGrade", "myProfile", "employee")]`):
+
+```csharp
+[HttpGet]
+[RequirePermission("positionClass", "hiringRequest")]   // reads
+[HttpPost] / [HttpPut] / [HttpDelete]                   // unchanged — controller-level positionClass
+```
+
+⚠️ **`positionClass` is repeated deliberately.** An action-level attribute REPLACES the class-level
+one rather than merging with it (§12.54), so listing only `hiringRequest` would have revoked the
+catalogue owner's own access to the list they maintain.
+
+Verified live against `:55900`: as `rojer(dr)b`, `GET /PositionClass` → `200` (814 roles) where it
+was `403`; `POST` and `DELETE` still `403`; HR (`tatekg`) unaffected at `200`. `permission-audit.cjs`
+still reports 118 / 118 — the change touched reads only, and reads were never in its scope.
+
+**Two things this surfaced but did not change:**
+
+1. The picker lists **all 814** position classes, not the roles with a vacant seat in the manager's
+   own unit. The establishment gate (HC080) still refuses a save against a role with no vacancy, so
+   this is a usability problem rather than a correctness one — but the reporter's wording suggests
+   they expect a filtered list, and that is a behaviour change, not a restoration.
+2. `rojer(dr)b` is a manager **organisationally** (`IsManagerial = 1`, Information Technology
+   Department) but holds only `UserRole` — not the Department Manager role. Org structure and
+   granted roles disagree, and permission follows the roles.
