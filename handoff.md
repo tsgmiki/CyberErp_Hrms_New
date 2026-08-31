@@ -4706,6 +4706,15 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **An empty dropdown must say WHY it is empty** — "no seats here" and "failed to load" look identical
   otherwise, which is how §12.65 reached us as a data bug.
 
+- **Operation links are stored NAMESPACED (`/hrms/x`) — never compare one verbatim** — go through
+  `IEndpointPermissionService` or match both forms. A raw `o.Link == "/workflow"` emptied the approval
+  inbox for 22 of 27 workflows and notified nobody (logic §12.67).
+- **`StartIfDefinedAsync` MUST receive the requester's employee id** — it is the routing key every
+  manager-type approver resolves against, and the inbox skips instances whose EmployeeId is null.
+  Passing null makes the request invisible no matter how the definition is configured.
+- **Most seeded workflow definitions have NO approvers** (22 of 27) — open-step fallback is the normal
+  path here, so anything touching that fallback has tenant-wide blast radius.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
