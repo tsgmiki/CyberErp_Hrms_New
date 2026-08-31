@@ -4715,6 +4715,15 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **Most seeded workflow definitions have NO approvers** (22 of 27) — open-step fallback is the normal
   path here, so anything touching that fallback has tenant-wide blast radius.
 
+- **An approver needs a `/review` endpoint, not the module GET** — approvers are routed a request
+  by the workflow and need not hold the owning screen's permission. Bare `[RequirePermission]` on the
+  action + `EvaluateAsync` in the handler (logic §12.68). Keep the permission shortcut to the OWNING
+  screen only.
+- **⚠ CERP has DUPLICATE operation rows: `/hrms/hiringRequest` AND a bare `/hiringRequest`** — both
+  active, and `UserRole` holds the bare one. `Normalize` strips the namespace, so they are the same
+  permission and every staff account effectively holds `hiringRequest`. Check for duplicates before
+  reasoning about who can reach a screen.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

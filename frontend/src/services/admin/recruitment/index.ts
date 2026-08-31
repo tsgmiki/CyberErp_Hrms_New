@@ -102,6 +102,13 @@ async function put(path: string, body: unknown): Promise<{ ok: boolean; message:
 
 export const getAllHiringRequests = createPagedQuery<HiringRequestModel>("HiringRequest");
 export const getHiringRequest = (id: string) => api.get<HiringRequestModel>(`HiringRequest/${id}`);
+/**
+ * The request as its assigned APPROVER may read it. Separate from getHiringRequest because that one
+ * is gated on the recruitment operations, which an approver in the HR or Finance leg does not hold —
+ * this endpoint authorises on being the current approver instead.
+ */
+export const reviewHiringRequest = (id: string) =>
+  api.get<HiringRequestModel>(`HiringRequest/${id}/review`);
 export const deleteHiringRequest = createDeleteService("HiringRequest");
 export const saveHiringRequest = (data: HiringRequestModel) =>
   saveJson("HiringRequest", {
@@ -126,6 +133,9 @@ export const getVacantRoles = (organizationUnitId: string) =>
 
 export const getAllJobRequisitions = createPagedQuery<JobRequisitionModel>("JobRequisition");
 export const getJobRequisition = (id: string) => api.get<JobRequisitionModel>(`JobRequisition/${id}`);
+/** The requisition as its assigned approver may read it — see reviewHiringRequest. */
+export const reviewJobRequisition = (id: string) =>
+  api.get<JobRequisitionModel>(`JobRequisition/${id}/review`);
 export const deleteJobRequisition = createDeleteService("JobRequisition");
 export const saveJobRequisition = (data: JobRequisitionModel) =>
   saveJson("JobRequisition", {

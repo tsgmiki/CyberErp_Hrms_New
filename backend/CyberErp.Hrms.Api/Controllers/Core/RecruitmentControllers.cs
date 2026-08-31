@@ -15,6 +15,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         ISubmitHiringRequest submitHandler,
         ICloseHiringRequest closeHandler,
         IGetVacantRoles vacantRoleHandler,
+        IGetHiringRequestForApproval reviewHandler,
         IGetRecruitmentBudgetMonitor budgetHandler) : BaseController
     {
         /// <summary>
@@ -40,6 +41,19 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [HttpGet("{id:guid}")]
         public Task<HiringRequestDto> GetById(Guid id)
             => getByIdHandler.GetAsync(id);
+
+        /// <summary>
+        /// The request as its assigned APPROVER may read it, for review before deciding.
+        ///
+        /// <para><c>[RequirePermission]</c> with no links deliberately CLEARS the controller-level
+        /// requirement (action-level wins): the approval chain runs Immediate Manager → HR → Finance,
+        /// and a Finance approver holds neither recruitment operation. The handler authorises
+        /// instead — recruitment staff, or the approver it is currently routed to.</para>
+        /// </summary>
+        [HttpGet("{id:guid}/review")]
+        [RequirePermission]
+        public Task<HiringRequestDto> Review(Guid id)
+            => reviewHandler.GetAsync(id);
 
         [HttpPost]
         public Task<Guid> Create([FromBody] SaveHiringRequestDto dto)
@@ -87,8 +101,20 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGenerateRequisitionPosting generatePostingHandler,
         IPostJobRequisition postHandler,
         ICloseJobRequisition closeHandler,
+        IGetJobRequisitionForApproval reviewHandler,
         ICancelJobRequisition cancelHandler) : BaseController
     {
+        /// <summary>
+        /// The requisition as its assigned APPROVER may read it, for review before deciding.
+        /// Bare <c>[RequirePermission]</c> clears the class-level gate; the handler authorises —
+        /// recruitment staff, or the approver it is currently routed to. See the hiring-request
+        /// twin above.
+        /// </summary>
+        [HttpGet("{id:guid}/review")]
+        [RequirePermission]
+        public Task<JobRequisitionDto> Review(Guid id)
+            => reviewHandler.GetAsync(id);
+
         [HttpGet]
         public Task<PaginatedResponse<JobRequisitionDto>> GetAll([FromQuery] GetAllRequest request)
             => getAllHandler.GetAsync(request);

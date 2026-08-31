@@ -5050,3 +5050,59 @@ Two responses, chosen by the user:
 Still open, deliberately: the other 21 definitions remain unconfigured, so their open steps stay
 visible to all 495 entitled accounts (minus the requester). Narrowing that entitlement is a policy
 decision, not a bug fix.
+
+### 12.68 Approvers could decide a request they were not allowed to read
+
+An approver saw only the inbox row — "Hiring Need — HRQ-0004: 1 × role (budget 0)". No unit, no
+role, no justification, no establishment position. Approve and Reject were one click each; the
+request itself was not reachable from the screen.
+
+`HiringRequest/{id}/review` and `JobRequisition/{id}/review` (`GetHiringRequestForApproval`,
+`GetJobRequisitionForApproval`) return the record as its assigned approver may read it, and the two
+SPAs render it in a modal from the Workflow Tracking action cell.
+
+**⚠️ Being the approver IS the entitlement.** The ordinary GET is gated on the recruitment
+operations, and the approval chain runs Immediate Manager → HR → Finance — people routed the request
+by the workflow, with no reason to hold a recruitment menu permission. Gating the review read on
+those operations would force exactly the people who must decide to decide blind, and the failure
+would render as an EMPTY PANEL rather than a refusal (§12.65 again). So the action clears the
+class-level gate with a bare `[RequirePermission]` and the handler authorises: the owning screen's
+audience, or `EvaluateAsync` against the running instance's current step — the same call the
+approve/reject endpoint makes, so "may I read it" and "may I decide it" cannot drift apart.
+Verbatim the shape `GetSalaryRevisionForApproval` established.
+
+**⚠️ The permission shortcut is the OWNING SCREEN ONLY** (`hiringRequest` for one, `jobRequisition`
+for the other) even though the controller gate lists several links. Widening it to the whole
+recruitment cluster hands the record to a larger audience for no gain — and in CERP it did exactly
+that, which is how it was caught:
+
+> **The tenant has TWO hiring-request operations.** `/hrms/hiringRequest` *and* a bare
+> `/hiringRequest`, both active — and `UserRole` holds the bare one. Because `Normalize` strips the
+> `hrms/` namespace before comparing, the two are the SAME permission to the gate, so all 495 staff
+> accounts effectively hold `hiringRequest`. With the shortcut listing both links, every account
+> passed the first condition and the approver branch was unreachable. This is §12.67's namespace
+> confusion again, this time baked into the DATA rather than the code.
+
+Verified live on the running `REQ-0001`, whose current step routes to `takele(dr)a`:
+
+| caller | holds `jobRequisition` | is current approver | `/review` |
+|---|---|---|---|
+| `takele(dr)a` | no | **yes** | **200** — the whole requisition |
+| `rojer(dr)b` | no | no | **400** refused |
+| `tatekg` (HR) | yes | no | 200 |
+
+The middle row is the one that matters: without the approver branch it would be a 200 as well,
+because of the duplicate operation above.
+
+**Frontend.** One `recruitmentDetails.tsx` in each SPA covers both request types — attribute grid
+(unit, role, grade, positions, employment type, budget, expected start, workforce plan, and for a
+hiring request the vacant seats and already-requisitioned count) plus the free-text justification /
+description / requirements. Home additionally puts recruitment into the **review-before-approve
+gate** salary revisions already use: Approve stays disabled until this approver has opened the
+details. Reject is deliberately NOT gated — refusing to grant something is not the risk that gate
+exists for — and the details button renders for both verbs, so the information is reachable before
+either decision.
+
+Still open: the duplicate bare `/hiringRequest` operation is a data defect worth removing. Until it
+is, every employee can read hiring requests through the ordinary endpoint; the review endpoints are
+what keep approvers working once it is cleaned up.
