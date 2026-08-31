@@ -4700,6 +4700,12 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **An action-level `[RequirePermission]` REPLACES the controller-level one** — always repeat the
   original link alongside the new one, or you revoke the existing holder (logic §12.54).
 
+- **A picker that offers more than its gate accepts moves the failure downstream** — the hiring
+  role list now comes from `HiringRequest/vacant-roles` and mirrors the HC082 predicate exactly
+  (logic §12.66). When adding a picker for a gated field, source it from the gate, not the catalogue.
+- **An empty dropdown must say WHY it is empty** — "no seats here" and "failed to load" look identical
+  otherwise, which is how §12.65 reached us as a data bug.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

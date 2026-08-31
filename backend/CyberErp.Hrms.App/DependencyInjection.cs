@@ -299,6 +299,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IDeleteHiringRequest, Features.Core.Recruitment.DeleteHiringRequest>();
             services.AddScoped<Features.Core.Recruitment.ISubmitHiringRequest, Features.Core.Recruitment.SubmitHiringRequest>();
             services.AddScoped<Features.Core.Recruitment.ICloseHiringRequest, Features.Core.Recruitment.CloseHiringRequest>();
+            services.AddScoped<Features.Core.Recruitment.IGetVacantRoles, Features.Core.Recruitment.GetVacantRoles>();
             services.AddScoped<Features.Core.Recruitment.IGetRecruitmentBudgetMonitor, Features.Core.Recruitment.GetRecruitmentBudgetMonitor>();
             services.AddScoped<Features.Core.Recruitment.ISaveJobRequisition, Features.Core.Recruitment.SaveJobRequisition>();
             services.AddScoped<Features.Core.Recruitment.IGetJobRequisitionById, Features.Core.Recruitment.GetJobRequisitionById>();

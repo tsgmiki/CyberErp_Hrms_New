@@ -4935,3 +4935,49 @@ still reports 118 / 118 — the change touched reads only, and reads were never 
 2. `rojer(dr)b` is a manager **organisationally** (`IsManagerial = 1`, Information Technology
    Department) but holds only `UserRole` — not the Department Manager role. Org structure and
    granted roles disagree, and permission follows the roles.
+
+### 12.66 The role picker now offers only what the gate will accept
+
+Follow-on from §12.65. With the 403 fixed, the *Role (Position Class)* picker listed the **whole
+catalogue — 814 roles** — for a unit with two vacant seats. The HC082 establishment gate
+(`RecruitmentShared.VacantSeatsAsync`) counts `OrganizationUnitId == unit && PositionClassId == class
+&& IsVacant`, and it runs on **Submit**, not Save. So a manager could pick any of the 814, save a
+draft happily, and only be refused once they tried to submit — a failure one step removed from the
+mistake, in the workflow rather than the field.
+
+`GET /api/v1/HiringRequest/vacant-roles?organizationUnitId=` (`GetVacantRoles`) returns the roles
+with a vacant seat in that unit, with the seat count.
+
+**Why it sits on `HiringRequestController` and not `PositionClassController`:** that controller is
+already gated `hiringRequest, jobRequisition`, so whoever may raise the request may read the roles it
+offers — no new grant to hand out, and no third screen widened. §12.65's widening of the
+`PositionClass` reads is now, strictly, redundant for this form. It is **kept deliberately**: Home
+deploys separately from the API, so an older Home build still calling `/PositionClass` would 403
+again during a staggered rollout.
+
+⚠️ **EXACT unit, never the subtree.** A seat belongs to the unit that holds it, and the gate compares
+`OrganizationUnitId == unitId`. A subtree query here would offer roles the submit then refuses —
+which is the bug, inverted.
+
+⚠️ **The handler mirrors the gate predicate for predicate, and says so in both directions**, because
+the whole value of this is that the two agree. A divergence should be a visible edit to one of two
+adjacent methods, not a slow drift between a screen and a rule.
+
+Three details that are the difference between a fix and a new bug:
+
+1. **The empty state explains itself.** "No vacant seats in this unit — expand the establishment
+   first" rather than a blank list. An unexplained empty dropdown is precisely what §12.65 was
+   reported as; "no seats here" and "not loaded" must not look identical. Loading and
+   no-unit-chosen get their own text too.
+2. **Changing the unit clears the role.** Seats are per unit, so a role carried over from a previous
+   selection may have no vacancy in the new one — it would look valid and fail at submit.
+3. **The seat count is in the label** ("Cyber Security Expert — 1 vacant"), because that count is the
+   ceiling the request is checked against. It tells the manager what they may ask for *before* they
+   are refused for asking.
+
+Verified against CERP as `rojer(dr)b` (Information Technology Department, 7 positions, 2 vacant):
+API returned `CYE-01 Cyber Security Expert → 1` and `HWT-01 Hardwere Technician → 1`, matching a
+direct SQL `GROUP BY` exactly; another unit's vacancies → `400` "You can only view vacancies for your
+own department and its sub-departments"; empty unit id → `[]`; HR admin → any unit. `permission-audit.cjs`
+still 118 / 118. **Not exercised end to end:** an actual create-and-submit against a listed role, which
+would have written a hiring request and started a workflow in the live NVI data.

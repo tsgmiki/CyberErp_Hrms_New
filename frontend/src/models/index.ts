@@ -113,6 +113,7 @@ export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDep
 export type {
   HiringRequestModel,
   RecruitmentBudgetRowModel,
+  VacantRoleModel,
   ScreeningCriterionModel,
   CriterionEvaluatorModel,
   CriterionScoreModel,
