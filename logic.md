@@ -5151,3 +5151,60 @@ existing `UnitScopeGuard`/`VisibilityScope` pattern without touching the catalog
 **The lesson worth keeping:** "duplicate rows" in a catalogue shared by many subsystems usually are
 not duplicates — check the owning module and subsystem before concluding anything, and remember
 that a row you did not create may be the only thing making another application's navigation work.
+
+### 12.70 Closing the recruitment read-scoping gap
+
+The gap §12.69 identified: `GetAllHiringRequests`, `GetHiringRequestById`, `GetAllJobRequisitions`
+and `GetJobRequisitionById` applied **no unit scoping** — status, an optional caller-supplied
+`ParentId` and a search term, none of which is a guard. Because the Home portal's `/hiringRequest`
+menu grant normalizes to the same token as the HRMS operation, all **495 staff accounts** could
+enumerate every hiring request and requisition in the tenant: unit, role, headcount, budget and
+justification.
+
+Two new helpers beside the existing write-side `UnitScopeGuard.EnsureCanActOnUnitAsync`, so the read
+rule has one definition rather than four copies:
+
+- `ReadableUnitIdsAsync` → the units the caller may read, or **null meaning unrestricted**.
+  ⚠️ Null and an EMPTY SET are opposite answers — unrestricted versus nothing — which is why it
+  returns a nullable rather than an empty-set sentinel. A caller reading null as "nothing to filter
+  on" inverts the rule.
+- `EnsureCanReadUnitAsync` → the single-record twin. Filtering the list alone is not enough: **ids
+  leak legitimately**, since the approval inbox hands out the `EntityId` of every instance it lists,
+  so an unscoped by-id read stays reachable by anyone who has seen one.
+
+**⚠️ The by-id check runs on the LOADED record**, because the unit to authorise against is a property
+of the record and cannot be known before the read. `NotFoundException` still wins, so a bad id reads
+as missing rather than forbidden.
+
+**⚠️ The by-id handler is SHARED with the `/review` path, and that is why it grew a second method.**
+`Get…ById.GetAsync` now refuses records outside the caller's subtree — but `GetHiringRequestForApproval`
+calls the same handler, and an approver in the HR or Finance leg is outside the requesting department
+*by design*. Putting the guard in the shared projection would have refused precisely the person the
+workflow routed the request to, silently undoing §12.68 one commit later. Hence
+`GetWithoutScopeCheckAsync`: named so any use other than the two review handlers looks wrong, and
+reached only after those handlers have established approver standing.
+
+Verified live against CERP (`HRQ-0004` and `REQ-0001`, both in Information Technology Department):
+
+| caller | standing | list | by-id | `/review` |
+|---|---|---|---|---|
+| `rojer(dr)b` | IT Dept manager (owns it) | 1 | 200 | — |
+| `takele(dr)a` | Office of the CEO — an **ancestor** of IT Dept | 1 | 200 | 200 (is the approver) |
+| `tatekg` | HR, org-wide | 1 | 200 | 200 |
+| `wagayes` | non-manager, unrelated unit | **0** | **400** | **400** |
+
+`wagayes` is the row that proves it: **0 rows where the whole tenant was visible before.** And
+`takele(dr)a` seeing it is correct, not a leak — the chain is
+IT Dept → Chief Resource Management Office → **Office of the CEO** → NVI Board, so a senior
+executive legitimately sees their whole branch.
+
+⚠️ **Not isolated by this data:** the one configured approver is *also* an ancestor manager, so these
+runs cannot demonstrate that `GetWithoutScopeCheckAsync` is load-bearing. It becomes so the moment
+`configure-hiringrequest-approvers.sql` is applied, since step 2 (HR) and step 3 (Finance
+Directorate) both sit outside the requesting unit's subtree.
+
+**Checked and deliberately untouched:** internal job browsing. `InternalVacancyController` serves the
+Home "Job Vacancies" screen through its own `IGetOpenVacancies` handler, which scopes to posted
+vacancies and the caller's own applications — scoping the requisition list would otherwise have
+stopped employees seeing jobs outside their own department, which is the opposite of what that
+screen is for.

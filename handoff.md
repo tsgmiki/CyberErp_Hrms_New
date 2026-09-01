@@ -4726,6 +4726,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   bare row 403s the Home screen (logic §12.69). `TenantModule.SubSystemId` joins to `Core.Subsystem`,
   NOT `Core.TenantSubsystem` — the wrong join makes legitimate rows look orphaned.
 
+- **List handlers need `UnitScopeGuard.ReadableUnitIdsAsync`; by-id needs `EnsureCanReadUnitAsync`** —
+  a status/ParentId/search filter is NOT a guard. ⚠ Null return = unrestricted, EMPTY SET = nothing;
+  they are opposite answers (logic §12.70).
+- **⚠ Scoping a by-id handler can silently break the `/review` approver path** — they share the same
+  projection, and an approver is OUTSIDE the requesting department by design. Hence the explicit
+  `GetWithoutScopeCheckAsync`, for the review handlers only.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

@@ -17,7 +17,18 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     // ---- Interfaces -----------------------------------------------------------
 
     public interface ISaveJobRequisition { Task<Guid> SaveAsync(SaveJobRequisitionDto dto); }
-    public interface IGetJobRequisitionById { Task<JobRequisitionDto> GetAsync(Guid id); }
+    public interface IGetJobRequisitionById
+    {
+        /// <summary>The requisition, refused when it belongs to a department the caller cannot see.</summary>
+        Task<JobRequisitionDto> GetAsync(Guid id);
+
+        /// <summary>
+        /// The same projection with NO unit-scope check — see the hiring-request twin. Exactly one
+        /// caller: <c>GetJobRequisitionForApproval</c>, whose approver sits outside the requesting
+        /// department by design.
+        /// </summary>
+        Task<JobRequisitionDto> GetWithoutScopeCheckAsync(Guid id);
+    }
     public interface IGetAllJobRequisitions { Task<PaginatedResponse<JobRequisitionDto>> GetAsync(GetAllRequest request); }
     public interface IDeleteJobRequisition { Task DeleteAsync(Guid id); }
     public interface ISubmitJobRequisition { Task SubmitAsync(Guid id); }
@@ -483,9 +494,17 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<WorkLocation> workLocationRepository,
         IRepository<SalaryScale> salaryScaleRepository,
         IRepository<JobApplication> applicationRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate) : IGetJobRequisitionById
     {
         public async Task<JobRequisitionDto> GetAsync(Guid id)
+        {
+            var dto = await GetWithoutScopeCheckAsync(id);
+            await UnitScopeGuard.EnsureCanReadUnitAsync(visibility, dto.OrganizationUnitId, "job requisition");
+            return dto;
+        }
+
+        public async Task<JobRequisitionDto> GetWithoutScopeCheckAsync(Guid id)
         {
             var q = await repository.GetAll()
                     .Include(x => x.ScreeningCriteria).ThenInclude(c => c.Evaluators)
@@ -527,7 +546,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<HiringRequest> hiringRequestRepository,
         IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<PositionClass> positionClassRepository,
-        IRepository<JobApplication> applicationRepository) : IGetAllJobRequisitions
+        IRepository<JobApplication> applicationRepository,
+        IPerformanceVisibilityService visibility) : IGetAllJobRequisitions
     {
         public async Task<PaginatedResponse<JobRequisitionDto>> GetAsync(GetAllRequest request)
         {
@@ -535,6 +555,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // Same unscoped-list gap as its hiring-request twin, same fix — see that handler for why.
+            var readableUnits = await UnitScopeGuard.ReadableUnitIdsAsync(visibility);
+            if (readableUnits is not null)
+                query = query.Where(q => readableUnits.Contains(q.OrganizationUnitId));
 
             if (!string.IsNullOrWhiteSpace(request.Status) &&
                 Enum.TryParse<RequisitionStatus>(request.Status, true, out var status))
