@@ -5076,12 +5076,17 @@ for the other) even though the controller gate lists several links. Widening it 
 recruitment cluster hands the record to a larger audience for no gain — and in CERP it did exactly
 that, which is how it was caught:
 
-> **The tenant has TWO hiring-request operations.** `/hrms/hiringRequest` *and* a bare
+> **Two operations normalize to `hiringRequest`.** `/hrms/hiringRequest` *and* a bare
 > `/hiringRequest`, both active — and `UserRole` holds the bare one. Because `Normalize` strips the
 > `hrms/` namespace before comparing, the two are the SAME permission to the gate, so all 495 staff
 > accounts effectively hold `hiringRequest`. With the shortcut listing both links, every account
-> passed the first condition and the approver branch was unreachable. This is §12.67's namespace
-> confusion again, this time baked into the DATA rather than the code.
+> passed the first condition and the approver branch was unreachable.
+>
+> ⚠️ **CORRECTION — the bare row is NOT a duplicate, and must not be deleted (§12.69).** I first
+> read it as stray data. It is the **SSMS / Home portal's own menu operation**, in the "Manager
+> Requests" module beside `/transferRequest` and `/disciplinaryCase`; all 25 SSMS operations are
+> stored bare. The collision is load-bearing: it is what lets a Home screen authorize against the
+> HRMS API.
 
 Verified live on the running `REQ-0001`, whose current step routes to `takele(dr)a`:
 
@@ -5103,6 +5108,46 @@ details. Reject is deliberately NOT gated — refusing to grant something is not
 exists for — and the details button renders for both verbs, so the information is reachable before
 either decision.
 
-Still open: the duplicate bare `/hiringRequest` operation is a data defect worth removing. Until it
-is, every employee can read hiring requests through the ordinary endpoint; the review endpoints are
-what keep approvers working once it is cleaned up.
+Still open: because the SSMS menu grant and the HRMS API permission are the same token after
+normalization, every employee can list hiring requests through the ordinary endpoint —
+`GetAllHiringRequests` and `GetHiringRequestById` apply no unit scoping. That is a scoping gap in
+those two handlers, NOT a stray catalogue row; see §12.69.
+
+### 12.69 The "duplicate" `/hiringRequest` is the Home portal's menu — do not delete it
+
+Asked to remove the duplicate `/hiringRequest` operation I flagged in §12.68. **It is not a
+duplicate.** Investigated before deleting; the two rows are different records serving different
+subsystems:
+
+| link | name | module | subsystem |
+|---|---|---|---|
+| `/hrms/hiringRequest` | Hiring Requests | Recruitment | **HRMS** |
+| `/hiringRequest` | Hiring Request | Manager Requests | **SSMS** (the Home portal) |
+
+`Core.TenantModule.SubSystemId` points straight at `Core.Subsystem` (not at `TenantSubsystem` —
+that mis-join is what made my first pass return "unresolved" and read like orphaned data).
+
+The bare row is one of **25 SSMS operations**, every one stored without a namespace —
+`/annualLeave`, `/myProfile`, `/transferRequest`, `/disciplinaryCase`, `/clearanceApprovals` … It is
+the Home sidebar's "Hiring Request" entry under Manager Requests, and `GetMySubsystems` builds the
+portal's navigation from exactly these rows. **Deleting it would remove the Hiring Request screen
+from the Home portal** — the screen §12.65–§12.68 have all been about.
+
+**⚠️ The normalization "collision" is LOAD-BEARING, not a defect.** `Normalize` strips only this
+subsystem's own `hrms/` prefix, so a bare link from another subsystem compares equal to the bare
+HRMS token. That is the mechanism by which a Home portal screen authorizes against the HRMS API:
+`rojer(dr)b` holds the SSMS `/hiringRequest` menu grant, and it is that grant which gets them past
+`[RequirePermission("hiringRequest")]` when the Home screen calls `HiringRequestController`. Remove
+it and the Home hiring-request screen 403s on every call — the exact bug fixed in §12.65.
+
+**What IS real** is narrower than "a stray row": one token means both *"may use the Home
+self-service screen"* and *"may read the whole HRMS recruitment catalogue"*, and
+`GetAllHiringRequests` / `GetHiringRequestById` apply **no unit scoping** — status, an optional
+caller-supplied `ParentId` filter and a search term, nothing that restricts by the caller's units.
+So every one of the 495 staff accounts can list every hiring request in the tenant: unit, role,
+headcount, budget and justification. That is a scoping gap in two handlers, fixable with the
+existing `UnitScopeGuard`/`VisibilityScope` pattern without touching the catalogue.
+
+**The lesson worth keeping:** "duplicate rows" in a catalogue shared by many subsystems usually are
+not duplicates — check the owning module and subsystem before concluding anything, and remember
+that a row you did not create may be the only thing making another application's navigation work.

@@ -4719,10 +4719,12 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   by the workflow and need not hold the owning screen's permission. Bare `[RequirePermission]` on the
   action + `EvaluateAsync` in the handler (logic §12.68). Keep the permission shortcut to the OWNING
   screen only.
-- **⚠ CERP has DUPLICATE operation rows: `/hrms/hiringRequest` AND a bare `/hiringRequest`** — both
-  active, and `UserRole` holds the bare one. `Normalize` strips the namespace, so they are the same
-  permission and every staff account effectively holds `hiringRequest`. Check for duplicates before
-  reasoning about who can reach a screen.
+- **⚠ A bare operation link is ANOTHER SUBSYSTEM'S, not a duplicate — never delete one.** All 25
+  SSMS (Home portal) operations are stored bare (`/hiringRequest`, `/myProfile`, `/transferRequest`);
+  HRMS's are namespaced (`/hrms/hiringRequest`). `Normalize` strips only `hrms/`, so the two compare
+  EQUAL — and that is exactly what lets a Home screen authorize against the HRMS API. Deleting the
+  bare row 403s the Home screen (logic §12.69). `TenantModule.SubSystemId` joins to `Core.Subsystem`,
+  NOT `Core.TenantSubsystem` — the wrong join makes legitimate rows look orphaned.
 
 ## 5. Doc-maintenance checklist (run before committing)
 
