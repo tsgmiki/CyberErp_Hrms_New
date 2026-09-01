@@ -45,7 +45,12 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     "You do not have access to this hiring request. Only recruitment staff and the " +
                     "approver it is currently routed to can review it.");
 
-            return await inner.GetAsync(id);
+            // ⚠️ The UNSCOPED projection, deliberately. The by-id handler refuses records outside the
+            // caller's own unit subtree, and an approver in the HR or Finance leg is outside the
+            // requesting department by design — routing them the request is the whole point. Access
+            // was already decided above; re-applying the department rule here would refuse exactly
+            // the person the workflow chose.
+            return await inner.GetWithoutScopeCheckAsync(id);
         }
     }
 
@@ -68,7 +73,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     "You do not have access to this job requisition. Only recruitment staff and the " +
                     "approver it is currently routed to can review it.");
 
-            return await inner.GetAsync(id);
+            // Unscoped by design — see the hiring-request twin above.
+            return await inner.GetWithoutScopeCheckAsync(id);
         }
     }
 

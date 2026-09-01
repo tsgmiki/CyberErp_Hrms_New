@@ -16,7 +16,22 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     // ---- Interfaces -----------------------------------------------------------
 
     public interface ISaveHiringRequest { Task<Guid> SaveAsync(SaveHiringRequestDto dto); }
-    public interface IGetHiringRequestById { Task<HiringRequestDto> GetAsync(Guid id); }
+    public interface IGetHiringRequestById
+    {
+        /// <summary>The request, refused when it belongs to a department the caller cannot see.</summary>
+        Task<HiringRequestDto> GetAsync(Guid id);
+
+        /// <summary>
+        /// The same projection with NO unit-scope check — for callers that have already established a
+        /// different right to the record.
+        ///
+        /// <para>⚠️ Exactly one caller: <c>GetHiringRequestForApproval</c>, which authorises on being the
+        /// instance's current approver. That approver is routed the request by the workflow (HR, then
+        /// Finance) and is deliberately OUTSIDE the requesting department, so the unit check would
+        /// refuse precisely the person who has to read it. Named to make any other use look wrong.</para>
+        /// </summary>
+        Task<HiringRequestDto> GetWithoutScopeCheckAsync(Guid id);
+    }
     public interface IGetAllHiringRequests { Task<PaginatedResponse<HiringRequestDto>> GetAsync(GetAllRequest request); }
     public interface IDeleteHiringRequest { Task DeleteAsync(Guid id); }
     public interface ISubmitHiringRequest { Task SubmitAsync(Guid id); }
@@ -195,9 +210,20 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<WorkforcePlan> workforcePlanRepository,
         IRepository<Position> positionRepository,
         IRepository<JobRequisition> requisitionRepository,
+        IPerformanceVisibilityService visibility,
         IWorkflowGate workflowGate) : IGetHiringRequestById
     {
         public async Task<HiringRequestDto> GetAsync(Guid id)
+        {
+            var dto = await GetWithoutScopeCheckAsync(id);
+            // ⚠️ Checked on the LOADED record, because the unit to authorise against is a property of
+            // the record — it cannot be known before the read. The projection is harmless; what this
+            // stops is returning it. NotFound still wins, so a bad id reads as missing, not forbidden.
+            await UnitScopeGuard.EnsureCanReadUnitAsync(visibility, dto.OrganizationUnitId, "hiring request");
+            return dto;
+        }
+
+        public async Task<HiringRequestDto> GetWithoutScopeCheckAsync(Guid id)
         {
             var row = await repository.GetAll()
                     .Where(r => r.Id == id)
@@ -261,7 +287,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<HiringRequest> repository,
         IRepository<OrganizationUnit> organizationUnitRepository,
         IRepository<PositionClass> positionClassRepository,
-        IRepository<WorkforcePlan> workforcePlanRepository) : IGetAllHiringRequests
+        IRepository<WorkforcePlan> workforcePlanRepository,
+        IPerformanceVisibilityService visibility) : IGetAllHiringRequests
     {
         public async Task<PaginatedResponse<HiringRequestDto>> GetAsync(GetAllRequest request)
         {
@@ -269,6 +296,20 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             var take = int.TryParse(request.Take, out var t) ? t : 15;
 
             var query = repository.GetAll();
+
+            // ⚠️ HR sees every department; anyone else only their own unit subtree.
+            //
+            // This list had no scope filter at all — only status, a caller-supplied ParentId and a
+            // search term, none of which is a guard. Combined with the Home portal's "Hiring Request"
+            // menu grant normalizing to the same token as the HRMS operation (logic §12.69), that let
+            // ALL 495 staff accounts enumerate every hiring request in the tenant: unit, role,
+            // headcount, budget and justification.
+            //
+            // ParentId stays a FILTER, applied after this: narrowing to one unit you may see is a
+            // user's choice, whereas this decides which units those are.
+            var readableUnits = await UnitScopeGuard.ReadableUnitIdsAsync(visibility);
+            if (readableUnits is not null)
+                query = query.Where(r => readableUnits.Contains(r.OrganizationUnitId));
 
             if (!string.IsNullOrWhiteSpace(request.Status) &&
                 Enum.TryParse<HiringRequestStatus>(request.Status, true, out var status))
