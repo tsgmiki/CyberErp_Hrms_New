@@ -5263,3 +5263,73 @@ everyone:
 ⚠️ **Not exercised: an actual submit.** Doing so would create a real hiring request and start a
 workflow in live NVI data. The pre-validation path is therefore verified by construction (both
 configured steps resolve, traced through the same climb the resolver uses) rather than by running it.
+
+### 12.72 Configuring the remaining 21 definitions — and why 19 steps stay open
+
+47 steps across 22 definitions had no approver. **28 configured, 19 deliberately left open.**
+
+| step name | count | approver |
+|---|---|---|
+| HR Review / HR Approval / HRBP Review | 21 | `UnitManager` @ Manpower Development → `tatekg` |
+| Executive Approval / Approving Authority / Department Head Approval / Directorate Review | 7 | `UnitManager` @ Office of the CEO → `takele(dr)a` |
+| Manager Review / Supervisor Review | 19 → **left open** | see below |
+| Finance Review | 5 → **left open** | no finance unit has a manager (§12.71) |
+
+Step names are the seeded intent, so they drove the mapping; they are matched by an explicit list
+rather than `LIKE`, so a step name nobody anticipated is left open instead of silently attaching to
+the wrong anchor.
+
+**⚠️ WHY THE MANAGER STEPS ARE NOT `ImmediateManager`.** Only **6 of 121** units hold an employee
+flagged `IsManagerial`. **139 non-managerial employees** cannot resolve a manager anywhere up their
+chain, and `IsBypassableManagerStepAsync` forgives this **only for managerial employees** — so for
+those 139, `EnsureDynamicApproversResolvableAsync` throws and the SUBMIT FAILS. Anchoring these
+steps would have blocked 28% of the workforce from raising leave, disciplinary cases, loans,
+training needs and trips.
+
+> **This is already live for annual leave.** `AnnualLeave` step 1 is `ImmediateManager`, so those
+> 139 employees cannot submit an annual leave request today. Pre-existing, not introduced here —
+> and the same data gap is the reason these 19 steps stay open.
+
+**⚠️ WHY NOT A ROLE APPROVER EITHER.** `Role` approvers are never pre-validated, so they never throw
+— tempting. But **`HR Admin` and `HR Officer` have ZERO account holders** and `Department Manager`
+has one. Routing to a role nobody holds trades a failed submit for a request that is accepted and
+then waits forever, which is harder to notice. An open step at least falls back to the entitled
+approvers (minus the requester, §12.67).
+
+**Safe for the null-requester modules.** `CriticalPosition`, `JobOffer`, `SuccessionPlan`,
+`TalentReview` and `WorkforcePlan` start with a null `employeeId`. `UnitManager` anchors at a fixed
+unit and never consults the requester, so these resolve regardless — whereas `ImmediateManager`
+would have thrown on every one of their submissions.
+
+**⚠️ KNOWN EDGE CASE — the CEO cannot submit a request carrying an executive step.** `ClimbAsync`
+self-excludes the requester, and Office of the CEO is the topmost unit holding a manager (its
+ancestors NVI Board Of Director and Bord Of Director have none). So when that manager is themselves
+the requester, the climb reaches the root, returns null and throws. Affects exactly the CEO account
+for `EmployeeLoan`, `EmployeeTermination`, `JobOffer`, `TrainingNeed.Abroad`,
+`TripRequest.International` and `WorkforcePlan`. Fixed by designating a manager on NVI Board Of
+Director.
+
+**The remedy for all of it is 11 rows of org data.** `scripts/units-needing-managers.sql` (read-only)
+lists the 33 units whose staff cannot resolve a manager — but they share just **11 parent units**,
+so designating a head in each clears every one of the 33 and all 139 blocked employees, because the
+climb inherits downward:
+
+| parent unit | child units affected | staff |
+|---|---|---|
+| General Director | 9 | 14 |
+| Vaccine Production & Drug Formulation Directorate | 6 | 29 |
+| Quality Control & Assurance Directorate | 5 | 14 |
+| Procurement & Property Administration Directorate | 2 | 37 |
+| Vaccine Research and Development Directorate | 2 | 21 |
+| Engineering & Maintenance Directorate | 2 | 11 |
+| …and 5 more, including **Finance Directorate** | | |
+
+Designating the Finance Directorate head additionally unlocks the 5 `Finance Review` steps and
+Hiring Need step 3. Once the list is empty, the 19 open steps can move to `ImmediateManager` and the
+annual-leave breakage disappears at the same time.
+
+Verified after the run: 28 rows inserted exactly as mapped, 19 still open (5 Finance, 9 Manager,
+5 Supervisor), and the approval inbox and workflow tracking list both unchanged and healthy —
+`takele(dr)a` 2 items, `tatekg` 0, `rojer(dr)b` 2, `wagayes` 0, tracking total 10.
+⚠️ No submit was exercised: doing so would create real records in live NVI data. Resolvability is
+established from the resolver's own climb rules against the current org data, not from a live run.
