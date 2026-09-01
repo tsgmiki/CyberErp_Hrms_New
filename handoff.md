@@ -4741,6 +4741,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   not.** ClimbAsync self-excludes the requester, so stamping the submitter on an anchored step can
   route the approval AWAY from the intended office — which is why SalaryRevision stays null.
 
+- **⚠ ONLY 6 of 121 org units have a manager, so 139 staff cannot resolve one** — and the bypass
+  covers only MANAGERIAL employees, so an ImmediateManager step is a FAILED SUBMIT for them, not a
+  stalled one. Annual Leave already has this and those 139 cannot request leave today. Fix = 11 rows:
+  run `scripts/units-needing-managers.sql` (logic §12.72).
+- **A Role approver nobody holds is worse than an open step** — HR Admin / HR Officer have ZERO
+  holders; the request is accepted and then waits forever instead of failing loudly.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
