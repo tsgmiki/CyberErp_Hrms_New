@@ -5208,3 +5208,58 @@ Home "Job Vacancies" screen through its own `IGetOpenVacancies` handler, which s
 vacancies and the caller's own applications — scoping the requisition list would otherwise have
 stopped employees seeing jobs outside their own department, which is the opposite of what that
 screen is for.
+
+### 12.71 Configuring the hiring chain — and the step that would have broken submission
+
+Applied `configure-hiringrequest-approvers.sql`. **Amended it first: the step 3 it originally
+carried would have broken hiring-request submission outright.**
+
+**⚠️ An unresolvable dynamic approver is not a stuck step — it is a failed SUBMIT.**
+`StartIfDefinedAsync` pre-validates *every* step's dynamic approvers before starting an instance
+(`preValidateApprovers` defaults to true and `SubmitHiringRequest` does not override it), and
+`EnsureDynamicApproversResolvableAsync` **throws** on an unresolvable `UnitManager`. So a bad anchor
+does not degrade the flow, it stops it at the door.
+
+Step 3 was to be `UnitManager @ Finance Directorate`. Checked before running: **no finance unit in
+this tenant has a designated manager** — Finance Directorate, Finance Department, Cost and Budget
+Section, General Finance Section and General Account Team all have zero `IsManagerial` employees —
+and `ClimbAsync` from Finance Directorate walks *General Director → Bord Of Director → root* without
+finding one. Configuring it would have made every hiring-request submission throw.
+
+What was applied instead:
+
+| step | approver | resolves to |
+|---|---|---|
+| 1 Directorate Head Review | `ImmediateManager` | climbs from the requester — for `rojer(dr)b`: IT Dept → Chief Resource Mgmt (no mgr) → **Office of the CEO** |
+| 2 HR Review | `UnitManager` @ Manpower Development | **`tatekg`** |
+| 3 Finance Review | **left open** | — until Finance has a manager |
+
+The script now also **refuses to run** if the HR anchor has no manager either, and carries the step 3
+insert commented out with the check to run first. Open steps for HiringRequest went 3 → 1.
+
+**A second null routing key, in the twin.** `SubmitJobRequisition` also passed `null` — the §12.67
+defect, which survived unnoticed only because that definition uses named `User` approvers, which need
+no requester. Fixed, and `reanchor-workflow-requesters.sql` backfills the existing instances from
+`RequestedBy`.
+
+**⚠️ "Pass the requester" is NOT universally correct — `SalaryRevision` is deliberately left NULL.**
+It has no single subject (one revision covers many employees), its only step is `UnitManager` anchored
+at the HR department, **only HR may submit it**, and `ClimbAsync` **self-excludes the requester**.
+Stamping the HR submitter would exclude them from resolving their own unit's manager step and push
+the approval up to the CEO. The rule is: pass the requester when the record has a subject whose own
+chain the workflow routes to; leave it null when the record has no subject and routes to a fixed
+anchor.
+
+Verified live — the approval inbox is now precise where it previously showed open-step items to
+everyone:
+
+| caller | inbox |
+|---|---|
+| `takele(dr)a` — REQ-0001's step-1 approver | AnnualLeave s1, **JobRequisition s1** |
+| `tatekg` — HR, and REQ-0001's **requester** | **0** — does not see their own request |
+| `rojer(dr)b` — IT manager | 2 × AnnualLeave (their reports) only |
+| `wagayes` — plain employee | **0** |
+
+⚠️ **Not exercised: an actual submit.** Doing so would create a real hiring request and start a
+workflow in live NVI data. The pre-validation path is therefore verified by construction (both
+configured steps resolve, traced through the same climb the resolver uses) rather than by running it.
