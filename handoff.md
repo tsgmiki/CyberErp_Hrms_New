@@ -4733,6 +4733,14 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   projection, and an approver is OUTSIDE the requesting department by design. Hence the explicit
   `GetWithoutScopeCheckAsync`, for the review handlers only.
 
+- **⚠ An unresolvable dynamic approver FAILS THE SUBMIT, it does not just stall the step** —
+  StartIfDefinedAsync pre-validates every step and throws. Before anchoring a UnitManager step,
+  confirm that unit (or a parent) has an `IsManagerial` employee WITH a login (logic §12.71).
+  No finance unit in CERP has one, so Hiring Need step 3 is deliberately still open.
+- **`StartIfDefinedAsync` requester: pass it when the record HAS a subject, leave NULL when it does
+  not.** ClimbAsync self-excludes the requester, so stamping the submitter on an anchored step can
+  route the approval AWAY from the intended office — which is why SalaryRevision stays null.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

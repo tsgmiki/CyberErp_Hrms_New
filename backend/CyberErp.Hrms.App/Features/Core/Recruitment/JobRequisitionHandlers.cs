@@ -284,6 +284,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var requisition = await repository.GetAll().FirstOrDefaultAsync(q => q.Id == id)
                 ?? throw new NotFoundException(nameof(JobRequisition), id.ToString());
+            var scope = await visibility.GetScopeAsync();
             await UnitScopeGuard.EnsureCanActOnUnitAsync(visibility, requisition.OrganizationUnitId, "submit requisitions");
             if (requisition.Status is not (RequisitionStatus.Draft or RequisitionStatus.Rejected))
                 throw new ValidationException("status", $"A {requisition.Status} requisition cannot be submitted.");
@@ -292,8 +293,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             repository.UpdateAsync(requisition);
             await repository.SaveChangesAsync();
 
+            // ⚠️ THE REQUESTER'S EMPLOYEE ID IS THE ROUTING KEY — the same null this module's
+            // hiring-request twin carried (logic §12.67). It survived unnoticed only because this
+            // definition happens to use named User approvers, which need no requester; the moment a
+            // manager-type approver is configured here — as the hiring chain now is — a null makes
+            // the step unresolvable and the approval inbox skips the instance before evaluating it.
             await workflowService.StartIfDefinedAsync(
-                WorkflowEntityTypes.JobRequisition, requisition.Id, null,
+                WorkflowEntityTypes.JobRequisition, requisition.Id, scope.EmployeeId,
                 $"Requisition {requisition.RequisitionNumber} — {requisition.Title} ({requisition.NumberOfPositions} position(s))");
 
             if (!await workflowGate.HasRunningAsync(WorkflowEntityTypes.JobRequisition, requisition.Id))
