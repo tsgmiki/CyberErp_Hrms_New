@@ -5440,3 +5440,46 @@ logs no `NotFoundException`.
 in a state it cannot exit. If the precondition can never become true again — no user to authorise,
 no row to act on — end it: skip, unregister, or log and return. Reserve throwing for conditions a
 retry could actually clear.
+
+### 12.75 Auditing HangFire for other purge orphans
+
+Follow-up to §12.74: swept HangFire for anything else stranded by the 2026-08-10 purge.
+
+**No other orphaned recurring jobs, and structurally only one kind can occur.** Across BOTH
+applications there are exactly three job registrations:
+
+| registration | keyed to | orphan risk |
+|---|---|---|
+| `employee-movements-due` (`HangfireConfiguration`) | nothing — static sweep | none |
+| `trip-settlement-reminders` (`HangfireConfiguration`) | nothing — static sweep | none |
+| `report-schedule:{guid}` (`ReportJobScheduler`) | a `ReportSchedule` row | **the only one** — now self-healing |
+
+The Home app registers no HangFire jobs into the shared database. So report schedules were the
+single class of job a purge could strand, which is why §12.74's fix closes the whole category rather
+than one instance. The `Hash` definitions and the `recurring-jobs` `Set` agreed on both survivors —
+worth checking together, since a removal that updates one and not the other leaves a job that is
+scheduled but undefined, or defined but never scheduled.
+
+`JobQueue`, `State` and `JobParameter` held zero rows pointing at missing jobs, and nothing was
+non-terminal.
+
+**⚠️ One real find: 15 permanent orphans in the `retries` set.** Entries there carry
+**`ExpireAt = NULL`**, so unlike the rest of HangFire's bookkeeping they are never reaped by
+`ExpirationManager` — when the `Job` row they name expires, the entry outlives it forever. Nothing
+can run from one (HangFire loads the job, finds nothing, discards it), but they inflate the
+dashboard's Retries count and so hide a genuine backlog. Ids `3, 9, 12, 13` predate the purge, so
+this is accumulated failure history rather than purge fallout.
+
+Cleared by `scripts/clear-orphaned-hangfire-retries.sql`. ⚠️ The `NOT EXISTS` is the whole safety
+property — an entry whose job still exists is a LIVE retry and is left alone whatever its state, and
+a non-integer value is skipped rather than guessed at. Needs no downtime: worst case a job is
+created between the check and the delete, and its entry simply is not matched.
+
+⚠️ **A gotcha in writing it:** `SUM(CASE WHEN NOT EXISTS (SELECT …) …)` is rejected by SQL Server
+("Cannot perform an aggregate function on an expression containing an aggregate or a subquery"), and
+because that is a COMPILE-time error the entire batch fails before the `DELETE` — so the first run
+changed nothing rather than half-running. Rewritten as a `LEFT JOIN`.
+
+Verified: retries 15 → **0** with no live retry removed, recurring jobs still the two legitimate
+ones, all orphan counts zero, nothing non-terminal, and the application starts with no job errors
+and serves requests normally (login 200, `/Workflow` 200).

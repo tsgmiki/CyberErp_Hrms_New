@@ -4762,6 +4762,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   become true again (no user to authorise, no row to act on), skip/unregister/return; throw only for
   something a retry could clear (§12.73, §12.74).
 
+- **HangFire `retries` set entries have ExpireAt = NULL** — they outlive the Job row they name and
+  are never reaped, inflating the dashboard's Retries count. `clear-orphaned-hangfire-retries.sql`
+  clears the dead ones (logic §12.75). Check `Hash` AND the `recurring-jobs` `Set` together — a
+  half-removal leaves a job scheduled-but-undefined.
+- **`SUM(CASE WHEN NOT EXISTS (SELECT ...))` is a COMPILE error in SQL Server** — the whole batch
+  fails before any DELETE runs. Use a LEFT JOIN.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
