@@ -5648,3 +5648,52 @@ External evaluators carry no `EmployeeId`, so they have neither a portal account
 ⚠️ **Not exercised end to end:** firing it needs a real vacancy to be posted, and the only
 requisition in CERP is already past that point. The wiring compiles and the notifier follows the
 verified peer-review pattern, but no live posting alert has been observed.
+
+### 12.80 The permission audit could not see the one shape that matters most
+
+Adding `POST /MyEvaluation` — ungated by design, authorised in the handler (§12.78) — left the audit
+reporting **"118 of 118 guarded"**, unchanged. It had not judged the new endpoint safe; it had not
+seen it.
+
+Two independent reasons, both now fixed:
+
+```js
+const REQ = /\[RequirePermission\(([^\]]*)\)\]/;   // ← parentheses REQUIRED
+...
+if (raw === null) continue;                        // "not permission-gated at all"
+if (links.length === 0) continue;                  // ← silently skipped
+```
+
+1. **The regex demanded parentheses.** `[RequirePermission]` (the bare form, which is what CLEARS a
+   class-level gate) did not match, so it read as *no attribute at all* and was dropped one line
+   earlier as ungated-and-uninteresting.
+2. **An empty link list was skipped outright.** `[RequirePermission()]` matched but produced no
+   links, and the loop moved on.
+
+⚠️ **So the audit could only ever see endpoints that were gated — and reported a number that sounded
+like whole-surface coverage.** The most permissive shape in the codebase was the one it was blind to,
+and an *accidental* bare attribute would have been just as invisible as a deliberate one.
+
+Now: parentheses optional, and an ungated write goes into its own bucket, still checked for a handler
+guard but never counted as gate-guarded:
+
+```
+write endpoints UserRole can invoke: 119
+  gated by [RequirePermission] : 118
+    guarded          : 118
+  ungated (bare [RequirePermission] — the HANDLER must authorise) : 1
+    handler-guarded  : 1
+      Post  -> SubmitMyEvaluation [UNGATED-handler-guarded]
+```
+
+**⚠️ Read the two numbers differently.** "Gated + guarded" is enforced by the framework before the
+handler runs. "Ungated + handler-guarded" only means a recognised guard *appears* in the handler —
+it is a prompt to go and read it, not a proof. The three live refusal tests in §12.78 are what
+actually establish `SubmitMyEvaluation`.
+
+The `/review` endpoints of §12.68 carry the same bare attribute but are GETs, so they are outside
+this audit either way — it covers writes.
+
+**The lesson, and it applies past this script:** a checker that silently skips what it cannot parse
+reports a clean bill of health for the cases it never examined. Prefer a bucket that says
+"not assessed" over a `continue`.
