@@ -42,7 +42,10 @@ const files = [];
   if (e.isDirectory()) walk(p); else if (e.name.endsWith(".cs")) files.push(p);
 }})(dir);
 
-const REQ = /\[RequirePermission\(([^\]]*)\)\]/;
+// Parentheses are OPTIONAL: `[RequirePermission]` and `[RequirePermission()]` both CLEAR the
+// gate. Requiring them made the bare form indistinguishable from "no attribute at all", so
+// the most permissive shape of all was the one the audit could not see.
+const REQ = /\[RequirePermission(?:\(([^\]]*)\))?\]/;
 const out = [];
 for (const f of files) {
   const lines = fs.readFileSync(f, "utf8").replace(/\r\n/g, "\n").split("\n");
@@ -57,7 +60,7 @@ for (const f of files) {
       clsLinks = null;
       for (let j = i - 1; j >= 0 && j >= i - 6; j--) {
         const rm = lines[j].match(REQ);
-        if (rm) { clsLinks = rm[1]; break; }
+        if (rm) { clsLinks = (rm[1] ?? ""); break; }
         if (lines[j].trim() && !lines[j].trim().startsWith("[") && !lines[j].trim().startsWith("///")) break;
       }
       // primary-constructor params follow the declaration
@@ -79,7 +82,7 @@ for (const f of files) {
     for (const a of attrs) {
       if (/\[SelfScoped\]/.test(a)) selfScoped = true;
       const rm = a.match(REQ);
-      if (rm) actLinks = rm[1];
+      if (rm) actLinks = (rm[1] ?? "");
       const om = a.match(/Access\s*=\s*PermissionAccess\.([A-Za-z]+)/);
       if (om) ovr = om[1];
     }
@@ -88,7 +91,29 @@ for (const f of files) {
     const raw = actLinks !== null ? actLinks : clsLinks;
     if (raw === null) continue;                       // not permission-gated at all
     const links = [...raw.matchAll(/"([^"]+)"/g)].map(x => x[1].toLowerCase().replace(/^\/?(hrms\/)?/, ""));
-    if (links.length === 0) continue;
+    // A BARE [RequirePermission] CLEARS the gate — it does not tighten it, so the action is
+    // reachable by anyone signed in. That is the shape MOST in need of auditing, yet this line used
+    // to skip it silently: "118 of 118 guarded" said nothing about endpoints deliberately left
+    // ungated for handler-side authorisation, and would equally have hidden an ACCIDENTAL one.
+    // Now reported in its own bucket — still checked for a handler guard, never counted as gated.
+    if (links.length === 0) {
+      const ulit = route.split("/").filter(s => s && !s.includes("{")).pop() || null;
+      const uacc = ovr || derive(verb, ulit);
+      if (uacc !== "View" && uacc !== "Export") {
+        const ubody = lines.slice(k, Math.min(k + 12, lines.length)).join("\n");
+        const ucall = (ubody.match(/([A-Za-z0-9_]+)\.[A-Za-z0-9_]+\(/) || [])[1];
+        const uiface = ucall ? params[ucall] : null;
+        const ucls = uiface ? diMap[uiface] : null;
+        const uh = ucls && classes[ucls] ? classes[ucls].body : null;
+        out.push({
+          file: path.basename(f), ctrl: clsName, verb, route, acc: uacc,
+          via: "(ungated)", cls: ucls || "?",
+          verdict: (STRONG.test(ubody) || (uh && STRONG.test(uh)))
+            ? "UNGATED-handler-guarded" : "UNGATED-NO-GUARD"
+        });
+      }
+      continue;
+    }
 
     const lit = route.split("/").filter(s => s && !s.includes("{")).pop() || null;
     const acc = ovr || derive(verb, lit);
@@ -120,8 +145,15 @@ for (const f of files) {
 }
 fs.writeFileSync(sp + "/audit.json", JSON.stringify(out, null, 1));
 const by = v => out.filter(o => o.verdict === v).length;
+const ungated = out.filter(o => o.verdict.startsWith("UNGATED"));
 console.log("write endpoints UserRole can invoke: " + out.length);
-console.log("  guarded          : " + by("guarded"));
-console.log("  NO GUARD         : " + by("NO GUARD"));
-console.log("  WEAK (existence) : " + by("WEAK"));
-console.log("  UNRESOLVED       : " + by("UNRESOLVED"));
+console.log("  gated by [RequirePermission] : " + (out.length - ungated.length));
+console.log("    guarded          : " + by("guarded"));
+console.log("    NO GUARD         : " + by("NO GUARD"));
+console.log("    WEAK (existence) : " + by("WEAK"));
+console.log("    UNRESOLVED       : " + by("UNRESOLVED"));
+console.log("  ungated (bare [RequirePermission] — the HANDLER must authorise) : " + ungated.length);
+console.log("    handler-guarded  : " + by("UNGATED-handler-guarded"));
+console.log("    NO GUARD         : " + by("UNGATED-NO-GUARD"));
+for (const o of ungated)
+  console.log("      " + o.verb + " " + o.route + " -> " + o.cls + " [" + o.verdict + "]");

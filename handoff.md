@@ -4778,6 +4778,11 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **HR assigned as an evaluator used to lose their HR reach** — the guard now checks IsAdmin first
   (§12.77). Note `IsAdminAsync` also returns true for a named workflow User approver, not just roles.
 
+- **`permission-audit.cjs` now reports UNGATED writes separately** — it used to skip a bare
+  `[RequirePermission]` entirely, so "118/118 guarded" covered only GATED endpoints and would have
+  hidden an accidental one (logic §12.80). "ungated + handler-guarded" means a guard was SEEN, not
+  proven - go read it.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
