@@ -4797,6 +4797,15 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **Both SPAs keep their own copy of `personBackground/experienceSection`** — a field added there
   must be added twice.
 
+- **⚠ The Email section in appsettings.json shows EMPTY credentials but mail WORKS** — the real
+  ones come from user-secrets/env. Prove the relay with `POST Setting/test-email` before blaming
+  config for a missing message (logic §12.83).
+- **Notifications for two different audiences must not share a failure path** — a candidate with no
+  address used to silence the interview PANEL notice too, because ResolveAsync returned null and the
+  method returned. Panel notices now run first and independently.
+- **To exercise interview notifications safely**: run with `Email__PickupDirectory` set (writes .eml
+  instead of sending — panelist addresses are real mailboxes).
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

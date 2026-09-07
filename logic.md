@@ -5805,3 +5805,53 @@ and the tenant's one real row is untouched and still NULL.
 
 Both SPAs carry their own copy of the shared `personBackground/experienceSection`, so the column and
 the field were added twice — Home's copy is what an employee sees read-only under My Profile.
+
+### 12.83 Interview scheduling told nobody — two different reasons, and neither was the mail relay
+
+Reported as "no automated emails to the applicant and the evaluator". Two independent causes, and
+the relay was not one of them: a test message through `Setting/test-email` delivered for real via
+`smtp.gmail.com` authenticated as the configured account. **The `Email` section of
+`appsettings.json` carries an empty UserName/Password — the working credentials come from
+user-secrets/environment, so the file alone reads as misconfigured when it is not.**
+
+**1. The evaluator was never notified — it did not exist.** `InterviewNotifier` is applicant-only by
+construction; its own summary says "Automatic **applicant** e-mails" and the call site "Automatic
+**applicant** invitation". There was no panel path to fail.
+
+**2. ⚠️ A candidate with no e-mail address silenced the whole notification.**
+
+```csharp
+var ctx = await ResolveAsync(interview.ApplicationId);
+if (ctx is null) return;      // ← ResolveAsync returns null when the candidate has no address
+```
+
+CND-0001 has no address, so scheduling their interview returned before doing anything — and once the
+panel notice was added it would have been skipped for the same reason. **The two audiences have
+nothing to do with each other and must not share a failure.** `NotifyPanelAsync` therefore runs
+FIRST and independently, and `ResolveAsync` gained `requireEmail: false` so the panel notice can
+still borrow the candidate's NAME and vacancy title without demanding an address it does not need.
+
+That skip was also logged at **Information**, below the level anyone reads — which is why a missing
+address was reported as a system fault. Now a Warning that says the invitation was not sent.
+
+The panel is notified on **schedule, reschedule and cancel** — an evaluator not told a slot moved
+turns up to the old one — through the new `Interview.PanelNotified` event (template first, hardcoded
+fallback), plus a portal alert deep-linked to `/myEvaluations`.
+
+**Verified on the exact failing case** — application EBA30660, whose candidate has NO address:
+
+| channel | result |
+|---|---|
+| e-mail | `.eml` written, `To: noemail@gmail.com`, subject "Interview scheduled — Getaneh Ash…" |
+| portal | `tatekg` · "Interview scheduled - you are on the panel" · `/myEvaluations` · Severity Action |
+| log | "alerted 1 panelist account(s), 1 address(es)." |
+
+Mail was redirected to files via `Email__PickupDirectory` rather than sent, because the panelist's
+address is a real deliverable mailbox. The test needed the application at Interview stage, so the
+stage was flipped in SQL (bypassing the handler, which would have written a stage-log row) and the
+interview, its panelist, its portal alert and the stage were all removed afterwards — counts back to
+2 / 2 / Hired / 1525.
+
+**Request 3 (evaluator portal) needed no work — it was built in §12.78.** `GET /MyEvaluation`
+returns both applicants for `tatekg` with their assigned criteria, and the `/myEvaluations` menu row
+is live. The portal alert now deep-links straight to it.

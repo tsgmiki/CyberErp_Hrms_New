@@ -24,13 +24,22 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobApplication> applicationRepository,
         IRepository<Candidate> candidateRepository,
         IRepository<JobRequisition> requisitionRepository,
+        IRepository<InterviewPanelist> panelistRepository,
+        IRepository<User> userRepository,
         IEmailService emailService,
         INotificationDispatcher dispatcher,
+        IPortalNotifier portalNotifier,
         ILogger<InterviewNotifier> logger) : IInterviewNotifier
     {
         private sealed record Context(string Email, string CandidateName, string VacancyTitle);
 
-        private async Task<Context?> ResolveAsync(Guid applicationId)
+        /// <param name="requireEmail">
+        /// True for the applicant's own mail, where no address means there is nothing to send.
+        /// FALSE for the panel notice, which only borrows the candidate's NAME and the vacancy
+        /// title for its wording — refusing to build that because the candidate is unreachable
+        /// would punish the evaluators for the applicant's missing address.
+        /// </param>
+        private async Task<Context?> ResolveAsync(Guid applicationId, bool requireEmail = true)
         {
             var context = await applicationRepository.GetAll()
                 .Where(a => a.Id == applicationId)
@@ -47,15 +56,20 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 })
                 .FirstOrDefaultAsync();
 
-            if (context?.Candidate is null || string.IsNullOrWhiteSpace(context.Candidate.Email))
+            if (context?.Candidate is null)
+                return null;
+            if (requireEmail && string.IsNullOrWhiteSpace(context.Candidate.Email))
             {
-                logger.LogInformation(
-                    "Interview notification skipped for application {ApplicationId} — the candidate has no e-mail address",
+                // WARNING, not Information. "The invitation was never sent" is not routine, and at
+                // Info it sat below the level anyone reads — which is exactly why the missing mail
+                // was reported as a system fault rather than as the missing address it is.
+                logger.LogWarning(
+                    "Interview invitation NOT sent for application {ApplicationId} — the candidate has no e-mail address on record",
                     applicationId);
                 return null;
             }
             var name = $"{context.Candidate.FirstName} {context.Candidate.FatherName}".Trim();
-            return new Context(context.Candidate.Email, name, context.Title ?? "the advertised position");
+            return new Context(context.Candidate.Email ?? string.Empty, name, context.Title ?? "the advertised position");
         }
 
         private static string When(DateTime start, DateTime end) =>
@@ -100,8 +114,105 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                 EntityId: interview.Id,
                 SubjectAddresses: [ctx.Email]));
 
+        /// <summary>
+        /// Tells the PANEL — the evaluators on this interview — that it is booked: an alert in the
+        /// Home portal and an e-mail.
+        ///
+        /// <para>⚠️ Raised SEPARATELY from the applicant's invitation, and deliberately before it.
+        /// <c>ResolveAsync</c> returns null when the candidate has no e-mail address and
+        /// <c>ScheduledAsync</c> then returns immediately — so while the panel notice lived inside
+        /// that flow, ONE missing candidate address silenced the evaluators too. The two audiences
+        /// have nothing to do with each other and must not share a failure (logic §12.83).</para>
+        ///
+        /// <para>Best effort throughout: scheduling an interview must not fail over a notification.
+        /// External panelists carry no EmployeeId, so they have neither a portal account nor a known
+        /// address — they are counted in the log rather than silently dropped.</para>
+        /// </summary>
+        private async Task NotifyPanelAsync(Interview interview, string verb, string? whenLine = null)
+        {
+            try
+            {
+                var employeeIds = (await panelistRepository.GetAll().AsNoTracking()
+                    .Where(x => x.InterviewId == interview.Id && x.EmployeeId != null)
+                    .Select(x => x.EmployeeId!.Value)
+                    .ToListAsync()).Distinct().ToList();
+                if (employeeIds.Count == 0)
+                {
+                    logger.LogInformation(
+                        "Interview {Id} {Verb}: no employee panelists — no evaluator alert raised.", interview.Id, verb);
+                    return;
+                }
+
+                var accounts = await userRepository.GetAll().AsNoTracking()
+                    .Where(u => u.EmployeeId != null && employeeIds.Contains(u.EmployeeId.Value))
+                    .Select(u => new { u.Id, u.Email })
+                    .ToListAsync();
+
+                var ctx = await ResolveAsync(interview.ApplicationId, requireEmail: false);
+                var who = ctx?.CandidateName ?? "a candidate";
+                var role = ctx?.VacancyTitle ?? "the advertised position";
+                var body = $"You are on the interview panel for {who} ({role}), round {interview.Round}. " +
+                           (whenLine ?? When(interview.ScheduledStart, interview.ScheduledEnd)) + ". " +
+                           Where(interview).Replace(Environment.NewLine, " ").Trim();
+
+                try
+                {
+                    await portalNotifier.NotifyUsersAsync(
+                        accounts.Select(a => a.Id), $"Interview {verb} — you are on the panel", body,
+                        "/myEvaluations", "Action", nameof(Interview), interview.Id);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Interview {Id}: portal alert to the panel failed", interview.Id);
+                }
+
+                var addresses = accounts.Select(a => a.Email)
+                    .Where(e => !string.IsNullOrWhiteSpace(e)).Select(e => e!.Trim()).Distinct().ToList();
+                if (addresses.Count == 0)
+                {
+                    logger.LogInformation(
+                        "Interview {Id} {Verb}: {Count} panelist account(s) alerted in the portal, none has an e-mail address.",
+                        interview.Id, verb, accounts.Count);
+                    return;
+                }
+
+                var dispatched = await dispatcher.DispatchAsync(new NotificationContext(
+                    NotificationEvents.InterviewPanelNotified,
+                    new Dictionary<string, string?>
+                    {
+                        ["CandidateName"] = ctx?.CandidateName,
+                        ["VacancyTitle"] = ctx?.VacancyTitle,
+                        ["Round"] = interview.Round.ToString(),
+                        ["InterviewDate"] = interview.ScheduledStart.ToString("dd MMM yyyy"),
+                        ["StartTime"] = interview.ScheduledStart.ToString("HH:mm"),
+                        ["EndTime"] = interview.ScheduledEnd.ToString("HH:mm"),
+                        ["Mode"] = interview.Format.ToString(),
+                        ["Action"] = verb,
+                    },
+                    EntityType: nameof(Interview),
+                    EntityId: interview.Id,
+                    SubjectAddresses: addresses));
+
+                if (dispatched == 0)
+                    foreach (var address in addresses)
+                        await emailService.SendAsync(address, $"Interview {verb} — {who} ({role})", body);
+
+                logger.LogInformation(
+                    "Interview {Id} {Verb}: alerted {Portal} panelist account(s), {Mail} address(es).",
+                    interview.Id, verb, accounts.Count, addresses.Count);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Interview {Id}: panel notification failed", interview.Id);
+            }
+        }
+
         public async Task ScheduledAsync(Interview interview)
         {
+            // The panel is told first, and on its own — a candidate with no address must not take
+            // the evaluators' notice down with it.
+            await NotifyPanelAsync(interview, "scheduled");
+
             try
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
@@ -134,6 +245,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
         public async Task RescheduledAsync(Interview interview, DateTime oldStart, DateTime oldEnd)
         {
+            await NotifyPanelAsync(interview, "rescheduled",
+                $"Moved from {When(oldStart, oldEnd)} to {When(interview.ScheduledStart, interview.ScheduledEnd)}");
+
             try
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
@@ -167,6 +281,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
         public async Task CancelledAsync(Interview interview)
         {
+            await NotifyPanelAsync(interview, "cancelled");
+
             try
             {
                 var ctx = await ResolveAsync(interview.ApplicationId);
