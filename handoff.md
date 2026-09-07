@@ -4783,6 +4783,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   hidden an accidental one (logic §12.80). "ungated + handler-guarded" means a guard was SEEN, not
   proven - go read it.
 
+- **Internal recruitment's salary/position/experience rules live in the BACKEND already** —
+  PlaceInternalAsync nulls pay on a Transfer, HireCandidate resolves the seat, and every movement
+  execution writes an EmployeeExperience row. When one of those looks missing, check the FORM first:
+  it used to let a salary be typed on a transfer and then silently discarded (logic §12.81).
+- **`TargetPosition.ResolveAsync` is shared by the hire and the hire QUEUE** — keep it that way, or
+  the seat shown to HR stops being the seat filled.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

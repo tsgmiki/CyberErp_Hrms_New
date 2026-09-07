@@ -218,11 +218,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var positionId = dto.PositionId;
             if (!positionId.HasValue && vacancy is not null)
-                positionId = await positionRepository.GetAll()
-                    .Where(p => p.PositionClassId == vacancy.PositionClassId && p.IsVacant)
-                    .OrderByDescending(p => p.OrganizationUnitId == vacancy.OrganizationUnitId ? 1 : 0)
-                    .Select(p => (Guid?)p.Id)
-                    .FirstOrDefaultAsync();
+                positionId = await TargetPosition.ResolveAsync(
+                    positionRepository, vacancy.PositionClassId, vacancy.OrganizationUnitId);
 
             Guid? branchId = null;
             if (positionId.HasValue)

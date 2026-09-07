@@ -5697,3 +5697,59 @@ this audit either way — it covers writes.
 **The lesson, and it applies past this script:** a checker that silently skips what it cannot parse
 reports a clean bill of health for the cases it never examined. Prefer a bucket that says
 "not assessed" over a `continue`.
+
+### 12.81 Adopt into Ranking: close on success — and what internal recruitment already did
+
+**1. Adopt into Ranking now closes and confirms.** The button sat inside the interviews modal and,
+on success, refreshed in place with no confirmation — leaving the user looking at the same screen
+wondering whether anything had happened. It now invalidates, toasts and calls `onClose()`.
+
+Two details in the ordering:
+
+- **Invalidate BEFORE closing.** The ranking and the score sheet the adoption changed live *behind*
+  this modal; queueing the invalidations first means they refetch even though this component is about
+  to unmount.
+- **A FAILURE stays on the modal.** `if (!res.ok) return setActionError(...)` — the panel scores the
+  message refers to are still on screen, and closing would hide the context needed to act on it.
+
+Only HRMS has this UI; Home carries the service but no component that calls it.
+
+**2. Internal recruitment — three of the four rules were ALREADY implemented server-side.** Worth
+recording, because the request read as "please build this" and the honest answer was "the engine
+does it; the form does not show it":
+
+| rule | where it already lived |
+|---|---|
+| Target position from the vacancy | `HireCandidate` — "a still-vacant slot of the requisition's role, preferring its own unit. A DTO value wins." |
+| Transfer retains salary | `PlaceInternalAsync` — `ToSalary`/`ToSalaryScaleId` sent as **null** when `isTransfer` |
+| Promotion/Demotion may set salary | same branch, non-transfer passes the figure through |
+| Experience logging | `RegisterInternalExperienceAsync`, called on **every** movement execution — and internal recruitment routes through the movement module, so it inherits it |
+
+⚠️ **The gap was the form silently disagreeing with the server.** The position dropdown offered
+*every* vacant seat in the organization (capped at 200, unfiltered) and defaulted to a blank "Auto"
+— so HR re-picked by hand what the server was about to resolve anyway. And the salary box stayed
+editable on a Transfer: a figure could be typed, accepted, and then **discarded** by the server
+without a word.
+
+Fixed by making the server's own answers visible:
+
+- `TargetPosition.ResolveAsync` extracted so the **hire** and the **queue that offers the choice**
+  cannot drift — if they did, the seat shown to HR would not be the one filled. The queue resolves it
+  once per vacancy, not per applicant.
+- `HireQueueRowDto` gained `TargetPositionId`, `TargetPositionLabel` and `CurrentSalary` (internal
+  only, batched — one query for the pool, not one per row).
+- The form pre-selects that seat, and **explicitly lists it as an option**: the dropdown is capped at
+  200 vacancies org-wide, so the resolved seat is not guaranteed to be in the list and the
+  pre-selected value would otherwise render as a blank box.
+- On `Transfer` the salary field shows the **current** figure, greyed and read-only, and the submit
+  withholds it entirely — so the payload cannot disagree with what was shown.
+
+⚠️ Only an **explicit** Transfer locks the field. Left on *Auto*, the typed figure is what derives
+Promotion / Transfer / Demotion, so locking it there would make the action underivable.
+
+Verified live on the one internal candidate in CERP: the queue returns
+`targetPositionId=83e4716f…`, `label="CYE-01 — Cyber Security Expert"` (the vacancy's own role) and
+`currentSalary=27120`.
+
+⚠️ **Not exercised: an actual placement.** Running it would move a real employee's position and pay
+and start a movement approval, which is the user's action to take.

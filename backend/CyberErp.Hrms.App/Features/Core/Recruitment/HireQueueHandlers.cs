@@ -30,6 +30,21 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public bool IsInternal { get; set; }
         /// <summary>True when every hire precondition is met (eligible + stage + offer + compliance).</summary>
         public bool CanHire { get; set; }
+
+        /// <summary>
+        /// The vacant seat this hire will land on — resolved by the SAME rule the hire itself uses
+        /// (<see cref="TargetPosition"/>), so the form can pre-select it instead of making HR hunt
+        /// through every vacant position in the organization.
+        /// </summary>
+        public Guid? TargetPositionId { get; set; }
+        /// <summary>Human label for that seat ("CODE — Role"), for the pre-selected option.</summary>
+        public string? TargetPositionLabel { get; set; }
+        /// <summary>
+        /// The internal employee's CURRENT salary — null for an external candidate. Lets the form
+        /// show what a Transfer retains, and lock the field, rather than inviting a figure the
+        /// server will discard.
+        /// </summary>
+        public decimal? CurrentSalary { get; set; }
         /// <summary>The first unmet precondition, for the row's tooltip.</summary>
         public string? BlockedReason { get; set; }
     }
@@ -46,6 +61,9 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobApplication> applicationRepository,
         IRepository<CandidateDocument> candidateDocumentRepository,
         IRepository<Candidate> candidateRepository,
+        IRepository<Position> positionRepository,
+        IRepository<PositionClass> positionClassRepository,
+        IRepository<Employee> employeeRepository,
         IGetApplicationRanking rankingHandler) : IGetHireQueue
     {
         public async Task<List<HireQueueRowDto>> GetAsync()
@@ -68,6 +86,27 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             foreach (var q in requisitions.Where(q => hasApplications.Contains(q.Id)))
             {
                 var ranking = await rankingHandler.GetAsync(q.Id);
+
+                // One resolution per vacancy, not per applicant — every row of a requisition lands on
+                // the same seat, and this is a query.
+                var target = await requisitionRepository.GetAll().AsNoTracking()
+                    .Where(x => x.Id == q.Id)
+                    .Select(x => new { x.PositionClassId, x.OrganizationUnitId })
+                    .FirstOrDefaultAsync();
+                Guid? targetPositionId = target is null
+                    ? null
+                    : await TargetPosition.ResolveAsync(positionRepository, target.PositionClassId, target.OrganizationUnitId);
+                string? targetLabel = null;
+                if (targetPositionId.HasValue)
+                {
+                    var seat = await positionRepository.GetAll().AsNoTracking()
+                        .Where(p => p.Id == targetPositionId.Value)
+                        .Select(p => new { p.Code, p.PositionClassId })
+                        .FirstOrDefaultAsync();
+                    var role = seat is null ? null : await positionClassRepository.GetAll().AsNoTracking()
+                        .Where(c => c.Id == seat.PositionClassId).Select(c => c.Title).FirstOrDefaultAsync();
+                    targetLabel = seat is null ? null : $"{seat.Code} — {role}".TrimEnd(' ', '—');
+                }
                 var hired = ranking.Count(r => r.Stage == nameof(ApplicationStage.Hired));
                 var hasCriteria = ranking.Any(r => r.TotalCriteria > 0);
 
@@ -91,11 +130,23 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
                 // Internal applicants (existing employees) are placed via a promotion/transfer, not a new
                 // hire — the new-hire compliance-document gate does not apply to them.
-                var internalCandidateIds = (await candidateRepository.GetAll().AsNoTracking()
-                        .Where(c => poolCandidateIds.Contains(c.Id) && c.InternalEmployeeId != null)
-                        .Select(c => c.Id)
-                        .ToListAsync())
-                    .ToHashSet();
+                var internalLinks = await candidateRepository.GetAll().AsNoTracking()
+                    .Where(c => poolCandidateIds.Contains(c.Id) && c.InternalEmployeeId != null)
+                    .Select(c => new { CandidateId = c.Id, EmployeeId = c.InternalEmployeeId!.Value })
+                    .ToListAsync();
+                var internalCandidateIds = internalLinks.Select(x => x.CandidateId).ToHashSet();
+
+                // Current pay for the internal applicants, batched — the form needs it to show what a
+                // Transfer retains. One query for the whole pool rather than one per row.
+                var internalEmployeeIds = internalLinks.Select(x => x.EmployeeId).Distinct().ToList();
+                var salaryByEmployee = internalEmployeeIds.Count == 0
+                    ? []
+                    : await employeeRepository.GetAll().AsNoTracking()
+                        .Where(e => internalEmployeeIds.Contains(e.Id))
+                        .ToDictionaryAsync(e => e.Id, e => e.Salary);
+                var salaryByCandidate = internalLinks
+                    .Where(x => salaryByEmployee.ContainsKey(x.EmployeeId))
+                    .ToDictionary(x => x.CandidateId, x => salaryByEmployee[x.EmployeeId]);
 
                 foreach (var r in poolRows)
                 {
@@ -137,7 +188,10 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                         MissingComplianceDocuments = missing,
                         IsInternal = isInternal,
                         CanHire = blocked is null,
-                        BlockedReason = blocked
+                        BlockedReason = blocked,
+                        TargetPositionId = targetPositionId,
+                        TargetPositionLabel = targetLabel,
+                        CurrentSalary = isInternal ? salaryByCandidate.GetValueOrDefault(r.CandidateId) : null
                     });
                 }
             }
