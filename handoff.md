@@ -4741,10 +4741,12 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   not.** ClimbAsync self-excludes the requester, so stamping the submitter on an anchored step can
   route the approval AWAY from the intended office — which is why SalaryRevision stays null.
 
-- **⚠ ONLY 6 of 121 org units have a manager, so 139 staff cannot resolve one** — and the bypass
-  covers only MANAGERIAL employees, so an ImmediateManager step is a FAILED SUBMIT for them, not a
-  stalled one. Annual Leave already has this and those 139 cannot request leave today. Fix = 11 rows:
-  run `scripts/units-needing-managers.sql` (logic §12.72).
+- **Directorate heads are designated (2026-09-02): 139 blocked staff -> 0** — seven people flagged
+  IsManagerial via `scripts/designate-unit-managers.sql`; annual leave works for everyone again.
+  ⚠ `IsManagerial` also grants MANAGER VISIBILITY over the subtree, not just workflow routing.
+  ⚠ Still open: Bord Of Director (root) has no staff, so the top of each branch cannot resolve a
+  manager above itself (ClimbAsync self-excludes the requester) and cannot submit manager-step
+  requests. The 19 Manager/Supervisor steps can now move to ImmediateManager (logic §12.76).
 - **A Role approver nobody holds is worse than an open step** — HR Admin / HR Officer have ZERO
   holders; the request is accepted and then waits forever instead of failing loudly.
 

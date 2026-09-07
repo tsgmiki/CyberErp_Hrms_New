@@ -5483,3 +5483,53 @@ changed nothing rather than half-running. Rewritten as a `LEFT JOIN`.
 Verified: retries 15 → **0** with no live retry removed, recurring jobs still the two legitimate
 ones, all orphan counts zero, nothing non-terminal, and the application starts with no job errors
 and serves requests normally (login 200, `/Workflow` 200).
+
+### 12.76 Designating the directorate heads — 139 blocked employees to zero
+
+Applied `scripts/designate-unit-managers.sql`. **Seven people, not eleven units**, and the difference
+is the point: five of the eleven units that needed a manager have **nobody positioned in them**, and
+they do not need one — the climb inherits downward, so an ancestor's head already covers them.
+
+```
+Bord Of Director (no staff, root)
+└── General Director                          <- Martha (Dr.) Yami
+    ├── Finance Directorate            (no staff)
+    ├── Vaccine Sales … Directorate    (no staff)
+    ├── HR Devt & Admin Directorate           <- Kehase Berhe + Aberash Teklu
+    ├── Procurement & Property Directorate    <- Lemlem Hagos
+    └── Vice General Director                 <- Esayas (Dr.) Gelaye
+        ├── Quality Control & Assurance   (no staff)
+        ├── Engineering & Maintenance     (no staff)
+        ├── Vaccine R&D Directorate           <- Belayneh (Dr.) Getachew
+        └── Vaccine Production Directorate    <- Gelagay (Dr.) Ayelet
+```
+
+The General Manager alone would have covered every unit beneath. **The intermediate directors are
+what keep routing precise** — without them every "Supervisor Review" in the organisation would climb
+past the directorates to one person.
+
+**Selection carried no judgement:** each was chosen because their own position title names the unit
+they sit in ("Vaccine Production and Drug Formulation Directorate Director", "Operation Vice General
+Director", …). Two people hold the *identical* director title in HR Devt & Admin and **both** were
+designated — `ResolvedManager` carries a list per unit, so either may act, and the data gives no
+basis for preferring one. All seven have a login, which matters: a manager who resolves but cannot
+sign in leaves the step stuck.
+
+Result: **139 → 0** employees unable to resolve a manager. The simulation predicted zero before
+anything was written, and the post-run check confirmed it.
+
+**⚠️ `IsManagerial` is not only workflow routing.** It also makes the person a manager for
+*visibility* — `VisibilityScope.IsManager` with `UnitIds` = their subtree. Verified live, and the
+nesting is right: `martha(dr)y` now sees 57 units, `esayas(dr)g` 31 (a subset), `lemlemh` 4, and a
+non-manager still 0. Appropriate for these roles, but a real widening of data access, so it is
+recorded rather than left implicit.
+
+**Still not fixed, by design:** Bord Of Director is the root and has no staff, so whoever sits at the
+TOP of a branch — the General Manager here, the CEO in the parallel branch — still cannot resolve a
+manager above themselves, because `ClimbAsync` self-excludes the requester (§12.72). They cannot
+submit a request whose chain contains a manager step. Positioning someone in Bord Of Director is the
+remedy.
+
+**This unblocks the follow-up:** the 19 `Manager Review` / `Supervisor Review` steps left open in
+§12.72 can now move to `ImmediateManager`, and the annual-leave breakage (step 1 is already
+`ImmediateManager`) is fixed by this change alone — those 139 employees can submit leave again.
