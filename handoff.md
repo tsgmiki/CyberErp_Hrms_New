@@ -4755,6 +4755,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   naming the old method and keep retrying after the code fix;
   `scripts/clear-stale-settlement-reminder-jobs.sql` clears them.
 
+- **⚠ Purging/restoring data leaves HangFire's own tables behind** — recurring jobs outlive the rows
+  they were created for and then fail forever. `RunReportSchedule` now unregisters itself when its
+  schedule is gone (logic §12.74). Check `HangFire.[Hash]` for `recurring-job:%` after any purge.
+- **A background job must never be stuck in a state it cannot exit** — if the precondition can never
+  become true again (no user to authorise, no row to act on), skip/unregister/return; throw only for
+  something a retry could clear (§12.73, §12.74).
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

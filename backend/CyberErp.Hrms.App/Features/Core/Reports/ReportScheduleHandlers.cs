@@ -365,14 +365,38 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         IReportScheduleStore store,
         IReportExecutor executor,
         IEmailService emailService,
+        IReportJobScheduler jobScheduler,
         ILogger<RunReportSchedule> logger) : IRunReportSchedule
     {
         public async Task<ScheduleRunResultDto> RunAsync(Guid scheduleId)
         {
             // Discover the owning tenant from the row (no ambient context in a background job).
             var tenantId = await schedules.GetAllWithoutTenantFilter()
-                .Where(s => s.Id == scheduleId).Select(s => s.TenantId).FirstOrDefaultAsync()
-                ?? throw new NotFoundException(nameof(ReportSchedule), scheduleId.ToString());
+                .Where(s => s.Id == scheduleId).Select(s => s.TenantId).FirstOrDefaultAsync();
+
+            // ⚠️ THE SCHEDULE IS GONE — UNREGISTER THIS JOB INSTEAD OF THROWING FOREVER.
+            //
+            // Deleting a schedule through the application removes its recurring job
+            // (DeleteReportSchedule calls jobScheduler.Remove), so the two normally stay in step. But
+            // the row can also disappear OUT OF BAND — the 2026-08-10 NVI purge is exactly that: it
+            // cleared Hrms.ReportSchedule by SQL and deliberately left HangFire's own schema
+            // untouched, so a recurring job created 2026-07-15 was still firing daily a month later
+            // against a row that no longer existed.
+            //
+            // Throwing was the wrong response to that: a recurring job whose subject has been deleted
+            // can NEVER succeed, so it just retried ten times with backoff and reprinted a NotFound
+            // stack trace on every application start (logic §12.74). Removing itself is the only
+            // outcome that ends the loop, and it is safe because the lookup bypasses the tenant filter
+            // — a null here means the row is absent everywhere, not merely out of scope. A database
+            // that is unreachable raises instead of returning null, so a transient fault cannot
+            // trigger this.
+            if (tenantId is null)
+            {
+                logger.LogWarning(
+                    "Report schedule {Id} no longer exists — removing its orphaned recurring job.", scheduleId);
+                jobScheduler.Remove(scheduleId);
+                return new ScheduleRunResultDto { Rows = 0, Recipients = string.Empty, Sent = false };
+            }
 
             var info = await store.GetScheduleInfoAsync(scheduleId, tenantId)
                 ?? throw new NotFoundException(nameof(ReportSchedule), scheduleId.ToString());
