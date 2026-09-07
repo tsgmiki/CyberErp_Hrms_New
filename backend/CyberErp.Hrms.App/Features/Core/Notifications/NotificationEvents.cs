@@ -49,6 +49,9 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
         /// <summary>A vacancy has been posted — addressed to the examiners assigned to its criteria.</summary>
         public const string VacancyPosted = "Vacancy.Posted";
 
+        /// <summary>An interview was booked/moved/cancelled — addressed to the PANEL, not the applicant.</summary>
+        public const string InterviewPanelNotified = "Interview.PanelNotified";
+
         /// <summary>
         /// The seed set. Applied idempotently by <c>SeedNotificationEvents</c> — an existing row is
         /// refreshed (name / tokens can improve) but never duplicated, and rows are never deleted,
@@ -158,6 +161,9 @@ namespace CyberErp.Hrms.App.Features.Core.Notifications
             new(VacancyPosted, "Vacancy posted - examiner assignment", "Recruitment",
                 "RequisitionNumber,VacancyTitle,NumberOfPositions,OpenUntil",
                 "Raised when a job requisition is posted. Addressed to the examiners assigned to its screening criteria (EventSubject)."),
+            new(InterviewPanelNotified, "Interview - panel notified", "Recruitment",
+                "CandidateName,VacancyTitle,Round,InterviewDate,StartTime,EndTime,Mode,Action",
+                "Raised when an interview is scheduled, rescheduled or cancelled. Addressed to the interview PANEL (EventSubject) - the applicant has its own separate events."),
         ];
     }
 
