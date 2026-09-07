@@ -77,6 +77,8 @@ export interface EmployeeExperienceModel extends AbstractModel {
   /** True = prior job at another employer; auto-set true for manual entries. */
   isExternal?: boolean;
   isGovernmental?: boolean;
+  /** Pay in the role; null/undefined when never recorded — not the same as zero. */
+  salary?: number | null;
   documentCount?: number;
   /** Dynamic custom-field values (HC021), keyed by field name. */
   customFields?: Record<string, string | null>;

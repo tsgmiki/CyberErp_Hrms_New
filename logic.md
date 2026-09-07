@@ -5753,3 +5753,55 @@ Verified live on the one internal candidate in CERP: the queue returns
 
 ⚠️ **Not exercised: an actual placement.** Running it would move a real employee's position and pay
 and start a movement approval, which is the user's action to take.
+
+### 12.82 EmployeeExperience.Salary — one column, four writers
+
+Added `Salary` to `Hrms.EmployeeExperience` across the stack.
+
+**⚠️ Nullable, no default.** Every existing row genuinely has no recorded salary, and most external
+history never will — a candidate is under no obligation to say what a previous employer paid.
+Defaulting to `0` would assert **"unpaid"**, which is a different claim from **"not recorded"**, and
+it is the kind of difference that later reads as data rather than as a gap. The grid renders null as
+an em dash for the same reason.
+
+`decimal(18,2)`, matching `Hrms.Employee.Salary` deliberately: the two are compared when reading a
+person's pay history, and money that rounds differently depending on which table it came from is
+worse than money that is missing.
+
+**⚠️ FOUR writers share this one entity, and three of them are easy to miss:**
+
+| writer | handling |
+|---|---|
+| Employee Experience form | new optional field |
+| **Candidate** Experience form | same entity, different DTO — the compiler caught it |
+| `RegisterInternalExperienceAsync` (movements) | fills it automatically |
+| — | |
+
+The candidate path is the one worth recording: `EmployeeExperience.Update` **overwrites**, so leaving
+salary off that call would have silently **erased** a recorded figure every time a candidate's
+experience row was edited. Adding the required parameter to `Update` is what surfaced it — a nullable
+optional would have compiled and lost data quietly.
+
+**⚠️ The movement path uses `movement.FromSalary`, NOT `employee.Salary`.** The row describes the role
+being **left**, and `ApplyMovement` has already written the new pay onto the employee by the time
+`RegisterInternalExperienceAsync` runs. Reading it from the employee would stamp the promotion's
+salary onto the job it replaced, making every history entry look as though the raise came first.
+
+**Migration hand-written, not scaffolded.** The installed EF tools (9.0.5) are a major version behind
+the runtime (10.0.8), and `migrations add` in that state does not update `HrmsDbContextModelSnapshot`
+— leaving the next scaffold to "rediscover" the column and emit it twice. The migration and the
+snapshot entry were written together, and the migration carries its own `[Migration]` attribute (a
+hand-written file without one compiles, sits in the folder, and is never applied).
+
+**A concern that turned out to be unfounded, checked rather than assumed:** `numberFields` in
+`createSaveService` coerces with `Number(x)`, and `Number("")` is `0` — which looked like it would
+save a blank box as zero. It does not: an earlier pass drops every `""` value *before* the numeric
+coercion runs, so the field is already absent. The helper honours its documented contract, and the
+22 other forms using it needed no change.
+
+Verified live: `GET` returns `salary: null` for the pre-existing row; a `POST` carrying `12345.67`
+round-trips exactly; `-5` is refused with "Salary cannot be negative."; the throwaway row was deleted
+and the tenant's one real row is untouched and still NULL.
+
+Both SPAs carry their own copy of the shared `personBackground/experienceSection`, so the column and
+the field were added twice — Home's copy is what an employee sees read-only under My Profile.

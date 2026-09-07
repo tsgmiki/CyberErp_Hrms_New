@@ -3366,6 +3366,10 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired()
                         .HasColumnType("varbinary(8)");
 
+                    b.Property<decimal?>("Salary")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateTime?>("StartDate")
                         .HasColumnType("datetime2(7)");
 

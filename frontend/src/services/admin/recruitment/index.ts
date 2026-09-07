@@ -323,6 +323,7 @@ export const getCandidateExperiences = (candidateId: string) =>
 export const saveCandidateExperience = (candidateId: string, fd: FormData) =>
   createSaveService(`Candidate/${candidateId}/experience`, CandidateExperienceSchema, {
     booleanFields: ["isExternal", "isGovernmental"],
+    numberFields: ["salary"],
     customFields: true,
     method: "POST",
   })(fd);

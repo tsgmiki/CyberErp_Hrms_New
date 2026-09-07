@@ -336,7 +336,13 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 endDate: movement.EffectiveDate,
                 responsibilities: $"Internal {movement.MovementType} recorded on {movement.EffectiveDate:yyyy-MM-dd}.",
                 isExternal: false,
-                isGovernmental: false);
+                isGovernmental: false,
+                // ⚠️ movement.FromSalary, NOT employee.Salary. This row describes the role being
+                // LEFT, and ApplyMovement has already written the new pay onto the employee by the
+                // time we get here — reading it from the employee would stamp the promotion's salary
+                // onto the job it replaced, making every history entry look like the raise came
+                // first (logic §12.82).
+                salary: movement.FromSalary);
             await experienceRepository.AddAsync(experience);
             // Background-safe: the due-movement scheduler runs OUTSIDE a request (no tenant context), so
             // the repository can't stamp the tenant — copy it from the movement row explicitly.
