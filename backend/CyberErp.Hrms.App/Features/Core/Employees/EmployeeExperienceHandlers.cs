@@ -22,6 +22,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         /// <summary>True = prior job at another employer; false = internal role from a movement.</summary>
         public bool IsExternal { get; set; }
         public bool IsGovernmental { get; set; }
+        /// <summary>Pay in the role; null when it was never recorded (not the same as zero).</summary>
+        public decimal? Salary { get; set; }
         public int DocumentCount { get; set; }
         /// <summary>Values of this form's dynamic custom fields (HC021), keyed by field name.</summary>
         public Dictionary<string, string?>? CustomFields { get; set; }
@@ -42,6 +44,8 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public bool IsExternal { get; set; }
         /// <summary>Whether the role was at a governmental organization (set by the user).</summary>
         public bool IsGovernmental { get; set; }
+        /// <summary>Pay in the role. Optional — left null when the employee does not disclose it.</summary>
+        public decimal? Salary { get; set; }
         /// <summary>Submitted values for this form's dynamic custom fields (HC021).</summary>
         public Dictionary<string, string?>? CustomFields { get; set; }
     }
@@ -57,6 +61,11 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .GreaterThanOrEqualTo(x => x.StartDate!.Value)
                 .When(x => x.StartDate.HasValue && x.EndDate.HasValue)
                 .WithMessage("End date cannot be before start date.");
+            // Only the sign is validated: a salary belongs to another employer and another currency
+            // era, so no upper bound here could be anything but arbitrary.
+            RuleFor(x => x.Salary)
+                .GreaterThanOrEqualTo(0).When(x => x.Salary.HasValue)
+                .WithMessage("Salary cannot be negative.");
         }
     }
 
@@ -85,7 +94,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id.Value && x.PersonId == personId)
                     ?? throw new NotFoundException(nameof(EmployeeExperience), dto.Id.Value.ToString());
                 entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities,
-                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
+                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental, salary: dto.Salary);
                 repository.UpdateAsync(entity);
                 // Record + custom-field values commit atomically in one SaveChanges.
                 await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, entity.Id, dto.CustomFields);
@@ -96,7 +105,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
 
             var created = EmployeeExperience.Create(personId, dto.Organization, dto.JobTitle,
                 dto.StartDate, dto.EndDate, dto.Responsibilities,
-                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
+                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental, salary: dto.Salary);
             await repository.AddAsync(created);
             await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();
@@ -151,6 +160,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     Responsibilities = x.Responsibilities,
                     IsExternal = x.IsExternal,
                     IsGovernmental = x.IsGovernmental,
+                    Salary = x.Salary,
                     DocumentCount = documentRepository.GetAll()
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Experience && d.OwnerId == x.Id)
                 })

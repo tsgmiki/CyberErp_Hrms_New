@@ -46,6 +46,18 @@ const COLUMNS: ChildColumn<EmployeeExperienceModel>[] = [
       </span>
     ),
   },
+  {
+    name: "salary",
+    label: "Salary",
+    // An em dash for "not recorded" — a blank cell reads as a rendering fault, and 0 would assert
+    // the role was unpaid. Right-aligned and grouped, because it sits in a column of figures.
+    render: (_v, r) =>
+      r.salary == null ? (
+        <span className="text-muted">—</span>
+      ) : (
+        <span className="block text-right tabular-nums">{Number(r.salary).toLocaleString()}</span>
+      ),
+  },
   { name: "documentCount", label: "Documents", render: docCountCell },
 ];
 
@@ -150,6 +162,12 @@ function ExperienceSection({ ds }: { ds: BackgroundDataSource<EmployeeExperience
               { name: "jobTitle", label: "Role / Job Title", required: true, value: formData.jobTitle, onChange: changeHandler, error: formState?.zodErrors?.jobTitle, type: "text" },
               { name: "startDate", label: "From", value: formData.startDate, onChange: changeHandler, type: "date" },
               { name: "endDate", label: "To", value: formData.endDate, onChange: changeHandler, type: "date" },
+              // Optional by design: previous pay is often undisclosed, and an empty box must stay
+              // empty rather than being saved as 0 (see the DTO — null means "not recorded").
+              // "text", not "number": the shared field renderer has no numeric type, and money is
+              // entered as text elsewhere too (the placement form does the same). The value is
+              // coerced to a real number by the save service and range-checked server-side.
+              { name: "salary", label: "Salary", value: formData.salary, onChange: changeHandler, error: formState?.zodErrors?.salary, type: "text" },
               { name: "responsibilities", label: "Responsibilities", value: formData.responsibilities, onChange: changeHandler, type: "textarea", colSpan: "full" },
               {
                 // Styled toggle rows (border + icon + helper). The checkbox inputs carry their own

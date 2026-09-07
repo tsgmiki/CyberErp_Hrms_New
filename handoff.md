@@ -4790,6 +4790,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **`TargetPosition.ResolveAsync` is shared by the hire and the hire QUEUE** — keep it that way, or
   the seat shown to HR stops being the seat filled.
 
+- **`EmployeeExperience` has FOUR writers** — the employee form, the CANDIDATE form (same entity,
+  separate DTO), and movement execution. `Update` overwrites, so a field omitted from any call is
+  ERASED on edit; movements must fill it from `movement.FromSalary`, not `employee.Salary`, which
+  ApplyMovement has already overwritten (logic §12.82).
+- **Both SPAs keep their own copy of `personBackground/experienceSection`** — a field added there
+  must be added twice.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

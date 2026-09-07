@@ -41,6 +41,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.Responsibilities).HasMaxLength(2000);
             builder.Property(x => x.IsExternal).HasDefaultValue(false);
             builder.Property(x => x.IsGovernmental).HasDefaultValue(false);
+            // Same precision as Employee.Salary — money compared across the two must not round
+            // differently depending on which table it was read from.
+            builder.Property(x => x.Salary).HasPrecision(18, 2);
 
             builder.HasOne<Person>()
                 .WithMany()

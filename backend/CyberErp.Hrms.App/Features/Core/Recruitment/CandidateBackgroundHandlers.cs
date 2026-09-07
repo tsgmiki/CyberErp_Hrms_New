@@ -63,6 +63,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? Responsibilities { get; set; }
         public bool IsExternal { get; set; }
         public bool IsGovernmental { get; set; }
+        /// <summary>Pay in the role; optional, and null when not disclosed.</summary>
+        public decimal? Salary { get; set; }
         public int DocumentCount { get; set; }
         /// <summary>Dynamic custom-field values (HC021, OwnerType=Experience) — shared with the employee form.</summary>
         public Dictionary<string, string?>? CustomFields { get; set; }
@@ -79,6 +81,8 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         public string? Responsibilities { get; set; }
         public bool IsExternal { get; set; }
         public bool IsGovernmental { get; set; }
+        /// <summary>Pay in the role; optional, and null when not disclosed.</summary>
+        public decimal? Salary { get; set; }
         /// <summary>Submitted values for the Experience form's dynamic custom fields (HC021).</summary>
         public Dictionary<string, string?>? CustomFields { get; set; }
     }
@@ -305,6 +309,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     Responsibilities = x.Responsibilities,
                     IsExternal = x.IsExternal,
                     IsGovernmental = x.IsGovernmental,
+                    Salary = x.Salary,
                     DocumentCount = documentRepository.GetAll()
                         .Count(d => d.OwnerType == EmployeeDocumentOwner.Experience && d.OwnerId == x.Id)
                 })
@@ -337,7 +342,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
                     ?? throw new NotFoundException(nameof(EmployeeExperience), dto.Id.Value.ToString());
                 // Identical to the employee Experience form — the user-set external/governmental flags are honored.
                 entity.Update(dto.Organization, dto.JobTitle, dto.StartDate, dto.EndDate, dto.Responsibilities,
-                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
+                    isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental, salary: dto.Salary);
                 repository.UpdateAsync(entity);
                 await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, entity.Id, dto.CustomFields);
                 await repository.SaveChangesAsync();
@@ -347,7 +352,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
 
             var created = EmployeeExperience.Create(personId, dto.Organization, dto.JobTitle,
                 dto.StartDate, dto.EndDate, dto.Responsibilities,
-                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental);
+                isExternal: dto.IsExternal, isGovernmental: dto.IsGovernmental, salary: dto.Salary);
             await repository.AddAsync(created);
             await customFields.ApplyAsync(EmployeeFieldOwnerType.Experience, created.Id, dto.CustomFields);
             await repository.SaveChangesAsync();

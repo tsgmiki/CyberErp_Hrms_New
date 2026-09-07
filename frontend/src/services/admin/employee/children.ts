@@ -25,6 +25,10 @@ export const getExperiences = (employeeId: string) =>
   api.get<EmployeeExperienceModel[]>(`EmployeeExperience?employeeId=${employeeId}`);
 export const saveExperience = createSaveService("EmployeeExperience", EmployeeExperienceSchema, {
   booleanFields: ["isExternal", "isGovernmental"],
+  // Sent as a real JSON number so the nullable decimal binds. A BLANK box never reaches this
+  // coercion — createSaveService drops empty values first — so "not recorded" stays null rather
+  // than becoming 0, which would claim the role was unpaid.
+  numberFields: ["salary"],
   customFields: true,
 });
 export const deleteExperience = createDeleteService("EmployeeExperience");
