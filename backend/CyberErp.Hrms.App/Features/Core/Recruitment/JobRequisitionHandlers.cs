@@ -400,6 +400,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
     public class PostJobRequisition(
         IRepository<JobRequisition> repository,
         IPerformanceVisibilityService visibility,
+        IExaminerNotifier examinerNotifier,
         ILogger<PostJobRequisition> logger) : IPostJobRequisition
     {
         public async Task PostAsync(Guid id)
@@ -416,6 +417,11 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             repository.UpdateAsync(q);
             await repository.SaveChangesAsync();
             logger.LogInformation("Posted JobRequisition {Id} to {Channel}", id, q.PostingChannel);
+
+            // The examiners assigned to this vacancy's criteria are told it is open — portal alert
+            // plus e-mail. AFTER the save, so an alert can never be raised for a posting that did
+            // not commit; and the notifier swallows its own failures, so it cannot undo one that did.
+            await examinerNotifier.NotifyVacancyPostedAsync(id);
         }
     }
 
