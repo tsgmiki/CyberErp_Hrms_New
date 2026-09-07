@@ -302,6 +302,9 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Recruitment.IGetVacantRoles, Features.Core.Recruitment.GetVacantRoles>();
             services.AddScoped<Features.Core.Recruitment.IGetHiringRequestForApproval, Features.Core.Recruitment.GetHiringRequestForApproval>();
             services.AddScoped<Features.Core.Recruitment.IGetJobRequisitionForApproval, Features.Core.Recruitment.GetJobRequisitionForApproval>();
+            services.AddScoped<Features.Core.Recruitment.IGetMyEvaluations, Features.Core.Recruitment.GetMyEvaluations>();
+            services.AddScoped<Features.Core.Recruitment.ISubmitMyEvaluation, Features.Core.Recruitment.SubmitMyEvaluation>();
+            services.AddScoped<Features.Core.Recruitment.IExaminerNotifier, Features.Core.Recruitment.ExaminerNotifier>();
             services.AddScoped<Features.Core.Recruitment.IGetRecruitmentBudgetMonitor, Features.Core.Recruitment.GetRecruitmentBudgetMonitor>();
             services.AddScoped<Features.Core.Recruitment.ISaveJobRequisition, Features.Core.Recruitment.SaveJobRequisition>();
             services.AddScoped<Features.Core.Recruitment.IGetJobRequisitionById, Features.Core.Recruitment.GetJobRequisitionById>();

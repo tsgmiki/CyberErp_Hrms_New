@@ -5581,3 +5581,70 @@ assigned evaluator — gets **403** on that same endpoint. `JobApplicationContro
 entire evaluator-constrained machinery (own criteria, own applicants) is unreachable by the very
 people it was built for: **being an assigned evaluator has to be the entitlement**, the same shape as
 the `/review` endpoints in §12.68.
+
+### 12.78 A non-HR examiner could not reach the evaluation they were assigned
+
+Reported as "non-HR evaluators cannot submit their results". Confirmed exactly: `rojer(dr)b`, a
+genuinely assigned criterion evaluator, got **403** on `/JobApplication/evaluator-context` — and on
+every other recruitment endpoint. `JobApplicationController` is gated
+`jobApplication`/`jobRequisition`/`candidate`, and an ordinary employee holds none of them.
+
+So the whole evaluator-constrained machinery — own criteria, own applicants, per-criterion ownership
+on scoring — existed and was **unreachable by the people it was built for**. Same shape as §12.68:
+**being an assigned evaluator has to be the entitlement.**
+
+`MyEvaluationController` (`GET`/`POST /api/v1/MyEvaluation`) carries a bare `[RequirePermission]`,
+which clears the class gate. Authentication still applies through `BaseController`; the handlers
+authorise.
+
+**⚠️ THE PORTAL HANDLERS ARE STRICTER THAN `EvaluationGuard`, AND THAT IS THE SAFETY PROPERTY.**
+That guard reads:
+
+```csharp
+var isEvaluator = await evaluators.GetAll().AnyAsync(ev => ev.EmployeeId == currentEmployeeId.Value);
+if (!isEvaluator) return;   // an employee, but not an evaluator → acts as HR (unconstrained)
+```
+
+Correct *behind the recruitment screens*, which are gated on the recruitment operations. Reuse it on
+an ungated endpoint and that same fallback hands **every applicant in the tenant to every member of
+staff**. `EvaluatorPortal.MineAsync` therefore REQUIRES evaluator standing and never assumes it: no
+assignment → empty list, and on submit → refused.
+
+Three ways in are closed, all verified live:
+
+| caller | `GET /MyEvaluation` | submit |
+|---|---|---|
+| `rojer(dr)b` — evaluator, not HR (**was 403 everywhere**) | **200**, 1 applicant, **only his own criterion** | own criterion accepted |
+| `tatekg` — HR *and* evaluator | 200, both of his criteria (Written Exam already 98) | — |
+| `wagayes` — not an evaluator | **0 applicants** | **400** "not assigned as an evaluator" |
+
+Submitting *another evaluator's* criterion → 400. Submitting a criterion belonging to a **different
+requisition** → 400: without that check an evaluator on requisition A could score an applicant of
+requisition B by posting their own criterion id against someone else's application.
+
+⚠️ **Not exercised: a successful submit.** It would fabricate a real evaluation score on a real
+applicant, which is the examiner's to enter. The refusal paths above are what was tested.
+
+### 12.79 Examiners are told when their vacancy is posted
+
+Assignment happens while the requisition is being drafted and nothing announced the posting, so an
+examiner learned they had work only by being told in person. `PostJobRequisition` now calls
+`ExaminerNotifier`, which alerts the evaluators attached to that requisition's screening criteria on
+**both** channels — the portal alert is what they see when they next sign in, the e-mail is what
+reaches them when they do not. The portal alert deep-links to `/myEvaluations`, one click from the
+work.
+
+Template first (`Vacancy.Posted`, seeded with `RequisitionNumber`/`VacancyTitle`/`NumberOfPositions`/
+`OpenUntil`) with a hardcoded message as the fallback, so it works before anyone configures wording —
+the pattern the other notifiers use.
+
+**⚠️ Raised AFTER the save, and it swallows its own failures.** After, so an alert can never describe
+a posting that did not commit; swallowing, so a dead mail relay or an examiner without an account
+cannot undo one that did.
+
+External evaluators carry no `EmployeeId`, so they have neither a portal account nor a known address
+— they are counted in the log line rather than silently dropped.
+
+⚠️ **Not exercised end to end:** firing it needs a real vacancy to be posted, and the only
+requisition in CERP is already past that point. The wiring compiles and the notifier follows the
+verified peer-review pattern, but no live posting alert has been observed.

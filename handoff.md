@@ -4771,6 +4771,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **`SUM(CASE WHEN NOT EXISTS (SELECT ...))` is a COMPILE error in SQL Server** — the whole batch
   fails before any DELETE runs. Use a LEFT JOIN.
 
+- **⚠ `EvaluationGuard` treats a NON-evaluator employee as unconstrained HR** — safe only behind the
+  recruitment-gated screens. On an ungated endpoint that fallback hands every applicant to every
+  employee, which is why the portal handlers (`EvaluatorPortal.MineAsync`) REQUIRE evaluator standing
+  instead of assuming it (logic §12.78).
+- **HR assigned as an evaluator used to lose their HR reach** — the guard now checks IsAdmin first
+  (§12.77). Note `IsAdminAsync` also returns true for a named workflow User approver, not just roles.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

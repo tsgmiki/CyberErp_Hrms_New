@@ -630,4 +630,32 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             return Ok(new { id, message = "Your application has been submitted." });
         }
     }
+    /// <summary>
+    /// Evaluator self-service (Home portal): the applicants awaiting THIS examiner, and their scores.
+    ///
+    /// <para>⚠️ NOT gated on the recruitment operations, deliberately — a bare
+    /// <c>[RequirePermission]</c> clears the gate. An assigned evaluator is very often an ordinary
+    /// employee who holds none of those screens; gating this on them is exactly why a non-HR examiner
+    /// could not submit results at all (403 on every recruitment endpoint). Authentication still
+    /// applies via BaseController, and the HANDLERS authorise: they resolve the caller own evaluator
+    /// assignment and return only that, refusing anyone who has none. A non-evaluator gets an empty
+    /// list, never everyone applicants (logic §12.78).</para>
+    /// </summary>
+    [RequirePermission]
+    public class MyEvaluationController(
+        IGetMyEvaluations listHandler,
+        ISubmitMyEvaluation submitHandler) : BaseController
+    {
+        /// <summary>Applicants awaiting the signed-in examiner, each with only the criteria they own.</summary>
+        [HttpGet]
+        public Task<List<MyEvaluationDto>> GetMine() => listHandler.GetAsync();
+
+        /// <summary>Submits the examiner own criterion scores for one applicant.</summary>
+        [HttpPost]
+        public async Task<IActionResult> Submit([FromBody] SubmitMyEvaluationDto dto)
+        {
+            var saved = await submitHandler.SubmitAsync(dto);
+            return Ok(new { message = $"{saved} score(s) submitted", saved });
+        }
+    }
 }
