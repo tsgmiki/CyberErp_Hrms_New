@@ -5386,3 +5386,57 @@ tenants, as its comment claims and as the sibling `employee-movements-due` job r
 Verified after the fix: the stored definition reads `"m":"RunUnattendedAsync"`, a fresh start logs
 no such error, and the on-demand endpoint still refuses a non-HR caller (400, same message) while HR
 gets `{"sent":0}`.
+
+### 12.74 An orphaned recurring job outliving the row it was created for
+
+Reported as a `NotFoundException` for `ReportSchedule` `3c6ab876-…` raised when the application runs,
+against a tenant with **no report schedules configured at all**. The report was accurate: the table
+holds zero rows.
+
+`Hrms.ReportSchedule` was empty, yet HangFire still held
+`recurring-job:report-schedule:3c6ab876-7dc2-45a6-999e-6ff4813a0776`, cron `0 16 * * *`, invoking
+`IRunReportSchedule.RunAsync(scheduleId)`. `RunAsync` looks the row up first and threw.
+
+**Not a defect in the delete path.** `DeleteReportSchedule` does call `jobScheduler.Remove(id)`, and
+`SetReportScheduleEnabled` removes it on disable — delete a schedule through the application and the
+two stay in step. The timestamps say what actually happened:
+
+| | |
+|---|---|
+| recurring job created | **2026-07-15** |
+| **NVI purge** | **2026-08-10** — cleared the table by SQL |
+| job still firing | **2026-09-07**, next run 16:00 |
+
+The purge is documented as leaving "HangFire's schema and both `__EFMigrationsHistory` tables
+untouched" — correct for migration history, and precisely what stranded this job. **Any out-of-band
+removal does this**: a purge, a restore from an older backup, a manual `DELETE`.
+
+**⚠️ THROWING WAS THE WRONG RESPONSE, and that is the reusable lesson.** A recurring job whose subject
+has been deleted can **never** succeed, so it retried ten times with backoff and reprinted the stack
+trace every time the app came back up — the same shape as §12.73, a background job locked in a
+failure it cannot get out of. `RunAsync` now unregisters itself:
+
+```csharp
+if (tenantId is null)
+{
+    logger.LogWarning("Report schedule {Id} no longer exists — removing its orphaned recurring job.", scheduleId);
+    jobScheduler.Remove(scheduleId);
+    return new ScheduleRunResultDto { … Sent = false };
+}
+```
+
+Safe because the lookup uses `GetAllWithoutTenantFilter()`: a null means the row is absent
+**everywhere**, not merely out of scope. And an unreachable database raises rather than returning
+null, so a transient fault cannot trigger the removal.
+
+**No cleanup script was needed** — the fix removed the orphan itself. Triggering the recurring job
+once logged *"Report schedule … no longer exists — removing its orphaned recurring job"* (twice: the
+two stranded `Processing` executions were requeued too), after which the recurring-job rows for it
+were **0**, the two remaining recurring jobs are the legitimate `employee-movements-due` and
+`trip-settlement-reminders`, no `RunReportSchedule` execution is left non-terminal, and a fresh start
+logs no `NotFoundException`.
+
+**Pattern for background jobs, now twice over (§12.73, here):** an unattended job must never be left
+in a state it cannot exit. If the precondition can never become true again — no user to authorise,
+no row to act on — end it: skip, unregister, or log and return. Reserve throwing for conditions a
+retry could actually clear.
