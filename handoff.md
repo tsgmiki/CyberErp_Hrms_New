@@ -4748,6 +4748,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **A Role approver nobody holds is worse than an open step** — HR Admin / HR Officer have ZERO
   holders; the request is accepted and then waits forever instead of failing loudly.
 
+- **⚠ NEVER point a Hangfire job at a method carrying a signed-in-user guard** — a worker has no
+  HTTP context, so `IsAdmin` is always false and the job throws on every run. Split it: guarded
+  method for the endpoint, explicitly-named unattended method for the schedule (logic §12.73).
+- **Fixing such a job needs a DATA step too** — already-enqueued jobs carry serialised InvocationData
+  naming the old method and keep retrying after the code fix;
+  `scripts/clear-stale-settlement-reminder-jobs.sql` clears them.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

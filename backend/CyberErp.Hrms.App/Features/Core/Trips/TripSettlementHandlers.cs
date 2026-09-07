@@ -47,7 +47,22 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
     public interface IDisburseTripAdvance { Task DisburseAsync(Guid id, string? reference); }
     public interface ISettleTrip { Task<decimal> SettleAsync(Guid id, string? reference); }
     public interface IGetTripAgingReport { Task<TripAgingReportDto> GetAsync(); }
-    public interface ITripSettlementReminder { Task<int> RunAsync(); }
+    public interface ITripSettlementReminder
+    {
+        /// <summary>On-demand run for the signed-in HR user — authorised, since it mails the whole tenant.</summary>
+        Task<int> RunAsync();
+
+        /// <summary>
+        /// The daily unattended pass. NO HR check, because there is no user to check.
+        ///
+        /// <para>⚠️ Hangfire runs with no HTTP context, so <c>GetCurrentUserId()</c> is null,
+        /// <c>IsAdminAsync</c> returns false at its first line, and the HR guard on
+        /// <see cref="RunAsync"/> threw "Only HR can run the settlement reminders." EVERY night —
+        /// the job had never once sent a reminder (logic §12.73). Called only by the recurring job
+        /// registration; the name is meant to make any other caller look wrong.</para>
+        /// </summary>
+        Task<int> RunUnattendedAsync();
+    }
 
     // ---- Settlement helpers -------------------------------------------------
     internal static class TripSettlement
@@ -173,13 +188,21 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
         INotificationDispatcher dispatcher,
         ILogger<TripSettlementReminder> logger) : ITripSettlementReminder
     {
+        /// <summary>
+        /// On-demand: triggering this mails EVERY employee with an overdue advance, so it is an HR
+        /// action. The guard belongs HERE and not in the shared body — the daily Hangfire pass has no
+        /// signed-in user to satisfy it, and applying it there rejected the job on every run.
+        /// </summary>
         public async Task<int> RunAsync()
         {
-            // Triggering this mails EVERY employee with an overdue advance across the tenant, so it
-            // is an HR action even though the daily Hangfire pass runs it unattended.
             if (!(await visibility.GetScopeAsync()).IsAdmin)
                 throw new ValidationException("access", "Only HR can run the settlement reminders.");
 
+            return await RunUnattendedAsync();
+        }
+
+        public async Task<int> RunUnattendedAsync()
+        {
             var today = DateTime.UtcNow.Date;
             var overdue = await TripSettlement.OutstandingAdvances(repository.GetAll().AsNoTracking())
                 .Where(t => t.Status != TripRequestStatus.Requested)   // advance issued => already past Requested
