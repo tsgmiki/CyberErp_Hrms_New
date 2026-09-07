@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { CalendarPlus, CheckCircle2, XCircle, UserX2, ClipboardCheck, Trash2, Users } from "lucide-react";
 import Modal from "@/components/common/modal";
 import Loading from "@/components/common/loader/loader";
+import { toast } from "@/components/common/toast";
 import getAllEmployee from "@/services/admin/employee/getAll";
 import {
   getInterviews,
@@ -542,10 +543,17 @@ function InterviewsModal({
                     onClick={async () => {
                       setActionError(null);
                       const res = await adoptInterviewScores(applicationId);
+                      // A failure stays ON the modal, where the panel scores it refers to are still
+                      // in view — closing would hide the very context needed to act on the message.
                       if (!res.ok) return setActionError(res.message);
-                      await refresh();
+                      // Invalidate BEFORE closing: the ranking and the score sheet behind this modal
+                      // are what adoption changed, and they must refetch even though this component
+                      // is about to unmount. No await on refresh() — it refreshes THIS modal's data,
+                      // which is going away.
                       queryClient.invalidateQueries({ queryKey: ["applicationRanking"] });
                       queryClient.invalidateQueries({ queryKey: ["jobApplication", applicationId] });
+                      toast.success(res.message || t("Interview scores adopted into the ranking."));
+                      onClose();
                     }}
                     title={t("Copy the per-criterion averages into the application's score sheet (drives the ranking)")}
                     className="rounded-md bg-success px-2.5 py-1 text-xs font-semibold text-on-accent hover:opacity-90"

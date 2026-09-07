@@ -128,6 +128,11 @@ export interface HireQueueRowModel {
   isInternal?: boolean;
   canHire: boolean;
   blockedReason?: string;
+  /** The vacant seat the hire will land on — resolved server-side by the same rule the hire uses. */
+  targetPositionId?: string | null;
+  targetPositionLabel?: string | null;
+  /** The internal employee's current pay; null for an external candidate. */
+  currentSalary?: number | null;
 }
 
 /** A file attached to a candidate (credentials + mandatory compliance set). */

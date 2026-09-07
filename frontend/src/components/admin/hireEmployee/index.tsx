@@ -33,7 +33,9 @@ function HireModal({
   const [hire, setHire] = useState({
     employeeNumber: "",
     hireDate: "",
-    positionId: "",
+    // Pre-selected with the seat the server resolved for this vacancy, so HR confirms a choice
+    // instead of hunting for it among every vacant position in the organization.
+    positionId: row.targetPositionId ?? "",
     employmentNature: "Permanent",
     contractPeriod: "",
     isProbation: false,
@@ -48,6 +50,11 @@ function HireModal({
     queryKey: ["positions", "vacant-hire"],
     queryFn: () => getAllPosition({ ...parameterInitialData, take: 200, isVacant: true } as never),
   });
+
+  // A TRANSFER retains the employee's current pay. The server already enforces this — it sends
+  // ToSalary/ToSalaryScaleId as null for a transfer — but the form used to accept a figure anyway
+  // and then silently discard it, so the rule is now shown rather than only applied.
+  const isTransfer = isInternal && hire.movementType === "Transfer";
 
   // Auto-populate the salary from the candidate's offer (the agreed figure) — HR may override.
   // Position + salary are also resolved server-side from the offer/requisition when left blank.
@@ -72,7 +79,9 @@ function HireModal({
       employeeNumber: isInternal ? undefined : hire.employeeNumber.trim(),
       hireDate: hire.hireDate || undefined,
       positionId: hire.positionId || undefined,
-      salary: hire.salary === "" ? undefined : Number(String(hire.salary).replace(/[,\s]/g, "")),
+      // Withheld on a transfer — the server discards it, and sending one would make the payload
+      // disagree with the read-only figure the user was shown.
+      salary: isTransfer || hire.salary === "" ? undefined : Number(String(hire.salary).replace(/[,\s]/g, "")),
       employmentNature: hire.employmentNature,
       contractPeriod: isInternal || hire.contractPeriod === "" ? undefined : Number(hire.contractPeriod),
       isProbation: isInternal ? false : hire.isProbation,
@@ -173,23 +182,45 @@ function HireModal({
           className={inputCls}
         >
           <option value="">{t("Auto — from the vacancy's role")}</option>
+          {/* The resolved seat is listed explicitly. The list below is capped at 200 vacancies
+              org-wide, so the right one is not guaranteed to be in it — without this the
+              pre-selected value could render as a blank box. */}
+          {row.targetPositionId &&
+            !(vacantPositions?.data ?? []).some((p) => p.id === row.targetPositionId) && (
+              <option value={row.targetPositionId}>
+                {row.targetPositionLabel || t("Position resolved from the vacancy")}
+              </option>
+            )}
           {(vacantPositions?.data ?? []).map((p) => (
             <option key={p.id} value={p.id}>
               {p.code} — {p.positionClassTitle ?? ""}
             </option>
           ))}
         </select>
+        {row.targetPositionId && hire.positionId === row.targetPositionId && (
+          <p className="mt-1 text-[11px] text-muted">
+            {t("Filled in from the vacancy — change it only to place them on a different seat.")}
+          </p>
+        )}
         {isInternal ? (
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">{t("New Salary")}</label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-muted">
+              {isTransfer ? t("Salary (unchanged)") : t("New Salary")}
+            </label>
             <input
               type="text"
-              value={hire.salary}
+              // A lateral transfer carries the pay across untouched, so there is nothing to enter.
+              // Showing the current figure greyed out states the rule better than an empty locked box.
+              value={isTransfer ? (row.currentSalary != null ? String(row.currentSalary) : "") : hire.salary}
               onChange={(e) => setHire((p) => ({ ...p, salary: e.target.value }))}
-              className={inputCls}
+              disabled={isTransfer}
+              readOnly={isTransfer}
+              className={`${inputCls} ${isTransfer ? "cursor-not-allowed opacity-60" : ""}`}
             />
             <p className="mt-1 text-[11px] text-muted">
-              {t("Leave the action on Auto to derive Promotion / Transfer / Demotion from this figure versus the current salary.")}
+              {isTransfer
+                ? t("A transfer keeps the employee's current salary — choose Promotion or Demotion to change pay.")
+                : t("Leave the action on Auto to derive Promotion / Transfer / Demotion from this figure versus the current salary.")}
             </p>
           </div>
         ) : (
