@@ -75,8 +75,13 @@ namespace CyberErp.Hrms.Api.Configuration
 
             // HC263: remind employees whose trip advance is past its settlement deadline. One daily
             // best-effort sweep across all tenants (mirrors the due-movements job).
+            //
+            // ⚠️ RunUnattendedAsync, NOT RunAsync. RunAsync carries the HR-only guard for the
+            // on-demand endpoint, and a Hangfire job has no HTTP context — so the signed-in user is
+            // null, IsAdminAsync returns false, and this threw "Only HR can run the settlement
+            // reminders." on every single nightly run (logic §12.73).
             RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Trips.ITripSettlementReminder>(
-                "trip-settlement-reminders", job => job.RunAsync(), Cron.Daily(2));   // 02:00 UTC daily
+                "trip-settlement-reminders", job => job.RunUnattendedAsync(), Cron.Daily(2));   // 02:00 UTC daily
 
             return app;
         }

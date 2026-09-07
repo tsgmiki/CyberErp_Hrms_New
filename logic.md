@@ -5333,3 +5333,56 @@ Verified after the run: 28 rows inserted exactly as mapped, 19 still open (5 Fin
 `takele(dr)a` 2 items, `tatekg` 0, `rojer(dr)b` 2, `wagayes` 0, tracking total 10.
 ⚠️ No submit was exercised: doing so would create real records in live NVI data. Resolvability is
 established from the resolver's own climb rules against the current org data, not from a live run.
+
+### 12.73 "Only HR can run the settlement reminders." — a user guard on an unattended job
+
+Reported as an error seen when running the HRMS application. It is the HC263 trip settlement
+reminder, and the message is exactly right about the rule while being applied in the one place it
+cannot hold.
+
+`TripSettlementReminder.RunAsync` opens with:
+
+```csharp
+if (!(await visibility.GetScopeAsync()).IsAdmin)
+    throw new ValidationException("access", "Only HR can run the settlement reminders.");
+```
+
+Correct for the on-demand endpoint — triggering it mails every employee with an overdue advance.
+But `HangfireConfiguration` pointed the **daily recurring job** at that same method:
+
+```csharp
+RecurringJob.AddOrUpdate<ITripSettlementReminder>(
+    "trip-settlement-reminders", job => job.RunAsync(), Cron.Daily(2));
+```
+
+**⚠️ A Hangfire worker has no HTTP context.** `GetCurrentUserId()` returns null,
+`IsAdminAsync` returns false on its very first line (`if (userId is null) return false;`), so
+`IsAdmin` is false and the guard throws — **every night, since the job was written.** It had never
+sent a single reminder. The handler's own comment shows the conflict was seen and not followed
+through: *"it is an HR action even though the daily Hangfire pass runs it unattended."*
+
+Why it appears at APPLICATION START rather than at 02:00: the failure is retried 10 times with a
+backoff, so a worker picks the pending attempt up as soon as the app comes back. The captured log
+reads `Failed to process the job '10035' … Retry attempt 7 of 10 will be performed in 00:25:07`.
+
+**The fix is to split the entry points, not to weaken the rule.** `RunAsync` keeps the HR guard and
+delegates; `RunUnattendedAsync` holds the body and is named so any caller other than the recurring
+job registration looks wrong — the same shape as `GetWithoutScopeCheckAsync` in §12.70.
+
+**⚠️ The code fix alone does not stop the error.** `AddOrUpdate` rewrites the stored recurring
+definition on the next startup, but jobs **already enqueued** carry their own serialised
+`InvocationData` naming the old method, so they keep failing and retrying regardless.
+`scripts/clear-stale-settlement-reminder-jobs.sql` removes them (two were pending here, one
+`Processing` and one `Enqueued`). Nothing is lost — every one of those attempts had thrown before
+doing any work, and the schedule re-enqueues at 02:00.
+
+Not a tenancy problem, incidentally: `ApplyTenantFilter` skips the filter outright when there is no
+tenant context (`if (!string.IsNullOrEmpty(tenantId))`), so the untenanted sweep really does see all
+tenants, as its comment claims and as the sibling `employee-movements-due` job relies on.
+
+**Swept the other background jobs** — `IExecuteDueMovements`, `IRunReportSchedule` and
+`EmailDispatchJob` carry no user-dependent guard. This was the only one.
+
+Verified after the fix: the stored definition reads `"m":"RunUnattendedAsync"`, a fresh start logs
+no such error, and the on-demand endpoint still refuses a non-HR caller (400, same message) while HR
+gets `{"sent":0}`.
