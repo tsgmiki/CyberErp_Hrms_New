@@ -237,10 +237,20 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             IRepository<User> users,
             IRepository<CriterionEvaluator> evaluators,
             IRepository<JobRequisition> requisitions,
+            Performance.IPerformanceVisibilityService visibility,
             Guid? userId)
         {
             var employeeId = await CurrentEmployeeIdAsync(users, userId);
             if (!employeeId.HasValue) return new(null, false, [], []);
+
+            // ⚠️ HR / admin is NEVER constrained, even when also assigned as an evaluator.
+            //
+            // "Constrained" was derived from evaluator assignment alone, on the unstated assumption
+            // that HR would never be one. Assign an HR user as an evaluator — which is ordinary, HR
+            // often sits on a panel — and they silently LOSE their HR reach: the applicant list
+            // narrows to the requisitions they evaluate, and Adopt into Ranking starts refusing
+            // criteria that belong to other panelists (logic §12.77).
+            if ((await visibility.GetScopeAsync()).IsAdmin) return new(employeeId, false, [], []);
 
             var criterionIds = (await evaluators.GetAll()
                 .Where(ev => ev.EmployeeId == employeeId.Value)
@@ -265,10 +275,15 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         /// </summary>
         internal static async Task EnsureMayScoreAsync(
             IRepository<CriterionEvaluator> evaluators,
+            Performance.IPerformanceVisibilityService visibility,
             Guid? currentEmployeeId,
             IReadOnlyCollection<Guid> criterionIdsBeingScored)
         {
             if (!currentEmployeeId.HasValue) return;
+
+            // HR / admin acts across the whole panel — see GetContextAsync. Checked BEFORE the
+            // evaluator lookup so being on a panel cannot subtract from an HR user's authority.
+            if ((await visibility.GetScopeAsync()).IsAdmin) return;
 
             var isEvaluator = await evaluators.GetAll().AnyAsync(ev => ev.EmployeeId == currentEmployeeId.Value);
             if (!isEvaluator) return;   // an employee, but not an evaluator → acts as HR (unconstrained)
@@ -291,6 +306,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobRequisition> requisitionRepository,
         IRepository<User> userRepository,
         IRepository<CriterionEvaluator> evaluatorRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser,
         IValidator<ScoreApplicationDto> validator,
         ILogger<ScoreJobApplication> logger) : IScoreJobApplication
@@ -317,7 +333,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             // Evaluator ownership: an assigned employee-evaluator may only score their own criteria.
             var currentEmployeeId = await EvaluationGuard.CurrentEmployeeIdAsync(userRepository, currentUser.GetCurrentUserId());
             await EvaluationGuard.EnsureMayScoreAsync(
-                evaluatorRepository, currentEmployeeId, dto.Scores.Select(s => s.CriterionId).ToList());
+                evaluatorRepository, visibility, currentEmployeeId, dto.Scores.Select(s => s.CriterionId).ToList());
 
             var actedBy = currentUser.GetCurrentUserName();
             var before = application.CriterionScores.Select(s => s.Id).ToHashSet();
@@ -458,6 +474,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<User> userRepository,
         IRepository<CriterionEvaluator> evaluatorRepository,
         IGetInterviewConsolidated consolidatedHandler,
+        Performance.IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser,
         ILogger<AdoptInterviewScores> logger) : IAdoptInterviewScores
     {
@@ -481,7 +498,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             // action). Closes the bypass around the direct-scoring gate.
             var currentEmployeeId = await EvaluationGuard.CurrentEmployeeIdAsync(userRepository, currentUser.GetCurrentUserId());
             await EvaluationGuard.EnsureMayScoreAsync(
-                evaluatorRepository, currentEmployeeId, adoptable.Select(c => c.CriterionId!.Value).ToList());
+                evaluatorRepository, visibility, currentEmployeeId, adoptable.Select(c => c.CriterionId!.Value).ToList());
 
             var before = application.CriterionScores.Select(s => s.Id).ToHashSet();
             foreach (var c in adoptable)
@@ -512,12 +529,13 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<User> userRepository,
         IRepository<CriterionEvaluator> evaluatorRepository,
         IRepository<JobRequisition> requisitionRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser) : IGetEvaluatorContext
     {
         public async Task<EvaluatorContextDto> GetAsync()
         {
             var ctx = await EvaluationGuard.GetContextAsync(
-                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+                userRepository, evaluatorRepository, requisitionRepository, visibility, currentUser.GetCurrentUserId());
             return new EvaluatorContextDto
             {
                 IsConstrainedEvaluator = ctx.IsConstrained,
@@ -778,6 +796,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobRequisition> requisitionRepository,
         IRepository<User> userRepository,
         IRepository<CriterionEvaluator> evaluatorRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser) : IGetJobApplicationById
     {
         public async Task<JobApplicationDto> GetAsync(Guid id)
@@ -791,7 +810,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             // Same evaluator visibility as the list: an assigned criterion evaluator may only open
             // applications of the requisitions they are assigned to. HR / unconstrained users see all.
             var evaluatorContext = await EvaluationGuard.GetContextAsync(
-                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+                userRepository, evaluatorRepository, requisitionRepository, visibility, currentUser.GetCurrentUserId());
             if (evaluatorContext.IsConstrained && !evaluatorContext.AssignedRequisitionIds.Contains(a.RequisitionId))
                 throw new ValidationException("access", "You do not have access to this application.");
 
@@ -853,6 +872,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
         IRepository<JobOffer> offerRepository,
         IRepository<User> userRepository,
         IRepository<CriterionEvaluator> evaluatorRepository,
+        Performance.IPerformanceVisibilityService visibility,
         ICurrentUserService currentUser) : IGetAllJobApplications
     {
         public async Task<PaginatedResponse<JobApplicationDto>> GetAsync(GetAllRequest request)
@@ -865,7 +885,7 @@ namespace CyberErp.Hrms.App.Features.Core.Recruitment
             // Evaluator visibility: an assigned criterion evaluator only sees THEIR OWN applicants —
             // the applications of the requisitions they are assigned to. HR / unlinked users see all.
             var evaluatorContext = await EvaluationGuard.GetContextAsync(
-                userRepository, evaluatorRepository, requisitionRepository, currentUser.GetCurrentUserId());
+                userRepository, evaluatorRepository, requisitionRepository, visibility, currentUser.GetCurrentUserId());
             if (evaluatorContext.IsConstrained)
             {
                 var reqIds = evaluatorContext.AssignedRequisitionIds;

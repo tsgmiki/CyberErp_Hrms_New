@@ -5533,3 +5533,51 @@ remedy.
 **This unblocks the follow-up:** the 19 `Manager Review` / `Supervisor Review` steps left open in
 §12.72 can now move to `ImmediateManager`, and the annual-leave breakage (step 1 is already
 `ImmediateManager`) is fixed by this change alone — those 139 employees can submit leave again.
+
+### 12.77 An HR user assigned as an evaluator silently lost their HR reach
+
+Reported: "Tatek Wolde" was assigned as an evaluator, and clicking **Adopt into Ranking** answered
+*"You may only score the criteria you are assigned to as an evaluator for this applicant."*
+
+The message was literally accurate. The requisition carries three criteria, and only one has
+interview feedback to adopt — the one he is **not** assigned to:
+
+| criterion | tatekg assigned | interview feedback |
+|---|---|---|
+| Document Review | yes | 0 |
+| **Interview** | **no** | **1** ← the only adoptable one |
+| Written Exam | yes | 0 |
+
+`AdoptInterviewScores` adopts every criterion-linked average at once and passes the whole set to
+`EnsureMayScoreAsync`, so one unowned criterion refuses the batch.
+
+**⚠️ The real defect is that the guard has no HR escape hatch.** Its own comment says callers who are
+"employees never assigned as an evaluator (HR / admins)" are unconstrained — which quietly assumes
+HR is never on a panel. Put an HR user on one, which is ordinary, and:
+
+```csharp
+var isEvaluator = await evaluators.GetAll().AnyAsync(ev => ev.EmployeeId == currentEmployeeId.Value);
+if (!isEvaluator) return;   // ← the ONLY way out
+```
+
+…they become constrained, losing exactly the authority that makes them HR. It is not only Adopt:
+`GetContextAsync` marks them constrained too, which **narrows the applicant list and the by-id read**
+to the requisitions they personally evaluate.
+
+`tatekg` is an admin here through an unobvious path worth recording — they hold **no roles at all**,
+and `IsAdminAsync` returns true because they are a **named `User` approver** on the JobRequisition
+workflow ("if you approve things you are effectively HR").
+
+Fixed by checking `IsAdmin` FIRST in both `GetContextAsync` and `EnsureMayScoreAsync`, before the
+evaluator lookup — so sitting on a panel can never subtract from an HR user's authority. A non-admin
+evaluator is unaffected and still cannot score criteria they do not own.
+
+Verified live on `/JobApplication/evaluator-context`: `tatekg` now reports
+`isConstrainedEvaluator=false` where it was true.
+
+**⚠️ Found while verifying, and it is feature request #2's root cause:** `rojer(dr)b` — a genuinely
+assigned evaluator — gets **403** on that same endpoint. `JobApplicationController` is gated
+`jobApplication`/`jobRequisition`/`candidate` and an ordinary employee holds none of them. So the
+entire evaluator-constrained machinery (own criteria, own applicants) is unreachable by the very
+people it was built for: **being an assigned evaluator has to be the entitlement**, the same shape as
+the `/review` endpoints in §12.68.
