@@ -665,6 +665,23 @@ it, its revocation sweep would delete every hand-edited grant. ⚠️ `CanExport
 and **preserved** on edit (no field on the screen). Verify scripts that compared the two models are
 gone; use `verify-tenant-authorization.sql` (dangling refs / cross-tenant leakage / tree integrity).
 
+**LMS upgrade (§3.8 successor, 3 phases done).** The Learning module was catalogue-and-paperwork:
+courses with no content, completion typed in by HR, every screen behind the HR admin console.
+**Phase 1** `Hrms.CourseCompetency` — a course declares what it builds, so a competency gap can name
+a real course (logic §12.84). **Phase 2** the learner half moved to HOME: `/courseCatalog` +
+`/myLearning`, served by a READ-ONLY `TrainingCatalogController` gated on `myTraining` (§12.85).
+**Phase 3** `CourseVersion` / `ContentModule` / `ModuleProgress` — courses carry versioned
+material and **completion is derived from what the learner did**, not asserted (§12.86).
+⚠️ Published content is FROZEN; a revision is a new version that retires the old one — that is what
+keeps "who is current on the latest revision?" answerable.
+⚠️ Derived completion writes attendance 100 and **assessment score NULL**. The NULL is deliberate:
+there is no assessment yet, and a measured-by-nobody score on a training record is worse than a blank.
+⚠️ No binary column: Document modules reference an `EmployeeDocument`, Video modules are URLs.
+Object storage is an undecided infrastructure question, so the model references rather than stores —
+and the authoring UI offers Text/Video/Link only, because `EmployeeDocument` is employee-scoped.
+⚠️ Progress hangs off a session-based enrolment, so this is **blended**, not self-paced enrolment.
+Still ahead: assessment, and a course-file store.
+
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 
 - EF migrations history lives in **`dbo.__EFMigrationsHistory`** (not `Core.`); `dotnet ef database update`

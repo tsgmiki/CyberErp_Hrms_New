@@ -5964,3 +5964,96 @@ administrative module. Completion is still typed in by HR, courses still have no
 is still nothing to *do* in the portal beyond enrol and read. The portal is where content will land —
 that was the sequencing argument for building it before Phase 3, not a claim that learning is now
 self-service.
+
+### 12.86 LMS Phase 3 — content and self-paced delivery
+
+Third phase. Phase 2 ended with an honest admission: the portal was a better front door to the same
+administrative module — courses had no content, and "completed" was a value HR typed into an
+enrolment. Phase 3 is what closes that. Three tables, `Hrms.CourseVersion` / `Hrms.ContentModule` /
+`Hrms.ModuleProgress`, let a course carry material and let completion be **derived from what the
+learner actually did**.
+
+**⚠️ Versioning is the point, not bookkeeping.** Content freezes on publish and a revision opens a
+new version, which retires the one it replaces. Editing a published course in place — what the module
+did before — makes "who is current on the latest revision of the compliance course?" permanently
+unanswerable, because the thing people completed has since changed underneath them. `EnsureDraft()`
+on the aggregate is the guard that makes the word "version" mean something; without it a version is
+just a label on a record that still moves.
+
+**⚠️ Completion is observed, not asserted.** `RecordModuleProgress` records one visit and, when the
+last **required** module of the live version is done, completes the enrolment itself — attendance
+100, `CompletedOn` now, **assessment score deliberately left NULL**. There is no assessment in this
+phase, and writing a score nobody measured would put a fabricated number on a permanent training
+record. The manual `RecordParticipation` route stays for instructor-led sessions, which have no
+content to observe.
+
+Three smaller rules that each exist for a reason:
+
+- **Time is sent as an increment, and a single call is capped at two hours.** The client reports
+  elapsed seconds, so a running total would double-count on a retry and a tab left open overnight
+  would book sixteen hours against one page and make the evidence worthless.
+- **Completion is one-way.** Reopening a finished module to look something up must not un-complete
+  it, and must not lose the time already credited.
+- **The module must belong to the version the enrolment's course actually publishes.** Without that
+  check a learner could post progress against any module id in the tenant.
+
+**⚠️ No binary column anywhere, and that is a deliberate deferral.** A `Document` module references
+an existing `EmployeeDocument` (bytes inline, which suits a PDF); a `Video` module is a URL to
+content hosted elsewhere. Course video inline in SQL Server would not scale, and object storage is an
+infrastructure decision this product has not taken — referencing keeps that decision open. The
+consequence is stated in the UI rather than hidden: **the authoring screen offers Text, Video and
+Link only.** `EmployeeDocument` is scoped to one employee, so a course attachment stored that way
+would be unreadable by everyone else on the course; offering the control before there is a
+course-file store would produce modules nobody can open. The player renders a Document module as a
+plain "ask HR for a copy" note, so an API-created one is never a blank page.
+
+**⚠️ Content attaches to a course version, progress to an existing session-based ENROLMENT.** That
+makes this blended delivery: the session is how a learner gets on the course, the modules are the
+material. Pure session-free self-paced enrolment needs `TrainingEnrollment.TrainingSessionId` to
+become nullable — a migration against a unique index plus every query that reads it — and is
+explicitly **not** in this phase.
+
+`ModuleProgress` cascades from the enrolment and **restricts** on the module: only one cascade path
+may reach a table in SQL Server, and the enrolment is the right owner, since progress without its
+enrolment is meaningless while a published version's modules are never deleted.
+
+Surfaces: authoring sits on the HRMS course form (below the competency mapping, same "saves through
+its own endpoint, needs a saved course" rule), gated with `trainingCourse`. The player is a
+deep-linkable HOME route, `/coursePlayer/:enrollmentId`, gated on `myTraining` **and** self-only in
+the handler — a route rather than a modal because HOME modals use `<dialog>.showModal()`, whose top
+layer hides the toasts the screen uses to confirm progress (§ modal top-layer trap). **No new menu
+operation:** the player is reached from My Learning, and `myTraining` already exists.
+
+**Verified end to end, 29/29**, with a throwaway course, session, enrolment and two disposable
+accounts:
+
+| step | result |
+|---|---|
+| player before any content | `unavailableReason` = "This course has no published content yet." |
+| second draft on one course | 400 |
+| publish an empty version | 400 |
+| text module with no body | 400 |
+| edit a published version | 400 |
+| 120s then 60s on one module | `secondsSpent` **180** — accumulates |
+| one of two required done | 50%, enrolment still Enrolled |
+| optional module completed | still 50%, still Enrolled |
+| reopen a finished module | stays complete |
+| last required module done | **Completed, 100%**, player becomes read-only |
+| progress on a completed enrolment | 400 |
+| DB check | attendance 100.00, **assessment score NULL**, video resume position 590 stored |
+| another user's player, as admin | refused |
+| learner POSTs a course version | 403 |
+| publish v2 | v1 **Retired**, v2 Published |
+
+All probe data and both test accounts removed afterwards: courses 0, sessions 0, enrolments 0,
+versions 0, modules 0, progress 0.
+
+**Two frontend traps re-confirmed while building this.** The palette `/nn` variants must be
+hand-written in each SPA's `theme.css` or they emit nothing at all — `bg-card/40` and
+`border-primary/40` were silently dead in HOME (and had been since phase 2), `bg-secondary/20`,
+`bg-card/40`, `bg-primary/15` and `border-primary/40` in HRMS; all are now declared. And the two new
+controllers were inserted between two existing doc comments and their classes, orphaning them —
+worth checking after any insertion into a multi-controller file.
+
+**Still ahead:** assessment (which is what fills the NULL score), and a course-file store, which is
+what unlocks the Document kind.

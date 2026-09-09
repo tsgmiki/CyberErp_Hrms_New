@@ -1,6 +1,7 @@
 "use client";
 import FormProviders from "@/components/common/formProvider/formProvider";
 import CourseCompetencySection from "./competencySection";
+import CourseContentSection from "./contentSection";
 import { memo, useCallback, useEffect, useState } from "react";
 import type { TrainingCourseModel } from "@/models";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -134,6 +135,9 @@ function TrainingCourseForm(props: { id: string; setId: (id: string) => void }) 
           the same rule the employee-profile child collections follow. */}
       <div className="mt-3">
         <CourseCompetencySection trainingCourseId={formData.id || id} />
+      </div>
+      <div className="mt-3">
+        <CourseContentSection trainingCourseId={formData.id || id} />
       </div>
     </div>
   );

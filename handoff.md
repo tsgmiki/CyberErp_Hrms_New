@@ -4821,6 +4821,26 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **⚠ `/hrms/*` inside a SQL block comment opens a NESTED comment** and swallows the rest of the
   script ("Missing end comment mark"). Write the namespace without the star.
 
+- **LMS Phase 3 shipped: course content and derived completion** — `Hrms.CourseVersion` /
+  `ContentModule` / `ModuleProgress`; authoring on the HRMS course form, player at HOME
+  `/coursePlayer/:enrollmentId` (logic §12.86). 29/29 verified, all probe data removed.
+  ⚠ Published content is FROZEN — a change opens a new version, which retires the old one. Anything
+  that edits a published version is a bug, not a convenience.
+  ⚠ Completion is now DERIVED: finishing every required module completes the enrolment with
+  attendance 100 and **assessment score NULL**. Do not fill that score until there is a real
+  assessment — a number nobody measured on a training record is worse than a blank.
+  ⚠ The `Document` module kind exists in the model but is NOT offered in the authoring UI:
+  `EmployeeDocument` is scoped to one employee, so a course file stored there is unreadable by the
+  rest of the course. It needs a course-file store first.
+  ⚠ Progress hangs off an existing session-based enrolment. Session-free self-paced enrolment needs
+  `TrainingEnrollment.TrainingSessionId` to go nullable — a migration against a unique index and
+  every query that reads it.
+- **⚠ Palette `/nn` variants are dead unless hand-written in `theme.css`** — re-confirmed in both
+  SPAs (`bg-card/40` and `border-primary/40` had been silently doing nothing in HOME since phase 2).
+  Check the file, not the rendered guess.
+- **⚠ Inserting a class into a multi-controller file can orphan the doc comment above it** from the
+  class it described. Check the neighbours after any such insertion.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

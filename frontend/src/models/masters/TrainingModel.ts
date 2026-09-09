@@ -37,6 +37,47 @@ export interface RecommendedCourseModel {
   upcomingSessions: number;
 }
 
+/** Lifecycle of a course version — Draft is editable, Published is live, Retired is superseded. */
+export type CourseVersionStatus = "Draft" | "Published" | "Retired";
+
+/** What a module is, which decides how the player renders it. */
+export type ContentModuleKind = "Text" | "Document" | "Video" | "Link";
+
+/** One step of a course version. */
+export interface ContentModuleModel {
+  id?: string;
+  sortOrder?: number;
+  title: string;
+  kind: ContentModuleKind;
+  /** Authored rich text, for a Text module. */
+  body?: string | null;
+  /** Where a Video or Link module points. */
+  externalUrl?: string | null;
+  documentId?: string | null;
+  estimatedMinutes?: number | null;
+  /** Optional modules are offered but do not gate completion. */
+  isRequired: boolean;
+}
+
+/**
+ * A versioned snapshot of a course's content.
+ *
+ * Content is frozen once published: a learner who completed v1 of a compliance course must not
+ * silently read as current on v3, so a revision is a new version rather than an edit in place.
+ */
+export interface CourseVersionModel {
+  id: string;
+  trainingCourseId: string;
+  versionNumber: number;
+  status: CourseVersionStatus;
+  changeNote?: string | null;
+  publishedOn?: string | null;
+  moduleCount: number;
+  requiredModuleCount: number;
+  totalMinutes: number;
+  modules: ContentModuleModel[];
+}
+
 /** A catalog course / program (HC191/HC196; external providers per HC194). */
 export interface TrainingCourseModel extends AbstractModel {
   name?: string;
