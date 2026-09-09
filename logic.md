@@ -5912,3 +5912,55 @@ competency · cascade delete confirmed · suggestions endpoint healthy.
 courses and no scored appraisal competencies**, so the wording above is produced by code that
 compiles and whose inputs were verified separately, not by a live run. It needs one course, one
 mapping and one scored appraisal to demonstrate.
+
+### 12.85 LMS Phase 2 — the learner portal
+
+Second phase of the Learning upgrade. Every one of the ten Learning operations was registered in the
+`hrms/` namespace, so to see their own training an employee had to be given access to the **HR admin
+console**. Phase 2 moves the learner half into HOME, where the rest of self-service already lives.
+
+**⚠️ The catalogue is a SEPARATE READ-ONLY controller, and that is the whole design decision.** The
+obvious move — add `myTraining` to `TrainingCourseController`'s links — would have been a hole:
+UserRole holds **CanAdd** on `myTraining`, so widening that controller hands every employee course
+CREATE and DELETE along with the catalogue. `TrainingCatalogController` has one GET and no writes, so
+the permission it needs cannot be turned into write access. Verified: an ordinary employee gets 200
+on `/TrainingCatalog`, **403 on both GET and POST `/TrainingCourse`**.
+
+**⚠️ The catalogue mirrors `EnrollTraining` rule for rule** — scheduled sessions only, not already
+started, no double seat, capacity counted with withdrawn seats freed. A catalogue that offers what
+the enrol endpoint then refuses is worse than one that offers nothing. Each session carries
+`CanEnroll` plus a `BlockedReason`, so the UI shows a reason where a dead button would otherwise sit.
+
+It also reuses phase 1: a course whose competencies include one the learner was rated below the
+development threshold on comes back `IsRecommended` with the reason in the learner's own terms, and
+sorts first. Same 60% threshold constant as the suggestion engine — one definition of "a gap".
+
+**Verified end to end** with a throwaway course, mapping and 2-seat session, as `wagayes` (an
+ordinary employee, no admin grants):
+
+| step | result |
+|---|---|
+| browse catalogue | course, CPD hours, "develops: Learning Agility", session, 2/2 seats, `canEnroll=true` |
+| self-enrol | 200 |
+| catalogue re-read | seats **1/2**, `canEnroll=false`, `isEnrolled=true`, "You are already enrolled." |
+| My Learning | 1 enrolment, status Enrolled |
+| enrol again | 400 — catalogue and server agree |
+| withdraw | 200, seats back to **2/2**, `canEnroll=true` |
+
+All test data removed afterwards: courses 0, sessions 0, enrolments 0, mappings 0, and all 35
+competencies untouched.
+
+Two menu operations added (`/courseCatalog`, `/myLearning`) in the SSMS self-service module, granted
+to the same roles as `/myEvaluations`. Bare links, like every other SSMS operation — that is what
+lets a Home screen authorise against the HRMS API (§12.69). **The rows control link visibility, never
+what the data allows.**
+
+⚠️ **A SQL gotcha worth keeping:** `/hrms/*` inside a `/* … */` block comment opens a NESTED comment
+in SQL Server, which then swallows the rest of the file — "Missing end comment mark". Write the
+namespace without the star in SQL comments.
+
+**Still Phase 3's job, and worth being clear about:** this is a better front door to the same
+administrative module. Completion is still typed in by HR, courses still have no content, and there
+is still nothing to *do* in the portal beyond enrol and read. The portal is where content will land —
+that was the sequencing argument for building it before Phase 3, not a claim that learning is now
+self-service.

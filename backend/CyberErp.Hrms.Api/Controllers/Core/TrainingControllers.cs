@@ -297,6 +297,23 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>CPD credits/hours rollup (HC200) — own record by default, scope-gated otherwise.</summary>
+    /// <summary>
+    /// The learner's course catalogue — active courses, joinable sessions, and which of them address
+    /// the caller's own competency gaps.
+    ///
+    /// <para>Gated on <c>myTraining</c>, which ordinary staff hold, rather than on
+    /// <c>trainingCourse</c>, which they do not. It is a separate READ-ONLY controller rather than an
+    /// extra link on TrainingCourseController because UserRole carries Add on myTraining — widening
+    /// that controller would have handed every employee course creation and deletion along with the
+    /// catalogue (logic §12.85).</para>
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class TrainingCatalogController(IGetTrainingCatalog catalogHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<CatalogCourseDto>> Get() => catalogHandler.GetAsync();
+    }
+
     [RequirePermission("myTraining")]
     public class TrainingCpdController(IGetCpdSummary cpdHandler) : BaseController
     {
