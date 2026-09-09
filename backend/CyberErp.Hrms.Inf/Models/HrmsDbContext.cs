@@ -216,6 +216,9 @@ public class HrmsDbContext : MultiTenantDbContext
     // ⚠️ Every BaseEntity needs an explicit DbSet or the global Instant/RowVersion conventions in
     // OnModelCreating skip it and the migration comes out wrong (handoff gotcha).
     public DbSet<CourseCompetency> CourseCompetency { get; set; }
+    public DbSet<CourseVersion> CourseVersion { get; set; }
+    public DbSet<ContentModule> ContentModule { get; set; }
+    public DbSet<ModuleProgress> ModuleProgress { get; set; }
     public DbSet<TrainingNeed> TrainingNeed { get; set; }
     public DbSet<TrainingSession> TrainingSession { get; set; }
     public DbSet<TrainingEnrollment> TrainingEnrollment { get; set; }
@@ -577,6 +580,9 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new TrainingCategoryConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingCourseConfiguration());
         modelBuilder.ApplyConfiguration(new CourseCompetencyConfiguration());
+        modelBuilder.ApplyConfiguration(new CourseVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new ContentModuleConfiguration());
+        modelBuilder.ApplyConfiguration(new ModuleProgressConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingNeedConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingSessionConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingEnrollmentConfiguration());

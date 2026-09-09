@@ -2181,6 +2181,72 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("CompetencyCategory", "Hrms");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ContentModule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<Guid>("CourseVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("DocumentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("EstimatedMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CourseVersionId", "SortOrder");
+
+                    b.ToTable("ContentModule", "Hrms");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CoreNotification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2239,6 +2305,106 @@ namespace CyberErp.Hrms.Inf.Migrations
                         {
                             t.ExcludeFromMigrations();
                         });
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CompetencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TrainingCourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompetencyId");
+
+                    b.HasIndex("TrainingCourseId", "CompetencyId")
+                        .IsUnique();
+
+                    b.ToTable("CourseCompetency", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ChangeNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("PublishedOn")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<DateTime?>("RetiredOn")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TrainingCourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TrainingCourseId", "VersionNumber")
+                        .IsUnique();
+
+                    b.ToTable("CourseVersion", "Hrms");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CriterionEvaluator", b =>
@@ -7159,6 +7325,60 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("Module", "Core");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ModuleProgress", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedOn")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("ContentModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("LastPosition")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<int>("SecondsSpent")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StartedOn")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TrainingEnrollmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentModuleId");
+
+                    b.HasIndex("TrainingEnrollmentId", "ContentModuleId")
+                        .IsUnique();
+
+                    b.ToTable("ModuleProgress", "Hrms");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.NotificationEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8568,51 +8788,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsUnique();
 
                     b.ToTable("PositionClass", "Hrms");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("CompetencyId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2(3)");
-
-                    b.Property<string>("CreatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsPrimary")
-                        .HasColumnType("bit");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .HasColumnType("varbinary(8)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("TrainingCourseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2(7)");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompetencyId");
-
-                    b.HasIndex("TrainingCourseId", "CompetencyId")
-                        .IsUnique();
-
-                    b.ToTable("CourseCompetency", "Hrms");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PositionCompetency", b =>
@@ -14038,6 +14213,39 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ContentModule", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.CourseVersion", null)
+                        .WithMany("Modules")
+                        .HasForeignKey("CourseVersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Competency", null)
+                        .WithMany()
+                        .HasForeignKey("CompetencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingCourse", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingCourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseVersion", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingCourse", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingCourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CriterionEvaluator", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.RequisitionScreeningCriterion", null)
@@ -14796,6 +15004,21 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("Subsystem");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ModuleProgress", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.ContentModule", null)
+                        .WithMany()
+                        .HasForeignKey("ContentModuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingEnrollment", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingEnrollmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.NotificationRecipient", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.NotificationTemplate", null)
@@ -15028,21 +15251,6 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("SalaryScale");
 
                     b.Navigation("WorkLocation");
-                });
-
-            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
-                {
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Competency", null)
-                        .WithMany()
-                        .HasForeignKey("CompetencyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingCourse", null)
-                        .WithMany()
-                        .HasForeignKey("TrainingCourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PositionCompetency", b =>
@@ -15815,6 +16023,11 @@ namespace CyberErp.Hrms.Inf.Migrations
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.ClearanceDepartment", b =>
                 {
                     b.Navigation("Approvers");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseVersion", b =>
+                {
+                    b.Navigation("Modules");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.DynamicForm", b =>

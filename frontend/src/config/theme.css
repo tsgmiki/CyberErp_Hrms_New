@@ -318,6 +318,25 @@
 .border-info\/20 {
   border-color: color-mix(in srgb, var(--info) 20%, transparent);
 }
+/* Learning-module surfaces. Tailwind does not know these palette colours, so every /nn variant has
+   to be written out here — an unlisted one emits nothing at all and the element silently loses its
+   background or border. */
+.bg-primary\/15 {
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.bg-secondary\/20 {
+  background-color: color-mix(in srgb, var(--secondary) 20%, transparent);
+}
+.bg-card\/40 {
+  background-color: color-mix(in srgb, var(--card) 40%, transparent);
+}
+.bg-error\/10 {
+  background-color: color-mix(in srgb, var(--error) 10%, transparent);
+}
+.border-primary\/40 {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+
 .font-display {
   font-family: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
 }

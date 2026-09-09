@@ -876,6 +876,12 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.ITrainingNeedDecision, Features.Core.Training.TrainingNeedDecision>();
             services.AddScoped<Features.Core.Training.IGetTrainingNeedSuggestions, Features.Core.Training.GetTrainingNeedSuggestions>();
             services.AddScoped<Features.Core.Training.IGetTrainingCatalog, Features.Core.Training.GetTrainingCatalog>();
+            services.AddScoped<Features.Core.Training.IGetCourseVersions, Features.Core.Training.GetCourseVersions>();
+            services.AddScoped<Features.Core.Training.ICreateCourseVersion, Features.Core.Training.CreateCourseVersion>();
+            services.AddScoped<Features.Core.Training.ISetCourseVersionModules, Features.Core.Training.SetCourseVersionModules>();
+            services.AddScoped<Features.Core.Training.IPublishCourseVersion, Features.Core.Training.PublishCourseVersion>();
+            services.AddScoped<Features.Core.Training.IGetCoursePlayer, Features.Core.Training.GetCoursePlayer>();
+            services.AddScoped<Features.Core.Training.IRecordModuleProgress, Features.Core.Training.RecordModuleProgress>();
             services.AddScoped<Features.Core.Training.IGetCourseCompetencies, Features.Core.Training.GetCourseCompetencies>();
             services.AddScoped<Features.Core.Training.ISetCourseCompetencies, Features.Core.Training.SetCourseCompetencies>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.TrainingNeedWorkflowHandler>();

@@ -296,7 +296,71 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public async Task<IActionResult> Delete(Guid id) { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
     }
 
-    /// <summary>CPD credits/hours rollup (HC200) — own record by default, scope-gated otherwise.</summary>
+    /// <summary>
+    /// Course content authoring — versions and their modules. Gated with the course catalogue,
+    /// since authoring content is part of describing a course.
+    /// </summary>
+    [RequirePermission("trainingCourse")]
+    public class CourseVersionController(
+        IGetCourseVersions getHandler,
+        ICreateCourseVersion createHandler,
+        ISetCourseVersionModules setModulesHandler,
+        IPublishCourseVersion publishHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<CourseVersionDto>> GetByCourse([FromQuery] Guid trainingCourseId)
+            => getHandler.GetAsync(trainingCourseId);
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] CreateCourseVersionRequest request)
+            => Ok(new { id = await createHandler.CreateAsync(request.TrainingCourseId, request.ChangeNote) });
+
+        /// <summary>Replaces the draft's ordered module list — set semantics.</summary>
+        [HttpPut("modules")]
+        public async Task<IActionResult> SetModules([FromBody] SaveCourseVersionModulesDto dto)
+        {
+            await setModulesHandler.SetAsync(dto);
+            return Ok(new { message = "Content updated" });
+        }
+
+        /// <summary>Makes the draft live and retires the version it replaces.</summary>
+        [HttpPost("{id:guid}/publish")]
+        public async Task<IActionResult> Publish(Guid id)
+        {
+            await publishHandler.PublishAsync(id);
+            return Ok(new { message = "Version published" });
+        }
+    }
+
+    public class CreateCourseVersionRequest
+    {
+        public Guid TrainingCourseId { get; set; }
+        public string? ChangeNote { get; set; }
+    }
+
+    /// <summary>
+    /// The learner's course player. Gated on <c>myTraining</c> — this is a learner surface — and the
+    /// handlers additionally require the enrolment to be the caller's OWN.
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class CoursePlayerController(
+        IGetCoursePlayer playerHandler,
+        IRecordModuleProgress progressHandler) : BaseController
+    {
+        [HttpGet("{trainingEnrollmentId:guid}")]
+        public Task<CoursePlayerDto> Get(Guid trainingEnrollmentId)
+            => playerHandler.GetAsync(trainingEnrollmentId);
+
+        /// <summary>
+        /// Records a visit and returns the refreshed player, so the caller never has to guess whether
+        /// that module was the one that completed the course.
+        /// </summary>
+        [HttpPost("progress")]
+        [RequirePermission("myTraining", Access = PermissionAccess.Add)]
+        public Task<CoursePlayerDto> Progress([FromBody] RecordModuleProgressDto dto)
+            => progressHandler.RecordAsync(dto);
+    }
+
     /// <summary>
     /// The learner's course catalogue — active courses, joinable sessions, and which of them address
     /// the caller's own competency gaps.
@@ -314,6 +378,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         public Task<List<CatalogCourseDto>> Get() => catalogHandler.GetAsync();
     }
 
+    /// <summary>CPD credits/hours rollup (HC200) — own record by default, scope-gated otherwise.</summary>
     [RequirePermission("myTraining")]
     public class TrainingCpdController(IGetCpdSummary cpdHandler) : BaseController
     {

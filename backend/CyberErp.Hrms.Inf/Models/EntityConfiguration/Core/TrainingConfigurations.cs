@@ -26,6 +26,74 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     /// competency that is in use anywhere cannot be deleted (restrict). Only one cascade path, so
     /// SQL Server raises no multiple-cascade-path error.
     /// </summary>
+    public class CourseVersionConfiguration : IEntityTypeConfiguration<CourseVersion>
+    {
+        public void Configure(EntityTypeBuilder<CourseVersion> builder)
+        {
+            builder.ToTable("CourseVersion", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.ChangeNote).HasMaxLength(1000);
+
+            builder.HasOne<TrainingCourse>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingCourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Modules are owned by their version: they have no meaning apart from it, and a version
+            // is immutable once published, so they are never re-parented.
+            builder.HasMany(x => x.Modules)
+                .WithOne()
+                .HasForeignKey(m => m.CourseVersionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(x => x.Modules).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            builder.HasIndex(x => new { x.TrainingCourseId, x.VersionNumber }).IsUnique();
+        }
+    }
+
+    public class ContentModuleConfiguration : IEntityTypeConfiguration<ContentModule>
+    {
+        public void Configure(EntityTypeBuilder<ContentModule> builder)
+        {
+            builder.ToTable("ContentModule", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
+            builder.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
+            // Authored rich text — the same ceiling the other long-form content fields use.
+            builder.Property(x => x.Body).HasMaxLength(4000);
+            builder.Property(x => x.ExternalUrl).HasMaxLength(1000);
+
+            builder.HasIndex(x => new { x.CourseVersionId, x.SortOrder });
+        }
+    }
+
+    public class ModuleProgressConfiguration : IEntityTypeConfiguration<ModuleProgress>
+    {
+        public void Configure(EntityTypeBuilder<ModuleProgress> builder)
+        {
+            builder.ToTable("ModuleProgress", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            // Progress dies with the enrolment it belongs to. The module side is Restrict: only one
+            // cascade path may reach this table, and a published version's modules are never deleted
+            // anyway.
+            builder.HasOne<TrainingEnrollment>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingEnrollmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<ContentModule>()
+                .WithMany()
+                .HasForeignKey(x => x.ContentModuleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One row per (enrolment, module): a second visit updates the row rather than adding one.
+            builder.HasIndex(x => new { x.TrainingEnrollmentId, x.ContentModuleId }).IsUnique();
+        }
+    }
+
     public class CourseCompetencyConfiguration : IEntityTypeConfiguration<CourseCompetency>
     {
         public void Configure(EntityTypeBuilder<CourseCompetency> builder)
