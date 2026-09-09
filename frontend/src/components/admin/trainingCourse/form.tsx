@@ -1,5 +1,6 @@
 "use client";
 import FormProviders from "@/components/common/formProvider/formProvider";
+import CourseCompetencySection from "./competencySection";
 import { memo, useCallback, useEffect, useState } from "react";
 import type { TrainingCourseModel } from "@/models";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -129,6 +130,11 @@ function TrainingCourseForm(props: { id: string; setId: (id: string) => void }) 
         }}
       />
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+      {/* Sits below the form because it saves through its own endpoint and needs a course id —
+          the same rule the employee-profile child collections follow. */}
+      <div className="mt-3">
+        <CourseCompetencySection trainingCourseId={formData.id || id} />
+      </div>
     </div>
   );
 }

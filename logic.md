@@ -5855,3 +5855,60 @@ interview, its panelist, its portal alert and the stage were all removed afterwa
 **Request 3 (evaluator portal) needed no work — it was built in §12.78.** `GET /MyEvaluation`
 returns both applicants for `tatekg` with their assigned criteria, and the `/myEvaluations` menu row
 is live. The portal alert now deep-links straight to it.
+
+### 12.84 LMS Phase 1 — the course-to-competency join
+
+First phase of the Learning upgrade (blueprint published 2026-09-09). The catalogue could list courses
+and an appraisal could report a low competency score, but **nothing connected the two**: a gap could
+not name a course, and a completed course was not evidence of anything in particular.
+
+`Hrms.CourseCompetency` is the mirror of `PositionCompetency` — that one says which competencies a
+ROLE requires, this one says which a COURSE builds. Same delete rules for the same reasons: cascade
+from the course (a mapping without its course is meaningless), restrict on the competency (one in
+use cannot be deleted). Verified live: deleting the test course took its mapping with it and left all
+35 competencies standing.
+
+**⚠️ NO PROFICIENCY LEVEL, and this is a correction to the published blueprint.** That document
+proposed "CourseCompetency with target proficiency" and "competency uplift on completion". Reading
+the model first showed there is nowhere for either to land:
+
+- `Competency` has no level scale.
+- `PositionCompetency` carries a **Weight** (relative importance %), not a required level.
+- There is **no per-employee competency store at all** — proficiency exists only as
+  `AppraisalCompetency.ManagerScore`, a point-in-time rating inside one appraisal.
+
+A target level would have been a number with nothing to compare against, and an "uplift" would have
+had no row to write to. So the join carries only `IsPrimary`, which orders recommendations. **An
+employee-competency store is a real addition and belongs to Performance, not Learning** — it should
+be its own decision, not a side effect of a training feature.
+
+**What the suggestion engine now does.** `GetTrainingNeedSuggestions` already read appraisal
+competency scores below a 60% threshold. Each gap now resolves through
+`CourseRecommendation.ForCompetenciesAsync` — one batched lookup for all gaps, not a query per
+competency — and the rationale changes from
+
+> Manager-rated 2 of 5 in FY2026 H1.
+
+to
+
+> Manager-rated 2 of 5 in FY2026 H1 — Cold Chain Handling &amp; Validation covers it (2 session(s) open).
+
+⚠️ Only **active** courses are recommended (a retired course stays mapped for history but must never
+be offered), and the ordering is primary → most open sessions → name, because a recommendation nobody
+can join is noise. When nothing is mapped the wording falls back to the score alone rather than
+implying the catalogue gap is the employee's problem.
+
+**Set semantics with row preservation.** `SetCourseCompetencies` replaces the whole mapping in one
+call, but matches rows by competency rather than deleting and re-inserting — an unchanged mapping
+keeps its id and audit trail, so re-saving the form does not look like the mapping was replaced.
+Duplicates in one payload are collapsed before the write (`IsPrimary` = any true), which turns a
+would-be 2601 on the unique index into ordinary behaviour.
+
+Verified live: mapping saved and read back primary-first with category resolved · a duplicated
+competency in one payload collapsed to one row, HTTP 200 · replacing the list removed the dropped
+competency · cascade delete confirmed · suggestions endpoint healthy.
+
+⚠️ **Not exercised end to end:** the gap→course rationale itself. This tenant has **no training
+courses and no scored appraisal competencies**, so the wording above is produced by code that
+compiles and whose inputs were verified separately, not by a live run. It needs one course, one
+mapping and one scored appraisal to demonstrate.

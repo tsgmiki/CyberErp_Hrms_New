@@ -34,6 +34,28 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>The course catalog / training directory (HC191/HC196; external providers per HC194).</summary>
+    /// <summary>
+    /// Which competencies a course develops — the mapping that lets a competency gap name a course.
+    /// Gated with the course catalogue, since it is part of describing a course.
+    /// </summary>
+    [RequirePermission("trainingCourse")]
+    public class CourseCompetencyController(
+        IGetCourseCompetencies getHandler,
+        ISetCourseCompetencies setHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<CourseCompetencyDto>> GetByCourse([FromQuery] Guid trainingCourseId)
+            => getHandler.GetAsync(trainingCourseId);
+
+        /// <summary>Replaces the course's whole mapping — set semantics, like LearningPath steps.</summary>
+        [HttpPut]
+        public async Task<IActionResult> Set([FromBody] SetCourseCompetenciesDto dto)
+        {
+            await setHandler.SetAsync(dto);
+            return Ok(new { message = "Competencies updated" });
+        }
+    }
+
     [RequirePermission("trainingCourse")]
     public class TrainingCourseController(
         ISaveTrainingCourse saveHandler,

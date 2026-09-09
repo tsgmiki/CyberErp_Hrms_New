@@ -281,6 +281,8 @@ export type {
 export type {
   TrainingCategoryModel,
   TrainingCourseModel,
+  CourseCompetencyModel,
+  RecommendedCourseModel,
   TrainingNeedModel,
   TrainingNeedSuggestionModel,
   TrainingSessionModel,

@@ -875,6 +875,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.IGetAllTrainingNeeds, Features.Core.Training.GetAllTrainingNeeds>();
             services.AddScoped<Features.Core.Training.ITrainingNeedDecision, Features.Core.Training.TrainingNeedDecision>();
             services.AddScoped<Features.Core.Training.IGetTrainingNeedSuggestions, Features.Core.Training.GetTrainingNeedSuggestions>();
+            services.AddScoped<Features.Core.Training.IGetCourseCompetencies, Features.Core.Training.GetCourseCompetencies>();
+            services.AddScoped<Features.Core.Training.ISetCourseCompetencies, Features.Core.Training.SetCourseCompetencies>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.TrainingNeedWorkflowHandler>();
 
             // Phase TD2 — delivery: sessions, enrollments, budgets (HC190/HC197/HC198/HC199).

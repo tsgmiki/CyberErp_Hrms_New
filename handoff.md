@@ -4806,6 +4806,14 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **To exercise interview notifications safely**: run with `Email__PickupDirectory` set (writes .eml
   instead of sending — panelist addresses are real mailboxes).
 
+- **LMS Phase 1 shipped: `Hrms.CourseCompetency`** — courses now declare which competencies they
+  build, and competency-gap suggestions name real courses (logic §12.84).
+  ⚠ There is NO per-employee competency level in this product — proficiency exists only as
+  `AppraisalCompetency.ManagerScore` inside one appraisal. Any feature needing "raise a level" must
+  first add an employee-competency store, which belongs to Performance, not Learning.
+- **Hand-written migrations must update BOTH snapshot passes** — the property block AND the
+  relationship block at the end. Missing the second gives "The model has pending changes" on update.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

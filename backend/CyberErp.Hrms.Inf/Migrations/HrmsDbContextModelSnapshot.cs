@@ -8570,6 +8570,51 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("PositionClass", "Hrms");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CompetencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TrainingCourseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompetencyId");
+
+                    b.HasIndex("TrainingCourseId", "CompetencyId")
+                        .IsUnique();
+
+                    b.ToTable("CourseCompetency", "Hrms");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PositionCompetency", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14983,6 +15028,21 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("SalaryScale");
 
                     b.Navigation("WorkLocation");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.CourseCompetency", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Competency", null)
+                        .WithMany()
+                        .HasForeignKey("CompetencyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingCourse", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingCourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PositionCompetency", b =>
