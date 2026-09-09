@@ -4814,6 +4814,13 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **Hand-written migrations must update BOTH snapshot passes** — the property block AND the
   relationship block at the end. Missing the second gives "The model has pending changes" on update.
 
+- **LMS Phase 2 shipped: learner portal in HOME** — `/courseCatalog` + `/myLearning`, served by a
+  READ-ONLY `TrainingCatalogController` gated on `myTraining` (logic §12.85).
+  ⚠ Do NOT add `myTraining` to `TrainingCourseController`: UserRole holds CanAdd on it, so that
+  would give every employee course create/delete along with the catalogue.
+- **⚠ `/hrms/*` inside a SQL block comment opens a NESTED comment** and swallows the rest of the
+  script ("Missing end comment mark"). Write the namespace without the star.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
