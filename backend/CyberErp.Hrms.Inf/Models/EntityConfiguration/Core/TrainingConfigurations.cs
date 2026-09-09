@@ -20,6 +20,36 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    /// <summary>
+    /// Course to competency — the mirror of PositionCompetencyConfiguration, and it uses the same
+    /// delete rules for the same reasons: the mapping dies with its COURSE (cascade), while a
+    /// competency that is in use anywhere cannot be deleted (restrict). Only one cascade path, so
+    /// SQL Server raises no multiple-cascade-path error.
+    /// </summary>
+    public class CourseCompetencyConfiguration : IEntityTypeConfiguration<CourseCompetency>
+    {
+        public void Configure(EntityTypeBuilder<CourseCompetency> builder)
+        {
+            builder.ToTable("CourseCompetency", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.HasOne<TrainingCourse>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingCourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Competency>()
+                .WithMany()
+                .HasForeignKey(x => x.CompetencyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One row per pair — mapping the same competency twice says nothing extra and would
+            // double-count the course in a recommendation list.
+            builder.HasIndex(x => new { x.TrainingCourseId, x.CompetencyId }).IsUnique();
+            // The recommendation query reads competency-first ("which courses teach X?").
+            builder.HasIndex(x => x.CompetencyId);
+        }
+    }
+
     public class TrainingCourseConfiguration : IEntityTypeConfiguration<TrainingCourse>
     {
         public void Configure(EntityTypeBuilder<TrainingCourse> builder)

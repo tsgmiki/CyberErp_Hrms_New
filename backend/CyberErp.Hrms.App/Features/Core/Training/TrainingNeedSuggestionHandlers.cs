@@ -17,6 +17,16 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public Guid? CompetencyId { get; set; }
         public string? CompetencyName { get; set; }
         public Guid? GoalId { get; set; }
+
+        /// <summary>
+        /// Courses that develop this competency, best match first — empty when nothing in the
+        /// catalogue is mapped to it yet.
+        ///
+        /// <para>This is what turns "you scored low on Cold Chain Management" into "take Cold Chain
+        /// Handling &amp; Validation". Before the course-to-competency mapping existed the model
+        /// simply could not answer it (logic §12.84).</para>
+        /// </summary>
+        public List<RecommendedCourseDto> RecommendedCourses { get; set; } = [];
     }
 
     // ---- Interface ----------------------------------------------------------
@@ -35,6 +45,9 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         IRepository<RatingScaleLevel> ratingLevelRepository,
         IRepository<EmployeeGoal> goalRepository,
         IRepository<TrainingNeed> needRepository,
+        IRepository<CourseCompetency> courseCompetencyRepository,
+        IRepository<TrainingCourse> courseRepository,
+        IRepository<TrainingSession> sessionRepository,
         IPerformanceVisibilityService visibility) : IGetTrainingNeedSuggestions
     {
         /// <summary>Normalised score below which a competency / overall result suggests training.</summary>
@@ -90,16 +103,38 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                         .Select(c => new { c.CompetencyId, c.CompetencyName, c.ManagerScore })
                         .ToListAsync();
 
-                    suggestions.AddRange(lowCompetencies
+                    var gaps = lowCompetencies
                         .Where(c => !openCompetencyIds.Contains(c.CompetencyId))
-                        .Select(c => new TrainingNeedSuggestionDto
+                        .ToList();
+
+                    // One batched lookup for every gap rather than a query per competency.
+                    var byCompetency = await CourseRecommendation.ForCompetenciesAsync(
+                        courseCompetencyRepository, courseRepository, sessionRepository,
+                        gaps.Select(g => g.CompetencyId).ToList());
+
+                    suggestions.AddRange(gaps.Select(c =>
+                    {
+                        var courses = byCompetency.GetValueOrDefault(c.CompetencyId) ?? [];
+                        return new TrainingNeedSuggestionDto
                         {
                             Source = nameof(TrainingNeedSource.CompetencyGap),
                             Title = $"Develop: {c.CompetencyName}",
-                            Rationale = $"Manager-rated {c.ManagerScore:0.#} of {max:0.#} in {cycle!.Name}.",
+                            // The rationale names the course when one exists, because "take X" is
+                            // actionable in a way "you are weak at Y" is not. When nothing is mapped
+                            // the wording falls back to the score alone rather than implying a
+                            // catalogue gap is the employee's problem.
+                            Rationale = courses.Count == 0
+                                ? $"Manager-rated {c.ManagerScore:0.#} of {max:0.#} in {cycle!.Name}."
+                                : $"Manager-rated {c.ManagerScore:0.#} of {max:0.#} in {cycle!.Name} — "
+                                  + $"{courses[0].CourseName} covers it"
+                                  + (courses[0].UpcomingSessions > 0
+                                      ? $" ({courses[0].UpcomingSessions} session(s) open)."
+                                      : " (no session scheduled yet)."),
                             CompetencyId = c.CompetencyId,
-                            CompetencyName = c.CompetencyName
-                        }));
+                            CompetencyName = c.CompetencyName,
+                            RecommendedCourses = courses
+                        };
+                    }));
                 }
             }
 

@@ -10,6 +10,33 @@ export interface TrainingCategoryModel extends AbstractModel {
   sortOrder?: number;
 }
 
+/**
+ * One competency a course develops — the join that lets a competency gap name a course.
+ *
+ * There is deliberately no proficiency level: this product has no per-employee competency level to
+ * compare against, so the mapping carries only `isPrimary`, which orders recommendations.
+ */
+export interface CourseCompetencyModel {
+  id?: string;
+  trainingCourseId?: string;
+  competencyId: string;
+  competencyName?: string;
+  categoryName?: string | null;
+  isPrimary: boolean;
+}
+
+/** A course offered against a competency gap, with enough context to act on it. */
+export interface RecommendedCourseModel {
+  trainingCourseId: string;
+  courseName: string;
+  courseCode?: string | null;
+  durationHours?: number | null;
+  deliveryMode?: string;
+  isPrimary: boolean;
+  /** Scheduled sessions still open — a recommendation nobody can join is noise. */
+  upcomingSessions: number;
+}
+
 /** A catalog course / program (HC191/HC196; external providers per HC194). */
 export interface TrainingCourseModel extends AbstractModel {
   name?: string;
