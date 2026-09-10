@@ -17,7 +17,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public string Kind { get; set; } = string.Empty;
         public string? Body { get; set; }
         public string? ExternalUrl { get; set; }
-        public Guid? DocumentId { get; set; }
+        public Guid? CourseFileId { get; set; }
         public int? EstimatedMinutes { get; set; }
         public bool IsRequired { get; set; }
     }
@@ -54,7 +54,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public string Kind { get; set; } = nameof(ContentModuleKind.Text);
         public string? Body { get; set; }
         public string? ExternalUrl { get; set; }
-        public Guid? DocumentId { get; set; }
+        public Guid? CourseFileId { get; set; }
         public int? EstimatedMinutes { get; set; }
         public bool IsRequired { get; set; } = true;
     }
@@ -159,6 +159,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
     public class SetCourseVersionModules(
         IRepository<CourseVersion> repository,
         IRepository<ContentModule> moduleRepository,
+        IRepository<CourseFile> fileRepository,
         ILogger<SetCourseVersionModules> logger) : ISetCourseVersionModules
     {
         public async Task SetAsync(SaveCourseVersionModulesDto dto)
@@ -173,8 +174,10 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 if (!Enum.TryParse<ContentModuleKind>(m.Kind, true, out var kind))
                     throw new ValidationException("kind", $"'{m.Kind}' is not a module kind.");
                 return new ContentModuleSpec(m.Title, kind, m.Body, m.ExternalUrl,
-                    m.DocumentId, m.EstimatedMinutes, m.IsRequired, m.Id);
+                    m.CourseFileId, m.EstimatedMinutes, m.IsRequired, m.Id);
             }).ToList();
+
+            await EnsureFilesBelongToCourseAsync(specs, version.TrainingCourseId);
 
             // ⚠️ Modules that came back with their id are UPDATED IN PLACE, so a save does not churn
             // module ids. It used to delete and recreate the lot, which was harmless until a Quiz
@@ -211,6 +214,34 @@ namespace CyberErp.Hrms.App.Features.Core.Training
             await repository.SaveChangesAsync();
             logger.LogInformation("Version {VersionId} now has {Count} module(s); {Removed} dropped",
                 version.Id, specs.Count, removed.Count);
+        }
+
+        /// <summary>
+        /// A Document module must point at a file in ITS OWN course's library.
+        ///
+        /// <para>Checked because <c>CourseFileId</c> arrives from the client: without it an author
+        /// could reference another course's material, and the learner's download rule — which grants
+        /// access through the course a file is served by — would then hand it out to the wrong
+        /// audience (logic §12.89).</para>
+        /// </summary>
+        private async Task EnsureFilesBelongToCourseAsync(List<ContentModuleSpec> specs, Guid trainingCourseId)
+        {
+            var wanted = specs
+                .Where(s => s.Kind == ContentModuleKind.Document && s.CourseFileId.HasValue)
+                .Select(s => s.CourseFileId!.Value)
+                .Distinct()
+                .ToList();
+            if (wanted.Count == 0) return;
+
+            var mine = await fileRepository.GetAll().AsNoTracking()
+                .Where(f => wanted.Contains(f.Id) && f.TrainingCourseId == trainingCourseId)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            var stranger = wanted.Except(mine).ToList();
+            if (stranger.Count > 0)
+                throw new ValidationException("modules",
+                    "A document module references a file that does not belong to this course. Upload it to this course's material library first.");
         }
     }
 
@@ -309,7 +340,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 Kind = m.Kind.ToString(),
                 Body = m.Body,
                 ExternalUrl = m.ExternalUrl,
-                DocumentId = m.DocumentId,
+                CourseFileId = m.CourseFileId,
                 EstimatedMinutes = m.EstimatedMinutes,
                 IsRequired = m.IsRequired
             })]

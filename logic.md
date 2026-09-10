@@ -6291,3 +6291,93 @@ rather than the reports — so it is a decision to take before building on this,
 here is the prerequisite either way.
 
 **Still ahead:** a course-file store, which is what unlocks the Document module kind.
+
+### 12.89 The course-file store — unlocking the Document module
+
+The last item outstanding from the LMS arc. Phase 3 modelled a `Document` content module and then
+deliberately left it unreachable, because the only file table in the product was `EmployeeDocument` —
+**scoped to one employee**, so course material stored there is readable by exactly one person.
+`Hrms.CourseFile` is the table that can express the missing sentence: material owned by a COURSE.
+
+**⚠️ Rows are IMMUTABLE.** The entity exposes no way to change the bytes, only to retitle the
+description. That is what keeps a published course version frozen: its Document module points at
+material that cannot move underneath the people who completed it. "Replace this PDF" is therefore
+"upload the new one and point a draft at it" — the same shape as every other revision in this module.
+
+**⚠️ Owned by the COURSE, not by a version.** A revision that keeps the same handbook references the
+same row rather than a copy, so the fifth revision of a course does not carry five identical PDFs.
+
+**⚠️ The learner's access rule is the whole reason the table exists**: a file may be read only when it
+is referenced by a module of the **published** version of a course the caller is **enrolled on**.
+Withdrawn enrolments lose access; completed ones keep it, because finishing a course must not lock
+you out of the handbook you were given. Unpublished drafts serve nothing — unpublished material is
+not yet anybody's course.
+
+**Two controllers, for the §12.85 reason.** `CourseFileController` (gated `trainingCourse`) does
+list, upload, delete and the author's own preview. `CourseMaterialController` (gated `myTraining`,
+read-only) is the learner's copy. They are separate because widening the authoring controller to
+`myTraining` — which every employee holds — would hand the whole workforce upload and delete along
+with the download.
+
+**⚠️ NO VIDEO EXTENSIONS in the upload allow-list**, deliberately. A Video module is a URL precisely
+because streaming media out of SQL Server does not scale; permitting an `.mp4` here would quietly
+undo that decision one 200 MB row at a time. The refusal says so ("Video belongs on a Video module as
+a URL") rather than just rejecting the type.
+
+**Deletion is refused while any module points at the file** — including a **retired** version's. A
+retired version is the record of what people actually completed, so deleting its material destroys
+the evidence behind every completion earned on it. The error names the modules and suggests the
+replacement route.
+
+**A Document module must reference a file from its own course's library**, checked on save. Without
+it an author could point at another course's material, and the learner rule — which grants access
+through the course a file is served by — would then hand it to the wrong audience.
+
+**`ContentModule.DocumentId` is RENAMED to `CourseFileId`.** The column had never held a value, since
+the kind was unreachable, so the rename carries no data risk — and a name pointing at the wrong table
+would mislead every later reader.
+
+**Sizes.** 25 MB per file, against 10 MB for a per-employee document. A course handbook is a shared
+asset stored once and read by the whole workforce, which is a *better* profile than the per-employee
+tables already in the product — a 5 MB procedure read by three hundred people is still one 5 MB row.
+Bytes are inline `varbinary(max)`, as for every other attachment here. Object storage with signed
+URLs remains the right answer if course *video* is ever hosted in-product; nothing in this design
+blocks it, because content is referenced rather than assumed-inline (§12.86).
+
+**⚠️ The player fetches material as a blob, not with an `<iframe src>` pointed at the API.** A direct
+iframe is a cross-origin document request, and browsers blocking third-party cookies would send it
+without the session — producing a blank frame with no error. Fetching it as a same-site XHR keeps the
+cookie on it and renders from the SPA's own origin. PDFs and images render in place; anything else
+gets a download, because a viewer that shows a blank box for a .docx is worse than a button.
+
+Surfaces: **Course Material** sits on the HRMS course form under the content editor — a file is
+uploaded in service of a module rather than the other way round. The Document kind is now offered in
+the module picker with a file dropdown, and says where the file comes from when the library is empty.
+The HOME player renders the document inline with a download beside it. **No new menu operation**:
+authoring rides on `trainingCourse` and the learner path on `myTraining`, both of which exist.
+
+**Verified end to end, 25/25**, with a throwaway course, a real one-page PDF and two disposable
+accounts:
+
+| step | result |
+|---|---|
+| upload an `.exe` | 400 |
+| upload an `.mp4` | **400** — video belongs on a Video module |
+| upload 26 MB | 400 |
+| upload a PDF | 200 |
+| library listing | name and size present, **bytes absent** |
+| Document module with no file | 400 |
+| Document module citing **another course's** file | **400** |
+| Document module citing its own course's file | 200, library shows "used by 1" |
+| delete a file in use | **400**, naming the module |
+| learner reads material of an **unpublished** version | refused |
+| learner reads it once published | 200, **byte-for-byte identical**, `application/pdf`, `inline` |
+| learner reads a file from a course they are **not** on | refused |
+| learner browses the authoring library / author download / upload | 403 / 403 / 403 |
+| learner **withdraws**, then reads | refused |
+
+All probe data removed afterwards: courses, files, versions, modules, enrolments and both accounts
+back to 0.
+
+**This closes the LMS arc.** Phases 1–5 plus this store leave one decision open and unbuilt: whether
+NVI needs GxP-grade training records (§12.88), which changes the data model rather than the reports.

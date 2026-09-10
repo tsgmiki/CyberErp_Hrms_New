@@ -178,7 +178,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                     Kind = m.Kind.ToString(),
                     Body = m.Body,
                     ExternalUrl = m.ExternalUrl,
-                    DocumentId = m.DocumentId,
+                    CourseFileId = m.CourseFileId,
                     EstimatedMinutes = m.EstimatedMinutes,
                     IsRequired = m.IsRequired,
                     IsStarted = p is not null,

@@ -283,6 +283,7 @@ export type {
   TrainingCourseModel,
   CourseCompetencyModel,
   CourseVersionModel,
+  CourseFileModel,
   QuestionBankModel,
   QuestionModel,
   QuestionOptionModel,

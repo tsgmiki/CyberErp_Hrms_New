@@ -53,7 +53,7 @@ export interface ContentModuleModel {
   body?: string | null;
   /** Where a Video or Link module points. */
   externalUrl?: string | null;
-  documentId?: string | null;
+  courseFileId?: string | null;
   estimatedMinutes?: number | null;
   /** Optional modules are offered but do not gate completion. */
   isRequired: boolean;
@@ -541,4 +541,22 @@ export interface ComplianceRunResultModel {
   nextCyclesOpened: number;
   remindersSent: number;
   escalations: number;
+}
+
+/**
+ * A file in a course's material library (§3.8 phase 6, logic 12.89).
+ *
+ * Owned by the COURSE and immutable once uploaded — replacing material means uploading a new file
+ * and repointing a draft, which is what keeps a published version frozen.
+ */
+export interface CourseFileModel {
+  id: string;
+  trainingCourseId: string;
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  description?: string | null;
+  uploadedOn: string;
+  /** How many modules point at it. A file in use cannot be deleted. */
+  usedByModules: number;
 }

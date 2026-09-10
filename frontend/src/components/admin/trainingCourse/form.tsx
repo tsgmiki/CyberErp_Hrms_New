@@ -2,6 +2,7 @@
 import FormProviders from "@/components/common/formProvider/formProvider";
 import CourseCompetencySection from "./competencySection";
 import CourseContentSection from "./contentSection";
+import MaterialLibrary from "./materialLibrary";
 import { memo, useCallback, useEffect, useState } from "react";
 import type { TrainingCourseModel } from "@/models";
 import { StatusMessage } from "../../common/statusMessage/status";
@@ -138,6 +139,9 @@ function TrainingCourseForm(props: { id: string; setId: (id: string) => void }) 
       </div>
       <div className="mt-3">
         <CourseContentSection trainingCourseId={formData.id || id} />
+      </div>
+      <div className="mt-3">
+        <MaterialLibrary trainingCourseId={formData.id || id} />
       </div>
     </div>
   );

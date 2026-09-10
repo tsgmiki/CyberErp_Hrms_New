@@ -896,6 +896,12 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.IStartAssessmentAttempt, Features.Core.Training.StartAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.IGetAssessmentAttempt, Features.Core.Training.GetAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.ISubmitAssessmentAttempt, Features.Core.Training.SubmitAssessmentAttempt>();
+            // Course-file store — §3.8 phase 6 (logic §12.89).
+            services.AddScoped<Features.Core.Training.IGetCourseFiles, Features.Core.Training.GetCourseFiles>();
+            services.AddScoped<Features.Core.Training.IUploadCourseFile, Features.Core.Training.UploadCourseFile>();
+            services.AddScoped<Features.Core.Training.IDeleteCourseFile, Features.Core.Training.DeleteCourseFile>();
+            services.AddScoped<Features.Core.Training.IDownloadCourseFile, Features.Core.Training.DownloadCourseFile>();
+            services.AddScoped<Features.Core.Training.IDownloadCourseMaterial, Features.Core.Training.DownloadCourseMaterial>();
             // Compliance — §3.8 phase 5 (logic §12.88).
             services.AddScoped<Features.Core.Training.ILearningComplianceEngine, Features.Core.Training.LearningComplianceEngine>();
             services.AddScoped<Features.Core.Training.ILearningComplianceChaser, Features.Core.Training.LearningComplianceChaser>();

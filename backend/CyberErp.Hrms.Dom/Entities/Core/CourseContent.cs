@@ -16,7 +16,7 @@ public enum ContentModuleKind
 {
     /// <summary>Rich text authored in-place — no file, no hosting question.</summary>
     Text = 0,
-    /// <summary>A document the learner opens (PDF, slides) — small enough to hold inline.</summary>
+    /// <summary>A <see cref="CourseFile"/> the learner opens — a PDF, a deck, a procedure.</summary>
     Document = 1,
     /// <summary>Video held OUTSIDE this database and referenced by URL. See the entity remarks.</summary>
     Video = 2,
@@ -161,7 +161,7 @@ public record ContentModuleSpec(
     ContentModuleKind Kind,
     string? Body,
     string? ExternalUrl,
-    Guid? DocumentId,
+    Guid? CourseFileId,
     int? EstimatedMinutes,
     bool IsRequired,
     Guid? Id = null);
@@ -170,13 +170,13 @@ public record ContentModuleSpec(
 /// One step of a course version — a page of text, a document to read, a video to watch, a link to
 /// follow.
 ///
-/// <para>⚠️ CONTENT IS REFERENCED, NOT NECESSARILY STORED. <see cref="DocumentId"/> points at an
-/// <see cref="EmployeeDocument"/>, whose bytes live inline in SQL Server — fine for a PDF or a deck,
-/// and the mechanism the product already uses. VIDEO is deliberately a <see cref="ExternalUrl"/>
-/// only: course video inline in SQL Server would not scale, and object storage is an infrastructure
-/// decision this product has not taken. Keeping the reference in the model means that decision can
-/// be made later without reshaping content — a hosted-asset kind becomes an additional case, not a
-/// migration (logic §12.86).</para>
+/// <para>⚠️ CONTENT IS REFERENCED, NOT NECESSARILY STORED. <see cref="CourseFileId"/> points at a
+/// <see cref="CourseFile"/> — a file owned by the COURSE and readable by everyone on it, which is
+/// exactly what the per-employee document table could not express (logic §12.89). VIDEO is
+/// deliberately a <see cref="ExternalUrl"/> only: streaming media from SQL Server would not scale,
+/// and object storage is an infrastructure decision this product has not taken. Keeping the
+/// reference in the model means that decision can be made later without reshaping content — a
+/// hosted-asset kind becomes an additional case, not a migration (logic §12.86).</para>
 /// </summary>
 public class ContentModule : BaseEntity
 {
@@ -189,7 +189,7 @@ public class ContentModule : BaseEntity
     /// <summary>Where a Video or Link module points.</summary>
     public string? ExternalUrl { get; private set; }
     /// <summary>The attached file, for a Document module.</summary>
-    public Guid? DocumentId { get; private set; }
+    public Guid? CourseFileId { get; private set; }
     /// <summary>Guides the learner and drives the version's total duration. Not enforced.</summary>
     public int? EstimatedMinutes { get; private set; }
     /// <summary>
@@ -217,7 +217,7 @@ public class ContentModule : BaseEntity
         Kind = spec.Kind;
         Body = spec.Body;
         ExternalUrl = spec.ExternalUrl?.Trim();
-        DocumentId = spec.DocumentId;
+        CourseFileId = spec.CourseFileId;
         EstimatedMinutes = spec.EstimatedMinutes;
         IsRequired = spec.IsRequired;
         base.Update();
@@ -234,7 +234,7 @@ public class ContentModule : BaseEntity
         {
             case ContentModuleKind.Text when string.IsNullOrWhiteSpace(spec.Body):
                 throw new ArgumentException($"'{spec.Title}' is a text module but has no content.", nameof(spec));
-            case ContentModuleKind.Document when spec.DocumentId is null || spec.DocumentId == Guid.Empty:
+            case ContentModuleKind.Document when spec.CourseFileId is null || spec.CourseFileId == Guid.Empty:
                 throw new ArgumentException($"'{spec.Title}' is a document module but no file is attached.", nameof(spec));
             case ContentModuleKind.Video or ContentModuleKind.Link when string.IsNullOrWhiteSpace(spec.ExternalUrl):
                 throw new ArgumentException($"'{spec.Title}' needs a URL.", nameof(spec));
