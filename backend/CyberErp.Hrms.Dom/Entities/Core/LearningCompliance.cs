@@ -71,6 +71,14 @@ public class LearningAssignment : BaseEntity, IAggregateRoot, IAuditable
     public DateTime? FixedDueOn { get; private set; }
     /// <summary>Months between recertifications, measured from COMPLETION. Null means once only.</summary>
     public int? RecurrenceMonths { get; private set; }
+    /// <summary>
+    /// Whether a completion also needs a VERIFIER's signature, not just the learner's.
+    ///
+    /// <para>Configured per assignment rather than globally, because the answer differs by risk: a
+    /// GMP-critical procedure may need a supervisor to confirm the record, while an annual awareness
+    /// refresher does not. Off by default — learner attestation alone (logic §12.90).</para>
+    /// </summary>
+    public bool RequiresVerification { get; private set; }
     public bool IsActive { get; private set; } = true;
     public string? Notes { get; private set; }
 
@@ -78,19 +86,20 @@ public class LearningAssignment : BaseEntity, IAggregateRoot, IAuditable
 
     public static LearningAssignment Create(Guid trainingCourseId, string name, AssignmentAudience audience,
         Guid? audienceId, bool includeSubUnits, int dueWithinDays, DateTime? fixedDueOn,
-        int? recurrenceMonths, bool isActive, string? notes)
+        int? recurrenceMonths, bool requiresVerification, bool isActive, string? notes)
     {
         if (trainingCourseId == Guid.Empty)
             throw new ArgumentException("A course is required.", nameof(trainingCourseId));
 
         var a = new LearningAssignment { TrainingCourseId = trainingCourseId };
         a.Apply(name, audience, audienceId, includeSubUnits, dueWithinDays, fixedDueOn,
-            recurrenceMonths, isActive, notes);
+            recurrenceMonths, requiresVerification, isActive, notes);
         return a;
     }
 
     public void Apply(string name, AssignmentAudience audience, Guid? audienceId, bool includeSubUnits,
-        int dueWithinDays, DateTime? fixedDueOn, int? recurrenceMonths, bool isActive, string? notes)
+        int dueWithinDays, DateTime? fixedDueOn, int? recurrenceMonths, bool requiresVerification,
+        bool isActive, string? notes)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("An assignment needs a name.", nameof(name));
@@ -116,6 +125,7 @@ public class LearningAssignment : BaseEntity, IAggregateRoot, IAuditable
         DueWithinDays = dueWithinDays;
         FixedDueOn = fixedDueOn?.Date;
         RecurrenceMonths = recurrenceMonths;
+        RequiresVerification = requiresVerification;
         IsActive = isActive;
         Notes = notes;
         base.Update();

@@ -362,6 +362,62 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>
+    /// The learner's own training records and their signature on them (logic §12.90).
+    ///
+    /// <para>⚠️ Every signing re-authenticates. The password travels in the body of a POST over the
+    /// same session the caller already holds — that is the point: Part 11 wants a signing to be an
+    /// act of identity rather than a click by whoever is at the keyboard.</para>
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class MyTrainingRecordController(
+        IGetMySignableRecords listHandler,
+        IGetSignableRecord getHandler,
+        ISignTrainingRecord signHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<SignableRecordDto>> GetAll() => listHandler.GetAsync();
+
+        [HttpGet("{trainingEnrollmentId:guid}")]
+        public Task<SignableRecordDto> Get(Guid trainingEnrollmentId)
+            => getHandler.GetAsync(trainingEnrollmentId);
+
+        /// <summary>The learner's own attestation that they completed the training.</summary>
+        [HttpPost("sign")]
+        [RequirePermission("myTraining", Access = PermissionAccess.Add)]
+        public Task<SignableRecordDto> Sign([FromBody] SignRecordDto dto) => signHandler.SignAsync(dto);
+    }
+
+    /// <summary>
+    /// HR's view of a training record, and the verifier's counter-signature (logic §12.90).
+    /// </summary>
+    [RequirePermission("learningCompliance")]
+    public class TrainingRecordController(
+        IGetSignableRecord getHandler,
+        IVerifyTrainingRecord verifyHandler,
+        IGetTrainingRecordDocument documentHandler) : BaseController
+    {
+        [HttpGet("{trainingEnrollmentId:guid}")]
+        public Task<SignableRecordDto> Get(Guid trainingEnrollmentId)
+            => getHandler.GetAsync(trainingEnrollmentId);
+
+        /// <summary>Confirms someone else's record. A verifier cannot sign their own.</summary>
+        [HttpPost("verify")]
+        [RequirePermission("learningCompliance", Access = PermissionAccess.Edit)]
+        public Task<SignableRecordDto> Verify([FromBody] SignRecordDto dto) => verifyHandler.VerifyAsync(dto);
+
+        /// <summary>
+        /// The human-readable record copy an inspection asks for — generated from the data, with the
+        /// signature manifestations on it.
+        /// </summary>
+        [HttpGet("{employeeId:guid}/document")]
+        public async Task<IActionResult> Document(Guid employeeId)
+        {
+            var (content, fileName) = await documentHandler.GetAsync(employeeId);
+            return File(content, "application/pdf", fileName);
+        }
+    }
+
+    /// <summary>
     /// A course's material library (logic §12.89) — the store that makes the Document module kind
     /// reachable. Gated with the course catalogue, since uploading course material is authoring.
     /// </summary>

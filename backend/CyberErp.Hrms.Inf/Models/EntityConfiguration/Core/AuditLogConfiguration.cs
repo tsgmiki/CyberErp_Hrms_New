@@ -17,6 +17,10 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(a => a.Action).HasConversion<string>().HasMaxLength(30).IsRequired();
             builder.Property(a => a.Changes).HasColumnType("nvarchar(max)");
             builder.Property(a => a.PerformedBy).HasMaxLength(200);
+            // Bounded on purpose. Unlike Changes — which holds a serialised snapshot and genuinely
+            // needs nvarchar(max) — a reason is a sentence a person types, and this table is about to
+            // become a ledger whose column definitions cannot be altered afterwards (logic §12.90).
+            builder.Property(a => a.Reason).HasMaxLength(500);
 
             builder.HasIndex(a => new { a.EntityType, a.EntityId });
             builder.HasIndex(a => a.Action);

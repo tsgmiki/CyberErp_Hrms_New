@@ -463,6 +463,8 @@ export interface LearningAssignmentModel {
   fixedDueOn?: string | null;
   /** Months between recertifications, measured from completion. Null means once only. */
   recurrenceMonths?: number | null;
+  /** Whether a completion also needs a verifier signature (logic 12.90). */
+  requiresVerification?: boolean;
   isActive?: boolean;
   notes?: string | null;
   obligationCount?: number;
@@ -488,6 +490,8 @@ export interface ObligationModel {
   isOverdue: boolean;
   daysRemaining: number;
   completedOn?: string | null;
+  /** The enrolment that satisfied it — the record a signature attaches to. */
+  trainingEnrollmentId?: string | null;
   waivedReason?: string | null;
 }
 
@@ -559,4 +563,43 @@ export interface CourseFileModel {
   uploadedOn: string;
   /** How many modules point at it. A file in use cannot be deleted. */
   usedByModules: number;
+}
+
+/* ---- Electronic signatures (GxP option B, logic 12.90) ---------------- */
+
+export type SignatureMeaning = "Completion" | "Verification";
+
+export interface SignatureModel {
+  id: string;
+  meaning: SignatureMeaning;
+  signedByName: string;
+  signedOn: string;
+  signedStatement: string;
+  note?: string | null;
+  /** False when the record changed after signing — recomputed server-side on every read. */
+  intact: boolean;
+}
+
+/** A completed training record, everything asserted about it, and who has signed. */
+export interface SignableRecordModel {
+  trainingEnrollmentId: string;
+  employeeId: string;
+  employeeName: string;
+  employeeNumber?: string | null;
+  trainingCourseId: string;
+  courseName: string;
+  courseCode?: string | null;
+  courseVersionNumber?: number | null;
+  status: string;
+  completedOn?: string | null;
+  attendancePercent?: number | null;
+  assessmentScore?: number | null;
+  assignmentObligationId?: string | null;
+  assignmentName?: string | null;
+  statementForSigning: string;
+  requiresVerification: boolean;
+  signedByLearner: boolean;
+  verified: boolean;
+  blockedReason?: string | null;
+  signatures: SignatureModel[];
 }

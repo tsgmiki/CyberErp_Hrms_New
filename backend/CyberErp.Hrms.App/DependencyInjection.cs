@@ -896,6 +896,11 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.IStartAssessmentAttempt, Features.Core.Training.StartAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.IGetAssessmentAttempt, Features.Core.Training.GetAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.ISubmitAssessmentAttempt, Features.Core.Training.SubmitAssessmentAttempt>();
+            // Electronic signatures on training records — GxP option B (logic §12.90).
+            services.AddScoped<Features.Core.Training.IGetSignableRecord, Features.Core.Training.GetSignableRecord>();
+            services.AddScoped<Features.Core.Training.IGetMySignableRecords, Features.Core.Training.GetMySignableRecords>();
+            services.AddScoped<Features.Core.Training.ISignTrainingRecord, Features.Core.Training.SignTrainingRecord>();
+            services.AddScoped<Features.Core.Training.IVerifyTrainingRecord, Features.Core.Training.VerifyTrainingRecord>();
             // Course-file store — §3.8 phase 6 (logic §12.89).
             services.AddScoped<Features.Core.Training.IGetCourseFiles, Features.Core.Training.GetCourseFiles>();
             services.AddScoped<Features.Core.Training.IUploadCourseFile, Features.Core.Training.UploadCourseFile>();

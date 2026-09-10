@@ -25,6 +25,8 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public int DueWithinDays { get; set; }
         public DateTime? FixedDueOn { get; set; }
         public int? RecurrenceMonths { get; set; }
+        /// <summary>Whether a completion also needs a verifier's signature (logic §12.90).</summary>
+        public bool RequiresVerification { get; set; }
         public bool IsActive { get; set; }
         public string? Notes { get; set; }
         /// <summary>How many people it currently covers, and how many are compliant.</summary>
@@ -44,6 +46,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public int DueWithinDays { get; set; } = 30;
         public DateTime? FixedDueOn { get; set; }
         public int? RecurrenceMonths { get; set; }
+        public bool RequiresVerification { get; set; }
         public bool IsActive { get; set; } = true;
         public string? Notes { get; set; }
     }
@@ -68,6 +71,8 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public bool IsOverdue { get; set; }
         public int DaysRemaining { get; set; }
         public DateTime? CompletedOn { get; set; }
+        /// <summary>The enrolment that satisfied it — the record a signature attaches to.</summary>
+        public Guid? TrainingEnrollmentId { get; set; }
         public string? WaivedReason { get; set; }
     }
 
@@ -198,6 +203,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 DueWithinDays = a.DueWithinDays,
                 FixedDueOn = a.FixedDueOn,
                 RecurrenceMonths = a.RecurrenceMonths,
+                RequiresVerification = a.RequiresVerification,
                 IsActive = a.IsActive,
                 Notes = a.Notes
             }).ToList();
@@ -318,6 +324,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 DueWithinDays = a.DueWithinDays,
                 FixedDueOn = a.FixedDueOn,
                 RecurrenceMonths = a.RecurrenceMonths,
+                RequiresVerification = a.RequiresVerification,
                 IsActive = a.IsActive,
                 Notes = a.Notes
             };
@@ -350,7 +357,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
 
                 ComplianceShared.Guard(() => existing.Apply(dto.Name, audience, dto.AudienceId,
                     dto.IncludeSubUnits, dto.DueWithinDays, dto.FixedDueOn, dto.RecurrenceMonths,
-                    dto.IsActive, dto.Notes), "name");
+                    dto.RequiresVerification, dto.IsActive, dto.Notes), "name");
                 repository.UpdateAsync(existing);
                 await repository.SaveChangesAsync();
                 return existing.Id;
@@ -359,7 +366,8 @@ namespace CyberErp.Hrms.App.Features.Core.Training
             LearningAssignment created = null!;
             ComplianceShared.Guard(() => created = LearningAssignment.Create(dto.TrainingCourseId,
                 dto.Name, audience, dto.AudienceId, dto.IncludeSubUnits, dto.DueWithinDays,
-                dto.FixedDueOn, dto.RecurrenceMonths, dto.IsActive, dto.Notes), "name");
+                dto.FixedDueOn, dto.RecurrenceMonths, dto.RequiresVerification, dto.IsActive,
+                dto.Notes), "name");
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();
             logger.LogInformation("Learning assignment '{Name}' created for course {CourseId} ({Audience})",
@@ -465,6 +473,7 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                     IsOverdue = o.IsOverdueOn(today),
                     DaysRemaining = (o.DueOn.Date - today).Days,
                     CompletedOn = o.CompletedOn,
+                    TrainingEnrollmentId = o.TrainingEnrollmentId,
                     WaivedReason = o.WaivedReason
                 };
             }).ToList();

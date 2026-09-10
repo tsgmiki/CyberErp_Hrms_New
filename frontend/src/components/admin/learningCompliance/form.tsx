@@ -202,6 +202,14 @@ function LearningAssignmentForm(props: { id: string; setId: (id: string) => void
             { name: "dueWithinDays", label: "Due Within (days)", placeholder: "e.g. 30", required: true, value: formData.dueWithinDays, onChange: changeHandler, inputType: "number", type: "text" },
             { name: "recurrenceMonths", label: "Repeats Every (months)", placeholder: "Blank = once only", value: formData.recurrenceMonths ?? undefined, onChange: changeHandler, inputType: "number", type: "text" },
             {
+              // Off by default: learner attestation alone is the common case, and a verifier step
+              // that nobody performs leaves records permanently half-signed (logic §12.90).
+              name: "requiresVerification", label: "Needs HR Verification", type: "dropDown",
+              onSelect: selectHandler,
+              value: boolId(formData.requiresVerification), displayValue: yesNoLabel(formData.requiresVerification),
+              data: yesNoOptions as never,
+            },
+            {
               name: "isActive", label: "Status", type: "dropDown", onSelect: selectHandler,
               value: activeId(formData.isActive), displayValue: activeLabel(formData.isActive),
               data: activeStatusOptions as never,

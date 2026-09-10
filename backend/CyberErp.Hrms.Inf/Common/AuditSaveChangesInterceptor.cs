@@ -15,7 +15,8 @@ namespace CyberErp.Hrms.Inf.Common
     /// </summary>
     public class AuditSaveChangesInterceptor(
         ICurrentUserService currentUserService,
-        ITenantService tenantService) : SaveChangesInterceptor
+        ITenantService tenantService,
+        IAuditReasonAccessor auditReason) : SaveChangesInterceptor
     {
         // Audit metadata / bookkeeping columns are not interesting business changes.
         private static readonly HashSet<string> IgnoredProperties = new()
@@ -65,6 +66,10 @@ namespace CyberErp.Hrms.Inf.Common
                 // Best-effort request context; still record the mutation with what we have.
             }
 
+            // Read ONCE for the whole save and applied to every row it produced: one user action
+            // is one reason, even when it touches several records.
+            var reason = auditReason.Consume();
+
             var logs = new List<AuditLog>();
 
             foreach (var entry in auditable)
@@ -85,6 +90,7 @@ namespace CyberErp.Hrms.Inf.Common
                     tenantId: tenantId,
                     entityName: ReadLabel(entry),
                     changes: changes,
+                    reason: reason,
                     branchId: branchId,
                     performedByUserId: userId,
                     performedBy: userName));
@@ -108,7 +114,14 @@ namespace CyberErp.Hrms.Inf.Common
 
             if (entry.State == EntityState.Deleted)
             {
-                return (AuditAction.Deleted, null);
+                // ⚠️ The ORIGINAL values, snapshotted. This used to record null: the trail showed
+                // that a row had been deleted and nothing whatever about it, so a deleted record
+                // could never be reconstructed — the single most consequential gap for a GxP audit
+                // trail, and a few lines to close (logic §12.90).
+                var removed = entry.Properties
+                    .Where(p => !IgnoredProperties.Contains(p.Metadata.Name) && p.OriginalValue != null)
+                    .ToDictionary(p => p.Metadata.Name, p => p.OriginalValue);
+                return (AuditAction.Deleted, Serialize(removed));
             }
 
             // Modified — collect changed business fields.

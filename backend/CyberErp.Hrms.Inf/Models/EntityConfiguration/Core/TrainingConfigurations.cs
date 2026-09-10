@@ -89,6 +89,47 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
     }
 
     /// <summary>
+    /// Electronic signatures on training records (logic §12.90).
+    ///
+    /// <para>⚠️ RESTRICT on both parents. A signature is the evidence behind a training record; it
+    /// must not disappear because an enrolment or an obligation was removed. Nothing in the
+    /// application deletes those once signed, and this is the database saying so too.</para>
+    /// </summary>
+    public class TrainingRecordSignatureConfiguration : IEntityTypeConfiguration<TrainingRecordSignature>
+    {
+        public void Configure(EntityTypeBuilder<TrainingRecordSignature> builder)
+        {
+            builder.ToTable("TrainingRecordSignature", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Meaning).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.SignedByName).IsRequired().HasMaxLength(200);
+            builder.Property(x => x.ContentHash).IsRequired().HasMaxLength(100);
+            builder.Property(x => x.SignedStatement).IsRequired().HasMaxLength(1000);
+            builder.Property(x => x.Note).HasMaxLength(500);
+
+            builder.HasOne<TrainingEnrollment>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingEnrollmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<AssignmentObligation>()
+                .WithMany()
+                .HasForeignKey(x => x.AssignmentObligationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(x => x.EmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One signature of each meaning per enrolment: a learner attests once, a verifier
+            // confirms once. A second of either is a correction, which is a new record entirely.
+            builder.HasIndex(x => new { x.TrainingEnrollmentId, x.Meaning }).IsUnique();
+            builder.HasIndex(x => new { x.EmployeeId, x.SignedOn });
+            builder.HasIndex(x => x.AssignmentObligationId);
+        }
+    }
+
+    /// <summary>
     /// The course-file store (logic §12.89) — material owned by a COURSE rather than by a person,
     /// which is what <see cref="EmployeeDocument"/> could not express.
     /// </summary>

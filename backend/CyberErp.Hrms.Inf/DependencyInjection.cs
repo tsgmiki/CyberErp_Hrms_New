@@ -51,6 +51,12 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
             services.AddScoped<IUnitOfWork>(sp => new UnitOfWork(sp.GetRequiredService<Models.HrmsDbContext>()));
             services.AddScoped<IAuthentication, Authentication>();
+            // Enforces the password policy that Setting already stores (logic §12.90).
+            services.AddScoped<IPasswordPolicyService, PasswordPolicyService>();
+            // Carries a reason for the change into the audit interceptor (logic §12.90).
+            services.AddScoped<IAuditReasonAccessor, AuditReasonAccessor>();
+            // The training record copy is drawn with QuestPDF, so it belongs to Inf (logic §12.90).
+            services.AddScoped<CyberErp.Hrms.App.Features.Core.Training.IGetTrainingRecordDocument, TrainingRecordDocument>();
             services.AddScoped<ITokenStore, TokenStore>();
             services.AddScoped<ITokenParser, TokenParser>();
 

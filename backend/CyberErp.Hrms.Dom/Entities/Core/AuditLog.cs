@@ -25,6 +25,14 @@ public class AuditLog : BaseEntity, IAggregateRoot, IBranchScoped
     public AuditAction Action { get; private set; }
     /// <summary>JSON of changed fields (old → new) for modifications, or a snapshot for create/delete.</summary>
     public string? Changes { get; private set; }
+    /// <summary>
+    /// Why the change was made, when the handler supplied one.
+    ///
+    /// <para>Part 11 and Annex 11 both expect a reason against changes to critical records. It is
+    /// nullable because most writes in this product are ordinary data entry where "why" is the
+    /// operation itself; it is populated where a record is corrected or excused (logic §12.90).</para>
+    /// </summary>
+    public string? Reason { get; private set; }
     public Guid? PerformedByUserId { get; private set; }
     public string? PerformedBy { get; private set; }
     public Guid? BranchId { get; private set; }
@@ -38,6 +46,7 @@ public class AuditLog : BaseEntity, IAggregateRoot, IBranchScoped
         string tenantId,
         string? entityName = null,
         string? changes = null,
+        string? reason = null,
         Guid? branchId = null,
         Guid? performedByUserId = null,
         string? performedBy = null)
@@ -49,6 +58,7 @@ public class AuditLog : BaseEntity, IAggregateRoot, IBranchScoped
             EntityName = entityName,
             Action = action,
             Changes = changes,
+            Reason = reason,
             BranchId = branchId,
             PerformedByUserId = performedByUserId,
             PerformedBy = performedBy

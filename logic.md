@@ -6381,3 +6381,143 @@ back to 0.
 
 **This closes the LMS arc.** Phases 1–5 plus this store leave one decision open and unbuilt: whether
 NVI needs GxP-grade training records (§12.88), which changes the data model rather than the reports.
+
+### 12.90 GxP option B — defensible training records
+
+The decision brief (§12.89's successor, published separately) laid out three options and recommended
+B: make the records that carry regulatory weight defensible, and leave the rest of the HRMS alone.
+This is B, built. **It is scoped to the training chain — obligation, enrolment, completion,
+assessment, signature — and deliberately not applied product-wide.**
+
+#### The electronic signature
+
+`Hrms.TrainingRecordSignature` — immutable, never deleted, one per meaning per enrolment.
+
+**⚠️ RE-AUTHENTICATION IS THE SIGNATURE.** `SignatureAuth.ReauthenticateAsync` checks the caller's
+password at the moment of signing even though they already hold a session. Without it this is a
+button, not a signature — Part 11 wants a signing to be an act of identity rather than a click by
+whoever is at the keyboard. The refusal message is identical whether the account is missing or the
+password is wrong, so a signing endpoint cannot be used to probe which accounts exist.
+
+**⚠️ `ContentHash` BINDS THE SIGNATURE TO WHAT WAS SIGNED.** SHA-256 over a canonical rendering of
+the facts — who, which course, which version, completed when, scored what. Recomputed on **every
+read** and compared, so a record amended after signing reports `Intact: false` rather than showing a
+signature that no longer covers what is above it. Verified directly: amending the score from 88 to 95
+flipped **both** signatures to not-intact.
+
+**⚠️ `SignedFacts.Canonical` MUST NEVER DRIFT.** The stored hash is only meaningful while that
+function produces the same string for the same facts. Changing the field order, separator or date
+format silently invalidates every signature ever taken — they read as tampered when nothing was.
+A new field goes on the END and `CanonicalVersion` changes, so old signatures keep verifying under
+their own version.
+
+The wording shown to the signer is stored verbatim (`SignedStatement`), so the manifestation on a
+printed record is what the person actually agreed to rather than a re-rendering that may have
+drifted. Meaning is part of the signature: "I completed this" and "I checked that they did" are
+different claims by different people. A verifier **cannot sign their own record** — self-verification
+is not oversight. `LearningAssignment.RequiresVerification` decides per assignment whether a verifier
+is needed at all; **off by default**, because a verifier step nobody performs leaves records
+permanently half-signed.
+
+#### Audit trail completeness
+
+- **Deletes now record what was removed.** `Describe()` returned `null` changes for a deletion: the
+  trail showed *that* a row went and nothing about it, so a deleted record could never be
+  reconstructed. The original values are now snapshotted. Verified: deleting a question bank writes
+  its full prior state.
+- **A `Reason` can be recorded against a change**, carried to the interceptor through
+  `IAuditReasonAccessor` — ambient because the trail is written by an EF interceptor with no access
+  to handler arguments. **It clears itself on read**: a reason belongs to one save, and leaving it set
+  would attach "corrected the completion date" to the next unrelated write in the request.
+- **Child rows in the training chain are auditable** — `ContentModule`, `Question`, `QuestionOption`,
+  `AttemptAnswer`, `AttemptAnswerOption`. Only aggregate roots were before, so a change to a quiz
+  question was invisible.
+
+#### The immutable trail
+
+`scripts/convert-auditlog-to-ledger.sql` converts `Hrms.AuditLog` to an **append-only SQL Server
+ledger table**: UPDATE and DELETE fail at the engine, and `sys.sp_verify_database_ledger` gives an
+inspector a cryptographic verification rather than a policy statement.
+
+**⚠️ NOT RUN against CERP.** It is the one step in this work that is close to one-way and that
+permanently constrains the schema — after it, any EF migration altering `AuditLog` fails. It also
+wants the application stopped and a backup taken, neither of which can be arranged from here.
+
+**It is fully tested.** A scratch database (`CERP_LedgerTest`, since dropped) with a replica table and
+37 rows: conversion succeeded, all rows carried across, inserts kept working, UPDATE and DELETE were
+both refused by the engine, and the digest verified. **The test caught a real bug** — renaming a table
+does not rename its constraints, so the preserved copy still held the name `PK_AuditLog` and the final
+rename collided. The script now renames the constraint first.
+
+#### Credentials, because a signature is only as good as the account behind it
+
+- **Salted hashing.** `Encryption` now writes `v2:salt.hash` with a per-user random salt and a
+  fixed-time comparison. Legacy unsalted hashes still verify, so nobody is locked out, and each is
+  **rewritten on the owner's next successful sign-in** — the only moment the password exists in
+  plaintext. Best-effort: a failed upgrade never costs someone their session. Verified: two accounts
+  seeded with the same password and identical legacy hashes now hold **distinct** salted hashes.
+- **The stored password policy is enforced.** `MinimumPasswordLength`, `RequireUppercase`,
+  `RequireNumbers`, `RequireSpecialCharacters` were configurable on the Settings screen and read by
+  **nothing** — the only live rule was a hardcoded six-character minimum. `IPasswordPolicyService`
+  now applies them, reporting every failing rule in one sentence rather than one at a time, and
+  falling back to `Setting.CreateDefault()` rather than to "no rules" when no row exists.
+
+#### The record copy
+
+`TrainingRecordDocument` renders an employee's full training record with QuestPDF — generated from
+the same query the screen uses, never transcribed. Every signature prints with its integrity state,
+so a record whose facts have changed says so rather than presenting a clean-looking document to
+exactly the reader it would mislead. A null score prints "not assessed", never 0.
+
+**⚠️ A generated copy, not a validated archival rendering** — stated in the document's own footer. If
+QA needs byte-identical reproducible output, the renderer itself enters validation.
+
+**⚠️ QuestPDF's licence is declared in a STATIC CONSTRUCTOR** on `QuestPdfService`, which runs only
+when that type is first touched. A second renderer that never touches it starts unlicensed and throws
+on its first document. The declaration is repeated on `TrainingRecordDocument` for that reason — found
+by the end-to-end test, not by reading.
+
+#### Surfaces
+
+**My Training Record** (`/myTrainingRecord`, Home) is where a learner signs: the exact statement, a
+password field, and nothing else. **Signed Records** is a fifth tab on Mandatory Training where HR
+verifies and pulls the PDF. Menu row added by `scripts/add-training-record-menu.sql`, granted as
+`/myLearning` is.
+
+#### Verified end to end, 27/27
+
+| step | result |
+|---|---|
+| legacy hash still authenticates | yes — nobody locked out |
+| hash format after sign-in | **upgraded to salted, and distinct for the same password** |
+| unfinished record signed | 400 |
+| signing with the wrong password | **400** |
+| signing with no password | 400 |
+| someone else signing this learner's record | **400** |
+| learner signs correctly | 200, signature intact, wording stored |
+| signing twice | 400 |
+| learner verifying | 403 |
+| verifying with the wrong password | 400 |
+| HR verifies | 200 — two signatures, distinct meanings |
+| verifying twice | 400 |
+| **score amended after signing** | **both signatures report the record as CHANGED** |
+| record PDF | 200, `application/pdf`, 65 KB, valid `%PDF-` header |
+| learner pulling the HR document | 403 |
+
+All probe data and both throwaway accounts removed afterwards. `permission-audit.cjs` gained
+`SignatureAuth` to its guard list — a self-ownership guard living in a helper reads as unguarded
+until the regex knows about it, the same treatment `AttemptAccess` got.
+
+#### What this is NOT
+
+Option B was scoped, and the boundary matters more than the build:
+
+- **Not product-wide.** Payroll, medical, discipline and recruitment records are unchanged.
+- **Not a validated system.** No URS/FS/DS, no IQ/OQ/PQ, no traceability matrix, no periodic review.
+  That is QA's lifecycle and it is typically larger than the build.
+- **No controlled time source.** Timestamps are the application server's `DateTime.UtcNow`.
+- **The 490 default passwords are still default.** The mechanism to force a change is not built; until
+  an account's password has been set by the person using it, nothing done under it is attributable to
+  them, and that undermines every signature that account could take. **This is the highest-value
+  remaining item** and it is operational as much as technical.
+- **The ledger conversion has not been run.**

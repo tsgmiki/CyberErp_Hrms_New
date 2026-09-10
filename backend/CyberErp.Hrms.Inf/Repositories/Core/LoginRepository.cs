@@ -76,6 +76,12 @@ public class LoginRepository(
                     throw new UnauthorizedException("This account has been deactivated. Contact your administrator.");
                 }
 
+                // ⚠️ Silently upgrade a legacy unsalted hash now that the correct password is in hand
+                // — this is the only moment it is available in plaintext. Best-effort: a failure here
+                // must never cost the user their sign-in, because the credential itself is fine
+                // either way (logic §12.90).
+                await RehashIfLegacyAsync(user, dto.Password);
+
                 // Branch scope + head-office visibility are DERIVED from the linked employee's branch:
                 // a user tied to a REGULAR branch is scoped to that branch, while a user assigned to the
                 // branch flagged Head Office — or one with no employee at all (tenant owner / unlinked
@@ -165,6 +171,40 @@ public class LoginRepository(
 
                 return userResult;
             });
+
+    /// <summary>
+    /// Rewrites a legacy unsalted password hash in the salted format.
+    ///
+    /// <para>⚠️ Sign-in is the ONLY point where a correct password exists in plaintext, so it is the
+    /// only place the migration can happen without asking every user to reset. Each account converts
+    /// once, on its next successful sign-in; the old format stays verifiable in the meantime, so
+    /// nobody is locked out and no coordinated cut-over is needed (logic §12.90).</para>
+    ///
+    /// <para>Best effort, like the audit append below it: a failure to upgrade a hash must never cost
+    /// someone their session, because the credential they presented was correct either way.</para>
+    /// </summary>
+    private async Task RehashIfLegacyAsync(User user, string password)
+    {
+        if (!Encryption.NeedsRehash(user.PasswordHash)) return;
+
+        try
+        {
+            // Re-read tracked: the authenticating query is AsNoTracking, so the instance in hand
+            // cannot be saved.
+            var tracked = await _userRepository.GetAllWithoutTenantFilter()
+                .FirstOrDefaultAsync(u => u.Id == user.Id);
+            if (tracked is null) return;
+
+            tracked.SetPasswordHash(Encryption.GenerateHash(password));
+            _userRepository.UpdateAsync(tracked);
+            await _userRepository.SaveChangesAsync();
+            _logger.LogInformation("Upgraded password hash to the salted format for {UserName}", user.UserName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not upgrade the password hash for {UserName}", user.UserName);
+        }
+    }
 
     /// <summary>
     /// Appends one authentication event.
