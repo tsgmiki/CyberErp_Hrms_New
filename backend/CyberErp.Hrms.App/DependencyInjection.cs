@@ -882,6 +882,20 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.IPublishCourseVersion, Features.Core.Training.PublishCourseVersion>();
             services.AddScoped<Features.Core.Training.IGetCoursePlayer, Features.Core.Training.GetCoursePlayer>();
             services.AddScoped<Features.Core.Training.IRecordModuleProgress, Features.Core.Training.RecordModuleProgress>();
+            // Assessment — §3.8 phase 4 (logic §12.87).
+            services.AddScoped<Features.Core.Training.IGetQuestionBanks, Features.Core.Training.GetQuestionBanks>();
+            services.AddScoped<Features.Core.Training.IGetQuestionBank, Features.Core.Training.GetQuestionBank>();
+            services.AddScoped<Features.Core.Training.ISaveQuestionBank, Features.Core.Training.SaveQuestionBank>();
+            services.AddScoped<Features.Core.Training.IDeleteQuestionBank, Features.Core.Training.DeleteQuestionBank>();
+            services.AddScoped<Features.Core.Training.IGetBankQuestions, Features.Core.Training.GetBankQuestions>();
+            services.AddScoped<Features.Core.Training.ISetBankQuestions, Features.Core.Training.SetBankQuestions>();
+            services.AddScoped<Features.Core.Training.IGetAssessment, Features.Core.Training.GetAssessment>();
+            services.AddScoped<Features.Core.Training.ISaveAssessment, Features.Core.Training.SaveAssessment>();
+            services.AddScoped<Features.Core.Training.ISetAssessmentQuestions, Features.Core.Training.SetAssessmentQuestions>();
+            services.AddScoped<Features.Core.Training.IImportQuestionsFromBank, Features.Core.Training.ImportQuestionsFromBank>();
+            services.AddScoped<Features.Core.Training.IStartAssessmentAttempt, Features.Core.Training.StartAssessmentAttempt>();
+            services.AddScoped<Features.Core.Training.IGetAssessmentAttempt, Features.Core.Training.GetAssessmentAttempt>();
+            services.AddScoped<Features.Core.Training.ISubmitAssessmentAttempt, Features.Core.Training.SubmitAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.IGetCourseCompetencies, Features.Core.Training.GetCourseCompetencies>();
             services.AddScoped<Features.Core.Training.ISetCourseCompetencies, Features.Core.Training.SetCourseCompetencies>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.TrainingNeedWorkflowHandler>();

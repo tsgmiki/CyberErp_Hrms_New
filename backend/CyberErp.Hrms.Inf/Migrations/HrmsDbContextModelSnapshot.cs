@@ -1003,6 +1003,230 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("AppraisalTemplate", "Hrms");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Assessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContentModuleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Instructions")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PassMark")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("RevealAnswers")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<bool>("ShuffleQuestions")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("TimeLimitMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContentModuleId")
+                        .IsUnique();
+
+                    b.ToTable("Assessment", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AssessmentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool?>("Passed")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("PointsAwarded")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<decimal?>("PointsPossible")
+                        .HasPrecision(9, 2)
+                        .HasColumnType("decimal(9,2)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<decimal?>("ScorePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime>("StartedOn")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("SubmittedOn")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TrainingEnrollmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId");
+
+                    b.HasIndex("TrainingEnrollmentId", "AssessmentId", "AttemptNumber")
+                        .IsUnique();
+
+                    b.ToTable("AssessmentAttempt", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AssessmentAttemptId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("PointsAwarded")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuestionId");
+
+                    b.HasIndex("AssessmentAttemptId", "QuestionId")
+                        .IsUnique();
+
+                    b.ToTable("AttemptAnswer", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswerOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AttemptAnswerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("QuestionOptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuestionOptionId");
+
+                    b.HasIndex("AttemptAnswerId", "QuestionOptionId")
+                        .IsUnique();
+
+                    b.ToTable("AttemptAnswerOption", "Hrms");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8924,6 +9148,161 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.ToTable("ProfileChangeRequest", "Hrms");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Question", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssessmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Explanation")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("Points")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<Guid?>("QuestionBankId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId", "SortOrder");
+
+                    b.HasIndex("QuestionBankId", "SortOrder");
+
+                    b.ToTable("Question", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.QuestionBank", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("QuestionBank", "Hrms");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.QuestionOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2(3)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsCorrect")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("QuestionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("QuestionId", "SortOrder");
+
+                    b.ToTable("QuestionOption", "Hrms");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.RatingScale", b =>
                 {
                     b.Property<Guid>("Id")
@@ -14044,6 +14423,60 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Assessment", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.ContentModule", null)
+                        .WithMany()
+                        .HasForeignKey("ContentModuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AssessmentAttempt", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Assessment", null)
+                        .WithMany()
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.TrainingEnrollment", null)
+                        .WithMany()
+                        .HasForeignKey("TrainingEnrollmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswer", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.AssessmentAttempt", null)
+                        .WithMany("Answers")
+                        .HasForeignKey("AssessmentAttemptId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Question", null)
+                        .WithMany()
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswerOption", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswer", null)
+                        .WithMany("Selected")
+                        .HasForeignKey("AttemptAnswerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.QuestionOption", null)
+                        .WithMany()
+                        .HasForeignKey("QuestionOptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Branch", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Branch", "Parent")
@@ -15277,6 +15710,28 @@ namespace CyberErp.Hrms.Inf.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Question", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Assessment", null)
+                        .WithMany("Questions")
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.QuestionBank", null)
+                        .WithMany()
+                        .HasForeignKey("QuestionBankId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.QuestionOption", b =>
+                {
+                    b.HasOne("CyberErp.Hrms.Dom.Entities.Core.Question", null)
+                        .WithMany("Options")
+                        .HasForeignKey("QuestionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.RatingScaleLevel", b =>
                 {
                     b.HasOne("CyberErp.Hrms.Dom.Entities.Core.RatingScale", null)
@@ -16005,6 +16460,21 @@ namespace CyberErp.Hrms.Inf.Migrations
                     b.Navigation("Goals");
                 });
 
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Assessment", b =>
+                {
+                    b.Navigation("Questions");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AssessmentAttempt", b =>
+                {
+                    b.Navigation("Answers");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.AttemptAnswer", b =>
+                {
+                    b.Navigation("Selected");
+                });
+
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Branch", b =>
                 {
                     b.Navigation("Children");
@@ -16139,6 +16609,11 @@ namespace CyberErp.Hrms.Inf.Migrations
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.PerformanceImprovementPlan", b =>
                 {
                     b.Navigation("Objectives");
+                });
+
+            modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.Question", b =>
+                {
+                    b.Navigation("Options");
                 });
 
             modelBuilder.Entity("CyberErp.Hrms.Dom.Entities.Core.RatingScale", b =>

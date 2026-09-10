@@ -20,12 +20,6 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
-    /// <summary>
-    /// Course to competency — the mirror of PositionCompetencyConfiguration, and it uses the same
-    /// delete rules for the same reasons: the mapping dies with its COURSE (cascade), while a
-    /// competency that is in use anywhere cannot be deleted (restrict). Only one cascade path, so
-    /// SQL Server raises no multiple-cascade-path error.
-    /// </summary>
     public class CourseVersionConfiguration : IEntityTypeConfiguration<CourseVersion>
     {
         public void Configure(EntityTypeBuilder<CourseVersion> builder)
@@ -94,6 +88,179 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    // Assessment — §3.8 phase 4 (logic §12.87). Auto-graded quizzes inside a course version.
+
+    public class QuestionBankConfiguration : IEntityTypeConfiguration<QuestionBank>
+    {
+        public void Configure(EntityTypeBuilder<QuestionBank> builder)
+        {
+            builder.ToTable("QuestionBank", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            builder.Property(x => x.Description).HasMaxLength(1000);
+
+            builder.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
+        }
+    }
+
+    public class AssessmentConfiguration : IEntityTypeConfiguration<Assessment>
+    {
+        public void Configure(EntityTypeBuilder<Assessment> builder)
+        {
+            builder.ToTable("Assessment", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Title).IsRequired().HasMaxLength(300);
+            builder.Property(x => x.Instructions).HasMaxLength(2000);
+            builder.Property(x => x.PassMark).HasPrecision(5, 2);
+
+            // The quiz dies with the module it is the content of, which in turn dies with its
+            // version. One owner, one cascade path — and the assessment is never re-parented,
+            // because a quiz that moved between courses would silently invalidate every attempt
+            // already recorded against it.
+            builder.HasOne<ContentModule>()
+                .WithMany()
+                .HasForeignKey(x => x.ContentModuleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(x => x.Questions)
+                .WithOne()
+                .HasForeignKey(q => q.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(x => x.Questions).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // One assessment per module: a Quiz module IS its assessment.
+            builder.HasIndex(x => x.ContentModuleId).IsUnique();
+        }
+    }
+
+    public class QuestionConfiguration : IEntityTypeConfiguration<Question>
+    {
+        public void Configure(EntityTypeBuilder<Question> builder)
+        {
+            builder.ToTable("Question", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Text).IsRequired().HasMaxLength(2000);
+            builder.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.Points).HasPrecision(6, 2);
+            builder.Property(x => x.Explanation).HasMaxLength(2000);
+
+            // A question belongs to EITHER a bank or an assessment. Both FKs are optional and both
+            // cascade; they are unrelated roots, so there is no shared ancestor and no multiple
+            // cascade path. The assessment side is declared on Assessment.Questions.
+            builder.HasOne<QuestionBank>()
+                .WithMany()
+                .HasForeignKey(x => x.QuestionBankId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasMany(x => x.Options)
+                .WithOne()
+                .HasForeignKey(o => o.QuestionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(x => x.Options).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            builder.HasIndex(x => new { x.QuestionBankId, x.SortOrder });
+            builder.HasIndex(x => new { x.AssessmentId, x.SortOrder });
+        }
+    }
+
+    public class QuestionOptionConfiguration : IEntityTypeConfiguration<QuestionOption>
+    {
+        public void Configure(EntityTypeBuilder<QuestionOption> builder)
+        {
+            builder.ToTable("QuestionOption", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Text).IsRequired().HasMaxLength(1000);
+
+            builder.HasIndex(x => new { x.QuestionId, x.SortOrder });
+        }
+    }
+
+    public class AssessmentAttemptConfiguration : IEntityTypeConfiguration<AssessmentAttempt>
+    {
+        public void Configure(EntityTypeBuilder<AssessmentAttempt> builder)
+        {
+            builder.ToTable("AssessmentAttempt", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.PointsAwarded).HasPrecision(9, 2);
+            builder.Property(x => x.PointsPossible).HasPrecision(9, 2);
+            builder.Property(x => x.ScorePercent).HasPrecision(5, 2);
+
+            // Attempts die with the enrolment, as ModuleProgress does, but are RESTRICTED against
+            // the assessment: an attempt is the evidence behind a pass, and a published assessment
+            // is never deleted anyway.
+            builder.HasOne<TrainingEnrollment>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingEnrollmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.HasOne<Assessment>()
+                .WithMany()
+                .HasForeignKey(x => x.AssessmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasMany(x => x.Answers)
+                .WithOne()
+                .HasForeignKey(a => a.AssessmentAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(x => x.Answers).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            // One attempt number per (enrolment, assessment): the retake counter cannot collide even
+            // if two tabs start an attempt at the same moment.
+            builder.HasIndex(x => new { x.TrainingEnrollmentId, x.AssessmentId, x.AttemptNumber }).IsUnique();
+        }
+    }
+
+    public class AttemptAnswerConfiguration : IEntityTypeConfiguration<AttemptAnswer>
+    {
+        public void Configure(EntityTypeBuilder<AttemptAnswer> builder)
+        {
+            builder.ToTable("AttemptAnswer", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.PointsAwarded).HasPrecision(6, 2);
+
+            builder.HasOne<Question>()
+                .WithMany()
+                .HasForeignKey(x => x.QuestionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasMany(x => x.Selected)
+                .WithOne()
+                .HasForeignKey(o => o.AttemptAnswerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Navigation(x => x.Selected).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            builder.HasIndex(x => new { x.AssessmentAttemptId, x.QuestionId }).IsUnique();
+        }
+    }
+
+    public class AttemptAnswerOptionConfiguration : IEntityTypeConfiguration<AttemptAnswerOption>
+    {
+        public void Configure(EntityTypeBuilder<AttemptAnswerOption> builder)
+        {
+            builder.ToTable("AttemptAnswerOption", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.HasOne<QuestionOption>()
+                .WithMany()
+                .HasForeignKey(x => x.QuestionOptionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.HasIndex(x => new { x.AttemptAnswerId, x.QuestionOptionId }).IsUnique();
+        }
+    }
+
+    /// <summary>
+    /// Course to competency — the mirror of PositionCompetencyConfiguration, and it uses the same
+    /// delete rules for the same reasons: the mapping dies with its COURSE (cascade), while a
+    /// competency that is in use anywhere cannot be deleted (restrict). Only one cascade path, so
+    /// SQL Server raises no multiple-cascade-path error.
+    /// </summary>
     public class CourseCompetencyConfiguration : IEntityTypeConfiguration<CourseCompetency>
     {
         public void Configure(EntityTypeBuilder<CourseCompetency> builder)

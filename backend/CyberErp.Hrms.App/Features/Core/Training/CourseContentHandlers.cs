@@ -44,8 +44,13 @@ namespace CyberErp.Hrms.App.Features.Core.Training
 
     public class ContentModuleSpecDto
     {
+        /// <summary>
+        /// The module being edited, when the screen round-trips an existing one. Sending it back
+        /// keeps the module's id — and therefore any quiz hanging off it — across a save.
+        /// </summary>
+        public Guid? Id { get; set; }
         public string Title { get; set; } = string.Empty;
-        /// <summary>Text | Document | Video | Link.</summary>
+        /// <summary>Text | Document | Video | Link | Quiz.</summary>
         public string Kind { get; set; } = nameof(ContentModuleKind.Text);
         public string? Body { get; set; }
         public string? ExternalUrl { get; set; }
@@ -61,6 +66,11 @@ namespace CyberErp.Hrms.App.Features.Core.Training
         public bool IsComplete { get; set; }
         public int SecondsSpent { get; set; }
         public int? LastPosition { get; set; }
+        /// <summary>
+        /// Set on a Quiz module: how this learner stands against it. Carries no questions and no
+        /// answers — the quiz itself is only served through an attempt.
+        /// </summary>
+        public AssessmentStateDto? Assessment { get; set; }
     }
 
     /// <summary>Everything the player needs for one enrolment.</summary>
@@ -163,17 +173,17 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 if (!Enum.TryParse<ContentModuleKind>(m.Kind, true, out var kind))
                     throw new ValidationException("kind", $"'{m.Kind}' is not a module kind.");
                 return new ContentModuleSpec(m.Title, kind, m.Body, m.ExternalUrl,
-                    m.DocumentId, m.EstimatedMinutes, m.IsRequired);
+                    m.DocumentId, m.EstimatedMinutes, m.IsRequired, m.Id);
             }).ToList();
 
-            // The old rows are removed explicitly: SetModules clears the aggregate's collection, and
-            // EF will not delete orphans it was never told about for an owned-by-FK collection.
-            foreach (var existing in version.Modules.ToList())
-                moduleRepository.Delete(existing);
-
+            // ⚠️ Modules that came back with their id are UPDATED IN PLACE, so a save does not churn
+            // module ids. It used to delete and recreate the lot, which was harmless until a Quiz
+            // module started owning an assessment keyed on its id (logic §12.87).
+            var before = version.Modules.ToDictionary(m => m.Id);
+            IReadOnlyList<ContentModule> removed;
             try
             {
-                version.SetModules(specs);
+                removed = version.SetModules(specs);
             }
             catch (InvalidOperationException ex)
             {
@@ -185,20 +195,28 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                 throw new ValidationException("modules", ex.Message);
             }
 
+            // Dropped rows go explicitly: EF will not delete children it was never told about on an
+            // owned-by-FK collection. Any quiz on a dropped module cascades with it in the database.
+            foreach (var gone in removed)
+                moduleRepository.Delete(gone);
+
             foreach (var module in version.Modules)
             {
                 if (string.IsNullOrEmpty(module.TenantId)) module.TenantId = version.TenantId;
-                await moduleRepository.AddAsync(module);
+                if (before.ContainsKey(module.Id)) moduleRepository.UpdateAsync(module);
+                else await moduleRepository.AddAsync(module);
             }
 
             repository.UpdateAsync(version);
             await repository.SaveChangesAsync();
-            logger.LogInformation("Version {VersionId} now has {Count} module(s)", version.Id, specs.Count);
+            logger.LogInformation("Version {VersionId} now has {Count} module(s); {Removed} dropped",
+                version.Id, specs.Count, removed.Count);
         }
     }
 
     public class PublishCourseVersion(
         IRepository<CourseVersion> repository,
+        IRepository<Assessment> assessmentRepository,
         ILogger<PublishCourseVersion> logger) : IPublishCourseVersion
     {
         public async Task PublishAsync(Guid courseVersionId)
@@ -207,6 +225,8 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                     .Include(v => v.Modules)
                     .FirstOrDefaultAsync(v => v.Id == courseVersionId)
                 ?? throw new NotFoundException(nameof(CourseVersion), courseVersionId.ToString());
+
+            await EnsureQuizzesAreBuiltAsync(version);
 
             try
             {
@@ -233,6 +253,36 @@ namespace CyberErp.Hrms.App.Features.Core.Training
             await repository.SaveChangesAsync();
             logger.LogInformation("Published v{Version} of course {CourseId}; retired {Count} previous",
                 version.VersionNumber, version.TrainingCourseId, previous.Count);
+        }
+
+        /// <summary>
+        /// A Quiz module with no questions is the assessment equivalent of an empty version: the
+        /// learner opens it, finds nothing to answer, and — because it is required — can never
+        /// complete the course. The check lives here rather than on the aggregate because the
+        /// assessment is a separate root that <see cref="CourseVersion"/> cannot see.
+        /// </summary>
+        private async Task EnsureQuizzesAreBuiltAsync(CourseVersion version)
+        {
+            var quizModules = version.Modules
+                .Where(m => m.Kind == ContentModuleKind.Quiz)
+                .ToList();
+            if (quizModules.Count == 0) return;
+
+            var moduleIds = quizModules.Select(m => m.Id).ToList();
+            var built = await assessmentRepository.GetAll().AsNoTracking()
+                .Include(a => a.Questions)
+                .Where(a => moduleIds.Contains(a.ContentModuleId))
+                .Select(a => new { a.ContentModuleId, Count = a.Questions.Count })
+                .ToListAsync();
+
+            var unbuilt = quizModules
+                .Where(m => (built.FirstOrDefault(b => b.ContentModuleId == m.Id)?.Count ?? 0) == 0)
+                .Select(m => m.Title)
+                .ToList();
+
+            if (unbuilt.Count > 0)
+                throw new ValidationException("modules",
+                    $"These quiz modules have no questions yet: {string.Join(", ", unbuilt)}.");
         }
     }
 

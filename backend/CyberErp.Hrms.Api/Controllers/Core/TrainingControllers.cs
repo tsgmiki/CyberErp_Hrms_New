@@ -362,6 +362,104 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>
+    /// Question banks — the reusable question library (logic §12.87). Gated with the course
+    /// catalogue, since writing questions is course authoring.
+    /// </summary>
+    [RequirePermission("questionBank")]
+    public class QuestionBankController(
+        IGetQuestionBanks listHandler,
+        IGetQuestionBank getHandler,
+        ISaveQuestionBank saveHandler,
+        IDeleteQuestionBank deleteHandler,
+        IGetBankQuestions questionsHandler,
+        ISetBankQuestions setQuestionsHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<PaginatedResponse<QuestionBankDto>> GetAll([FromQuery] GetAllRequest request)
+            => listHandler.GetAsync(request);
+
+        [HttpGet("{id:guid}")]
+        public Task<QuestionBankDto> Get(Guid id) => getHandler.GetAsync(id);
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] SaveQuestionBankDto dto)
+            => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] SaveQuestionBankDto dto)
+            => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
+
+        [HttpGet("{id:guid}/questions")]
+        public Task<List<QuestionDto>> Questions(Guid id) => questionsHandler.GetAsync(id);
+
+        /// <summary>Replaces the bank's question list — set semantics.</summary>
+        [HttpPut("questions")]
+        public async Task<IActionResult> SetQuestions([FromBody] SaveBankQuestionsDto dto)
+        { await setQuestionsHandler.SetAsync(dto); return Ok(new { message = "Questions updated" }); }
+    }
+
+    /// <summary>
+    /// The quiz on a Quiz content module (logic §12.87). Authoring, so it is gated with the course
+    /// catalogue — and every write additionally refuses a version that is no longer a draft.
+    /// </summary>
+    [RequirePermission("trainingCourse")]
+    public class AssessmentController(
+        IGetAssessment getHandler,
+        ISaveAssessment saveHandler,
+        ISetAssessmentQuestions setQuestionsHandler,
+        IImportQuestionsFromBank importHandler) : BaseController
+    {
+        /// <summary>Null when the module has no quiz yet — the normal state of a new Quiz module.</summary>
+        [HttpGet("{contentModuleId:guid}")]
+        public Task<AssessmentDto?> GetByModule(Guid contentModuleId)
+            => getHandler.GetByModuleAsync(contentModuleId);
+
+        [HttpPost]
+        public async Task<IActionResult> Save([FromBody] SaveAssessmentDto dto)
+            => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpPut("questions")]
+        public async Task<IActionResult> SetQuestions([FromBody] SaveAssessmentQuestionsDto dto)
+        { await setQuestionsHandler.SetAsync(dto); return Ok(new { message = "Questions updated" }); }
+
+        /// <summary>Copies bank questions onto the end of the quiz.</summary>
+        [HttpPost("import")]
+        public async Task<IActionResult> Import([FromBody] ImportQuestionsDto dto)
+            => Ok(new { imported = await importHandler.ImportAsync(dto), message = "Questions imported" });
+    }
+
+    /// <summary>
+    /// Sitting the quiz. Gated on <c>myTraining</c> — this is a learner surface — and the handlers
+    /// additionally require the enrolment to be the caller's OWN.
+    ///
+    /// <para>⚠️ Nothing here ever returns the answer key while the learner can still improve their
+    /// score, and grading happens entirely on the server (logic §12.87).</para>
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class AssessmentAttemptController(
+        IStartAssessmentAttempt startHandler,
+        IGetAssessmentAttempt getHandler,
+        ISubmitAssessmentAttempt submitHandler) : BaseController
+    {
+        /// <summary>Starts an attempt, or resumes the one already open.</summary>
+        [HttpPost("start")]
+        [RequirePermission("myTraining", Access = PermissionAccess.Add)]
+        public Task<AttemptDto> Start([FromBody] StartAttemptDto dto) => startHandler.StartAsync(dto);
+
+        [HttpGet("{attemptId:guid}")]
+        public Task<AttemptDto> Get(Guid attemptId) => getHandler.GetAsync(attemptId);
+
+        /// <summary>Grades the attempt and returns the result, revealing answers only when allowed.</summary>
+        [HttpPost("submit")]
+        [RequirePermission("myTraining", Access = PermissionAccess.Add)]
+        public Task<AttemptDto> Submit([FromBody] SubmitAttemptDto dto) => submitHandler.SubmitAsync(dto);
+    }
+
+    /// <summary>
     /// The learner's course catalogue — active courses, joinable sessions, and which of them address
     /// the caller's own competency gaps.
     ///

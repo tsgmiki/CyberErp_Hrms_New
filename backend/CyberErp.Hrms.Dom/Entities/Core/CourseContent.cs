@@ -21,7 +21,12 @@ public enum ContentModuleKind
     /// <summary>Video held OUTSIDE this database and referenced by URL. See the entity remarks.</summary>
     Video = 2,
     /// <summary>Any other external resource — a provider's course page, an article.</summary>
-    Link = 3
+    Link = 3,
+    /// <summary>
+    /// A graded quiz. Its content is an <see cref="Assessment"/> hanging off this module, and it is
+    /// the one kind a learner cannot complete by asserting it — passing is what completes it.
+    /// </summary>
+    Quiz = 4
 }
 
 /// <summary>
@@ -98,15 +103,41 @@ public class CourseVersion : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
-    /// <summary>Replaces the ordered module list — draft only.</summary>
-    public void SetModules(IEnumerable<ContentModuleSpec> specs)
+    /// <summary>
+    /// Replaces the ordered module list — draft only.
+    ///
+    /// <para>⚠️ A spec carrying an <see cref="ContentModuleSpec.Id"/> that matches an existing module
+    /// UPDATES that row rather than replacing it, so module ids survive a save. That is not tidiness:
+    /// a Quiz module owns an <see cref="Assessment"/> keyed on its id, and re-creating the row on
+    /// every save would throw the quiz away each time the author renamed a heading (logic §12.87).</para>
+    /// </summary>
+    /// <returns>The modules dropped by this call, so the caller can delete their rows.</returns>
+    public IReadOnlyList<ContentModule> SetModules(IEnumerable<ContentModuleSpec> specs)
     {
         EnsureDraft();
-        _modules.Clear();
+        var incoming = specs.ToList();
+        var kept = new List<ContentModule>();
         var order = 1;
-        foreach (var spec in specs)
-            _modules.Add(ContentModule.Create(Id, order++, spec));
+
+        foreach (var spec in incoming)
+        {
+            var existing = spec.Id.HasValue ? _modules.FirstOrDefault(m => m.Id == spec.Id.Value) : null;
+            if (existing is not null)
+            {
+                existing.Apply(order++, spec);
+                kept.Add(existing);
+            }
+            else
+            {
+                kept.Add(ContentModule.Create(Id, order++, spec));
+            }
+        }
+
+        var removed = _modules.Where(m => kept.All(k => k.Id != m.Id)).ToList();
+        _modules.Clear();
+        _modules.AddRange(kept);
         base.Update();
+        return removed;
     }
 
     /// <summary>
@@ -123,6 +154,8 @@ public class CourseVersion : BaseEntity, IAggregateRoot, IAuditable
 }
 
 /// <summary>One module as posted from the authoring screen.</summary>
+/// <param name="Id">The module this spec updates, when the screen is editing an existing one.
+/// Null for a new module. See <see cref="CourseVersion.SetModules"/> for why it matters.</param>
 public record ContentModuleSpec(
     string Title,
     ContentModuleKind Kind,
@@ -130,7 +163,8 @@ public record ContentModuleSpec(
     string? ExternalUrl,
     Guid? DocumentId,
     int? EstimatedMinutes,
-    bool IsRequired);
+    bool IsRequired,
+    Guid? Id = null);
 
 /// <summary>
 /// One step of a course version — a page of text, a document to read, a video to watch, a link to
@@ -168,6 +202,29 @@ public class ContentModule : BaseEntity
 
     internal static ContentModule Create(Guid courseVersionId, int sortOrder, ContentModuleSpec spec)
     {
+        Validate(spec);
+        var m = new ContentModule { CourseVersionId = courseVersionId };
+        m.Apply(sortOrder, spec);
+        return m;
+    }
+
+    /// <summary>Updates this module in place, keeping its id. See <see cref="CourseVersion.SetModules"/>.</summary>
+    internal void Apply(int sortOrder, ContentModuleSpec spec)
+    {
+        Validate(spec);
+        SortOrder = sortOrder;
+        Title = spec.Title.Trim();
+        Kind = spec.Kind;
+        Body = spec.Body;
+        ExternalUrl = spec.ExternalUrl?.Trim();
+        DocumentId = spec.DocumentId;
+        EstimatedMinutes = spec.EstimatedMinutes;
+        IsRequired = spec.IsRequired;
+        base.Update();
+    }
+
+    private static void Validate(ContentModuleSpec spec)
+    {
         if (string.IsNullOrWhiteSpace(spec.Title))
             throw new ArgumentException("A module needs a title.", nameof(spec));
 
@@ -181,20 +238,10 @@ public class ContentModule : BaseEntity
                 throw new ArgumentException($"'{spec.Title}' is a document module but no file is attached.", nameof(spec));
             case ContentModuleKind.Video or ContentModuleKind.Link when string.IsNullOrWhiteSpace(spec.ExternalUrl):
                 throw new ArgumentException($"'{spec.Title}' needs a URL.", nameof(spec));
+            // A Quiz carries no content of its own: its content is the Assessment attached to it,
+            // which is authored separately because it needs this module's id to hang off. The
+            // "a published version needs its quizzes built" check lives in Publish, not here.
         }
-
-        return new ContentModule
-        {
-            CourseVersionId = courseVersionId,
-            SortOrder = sortOrder,
-            Title = spec.Title.Trim(),
-            Kind = spec.Kind,
-            Body = spec.Body,
-            ExternalUrl = spec.ExternalUrl?.Trim(),
-            DocumentId = spec.DocumentId,
-            EstimatedMinutes = spec.EstimatedMinutes,
-            IsRequired = spec.IsRequired
-        };
     }
 }
 

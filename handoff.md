@@ -4841,6 +4841,26 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **⚠ Inserting a class into a multi-controller file can orphan the doc comment above it** from the
   class it described. Check the neighbours after any such insertion.
 
+- **LMS Phase 4 shipped: assessment** — `QuestionBank`/`Question`/`QuestionOption`,
+  `Assessment` on a Quiz content module, and `AssessmentAttempt`/`AttemptAnswer`/
+  `AttemptAnswerOption` (logic §12.87). 47/47 verified, all probe data removed.
+  ⚠ THE CLIENT NEVER GETS THE ANSWER KEY. Learner DTOs are separate types from the authoring ones,
+  and `AttemptShared.MayReveal` is the only thing that fills `IsCorrect`: finished, allowed, and
+  nothing left to gain (passed or out of retakes). Do not "simplify" by reusing the authoring DTO.
+  ⚠ A quiz is completed by PASSING it — `RecordModuleProgress` refuses `complete: true` on a Quiz
+  module. Remove that line and any learner can finish a course without answering a question.
+  ⚠ Bank questions are TEMPLATES; import COPIES them. Editing a bank must never change an existing
+  quiz — a learner who passed has to be showable the exact paper they sat.
+  ⚠ `TrainingEnrollment.RecordAssessmentResult` only moves the score UP (best attempt). Do not
+  route quiz results through `RecordParticipation`, which restates status and attendance too.
+  ⚠ Select-all is graded all-or-nothing; only auto-gradable question types exist. Free text needs a
+  grading queue and an "awaiting marking" state before the enum value can be added.
+- **⚠ `SetCourseVersionModules` now matches modules BY ID and updates in place.** It used to delete
+  and recreate every row, which became data loss once a Quiz module owned an assessment keyed on its
+  id. Keep sending `id` from the authoring screen.
+- **`permission-audit.cjs` guard list gained `AttemptAccess`** — a self-ownership guard that lives
+  in a helper rather than the handler body reads as unguarded until the regex knows about it.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
