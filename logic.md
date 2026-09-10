@@ -6057,3 +6057,116 @@ worth checking after any insertion into a multi-controller file.
 
 **Still ahead:** assessment (which is what fills the NULL score), and a course-file store, which is
 what unlocks the Document kind.
+
+### 12.87 LMS Phase 4 — assessment
+
+Fourth phase. Phase 3 made completion an observation but deliberately left
+`TrainingEnrollment.AssessmentScore` NULL, because nothing measured it. Seven tables now do:
+`QuestionBank` / `Question` / `QuestionOption`, `Assessment`, and `AssessmentAttempt` /
+`AttemptAnswer` / `AttemptAnswerOption`.
+
+**⚠️ The quiz hangs off the CONTENT MODULE, not the course, and that single choice buys everything
+else.** A module belongs to a course version, which freezes on publish — so a published quiz is
+frozen too, with no second rule to write and no way for the two to disagree. It also means a quiz
+takes its place in the running order like any other module and gates completion through the ordinary
+"all required modules done" rule rather than a parallel one. `ContentModuleKind.Quiz` is the fifth
+kind; it carries no body and no URL, because its content *is* the assessment.
+
+**⚠️ THE CLIENT NEVER RECEIVES THE ANSWER KEY.** The learner-facing DTOs are separate types from the
+authoring ones for exactly this reason: `AttemptOptionDto.IsCorrect` is populated only through
+`AttemptShared.MayReveal`, which requires the attempt to be finished, the assessment to allow it,
+**and** nothing left to gain — passed, or out of retakes. Revealing after a failure with attempts
+remaining hands the learner the answers to the next go, which makes the pass mark meaningless. All
+grading is server-side, and option ids that do not belong to the question being graded are discarded
+rather than credited.
+
+**⚠️ A quiz is completed by PASSING it, never by asserting it.** `RecordModuleProgress` explicitly
+refuses `complete: true` on a Quiz module. Without that line the whole phase is decorative: any
+learner could post progress against the quiz module and finish the course without answering a
+question. Passing writes the module's `ModuleProgress` server-side, which then runs the same
+`EnrollmentCompletion.CompleteIfFinishedAsync` the content path uses — extracted into a shared helper
+here, since two paths now reach it.
+
+**The score is now measured.** `TrainingEnrollment.RecordAssessmentResult` is separate from
+`RecordParticipation` because that method sets status, attendance and score together, and a quiz
+result has no business restating the other two. It only ever moves the score **up** — it is the
+learner's best attempt, and a worse retake must not erase a pass already earned.
+
+Rules that each exist for a reason:
+
+- **A bank question is a TEMPLATE and importing COPIES it.** Editing a bank therefore never disturbs
+  a quiz that already exists — the only behaviour compatible with frozen content, since a learner who
+  passed must be showable the exact questions they answered years later. One `Question` table with
+  two optional parents rather than two tables, because a bank question and a quiz question are the
+  same thing at different moments.
+- **Import APPENDS**, so one quiz can be built from several banks.
+- **Select-all is graded ALL OR NOTHING.** Partial credit needs a scheme (per option? negative
+  marking?) that is a policy choice nobody has made, and picking one silently would put an arbitrary
+  number on a certificate.
+- **An unfinished attempt counts against the retake limit**, or "start, peek, abandon" is an
+  unlimited supply of question papers. Starting again *resumes* the open attempt instead, so
+  reloading the page mid-quiz does not burn a retake.
+- **A passed quiz refuses further attempts** — retaking to nudge a score upward is gaming, not
+  learning.
+- **Publishing is refused while any Quiz module has no questions.** A required quiz with nothing in
+  it can never be completed, so the course would be impossible to finish. The check lives in the
+  publish handler rather than on the aggregate, because the assessment is a separate root that
+  `CourseVersion` cannot see.
+- **The time limit is ADVISORY.** The clock runs in the browser; the server records elapsed time and
+  marks a late submission `TimedOut` but still grades it. Discarding work because a network stalled
+  punishes the wrong person, and a server that hard-rejects cannot tell the two cases apart.
+- **Only auto-gradable question types exist** (single choice, select-all, true/false). Free text
+  needs a grading queue, a grader role and an "awaiting marking" state; adding the enum value without
+  those would produce attempts that can never finish.
+
+**⚠️ A phase-3 regression this phase had to fix first.** `SetCourseVersionModules` deleted and
+recreated every module row on each save. That was harmless while a module owned nothing — and became
+data loss the moment a Quiz module owned an assessment keyed on its id, since renaming a heading would
+have thrown the quiz away. `CourseVersion.SetModules` now matches incoming specs by id and updates in
+place, returning the modules it dropped so the handler can delete exactly those. `ContentModuleSpec`
+gained an optional `Id`; the authoring screen already round-tripped it.
+
+Surfaces: **Question Banks** is a new HRMS admin screen (`/hrms/questionBank`, added by
+`scripts/add-question-bank-menu.sql`, granted to exactly the three roles that already hold
+`/hrms/trainingCourse` — so ordinary staff never see the library that holds the answer keys). The
+quiz itself is authored inside the course form, under the Quiz module it belongs to, sharing one
+`QuestionEditor` with the bank screen. The learner sits it inside the HOME course player; **no new
+menu operation**, because `myTraining` already exists.
+
+**Verified end to end, 47/47**, with a throwaway bank, course, quiz, session, enrolment and two
+disposable accounts:
+
+| step | result |
+|---|---|
+| question with no correct answer | 400 |
+| single-choice with two keys | 400 |
+| bank after a rejected save | unchanged, 2 questions |
+| publish with an unbuilt quiz | 400, naming the module |
+| quiz on a Text module | 400 |
+| import from bank | 2 copied |
+| rewrite the bank afterwards | quiz untouched |
+| re-save the modules | module id **kept**, quiz survives |
+| edit a published quiz | 400 |
+| player's quiz state | counts and pass mark, **no questions** |
+| learner marks the quiz module complete | 400 |
+| the paper served to the learner | **no `isCorrect`, no explanations** |
+| start again mid-attempt | resumes, no retake burned |
+| select-all, partially ticked | wrong — all or nothing |
+| failed attempt | 25%, answers **stay hidden** |
+| re-submit the same attempt | 400 |
+| passing attempt | 100%, answers **revealed**, module completed |
+| third attempt after passing | 400 |
+| finish the remaining module | enrolment **Completed** |
+| DB check | attendance 100, **assessment score 100**, per-answer rows with selected options |
+| learner writes a bank / reads the authoring view | 403 / 403 |
+| admin reads someone else's attempt | refused |
+
+All probe data and both accounts removed afterwards: courses, versions, modules, progress, banks,
+assessments, questions, options, attempts, answers and answer-options all back to 0.
+
+`permission-audit.cjs` gained `AttemptAccess` in its guard list — the helper that refuses an enrolment
+which is not the caller's own. It is the same shape as `UnitScopeGuard` and the other named guards
+already there, and without it the two attempt endpoints read as unguarded for ever.
+
+**Still ahead:** phase 5 (compliance and analytics), and a course-file store, which is what unlocks
+the Document module kind.

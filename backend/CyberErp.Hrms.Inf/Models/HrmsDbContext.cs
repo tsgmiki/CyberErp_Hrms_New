@@ -219,6 +219,13 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<CourseVersion> CourseVersion { get; set; }
     public DbSet<ContentModule> ContentModule { get; set; }
     public DbSet<ModuleProgress> ModuleProgress { get; set; }
+    public DbSet<QuestionBank> QuestionBank { get; set; }
+    public DbSet<Assessment> Assessment { get; set; }
+    public DbSet<Question> Question { get; set; }
+    public DbSet<QuestionOption> QuestionOption { get; set; }
+    public DbSet<AssessmentAttempt> AssessmentAttempt { get; set; }
+    public DbSet<AttemptAnswer> AttemptAnswer { get; set; }
+    public DbSet<AttemptAnswerOption> AttemptAnswerOption { get; set; }
     public DbSet<TrainingNeed> TrainingNeed { get; set; }
     public DbSet<TrainingSession> TrainingSession { get; set; }
     public DbSet<TrainingEnrollment> TrainingEnrollment { get; set; }
@@ -583,6 +590,13 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new CourseVersionConfiguration());
         modelBuilder.ApplyConfiguration(new ContentModuleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleProgressConfiguration());
+        modelBuilder.ApplyConfiguration(new QuestionBankConfiguration());
+        modelBuilder.ApplyConfiguration(new AssessmentConfiguration());
+        modelBuilder.ApplyConfiguration(new QuestionConfiguration());
+        modelBuilder.ApplyConfiguration(new QuestionOptionConfiguration());
+        modelBuilder.ApplyConfiguration(new AssessmentAttemptConfiguration());
+        modelBuilder.ApplyConfiguration(new AttemptAnswerConfiguration());
+        modelBuilder.ApplyConfiguration(new AttemptAnswerOptionConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingNeedConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingSessionConfiguration());
         modelBuilder.ApplyConfiguration(new TrainingEnrollmentConfiguration());

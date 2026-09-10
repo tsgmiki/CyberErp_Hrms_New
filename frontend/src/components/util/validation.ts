@@ -1451,6 +1451,10 @@ export const TrainingCategorySchema = z.object({
   name: z.string().min(2, "Name is Required").max(150),
 });
 
+export const QuestionBankSchema = z.object({
+  name: z.string().min(2, "Name is Required").max(200),
+});
+
 export const TrainingCourseSchema = z.object({
   name: z.string().min(2, "Name is Required").max(200),
   deliveryMode: z.string().min(1, "Delivery Mode is Required"),

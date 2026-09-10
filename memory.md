@@ -680,7 +680,15 @@ there is no assessment yet, and a measured-by-nobody score on a training record 
 Object storage is an undecided infrastructure question, so the model references rather than stores —
 and the authoring UI offers Text/Video/Link only, because `EmployeeDocument` is employee-scoped.
 ⚠️ Progress hangs off a session-based enrolment, so this is **blended**, not self-paced enrolment.
-Still ahead: assessment, and a course-file store.
+**Phase 4** `QuestionBank`/`Question`/`QuestionOption` + `Assessment` on a Quiz content module +
+`AssessmentAttempt`/`AttemptAnswer`/`AttemptAnswerOption` — graded quizzes, and the measured score
+that fills the NULL phase 3 left (§12.87).
+⚠️ The quiz hangs off the MODULE, so it freezes with the version — one rule, not two.
+⚠️ THE CLIENT NEVER GETS THE ANSWER KEY, and grading is server-side. Separate learner DTOs exist
+solely for that; revealing happens only when the attempt is finished AND cannot be improved.
+⚠️ Passing is what completes a Quiz module — a manual complete on one is refused.
+⚠️ Bank questions are templates and import copies them, so editing a bank never changes a live quiz.
+Still ahead: phase 5 (compliance + analytics), and a course-file store.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Layers, Plus, Save, Trash2, ArrowUp, ArrowDown, Send, FileText, Video, Link2, Clock,
+  ClipboardCheck,
 } from "lucide-react";
+import QuizSection from "./quizSection";
 import {
   getCourseVersions, createCourseVersion, setCourseVersionModules, publishCourseVersion,
 } from "@/services/admin/courseContent";
@@ -25,10 +27,11 @@ const KINDS: { id: ContentModuleKind; name: string; hint: string }[] = [
   { id: "Text", name: "Text", hint: "Written in place — no file, no hosting" },
   { id: "Video", name: "Video", hint: "A hosted video, by URL" },
   { id: "Link", name: "Link", hint: "An article or a provider's own page" },
+  { id: "Quiz", name: "Quiz", hint: "Graded — passing it is what completes the module" },
 ];
 
 const KIND_ICON: Record<string, typeof FileText> = {
-  Text: FileText, Video, Link: Link2, Document: FileText,
+  Text: FileText, Video, Link: Link2, Document: FileText, Quiz: ClipboardCheck,
 };
 
 const blank = (): ContentModuleModel => ({
@@ -100,6 +103,10 @@ function ModuleRow({
           placeholder={t("What the learner reads on this page") ?? ""}
           className="w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
         />
+      ) : module.kind === "Quiz" ? (
+        // A quiz carries no content of its own — its content is the assessment below, which needs
+        // this module's id and so appears only once the content has been saved.
+        <QuizSection moduleId={module.id} moduleTitle={module.title} />
       ) : (
         <input
           value={module.externalUrl ?? ""}
@@ -376,7 +383,7 @@ function CourseContentSection({ trainingCourseId }: { trainingCourseId?: string 
           )}
 
           <p className="mt-2 text-[11px] text-muted">
-            {t("Modules are shown in this order. Kinds are Text, Video and Link — a file library for course documents is not built yet.")}
+            {t("Modules are shown in this order. Kinds are Text, Video, Link and Quiz — a file library for course documents is not built yet.")}
           </p>
         </>
       )}

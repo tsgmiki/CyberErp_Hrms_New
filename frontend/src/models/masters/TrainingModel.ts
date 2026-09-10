@@ -41,7 +41,7 @@ export interface RecommendedCourseModel {
 export type CourseVersionStatus = "Draft" | "Published" | "Retired";
 
 /** What a module is, which decides how the player renders it. */
-export type ContentModuleKind = "Text" | "Document" | "Video" | "Link";
+export type ContentModuleKind = "Text" | "Document" | "Video" | "Link" | "Quiz";
 
 /** One step of a course version. */
 export interface ContentModuleModel {
@@ -387,4 +387,55 @@ export interface TerminationSettlementModel {
   totalDeductions?: number;
   netAmount?: number;
   lines?: SettlementLineModel[];
+}
+
+/* ---- Assessment (§3.8 phase 4, logic 12.87) --------------------------- */
+
+/** Every kind here is auto-gradable; free text would need a human grader. */
+export type QuestionKind = "SingleChoice" | "MultipleChoice" | "TrueFalse";
+
+export interface QuestionOptionModel {
+  id?: string;
+  sortOrder?: number;
+  text: string;
+  /** The answer key. Present in the authoring API only — the learner's API never sends it. */
+  isCorrect: boolean;
+}
+
+export interface QuestionModel {
+  id?: string;
+  sortOrder?: number;
+  text: string;
+  kind: QuestionKind;
+  points: number;
+  /** Shown with the key when the quiz reveals it — why, not just what. */
+  explanation?: string | null;
+  options: QuestionOptionModel[];
+}
+
+/** A reusable question library. Importing COPIES questions, so a bank stays editable. */
+export interface QuestionBankModel {
+  id?: string;
+  name?: string;
+  description?: string;
+  isActive?: boolean;
+  questionCount?: number;
+}
+
+/** The quiz on a Quiz content module. Frozen when its course version publishes. */
+export interface AssessmentModel {
+  id: string;
+  contentModuleId: string;
+  title: string;
+  instructions?: string | null;
+  passMark: number;
+  /** Null means unlimited. A passed quiz is closed regardless. */
+  maxAttempts?: number | null;
+  /** Null means untimed. Advisory: the clock runs in the browser. */
+  timeLimitMinutes?: number | null;
+  shuffleQuestions: boolean;
+  revealAnswers: boolean;
+  questionCount: number;
+  totalPoints: number;
+  questions: QuestionModel[];
 }

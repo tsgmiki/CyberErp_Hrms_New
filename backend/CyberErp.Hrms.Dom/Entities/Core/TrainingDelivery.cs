@@ -202,6 +202,31 @@ public class TrainingEnrollment : BaseEntity, IAggregateRoot, IAuditable
         base.Update();
     }
 
+    /// <summary>
+    /// Records a MEASURED assessment result, without touching status, attendance or completion.
+    ///
+    /// <para>⚠️ This is what fills the score phase 3 deliberately left NULL. It is separate from
+    /// <see cref="RecordParticipation"/> because that method sets the three together — calling it to
+    /// post a quiz result would force the caller to restate a status and an attendance figure it has
+    /// no business deciding (logic §12.87).</para>
+    ///
+    /// <para>The score only ever moves UP: it is the learner's best attempt, and a later, worse
+    /// retake must not erase a pass they have already earned.</para>
+    /// </summary>
+    public void RecordAssessmentResult(decimal scorePercent)
+    {
+        if (Status == TrainingEnrollmentStatus.Withdrawn)
+            throw new InvalidOperationException("A withdrawn enrollment cannot be updated.");
+        if (scorePercent is < 0 or > 100)
+            throw new ArgumentException("Assessment score must be between 0 and 100.", nameof(scorePercent));
+
+        if (AssessmentScore is null || scorePercent > AssessmentScore.Value)
+        {
+            AssessmentScore = scorePercent;
+            base.Update();
+        }
+    }
+
     /// <summary>HC199 — the participant's own effectiveness feedback.</summary>
     public void SubmitFeedback(int rating, string? comments)
     {
