@@ -80,6 +80,7 @@ const RewardNominationPage = memo(lazy(() => import("@/pages/admin/rewardNominat
 const TrainingCategoryPage = memo(lazy(() => import("@/pages/admin/trainingCategory")));
 const TrainingCoursePage = memo(lazy(() => import("@/pages/admin/trainingCourse")));
 const QuestionBankPage = memo(lazy(() => import("@/pages/admin/questionBank")));
+const LearningCompliancePage = memo(lazy(() => import("@/pages/admin/learningCompliance")));
 const TrainingNeedPage = memo(lazy(() => import("@/pages/admin/trainingNeed")));
 const TrainingSessionPage = memo(lazy(() => import("@/pages/admin/trainingSession")));
 const TrainingBudgetPage = memo(lazy(() => import("@/pages/admin/trainingBudget")));
@@ -191,6 +192,7 @@ export const ENTITY_ROUTES: EntityRouteDef[] = [
   { path: "trainingCategory", Page: TrainingCategoryPage },
   { path: "trainingCourse", Page: TrainingCoursePage },
   { path: "questionBank", Page: QuestionBankPage },
+  { path: "learningCompliance", Page: LearningCompliancePage },
   { path: "trainingNeed", Page: TrainingNeedPage },
   { path: "trainingSession", Page: TrainingSessionPage },
   { path: "trainingBudget", Page: TrainingBudgetPage },

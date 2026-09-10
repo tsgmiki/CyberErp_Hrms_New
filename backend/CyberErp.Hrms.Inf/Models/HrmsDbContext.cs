@@ -219,6 +219,8 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<CourseVersion> CourseVersion { get; set; }
     public DbSet<ContentModule> ContentModule { get; set; }
     public DbSet<ModuleProgress> ModuleProgress { get; set; }
+    public DbSet<LearningAssignment> LearningAssignment { get; set; }
+    public DbSet<AssignmentObligation> AssignmentObligation { get; set; }
     public DbSet<QuestionBank> QuestionBank { get; set; }
     public DbSet<Assessment> Assessment { get; set; }
     public DbSet<Question> Question { get; set; }
@@ -590,6 +592,8 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new CourseVersionConfiguration());
         modelBuilder.ApplyConfiguration(new ContentModuleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleProgressConfiguration());
+        modelBuilder.ApplyConfiguration(new LearningAssignmentConfiguration());
+        modelBuilder.ApplyConfiguration(new AssignmentObligationConfiguration());
         modelBuilder.ApplyConfiguration(new QuestionBankConfiguration());
         modelBuilder.ApplyConfiguration(new AssessmentConfiguration());
         modelBuilder.ApplyConfiguration(new QuestionConfiguration());

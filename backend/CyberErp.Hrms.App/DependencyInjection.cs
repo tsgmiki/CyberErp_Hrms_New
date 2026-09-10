@@ -896,6 +896,18 @@ namespace CyberErp.Hrms.App
             services.AddScoped<Features.Core.Training.IStartAssessmentAttempt, Features.Core.Training.StartAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.IGetAssessmentAttempt, Features.Core.Training.GetAssessmentAttempt>();
             services.AddScoped<Features.Core.Training.ISubmitAssessmentAttempt, Features.Core.Training.SubmitAssessmentAttempt>();
+            // Compliance — §3.8 phase 5 (logic §12.88).
+            services.AddScoped<Features.Core.Training.ILearningComplianceEngine, Features.Core.Training.LearningComplianceEngine>();
+            services.AddScoped<Features.Core.Training.ILearningComplianceChaser, Features.Core.Training.LearningComplianceChaser>();
+            services.AddScoped<Features.Core.Training.IGetLearningAssignments, Features.Core.Training.GetLearningAssignments>();
+            services.AddScoped<Features.Core.Training.IGetLearningAssignment, Features.Core.Training.GetLearningAssignment>();
+            services.AddScoped<Features.Core.Training.ISaveLearningAssignment, Features.Core.Training.SaveLearningAssignment>();
+            services.AddScoped<Features.Core.Training.IDeleteLearningAssignment, Features.Core.Training.DeleteLearningAssignment>();
+            services.AddScoped<Features.Core.Training.IGetObligations, Features.Core.Training.GetObligations>();
+            services.AddScoped<Features.Core.Training.IWaiveObligation, Features.Core.Training.WaiveObligation>();
+            services.AddScoped<Features.Core.Training.IGetComplianceOverview, Features.Core.Training.GetComplianceOverview>();
+            services.AddScoped<Features.Core.Training.IGetMyObligations, Features.Core.Training.GetMyObligations>();
+            services.AddScoped<Features.Core.Training.IGetTrainingEffectiveness, Features.Core.Training.GetTrainingEffectiveness>();
             services.AddScoped<Features.Core.Training.IGetCourseCompetencies, Features.Core.Training.GetCourseCompetencies>();
             services.AddScoped<Features.Core.Training.ISetCourseCompetencies, Features.Core.Training.SetCourseCompetencies>();
             services.AddScoped<IWorkflowEntityHandler, Features.Core.Workflows.TrainingNeedWorkflowHandler>();
