@@ -83,6 +83,16 @@ namespace CyberErp.Hrms.Api.Configuration
             RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Trips.ITripSettlementReminder>(
                 "trip-settlement-reminders", job => job.RunUnattendedAsync(), Cron.Daily(2));   // 02:00 UTC daily
 
+            // Phase 5: reconcile mandatory-training obligations, then chase the outstanding ones
+            // (logic §12.88). One nightly pass materialises new obligations for people who have
+            // joined or moved, closes the ones a completion now satisfies, opens the next
+            // recertification cycle, reminds learners and escalates to managers.
+            //
+            // ⚠️ RunUnattendedAsync, NOT RunAsync — same reason as the job above: the on-demand path
+            // carries an HR guard that a background job, having no signed-in user, can never satisfy.
+            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Training.ILearningComplianceChaser>(
+                "learning-compliance-sweep", job => job.RunUnattendedAsync(), Cron.Daily(3));   // 03:00 UTC daily
+
             return app;
         }
     }

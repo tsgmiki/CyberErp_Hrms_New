@@ -688,7 +688,16 @@ that fills the NULL phase 3 left (§12.87).
 solely for that; revealing happens only when the attempt is finished AND cannot be improved.
 ⚠️ Passing is what completes a Quiz module — a manual complete on one is refused.
 ⚠️ Bank questions are templates and import copies them, so editing a bank never changes a live quiz.
-Still ahead: phase 5 (compliance + analytics), and a course-file store.
+**Phase 5** `LearningAssignment` + `AssignmentObligation` — a rule assigns a course to a POPULATION,
+the nightly sweep materialises dated obligations, satisfies them from completions, opens the next
+recertification cycle, reminds and escalates (§12.88). **The blueprint's five phases are done.**
+⚠️ The sweep is idempotent, runs nightly and on demand, and a second run must change nothing.
+⚠️ A completion only satisfies the cycle it happened in — that is what recertification MEANS.
+⚠️ No Overdue column: it is Pending with a passed due date, derived.
+⚠️ Waivers need a reason and leave the denominator of every compliance percentage.
+⚠️ NOT GxP-grade (no immutable evidence, e-signature or versioned attestation) — a regulatory
+difference for a vaccine manufacturer, and one that changes the data model rather than the reports.
+Still ahead: a course-file store (unlocks the Document module kind), and the GxP decision.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

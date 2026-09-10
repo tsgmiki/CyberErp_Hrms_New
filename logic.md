@@ -6170,3 +6170,124 @@ already there, and without it the two attempt endpoints read as unguarded for ev
 
 **Still ahead:** phase 5 (compliance and analytics), and a course-file store, which is what unlocks
 the Document module kind.
+
+### 12.88 LMS Phase 5 — compliance and analytics
+
+Fifth and final phase of the blueprint. Two tables, `Hrms.LearningAssignment` and
+`Hrms.AssignmentObligation`, turn training into compliance.
+
+**⚠️ The distinction this phase exists for.** Enrolment is one person choosing one session. An
+ASSIGNMENT is an obligation the organisation places on a POPULATION and then chases — and it keeps
+applying to people who join afterwards, which a list of enrolments cannot do. The rule holds no
+people; individual obligations are materialised from it by the nightly pass, so *who was in scope on
+a given day* is a recorded fact rather than something re-derived — and re-derived differently — later.
+
+**The nightly sweep is three passes in a fixed order**, each depending on the one before:
+
+1. **MATERIALISE** — everyone in an active assignment's audience with no obligation yet gets cycle 1.
+2. **SATISFY** — an outstanding obligation whose employee completed that course *on or after the
+   cycle started* is closed against that enrolment.
+3. **RECUR** — a completed obligation on a repeating assignment opens the next cycle.
+
+**⚠️ `CompletedOn >= AssignedOn` is the rule that makes recertification real.** Without it last
+year's certificate silently satisfies this year's obligation, nobody is ever re-trained, and every
+compliance report is a lie. Verified directly by ageing a whole episode — obligation *and* the
+enrolment that satisfied it — by thirteen months.
+
+**⚠️ Cycles are dated from the COMPLETION, not the calendar.** "Valid for 12 months" means twelve
+months from the day they passed, which is also what the certificate on the wall says.
+
+**⚠️ Idempotent by construction.** It runs nightly and on demand, and a second run must change
+nothing. The unique index on (assignment, employee, cycle) is the backstop; every pass also checks
+before it writes. Verified: 346 obligations on the first sweep, zero on the second.
+
+**⚠️ Nobody is retrospectively overdue.** A cycle cannot start before the person joined *or* before
+the rule existed, so a new assignment never lands on long-serving staff already late.
+
+**There is no Overdue status.** Overdue is `Pending && DueOn < today`, derived wherever it is needed.
+A stored flag would need a nightly sweep purely to keep itself honest, and would be wrong for the
+rest of the day whenever that sweep failed. The obligations grid translates a request for "Overdue"
+into that predicate.
+
+**Chasing has two levels, and the thresholds are the design.** A reminder goes to the learner from 14
+days out, at most once every 7 days — without the cooldown a nightly job mails the same person every
+night until they comply, which teaches people to filter it. An escalation goes to their manager
+**once**, after 7 days overdue: escalating on day one makes the manager's inbox the same noise, and
+never escalating leaves compliance with nobody accountable. Manager resolution reuses
+`IOrgManagerResolver` with `PreloadEmployeeUnitsAsync` first, so escalations do not fan out.
+
+**⚠️ Waived obligations leave the DENOMINATOR.** An excused row is neither a pass nor a failure:
+counting it as compliant flatters the figure, counting it as outstanding punishes a decision HR
+deliberately took. Percentages are completions over (completions + outstanding), and the waiver count
+is shown separately so the figure still reconciles. A waiver **requires a reason** — it is the one
+way a record shows someone as not needing training they were assigned, and an unexplained waiver is
+indistinguishable from a mistake.
+
+**An assignment with history cannot be deleted.** Deactivating stops it applying to anyone new while
+keeping the evidence, and the error says so rather than just refusing.
+
+**Audiences are one join from the employee** — everyone, org unit (optionally including descendants),
+job role, or branch — which is what keeps materialisation a set operation. Job grade is deliberately
+absent: it is two hops through SalaryScale, and grade is a *pay* concept here while job role is what
+"everyone who does this job must hold this certificate" actually means. `AudienceId` is **not** a
+foreign key, since it points at a different table per audience kind; the save handler validates it
+against the right one, because a rule aimed at a deleted unit would silently cover nobody while
+looking correctly configured.
+
+**Effectiveness reporting goes beyond level 1, and says where it stops.** Reaction (the 1–5 feedback)
+and learning (the quiz score phase 4 made real) are MEASURED. Behaviour is a SIGNAL: the average
+change in appraisal score on the competencies a course develops (phase 1's mapping), comparing the
+last appraisal before completion with the first after. An appraisal is a judgement made for other
+reasons, so it is evidence worth looking at rather than proof — anything stronger needs a control
+group this product will never have. **Every figure carries its sample size and is NULL rather than
+zero when unmeasured**: "0% of 0" and "0% of 40" mean opposite things.
+
+**⚠️ A real bug this phase's own verification caught.** `CoreNotification.Create` accepts exactly
+`"Info"`, `"Warning"` or `"Action"` and THROWS on anything else. The chaser passed lowercase, so the
+sweep failed *after* committing its reconciliation — the obligations were written but the response
+came back empty, which is the worst possible shape for a failure. The values are now named constants
+in the chaser. It only surfaced because the recertification test produced something genuinely
+overdue; the first harness had every deadline 30 days out, so the chase never ran.
+
+Surfaces: **Mandatory Training** (`/hrms/learningCompliance`) is one screen with four tabs —
+Compliance (the dashboard), Assignments (the rules), Who Owes What (the rows, defaulting to Overdue,
+with an inline waiver), and Effectiveness. Granted to the roles that already hold the HR employee
+register, **not** to course authors: assigning mandatory training and waiving an obligation are
+compliance acts. The learner gets **Required of Me** (`/myObligations`) in Home, plus the outstanding
+items at the top of My Learning — a deadline nobody sees is a deadline nobody meets. Both added by
+`scripts/add-learning-compliance-menu.sql`. The nightly job is `learning-compliance-sweep` at 03:00
+UTC, calling `RunUnattendedAsync` — **not** `RunAsync`, which carries the HR guard a background job
+can never satisfy (§12.73).
+
+**Verified end to end, 34/34 plus 9/9 on recertification**, against the real 346-employee workforce:
+
+| step | result |
+|---|---|
+| targeted audience with no target | 400 |
+| fixed deadline + recurrence | 400 |
+| first sweep | **346 obligations created** |
+| second sweep | **0 created, 0 cycles** — idempotent |
+| overdue on a brand-new rule | **0** |
+| completion inside the cycle | obligation satisfied, closed against that enrolment |
+| sweep while still certified | 0 next cycles |
+| waiver with no reason | 400 |
+| waiver on a completed obligation | 400 |
+| one-day, one-person assignment | **1 reminder sent** |
+| same-day re-run | **0 sent** — cooldown holds |
+| dashboard | breakdown reconciles with the total; waived out of the denominator |
+| effectiveness with no quiz | score **null**, caveat "No assessment on this course" |
+| delete an assignment with history | 400, pointing at deactivation |
+| learner reads all obligations / assigns / runs the sweep | 403 / 403 / 403 |
+| **recertification** (episode aged 13 months) | cycle 2 opened, dated from the completion; cycle 1 still Completed; **last year's completion does not satisfy it**; no third cycle |
+
+All probe data removed afterwards, including the portal notifications the chase wrote: courses,
+sessions, enrolments, versions, banks, assessments, attempts, assignments, obligations and
+obligation notifications all back to 0.
+
+**⚠️ Scope taken, and the decision still open.** This is the blueprint's "assign to a population and
+chase it". It is **not** GxP-grade: there is no immutable evidence chain, no e-signature, no versioned
+attestation. For a vaccine manufacturer that difference is regulatory, and it changes the data model
+rather than the reports — so it is a decision to take before building on this, not after. What is
+here is the prerequisite either way.
+
+**Still ahead:** a course-file store, which is what unlocks the Document module kind.

@@ -362,6 +362,98 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>
+    /// Mandatory-training rules and the obligations they produce (logic §12.88).
+    ///
+    /// <para>Its own operation rather than an extension of the course catalogue: assigning training
+    /// to a population and waiving someone's obligation are compliance acts, and the people who
+    /// author a course are not automatically the people who should be doing them.</para>
+    /// </summary>
+    [RequirePermission("learningCompliance")]
+    public class LearningAssignmentController(
+        IGetLearningAssignments listHandler,
+        IGetLearningAssignment getHandler,
+        ISaveLearningAssignment saveHandler,
+        IDeleteLearningAssignment deleteHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<PaginatedResponse<LearningAssignmentDto>> GetAll([FromQuery] GetAllRequest request)
+            => listHandler.GetAsync(request);
+
+        [HttpGet("{id:guid}")]
+        public Task<LearningAssignmentDto> Get(Guid id) => getHandler.GetAsync(id);
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] SaveLearningAssignmentDto dto)
+            => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpPut]
+        public async Task<IActionResult> Update([FromBody] SaveLearningAssignmentDto dto)
+            => Ok(new { id = await saveHandler.SaveAsync(dto) });
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
+    }
+
+    /// <summary>
+    /// The compliance picture: who owes what, where the organisation stands, and whether the training
+    /// is doing anything (logic §12.88).
+    /// </summary>
+    [RequirePermission("learningCompliance")]
+    public class LearningComplianceController(
+        IGetObligations obligationsHandler,
+        IWaiveObligation waiveHandler,
+        IGetComplianceOverview overviewHandler,
+        IGetTrainingEffectiveness effectivenessHandler,
+        ILearningComplianceChaser chaser) : BaseController
+    {
+        [HttpGet("obligations")]
+        public Task<PaginatedResponse<ObligationDto>> Obligations([FromQuery] GetAllRequest request)
+            => obligationsHandler.GetAsync(request);
+
+        [HttpGet("overview")]
+        public Task<ComplianceOverviewDto> Overview([FromQuery] Guid? trainingCourseId)
+            => overviewHandler.GetAsync(trainingCourseId);
+
+        [HttpGet("effectiveness")]
+        public Task<List<EffectivenessRowDto>> Effectiveness([FromQuery] Guid? trainingCourseId)
+            => effectivenessHandler.GetAsync(trainingCourseId);
+
+        /// <summary>Excuses one obligation, with a reason an audit can read.</summary>
+        [HttpPost("obligations/{id:guid}/waive")]
+        [RequirePermission("learningCompliance", Access = PermissionAccess.Edit)]
+        public async Task<IActionResult> Waive(Guid id, [FromBody] WaiveObligationRequest request)
+        { await waiveHandler.WaiveAsync(id, request.Reason); return Ok(new { message = "Obligation waived" }); }
+
+        /// <summary>
+        /// Runs the sweep now instead of waiting for tonight.
+        ///
+        /// <para>⚠️ <c>RunAsync</c>, which carries the HR guard — this messages the whole workforce.
+        /// The nightly Hangfire job calls <c>RunUnattendedAsync</c> instead, because a background job
+        /// has no signed-in user to satisfy that guard (§12.73).</para>
+        /// </summary>
+        [HttpPost("run")]
+        [RequirePermission("learningCompliance", Access = PermissionAccess.Add)]
+        public async Task<IActionResult> Run() => Ok(await chaser.RunAsync());
+    }
+
+    public class WaiveObligationRequest
+    {
+        public string Reason { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// The learner's own mandatory training. Gated on <c>myTraining</c>, and the handler answers only
+    /// for the signed-in employee.
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class MyObligationsController(IGetMyObligations handler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<ObligationDto>> Get() => handler.GetAsync();
+    }
+
+    /// <summary>
     /// Question banks — the reusable question library (logic §12.87). Gated with the course
     /// catalogue, since writing questions is course authoring.
     /// </summary>

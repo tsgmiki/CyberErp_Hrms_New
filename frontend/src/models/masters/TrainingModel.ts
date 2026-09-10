@@ -439,3 +439,106 @@ export interface AssessmentModel {
   totalPoints: number;
   questions: QuestionModel[];
 }
+
+/* ---- Compliance (§3.8 phase 5, logic 12.88) --------------------------- */
+
+/** How an assignment picks the people it applies to. Each is one join from the employee. */
+export type AssignmentAudience = "Everyone" | "OrganizationUnit" | "PositionClassAudience" | "Branch";
+
+/** Overdue is NOT a member: it is Pending with a passed due date, derived wherever needed. */
+export type ObligationStatus = "Pending" | "Completed" | "Waived";
+
+/** A standing rule: this course is required of this population, by this deadline, this often. */
+export interface LearningAssignmentModel {
+  id?: string;
+  trainingCourseId?: string;
+  courseName?: string | null;
+  name?: string;
+  audience?: AssignmentAudience;
+  audienceId?: string | null;
+  audienceName?: string | null;
+  includeSubUnits?: boolean;
+  dueWithinDays?: number;
+  /** A hard deadline for the first cycle. Cannot be combined with a recurrence. */
+  fixedDueOn?: string | null;
+  /** Months between recertifications, measured from completion. Null means once only. */
+  recurrenceMonths?: number | null;
+  isActive?: boolean;
+  notes?: string | null;
+  obligationCount?: number;
+  compliantCount?: number;
+  overdueCount?: number;
+}
+
+/** One person's copy of an assignment, for one cycle. */
+export interface ObligationModel {
+  id: string;
+  learningAssignmentId: string;
+  assignmentName: string;
+  trainingCourseId: string;
+  courseName: string;
+  employeeId: string;
+  employeeName?: string | null;
+  employeeNumber?: string | null;
+  unitName?: string | null;
+  cycleNumber: number;
+  assignedOn: string;
+  dueOn: string;
+  status: ObligationStatus;
+  isOverdue: boolean;
+  daysRemaining: number;
+  completedOn?: string | null;
+  waivedReason?: string | null;
+}
+
+/** One line of the compliance dashboard — by course, or by organizational unit. */
+export interface ComplianceRowModel {
+  id: string;
+  name: string;
+  total: number;
+  completed: number;
+  pending: number;
+  overdue: number;
+  waived: number;
+  /** Completions over everything that still counts — waived rows leave the denominator. */
+  compliancePercent: number;
+}
+
+export interface ComplianceOverviewModel {
+  totalObligations: number;
+  completed: number;
+  overdue: number;
+  dueSoon: number;
+  compliancePercent: number;
+  byCourse: ComplianceRowModel[];
+  byUnit: ComplianceRowModel[];
+}
+
+/**
+ * Training effectiveness. Levels 1 and 2 are measured; level 3 is a signal.
+ *
+ * Every figure is null rather than zero when there is no data, and carries its sample size —
+ * "0% of 0" and "0% of 40" mean opposite things.
+ */
+export interface EffectivenessRowModel {
+  trainingCourseId: string;
+  courseName: string;
+  completions: number;
+  averageFeedback?: number | null;
+  feedbackResponses: number;
+  averageAssessmentScore?: number | null;
+  assessmentResults: number;
+  firstAttemptPassRate?: number | null;
+  competencyMovement?: number | null;
+  competencyPairs: number;
+  caveat?: string | null;
+}
+
+/** What one compliance sweep did. */
+export interface ComplianceRunResultModel {
+  obligationsCreated: number;
+  obligationsSatisfied: number;
+  nextCyclesOpened: number;
+  remindersSent: number;
+  escalations: number;
+}

@@ -88,6 +88,64 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    // Compliance — §3.8 phase 5 (logic §12.88). Assignment rules and the obligations they produce.
+
+    public class LearningAssignmentConfiguration : IEntityTypeConfiguration<LearningAssignment>
+    {
+        public void Configure(EntityTypeBuilder<LearningAssignment> builder)
+        {
+            builder.ToTable("LearningAssignment", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Name).IsRequired().HasMaxLength(200);
+            builder.Property(x => x.Audience).HasConversion<string>().HasMaxLength(30).IsRequired();
+            builder.Property(x => x.Notes).HasMaxLength(1000);
+
+            // The rule dies with the course it requires — an assignment to a deleted course is an
+            // obligation nobody could ever satisfy.
+            builder.HasOne<TrainingCourse>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingCourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // AudienceId is deliberately NOT a foreign key: it points at a unit, a position class or
+            // a branch depending on Audience, and no single FK can express that. The handler
+            // validates it against the right table on save.
+            builder.HasIndex(x => new { x.TenantId, x.IsActive });
+            builder.HasIndex(x => x.TrainingCourseId);
+        }
+    }
+
+    public class AssignmentObligationConfiguration : IEntityTypeConfiguration<AssignmentObligation>
+    {
+        public void Configure(EntityTypeBuilder<AssignmentObligation> builder)
+        {
+            builder.ToTable("AssignmentObligation", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+            builder.Property(x => x.WaivedReason).HasMaxLength(500);
+
+            builder.HasOne<LearningAssignment>()
+                .WithMany()
+                .HasForeignKey(x => x.LearningAssignmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // RESTRICT on the employee: an obligation is a compliance record, and deleting a person
+            // must not quietly erase the evidence that they were required to be trained.
+            builder.HasOne<Employee>()
+                .WithMany()
+                .HasForeignKey(x => x.EmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // One row per person per cycle — the nightly pass runs repeatedly and must never
+            // materialise the same obligation twice.
+            builder.HasIndex(x => new { x.LearningAssignmentId, x.EmployeeId, x.CycleNumber }).IsUnique();
+            // The chase and the dashboard both read "outstanding, ordered by deadline".
+            builder.HasIndex(x => new { x.TenantId, x.Status, x.DueOn });
+            builder.HasIndex(x => new { x.EmployeeId, x.Status });
+        }
+    }
+
     // Assessment — §3.8 phase 4 (logic §12.87). Auto-graded quizzes inside a course version.
 
     public class QuestionBankConfiguration : IEntityTypeConfiguration<QuestionBank>

@@ -4861,6 +4861,27 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
 - **`permission-audit.cjs` guard list gained `AttemptAccess`** — a self-ownership guard that lives
   in a helper rather than the handler body reads as unguarded until the regex knows about it.
 
+- **LMS Phase 5 shipped: compliance and analytics** — `LearningAssignment` + `AssignmentObligation`,
+  the nightly `learning-compliance-sweep` job, the Mandatory Training screen and Home's
+  "Required of Me" (logic §12.88). 34/34 + 9/9 verified, all probe data removed.
+  ⚠ The sweep is IDEMPOTENT and must stay that way: it runs nightly AND on demand, and a second run
+  must change nothing. Every pass checks before it writes; the unique (assignment, employee, cycle)
+  index is only the backstop.
+  ⚠ `CompletedOn >= AssignedOn` is what makes recertification real. Relax it and last year's
+  certificate satisfies this year's obligation — nobody is re-trained and every report is a lie.
+  ⚠ Cycles are dated from the COMPLETION, never from a calendar date.
+  ⚠ A cycle never starts before the person joined or before the rule existed, so a new assignment
+  cannot land on long-serving staff already overdue.
+  ⚠ There is NO Overdue status — it is Pending with a passed due date, derived. Do not add the column.
+  ⚠ Waived obligations leave the DENOMINATOR of every percentage, and a waiver requires a reason.
+  ⚠ RunUnattendedAsync for Hangfire, RunAsync for the endpoint — the HR guard is on the latter only.
+- **⚠ `CoreNotification.Create` accepts ONLY "Info", "Warning" or "Action"** and throws on anything
+  else. Lowercase strings failed the compliance sweep AFTER it had committed its reconciliation, so
+  the work happened but the response came back empty. Use the named constants.
+- **Compliance is NOT GxP-grade** — no immutable evidence chain, no e-signature, no versioned
+  attestation. For a vaccine manufacturer that is a regulatory difference and it changes the data
+  model, not the reports. Decide before building further on it.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?
