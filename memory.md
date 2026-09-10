@@ -697,7 +697,14 @@ recertification cycle, reminds and escalates (§12.88). **The blueprint's five p
 ⚠️ Waivers need a reason and leave the denominator of every compliance percentage.
 ⚠️ NOT GxP-grade (no immutable evidence, e-signature or versioned attestation) — a regulatory
 difference for a vaccine manufacturer, and one that changes the data model rather than the reports.
-Still ahead: a course-file store (unlocks the Document module kind), and the GxP decision.
+**Course-file store** `CourseFile` — material owned by a COURSE, which `EmployeeDocument` (scoped to
+one employee) could not express. Unlocks the Document module kind; `ContentModule.DocumentId` renamed
+to `CourseFileId` (§12.89). **The LMS arc is complete.**
+⚠️ Files are IMMUTABLE once uploaded — that is what keeps a published version's material frozen.
+⚠️ A learner may read a file only when the PUBLISHED version of a course they are enrolled on serves
+it; withdrawing loses access, completing keeps it.
+⚠️ No video extensions accepted — video stays a URL on a Video module, by design.
+Still open: the GxP decision (§12.88), and object storage if course video is ever hosted in-product.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

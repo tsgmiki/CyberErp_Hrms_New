@@ -88,6 +88,32 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    /// <summary>
+    /// The course-file store (logic §12.89) — material owned by a COURSE rather than by a person,
+    /// which is what <see cref="EmployeeDocument"/> could not express.
+    /// </summary>
+    public class CourseFileConfiguration : IEntityTypeConfiguration<CourseFile>
+    {
+        public void Configure(EntityTypeBuilder<CourseFile> builder)
+        {
+            builder.ToTable("CourseFile", "Hrms");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.FileName).IsRequired().HasMaxLength(300);
+            builder.Property(x => x.ContentType).IsRequired().HasMaxLength(150);
+            builder.Property(x => x.Description).HasMaxLength(500);
+            // varbinary(max), like every other attachment in this product.
+            builder.Property(x => x.Content).IsRequired();
+
+            builder.HasOne<TrainingCourse>()
+                .WithMany()
+                .HasForeignKey(x => x.TrainingCourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasIndex(x => x.TrainingCourseId);
+        }
+    }
+
     // Compliance — §3.8 phase 5 (logic §12.88). Assignment rules and the obligations they produce.
 
     public class LearningAssignmentConfiguration : IEntityTypeConfiguration<LearningAssignment>

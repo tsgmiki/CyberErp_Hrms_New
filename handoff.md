@@ -4882,6 +4882,22 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   attestation. For a vaccine manufacturer that is a regulatory difference and it changes the data
   model, not the reports. Decide before building further on it.
 
+- **Course-file store shipped: `Hrms.CourseFile`** — the Document module kind is now reachable
+  (logic §12.89). 25/25 verified, all probe data removed. **This closes the LMS arc.**
+  ⚠ Rows are IMMUTABLE — no method changes the bytes. That is what keeps a published version's
+  material frozen. "Replace the PDF" = upload a new file and repoint a DRAFT.
+  ⚠ Learner access = the file is served by the PUBLISHED version of a course they are enrolled on.
+  Withdrawn loses access, Completed keeps it. Do not loosen this to "any file of any course".
+  ⚠ Two controllers on purpose: authoring on `trainingCourse`, the learner's read-only copy on
+  `myTraining`. Merging them would hand every employee upload and delete.
+  ⚠ NO VIDEO EXTENSIONS in the allow-list. A Video module is a URL because streaming from SQL Server
+  does not scale; allowing an .mp4 upload undoes that one row at a time.
+  ⚠ Deletion is refused while ANY module points at the file, including a RETIRED version's — that
+  version is the record of what people completed.
+  ⚠ `ContentModule.DocumentId` is now `CourseFileId` (renamed; the column never held a value).
+  ⚠ The player fetches material as a BLOB, not via `<iframe src>` at the API — a direct iframe is a
+  cross-origin document request and third-party-cookie blocking makes it a silent blank frame.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

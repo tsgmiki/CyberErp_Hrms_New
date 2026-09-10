@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Layers, Plus, Save, Trash2, ArrowUp, ArrowDown, Send, FileText, Video, Link2, Clock,
-  ClipboardCheck,
+  ClipboardCheck, FolderOpen,
 } from "lucide-react";
 import QuizSection from "./quizSection";
+import { getCourseFiles } from "@/services/admin/courseFile";
 import {
   getCourseVersions, createCourseVersion, setCourseVersionModules, publishCourseVersion,
 } from "@/services/admin/courseContent";
@@ -18,20 +19,20 @@ import Loading from "@/components/common/loader/loader";
 /**
  * The kinds an author can add here.
  *
- * `Document` exists in the model and the player renders it, but it is deliberately NOT offered:
- * a document id points at an EmployeeDocument, which is scoped to one employee, so a course
- * attachment stored that way would be unreadable by everyone else on the course. Offering the
- * control before there is a course-file store would produce modules nobody can open.
+ * `Document` serves a file from the course's own material library (logic §12.89). It stayed
+ * unreachable until that library existed, because the only file table available was scoped to one
+ * employee — course material stored there is readable by exactly one person.
  */
 const KINDS: { id: ContentModuleKind; name: string; hint: string }[] = [
   { id: "Text", name: "Text", hint: "Written in place — no file, no hosting" },
+  { id: "Document", name: "Document", hint: "A PDF or deck from this course's material" },
   { id: "Video", name: "Video", hint: "A hosted video, by URL" },
   { id: "Link", name: "Link", hint: "An article or a provider's own page" },
   { id: "Quiz", name: "Quiz", hint: "Graded — passing it is what completes the module" },
 ];
 
 const KIND_ICON: Record<string, typeof FileText> = {
-  Text: FileText, Video, Link: Link2, Document: FileText, Quiz: ClipboardCheck,
+  Text: FileText, Video, Link: Link2, Document: FolderOpen, Quiz: ClipboardCheck,
 };
 
 const blank = (): ContentModuleModel => ({
@@ -43,11 +44,12 @@ const day = (v?: string | null) =>
 
 /** One module row in the draft editor. */
 function ModuleRow({
-  module, index, count, onChange, onMove, onRemove,
+  module, index, count, files, onChange, onMove, onRemove,
 }: {
   module: ContentModuleModel;
   index: number;
   count: number;
+  files: { id: string; fileName: string }[];
   onChange: (patch: Partial<ContentModuleModel>) => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -103,6 +105,25 @@ function ModuleRow({
           placeholder={t("What the learner reads on this page") ?? ""}
           className="w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
         />
+      ) : module.kind === "Document" ? (
+        files.length === 0 ? (
+          // Pointing at nothing is the failure this picker exists to prevent, so the empty state
+          // says where the file comes from rather than showing a dropdown with no options.
+          <p className="rounded border border-dashed border-border px-2.5 py-2 text-xs text-muted">
+            {t("No material uploaded yet — add a file in Course Material below, then pick it here.")}
+          </p>
+        ) : (
+          <select
+            value={module.courseFileId ?? ""}
+            onChange={(e) => onChange({ courseFileId: e.target.value || null })}
+            className="w-full rounded border border-border bg-card px-2 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none"
+          >
+            <option value="">{t("Choose a file…")}</option>
+            {files.map((x) => (
+              <option key={x.id} value={x.id}>{x.fileName}</option>
+            ))}
+          </select>
+        )
       ) : module.kind === "Quiz" ? (
         // A quiz carries no content of its own — its content is the assessment below, which needs
         // this module's id and so appears only once the content has been saved.
@@ -168,6 +189,13 @@ function CourseContentSection({ trainingCourseId }: { trainingCourseId?: string 
   const { data: versions, isLoading } = useQuery({
     queryKey: ["courseVersions", trainingCourseId],
     queryFn: () => getCourseVersions(trainingCourseId as string),
+    enabled,
+  });
+
+  // Loaded once for the whole editor rather than per Document module.
+  const { data: courseFiles } = useQuery({
+    queryKey: ["courseFiles", trainingCourseId],
+    queryFn: () => getCourseFiles(trainingCourseId as string),
     enabled,
   });
 
@@ -374,6 +402,7 @@ function CourseContentSection({ trainingCourseId }: { trainingCourseId?: string 
                 <ModuleRow
                   key={m.id ?? `new-${i}`}
                   module={m} index={i} count={modules.length}
+                  files={courseFiles ?? []}
                   onChange={(p) => patch(i, p)}
                   onMove={(d) => move(i, d)}
                   onRemove={() => remove(i)}
@@ -383,7 +412,7 @@ function CourseContentSection({ trainingCourseId }: { trainingCourseId?: string 
           )}
 
           <p className="mt-2 text-[11px] text-muted">
-            {t("Modules are shown in this order. Kinds are Text, Video, Link and Quiz — a file library for course documents is not built yet.")}
+            {t("Modules are shown in this order. A Document module serves a file from this course's material library; a Video module is a URL.")}
           </p>
         </>
       )}

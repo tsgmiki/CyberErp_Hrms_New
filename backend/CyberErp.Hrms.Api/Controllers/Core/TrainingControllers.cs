@@ -362,6 +362,69 @@ namespace CyberErp.Hrms.Api.Controllers.Core
     }
 
     /// <summary>
+    /// A course's material library (logic §12.89) — the store that makes the Document module kind
+    /// reachable. Gated with the course catalogue, since uploading course material is authoring.
+    /// </summary>
+    [RequirePermission("trainingCourse")]
+    public class CourseFileController(
+        IGetCourseFiles listHandler,
+        IUploadCourseFile uploadHandler,
+        IDeleteCourseFile deleteHandler,
+        IDownloadCourseFile downloadHandler) : BaseController
+    {
+        [HttpGet]
+        public Task<List<CourseFileDto>> GetByCourse([FromQuery] Guid trainingCourseId)
+            => listHandler.GetAsync(trainingCourseId);
+
+        /// <summary>Adds a file (PDF/Office/text/image, max 25 MB) to the course's library.</summary>
+        [HttpPost]
+        public async Task<IActionResult> Upload(
+            [FromForm] Guid trainingCourseId, [FromForm] string? description, IFormFile file)
+        {
+            if (file is null) return BadRequest(new { message = "No file provided." });
+            await using var stream = file.OpenReadStream();
+            var id = await uploadHandler.UploadAsync(trainingCourseId, stream, file.FileName,
+                file.ContentType, file.Length, description);
+            return Ok(new { id, message = "File uploaded" });
+        }
+
+        /// <summary>The author's own preview of the material.</summary>
+        [HttpGet("{id:guid}/download")]
+        public async Task<IActionResult> Download(Guid id)
+        {
+            var (content, contentType, fileName) = await downloadHandler.GetAsync(id);
+            return File(content, contentType, fileName);
+        }
+
+        [HttpDelete("{id:guid}")]
+        public async Task<IActionResult> Delete(Guid id)
+        { await deleteHandler.DeleteAsync(id); return Ok(new { message = "Deleted successfully" }); }
+    }
+
+    /// <summary>
+    /// The learner's copy of a course's material.
+    ///
+    /// <para>⚠️ A SEPARATE, READ-ONLY controller for the same reason the catalogue is one (§12.85):
+    /// it is gated on <c>myTraining</c>, which ordinary staff hold, and widening the authoring
+    /// controller to that permission would hand every employee upload and delete along with it. The
+    /// handler additionally requires the file to be served by the PUBLISHED version of a course the
+    /// caller is enrolled on.</para>
+    /// </summary>
+    [RequirePermission("myTraining")]
+    public class CourseMaterialController(IDownloadCourseMaterial handler) : BaseController
+    {
+        [HttpGet("{id:guid}")]
+        public async Task<IActionResult> Get(Guid id)
+        {
+            var (content, contentType, fileName) = await handler.GetAsync(id);
+            // Inline, so a PDF opens in the player's viewer instead of landing in the downloads
+            // folder — the learner is reading it as part of a course, not filing it.
+            Response.Headers.ContentDisposition = $"inline; filename=\"{fileName}\"";
+            return File(content, contentType);
+        }
+    }
+
+    /// <summary>
     /// Mandatory-training rules and the obligations they produce (logic §12.88).
     ///
     /// <para>Its own operation rather than an extension of the course catalogue: assigning training
