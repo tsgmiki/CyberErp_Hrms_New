@@ -219,6 +219,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<CourseVersion> CourseVersion { get; set; }
     public DbSet<ContentModule> ContentModule { get; set; }
     public DbSet<ModuleProgress> ModuleProgress { get; set; }
+    public DbSet<TrainingRecordSignature> TrainingRecordSignature { get; set; }
     public DbSet<CourseFile> CourseFile { get; set; }
     public DbSet<LearningAssignment> LearningAssignment { get; set; }
     public DbSet<AssignmentObligation> AssignmentObligation { get; set; }
@@ -593,6 +594,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new CourseVersionConfiguration());
         modelBuilder.ApplyConfiguration(new ContentModuleConfiguration());
         modelBuilder.ApplyConfiguration(new ModuleProgressConfiguration());
+        modelBuilder.ApplyConfiguration(new TrainingRecordSignatureConfiguration());
         modelBuilder.ApplyConfiguration(new CourseFileConfiguration());
         modelBuilder.ApplyConfiguration(new LearningAssignmentConfiguration());
         modelBuilder.ApplyConfiguration(new AssignmentObligationConfiguration());

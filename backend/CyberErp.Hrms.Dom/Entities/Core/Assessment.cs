@@ -163,7 +163,7 @@ public record QuestionOptionSpec(string Text, bool IsCorrect);
 /// a bank question and an assessment question are the same thing at different moments — a second
 /// table would duplicate the option model and every validation rule with it.</para>
 /// </summary>
-public class Question : BaseEntity, IAggregateRoot
+public class Question : BaseEntity, IAggregateRoot, IAuditable
 {
     /// <summary>Set when this is a reusable template in a bank.</summary>
     public Guid? QuestionBankId { get; private set; }
@@ -268,7 +268,7 @@ public class Question : BaseEntity, IAggregateRoot
 
 /// <summary>One answer option. <see cref="IsCorrect"/> is the answer key and never leaves the server
 /// for a learner — see the attempt handlers.</summary>
-public class QuestionOption : BaseEntity
+public class QuestionOption : BaseEntity, IAuditable
 {
     public Guid QuestionId { get; private set; }
     public int SortOrder { get; private set; }
@@ -360,7 +360,7 @@ public class AssessmentAttempt : BaseEntity, IAggregateRoot, IAuditable
 }
 
 /// <summary>One question's worth of one attempt — what was chosen and what it earned.</summary>
-public class AttemptAnswer : BaseEntity
+public class AttemptAnswer : BaseEntity, IAuditable
 {
     public Guid AssessmentAttemptId { get; private set; }
     public Guid QuestionId { get; private set; }
@@ -398,7 +398,7 @@ public class AttemptAnswer : BaseEntity
 /// <para>A row per selection rather than a list of ids in a column: "which wrong answer do people
 /// pick?" is the first question anyone asks of quiz data, and a delimited column cannot answer it.</para>
 /// </summary>
-public class AttemptAnswerOption : BaseEntity
+public class AttemptAnswerOption : BaseEntity, IAuditable
 {
     public Guid AttemptAnswerId { get; private set; }
     public Guid QuestionOptionId { get; private set; }

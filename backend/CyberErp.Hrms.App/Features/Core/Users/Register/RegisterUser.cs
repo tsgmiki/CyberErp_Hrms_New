@@ -7,6 +7,7 @@ namespace CyberErp.Hrms.App.Features.Core.Users.Register
     public class RegisterUser(
         IRegisterRepository registerRepository,
         IValidator<RegisterUserDto> validator,
+        Common.Services.IPasswordPolicyService passwordPolicy,
         ILogger<RegisterUser> logger) : IRegisterUser
     {
         private readonly IRegisterRepository _registerRepository = registerRepository;
@@ -23,6 +24,11 @@ namespace CyberErp.Hrms.App.Features.Core.Users.Register
                 _logger.LogWarning("Registration failed validation for UserName: {UserName}", dto.UserName);
                 throw new ValidationException(validationResult.Errors);
             }
+
+            // ⚠️ The CONFIGURED policy, not the validator's hardcoded six-character floor. Until now
+            // MinimumPasswordLength, RequireUppercase, RequireNumbers and RequireSpecialCharacters
+            // were settable on the Settings screen and read by nothing at all (logic §12.90).
+            await passwordPolicy.EnsureMeetsPolicyAsync(dto.Password);
 
             var result = await _registerRepository.RegisterAsync(dto);
             _logger.LogInformation("User successfully registered with UserName: {UserName}, TenantId: {TenantId}", dto.UserName, result.TenantId);

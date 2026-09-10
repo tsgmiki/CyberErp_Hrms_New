@@ -4898,6 +4898,26 @@ npm run dev        # Vite;  npm run build = tsc -b && vite build (typecheck gate
   ⚠ The player fetches material as a BLOB, not via `<iframe src>` at the API — a direct iframe is a
   cross-origin document request and third-party-cookie blocking makes it a silent blank frame.
 
+- **GxP option B shipped: defensible training records** — `TrainingRecordSignature`, audit-trail
+  completeness, salted hashing, the enforced password policy and a generated record PDF
+  (logic §12.90). 27/27 verified, all probe data removed.
+  ⚠ `SignedFacts.Canonical` MUST NEVER DRIFT. Change the field order, separator or date format and
+  EVERY existing signature reads as tampered. A new field goes on the END and CanonicalVersion changes.
+  ⚠ Re-authentication IS the signature. Do not "simplify" the sign/verify endpoints by dropping the
+  password — without it they are buttons, not signatures.
+  ⚠ A verifier cannot sign their own record, and a record cannot be signed or verified twice.
+  ⚠ Signatures RESTRICT the enrolment they cover, so teardown scripts must delete them first.
+  ⚠ QuestPDF's licence is set in a STATIC CONSTRUCTOR on QuestPdfService — a new renderer that never
+  touches that type starts UNLICENSED and throws. Repeat the declaration on any new document class.
+  ⚠ `IAuditReasonAccessor` clears itself on read: a reason belongs to one save.
+- **⚠ NOT RUN: `scripts/convert-auditlog-to-ledger.sql`.** Tested end to end on a scratch database
+  (conversion, row copy, insert-still-works, UPDATE/DELETE refused, digest verified) but deliberately
+  not applied to CERP: it is close to one-way and AFTER IT, ANY EF MIGRATION ALTERING AuditLog FAILS.
+  Run with the app stopped and a backup taken. It keeps the old rows in `Hrms.AuditLog_PreLedger`.
+- **⚠ The 490 default passwords are still default.** Salted hashing and the policy are in, but until
+  each account's password is set by its owner, nothing done under it is attributable — which
+  undermines any signature that account takes. Highest-value remaining GxP item.
+
 ## 5. Doc-maintenance checklist (run before committing)
 
 - [ ] `memory.md` — new module / architectural decision / state change recorded?

@@ -180,6 +180,21 @@ public class User : BaseEntity, IAggregateRoot
         base.Update();
     }
 
+    /// <summary>
+    /// Replaces the stored hash without touching anything else.
+    ///
+    /// <para>Exists for the salted-format migration, which rewrites a legacy hash after a successful
+    /// sign-in. It takes a HASH, never a password — the entity has no business knowing how one is
+    /// derived (logic §12.90).</para>
+    /// </summary>
+    public void SetPasswordHash(string passwordHash)
+    {
+        if (string.IsNullOrWhiteSpace(passwordHash))
+            throw new ArgumentException("Password hash cannot be empty.", nameof(passwordHash));
+        PasswordHash = passwordHash;
+        base.Update();
+    }
+
     // ---- Account security (the SRMS columns) --------------------------------------
 
     /// <summary>True when a lockout is in force right now.</summary>

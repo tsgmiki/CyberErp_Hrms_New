@@ -704,7 +704,18 @@ to `CourseFileId` (§12.89). **The LMS arc is complete.**
 ⚠️ A learner may read a file only when the PUBLISHED version of a course they are enrolled on serves
 it; withdrawing loses access, completing keeps it.
 ⚠️ No video extensions accepted — video stays a URL on a Video module, by design.
-Still open: the GxP decision (§12.88), and object storage if course video is ever hosted in-product.
+**GxP option B** `TrainingRecordSignature` (electronic signature with re-authentication and a
+content hash bound to the facts), delete snapshots + a Reason on the audit trail, child rows in the
+training chain made auditable, SALTED password hashing with rehash-on-login, the stored password
+policy actually enforced, and a QuestPDF training-record copy (§12.90).
+⚠️ `SignedFacts.Canonical` must never drift — changing it invalidates every signature ever taken.
+⚠️ Re-authentication IS the signature; a verifier cannot sign their own record.
+⚠️ Signatures RESTRICT the enrolment, so teardown deletes them first.
+⚠️ QuestPDF's licence lives in a static ctor on QuestPdfService — repeat it on any new renderer.
+⚠️ NOT RUN: convert-auditlog-to-ledger.sql (tested on a scratch DB; close to one-way, and after it
+any EF migration altering AuditLog fails). ⚠️ The 490 default passwords are still default — the
+highest-value remaining item, since attribution is what a signature rests on.
+Scope taken deliberately: training records only, no validation lifecycle, no controlled time source.
 
 ## 5. Known environment quirks (bite every session — see `handoff.md` for detail)
 

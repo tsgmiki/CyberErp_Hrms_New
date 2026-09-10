@@ -178,7 +178,7 @@ public record ContentModuleSpec(
 /// reference in the model means that decision can be made later without reshaping content — a
 /// hosted-asset kind becomes an additional case, not a migration (logic §12.86).</para>
 /// </summary>
-public class ContentModule : BaseEntity
+public class ContentModule : BaseEntity, IAuditable
 {
     public Guid CourseVersionId { get; private set; }
     public int SortOrder { get; private set; }

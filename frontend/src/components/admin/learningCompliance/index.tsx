@@ -1,6 +1,6 @@
 import { lazy, memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ShieldCheck, ListTodo, LayoutDashboard, TrendingUp } from "lucide-react";
+import { ShieldCheck, ListTodo, LayoutDashboard, TrendingUp, FileSignature } from "lucide-react";
 import { EntityModuleShell, useEntityCrudModule } from "@/template";
 
 const LearningAssignmentForm = memo(lazy(() => import("./form")));
@@ -8,13 +8,15 @@ const LearningAssignmentList = memo(lazy(() => import("./list")));
 const ComplianceDashboard = memo(lazy(() => import("./dashboard")));
 const ObligationsPanel = memo(lazy(() => import("./obligations")));
 const EffectivenessPanel = memo(lazy(() => import("./effectiveness")));
+const RecordsPanel = memo(lazy(() => import("./records")));
 
-type Tab = "rules" | "dashboard" | "obligations" | "effectiveness";
+type Tab = "rules" | "dashboard" | "obligations" | "records" | "effectiveness";
 
 const TABS: { id: Tab; name: string; icon: typeof ShieldCheck }[] = [
   { id: "dashboard", name: "Compliance", icon: LayoutDashboard },
   { id: "rules", name: "Assignments", icon: ShieldCheck },
   { id: "obligations", name: "Who Owes What", icon: ListTodo },
+  { id: "records", name: "Signed Records", icon: FileSignature },
   { id: "effectiveness", name: "Effectiveness", icon: TrendingUp },
 ];
 
@@ -71,6 +73,7 @@ function LearningCompliance() {
           <div className="px-3 pb-3">
             {tab === "dashboard" && <ComplianceDashboard />}
             {tab === "obligations" && <ObligationsPanel />}
+            {tab === "records" && <RecordsPanel />}
             {tab === "effectiveness" && <EffectivenessPanel />}
           </div>
         )}
