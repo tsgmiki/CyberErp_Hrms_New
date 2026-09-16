@@ -55,6 +55,8 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<IPasswordPolicyService, PasswordPolicyService>();
             // Carries a reason for the change into the audit interceptor (logic §12.90).
             services.AddScoped<IAuditReasonAccessor, AuditReasonAccessor>();
+            // Runs each nightly sweep once per tenant with that tenant ambient (logic §12.91).
+            services.AddScoped<ITenantJobRunner, TenantJobRunner>();
             // The training record copy is drawn with QuestPDF, so it belongs to Inf (logic §12.90).
             services.AddScoped<CyberErp.Hrms.App.Features.Core.Training.IGetTrainingRecordDocument, TrainingRecordDocument>();
             services.AddScoped<ITokenStore, TokenStore>();

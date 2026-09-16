@@ -6521,3 +6521,153 @@ Option B was scoped, and the boundary matters more than the build:
   them, and that undermines every signature that account could take. **This is the highest-value
   remaining item** and it is operational as much as technical.
 - **The ledger conversion has not been run.**
+
+### 12.91 Hangfire — the three fixes from the review
+
+A review of the Hangfire implementation raised eight findings. Three were taken: the dashboard's
+authorization, the sweeps running with no tenant, and the retry cap. The other five are recorded at
+the end of this section, unbuilt.
+
+#### 1. The dashboard was open to every signed-in employee
+
+`/hangfire` was gated on `AuthenticateAsync("Cookies")` succeeding and nothing else. Any employee
+with a login — the whole company — could open it, read the job history, and **trigger, requeue or
+delete jobs**. The nightly sweeps send e-mail and create notifications, so triggering one is not a
+harmless button: it messages real people.
+
+`HangfireDashboardAuthorizationFilter` now gates on the **System Settings** privilege, the same one
+that guards the settings screen:
+
+```csharp
+private const string OperatorLink = "setting";
+internal const string MayWriteItem = "hangfire.may-write";
+```
+
+⚠️ **The Edit check is stored, not re-run.** Hangfire calls `IsReadOnlyFunc` separately from
+`AuthorizeAsync`, and that callback is synchronous while the permission service is not. So
+`AuthorizeAsync` resolves Edit once and parks the answer in `HttpContext.Items`; `IsReadOnly` reads
+it back and **defaults to read-only when the item is absent**. A missing item means the authorize
+step did not run, and the safe reading of "I don't know" is "no".
+
+Verified against the running API. The privilege is held by Department Manager, HR Officer and HR
+Admin, and *not* by the base UserRole every employee gets — which is exactly the boundary wanted:
+
+| caller | `/hangfire` | trigger a job |
+|---|---|---|
+| anonymous | 401 | — |
+| ordinary employee (UserRole) | **401** | **401** |
+| operator holding System Settings | 200 | 204 accepted |
+
+The View-without-Edit branch is the one path not exercised at runtime: planting a view-only
+permission row was refused by the sandbox and was not worth working around for a branch whose whole
+body is the defaulting shown above.
+
+#### 2. ⚠️ The sweeps ran with NO TENANT — the serious one
+
+`Repository.ApplyTenantFilter` is **fail-open**: it filters when a tenant is resolved and silently
+does nothing when one is not. No entity carries `[MultiTenant]`, so that filter is the *only*
+isolation in the system. A Hangfire job has no request, therefore no resolved tenant, therefore
+**every read in every nightly sweep spanned all tenants at once.**
+
+With one tenant in production this was invisible. The training sweep was the worst of the three: an
+`Everyone` audience would have selected every employee in **every** tenant and written obligations
+for all of them stamped with the *assignment's* tenant id — one tenant's compliance register filling
+up with another tenant's staff.
+
+`ITenantJobRunner` fixes it by running each sweep once per active tenant, each in its own DI scope
+with that tenant established through `IMultiTenantContextSetter`:
+
+```csharp
+using var scope = scopeFactory.CreateScope();
+var setter = scope.ServiceProvider.GetRequiredService<IMultiTenantContextSetter>();
+setter.MultiTenantContext = new MultiTenantContext<AppTenantInfo>(tenant, null, null);
+```
+
+⚠️ **A scope per tenant, not one scope reused.** The DbContext and every scoped service must be
+built fresh with that tenant ambient; reusing a scope carries the first tenant's tracked entities —
+and its resolved tenant — into the next. The `finally` clears the context because the accessor is
+`AsyncLocal` and the worker thread goes on to something else.
+
+⚠️ **One tenant's failure must not cost the others their nightly run.** Failures are collected per
+tenant and rethrown together at the end, so the remaining tenants still complete and the dashboard
+still shows the job red.
+
+⚠️ **`GetAllWithoutTenantFilter` is correct in exactly one place** — `LoadActiveTenantsAsync`.
+Enumerating tenants is the one operation that cannot be tenant-scoped. Saying so explicitly beats
+relying on the filter happening to be inert.
+
+⚠️ In Finbuckle 10 `IMultiTenantContextAccessor.MultiTenantContext` is **read-only**;
+`IMultiTenantContextSetter` is the supported hook, and `MultiTenantContext<T>` has no parameterless
+constructor.
+
+**The verification is two-sided, which is the point.** A second tenant was planted owning an
+`Everyone` mandatory-training assignment and exactly **one** employee of its own, against a database
+holding 346 employees in total:
+
+| result | meaning |
+|---|---|
+| 346 obligations | the audience query spanned every tenant — the bug |
+| 0 obligations | the loop never reached this tenant — also wrong |
+| **1 obligation** | **the loop visited this tenant AND resolved its audience within it** |
+
+The sweep produced **1**, belonging to `ZZ-PROBE-1` and stamped with the probe tenant's id; the real
+tenant's register went 11 → 12 and was otherwise untouched. A one-sided test asserting "0 for the
+probe tenant" would have passed even if the loop had never run.
+
+#### 3. The retry cap
+
+Hangfire's default is **10 retries**. A sweep that threw at recipient 200 of 300 re-notified the
+first 199 on every attempt — up to ten waves of e-mail in one night. That is not hypothetical:
+`clear-stale-settlement-reminder-jobs.sql` exists because it happened (§12.73). A daily sweep's
+natural retry is *tomorrow*; failing once, loudly and visibly, is right for an idempotent job that
+runs again in 24 hours.
+
+⚠️ **`[AutomaticRetry(Attempts = 0)]` BELONGS ON THE INTERFACE, NOT THE IMPLEMENTATION.** The jobs
+are registered as `AddOrUpdate<ITenantJobRunner>(...)`, so what Hangfire stores and later reflects
+over is the *interface* method. Moving the attribute onto `TenantJobRunner` would look tidier and
+would silently restore the ten-retry default.
+
+Verified by making the probe tenant's sweep throw from fixture data alone — a `PositionClass`
+audience with a null id, which `ResolveAudienceAsync` dereferences. The job's complete state history:
+
+```
+Enqueued -> Processing -> Failed        1 attempt, 0 retries scheduled, RetryCount unset
+```
+
+and the recorded failure proves the isolation at the same time:
+
+> `Sweep LearningCompliance failed for 1 of 2 tenant(s): zzprobe. The remaining tenants completed.`
+
+#### 4. Two smaller repairs in the same file
+
+**The schedule was registered inside the dashboard method.** `UseHrmsBackgroundJobsDashboard` both
+mounted the UI and called `RecurringJob.AddOrUpdate`, so turning the dashboard off would have
+silently stopped *scheduling* as well as hiding it. Split into `UseHrmsRecurringJobs`.
+
+**`AddOrUpdate` only ever adds.** A renamed job id leaves its old definition scheduled for ever —
+which is how a stale definition survived a rename before and had to be purged by hand.
+`ReconcileRecurringJobs` now removes anything the file no longer declares.
+
+⚠️ **Report schedules are not ours to remove.** They are created at runtime under the
+`report-schedule:` prefix and owned by rows in the database, not by this file — hence the explicit
+exemption. Verified both ways: a planted `zz-stale-renamed-job` was **removed** on startup and a
+planted `report-schedule:…ff` **survived**, leaving exactly the three declared jobs.
+
+#### Verification run
+
+All fixtures — probe tenant, its course, assignment, obligation and employee, the two planted
+recurring jobs, the two throwaway accounts and the job history this run produced — were removed
+afterwards. The deliberately-failed job was deleted too, so a probe does not sit red on the
+dashboard as a false alarm. The schedule was left holding exactly the three declared jobs and the
+obligation register back at its original 11.
+
+#### The five findings not taken
+
+Recorded so they are not rediscovered from scratch:
+
+1. **Report-schedule timezone.** Schedules are interpreted in UTC regardless of the user's zone.
+2. **Trip reminders have no per-recipient cooldown.** Needs a `LastReminderOn`-style column and a
+   migration, so it is a schema change rather than a fix.
+3. **`ExecuteDueMovements` succeeds silently** when a movement cannot be applied.
+4. **No queue separation.** Everything runs on `default`; a slow sweep blocks light work.
+5. **`JobExpirationTimeout` is left at the default**, so job history grows unbounded in `CERP`.

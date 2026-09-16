@@ -1,7 +1,7 @@
+using CyberErp.Hrms.Inf.Common;
 using Hangfire;
-using Hangfire.Dashboard;
 using Hangfire.SqlServer;
-using Microsoft.AspNetCore.Authentication;
+using Hangfire.Storage;
 
 namespace CyberErp.Hrms.Api.Configuration
 {
@@ -55,45 +55,97 @@ namespace CyberErp.Hrms.Api.Configuration
             return services;
         }
 
-        /// <summary>Operational dashboard at <c>/hangfire</c> — authenticated users only.</summary>
+/// <summary>
+        /// Operational dashboard at <c>/hangfire</c>.
+        ///
+        /// <para>⚠️ Gated on the System Settings privilege, not merely on being signed in, and
+        /// read-only for anyone without Edit — see <see cref="HangfireDashboardAuthorizationFilter"/>
+        /// for what an authentication-only check exposed (logic §12.91).</para>
+        /// </summary>
         public static WebApplication UseHrmsBackgroundJobsDashboard(this WebApplication app)
         {
             app.UseHangfireDashboard("/hangfire", new DashboardOptions
             {
                 Authorization = [],
                 AsyncAuthorization = [new HangfireDashboardAuthorizationFilter()],
+                IsReadOnlyFunc = HangfireDashboardAuthorizationFilter.IsReadOnly,
                 DisplayStorageConnectionString = false,
                 DashboardTitle = "CyberErp HRMS — Background Jobs"
             });
 
-            // HC176: apply workflow-approved, future-dated personnel movements ON their effective date.
-            // One indexed sweep per day (Status='Approved' AND EffectiveDate <= today) across all tenants
-            // (the job runs without a tenant context by design); AddOrUpdate keeps it a single recurring
-            // job across restarts.
-            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Employees.IExecuteDueMovements>(
-                "employee-movements-due", job => job.ExecuteAsync(), Cron.Daily(1));   // 01:00 UTC daily
+            return app;
+        }
 
-            // HC263: remind employees whose trip advance is past its settlement deadline. One daily
-            // best-effort sweep across all tenants (mirrors the due-movements job).
+        /// <summary>
+        /// The nightly recurring sweeps.
+        ///
+        /// <para>⚠️ SEPARATE from the dashboard. These used to be registered inside
+        /// <see cref="UseHrmsBackgroundJobsDashboard"/>, so turning the dashboard off would have
+        /// silently stopped SCHEDULING as well as hiding the UI (logic §12.91).</para>
+        ///
+        /// <para>⚠️ Every one of them goes through <see cref="ITenantJobRunner"/>, which runs the
+        /// sweep once per active tenant with that tenant ambient. Registering the handlers directly
+        /// left them running with NO tenant — and the repository's filter is inert without one, so
+        /// they read across every tenant at once.</para>
+        /// </summary>
+        public static WebApplication UseHrmsRecurringJobs(this WebApplication app)
+        {
+
+            // HC176: apply workflow-approved, future-dated personnel movements ON their effective
+            // date. One indexed sweep per tenant per day (Status='Approved' AND EffectiveDate <= today);
+            // AddOrUpdate keeps it a single recurring job across restarts.
+            RecurringJob.AddOrUpdate<ITenantJobRunner>(
+                "employee-movements-due",
+                job => job.RunAsync(TenantSweep.DueMovements), Cron.Daily(1));   // 01:00 UTC daily
+
+            // HC263: remind employees whose trip advance is past its settlement deadline.
             //
-            // ⚠️ RunUnattendedAsync, NOT RunAsync. RunAsync carries the HR-only guard for the
-            // on-demand endpoint, and a Hangfire job has no HTTP context — so the signed-in user is
-            // null, IsAdminAsync returns false, and this threw "Only HR can run the settlement
-            // reminders." on every single nightly run (logic §12.73).
-            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Trips.ITripSettlementReminder>(
-                "trip-settlement-reminders", job => job.RunUnattendedAsync(), Cron.Daily(2));   // 02:00 UTC daily
+            // ⚠️ The runner calls RunUnattendedAsync, NOT RunAsync — that one carries the HR-only
+            // guard for the on-demand endpoint, which a job with no HTTP context can never satisfy
+            // (logic §12.73). The mapping lives in TenantJobRunner.InvokeAsync.
+            RecurringJob.AddOrUpdate<ITenantJobRunner>(
+                "trip-settlement-reminders",
+                job => job.RunAsync(TenantSweep.TripSettlementReminders), Cron.Daily(2));   // 02:00 UTC daily
 
             // Phase 5: reconcile mandatory-training obligations, then chase the outstanding ones
-            // (logic §12.88). One nightly pass materialises new obligations for people who have
-            // joined or moved, closes the ones a completion now satisfies, opens the next
+            // (logic §12.88). One nightly pass per tenant materialises new obligations for people who
+            // have joined or moved, closes the ones a completion now satisfies, opens the next
             // recertification cycle, reminds learners and escalates to managers.
-            //
-            // ⚠️ RunUnattendedAsync, NOT RunAsync — same reason as the job above: the on-demand path
-            // carries an HR guard that a background job, having no signed-in user, can never satisfy.
-            RecurringJob.AddOrUpdate<CyberErp.Hrms.App.Features.Core.Training.ILearningComplianceChaser>(
-                "learning-compliance-sweep", job => job.RunUnattendedAsync(), Cron.Daily(3));   // 03:00 UTC daily
+            RecurringJob.AddOrUpdate<ITenantJobRunner>(
+                "learning-compliance-sweep",
+                job => job.RunAsync(TenantSweep.LearningCompliance), Cron.Daily(3));   // 03:00 UTC daily
+
+            // ⚠️ AddOrUpdate only ever ADDS. A renamed job id would leave its old definition
+            // scheduled for ever — which is how a stale definition survived a rename before and had
+            // to be purged by hand. Anything not registered above is removed here, so the schedule in
+            // the database always matches the schedule in this file (logic §12.91).
+            ReconcileRecurringJobs([
+                "employee-movements-due",
+                "trip-settlement-reminders",
+                "learning-compliance-sweep",
+            ]);
 
             return app;
+        }
+
+        /// <summary>
+        /// Drops recurring jobs this application no longer declares.
+        /// </summary>
+        /// <remarks>
+        /// Report schedules are user-created at runtime under the <c>report-schedule:</c> prefix and
+        /// are emphatically NOT ours to remove — they are owned by rows in the database, not by this
+        /// file.
+        /// </remarks>
+        private static void ReconcileRecurringJobs(IReadOnlyCollection<string> declared)
+        {
+            using var connection = JobStorage.Current.GetConnection();
+            var stale = connection.GetRecurringJobs()
+                .Select(j => j.Id)
+                .Where(id => !declared.Contains(id)
+                             && !id.StartsWith("report-schedule:", StringComparison.Ordinal))
+                .ToList();
+
+            foreach (var id in stale) RecurringJob.RemoveIfExists(id);
         }
     }
 
@@ -119,19 +171,4 @@ namespace CyberErp.Hrms.Api.Configuration
         }
     }
 
-    /// <summary>
-    /// The dashboard is an operational surface — it must never be public. Access requires the same
-    /// authenticated cookie session the API itself uses (log in through the app first). The cookie
-    /// scheme is authenticated EXPLICITLY because the app's default authenticate scheme is JWT —
-    /// outside controllers (which name the scheme via [Authorize]) the cookie would otherwise
-    /// never populate the user.
-    /// </summary>
-    public class HangfireDashboardAuthorizationFilter : IDashboardAsyncAuthorizationFilter
-    {
-        public async Task<bool> AuthorizeAsync(DashboardContext context)
-        {
-            var result = await context.GetHttpContext().AuthenticateAsync("Cookies");
-            return result.Succeeded;
-        }
-    }
 }

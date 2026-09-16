@@ -35,8 +35,13 @@ namespace CyberErp.Hrms.Api.Configuration
             app.UseHrmsAuthentication();
             app.UseAuthorization();
 
-            // After authentication: the dashboard's filter needs the resolved user.
+            // After authentication AND UseMultiTenant: the dashboard filter resolves the caller
+            // and their permissions, both of which need those two to have run.
             app.UseHrmsBackgroundJobsDashboard();
+
+            // Registered separately from the dashboard, so disabling the UI cannot stop the
+            // schedule (logic §12.91).
+            app.UseHrmsRecurringJobs();
 
             app.MapControllers();
             app.MapAccountEndpoints();
