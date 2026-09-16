@@ -63,14 +63,15 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
     public record ScheduleHeader(
         Guid? Id, string TenantId, Guid? UserId, Guid ReportId, string Name, bool IsScheduled,
         string? MailSubject, string? MailBody, bool IsHideRecipients, string Frequency, int FrequencyWeekly,
-        int TimeOfTheDay, DateOnly? ScheduleStartDate, int OutputFormat, string CronExpression);
+        int TimeOfTheDay, DateOnly? ScheduleStartDate, int OutputFormat, string CronExpression,
+        string? TimeZoneId);
 
     /// <summary>One row from _x_ReportClientScheduleRead (header + report joins).</summary>
     public record ScheduleRow(
         Guid ReportScheduleId, Guid ReportId, string ReportKey, string ReportName, string Name,
         bool IsScheduled, bool IsActive, string? MailSubject, string? MailBody, bool IsHideRecipients,
         string Frequency, int FrequencyWeekly, int TimeOfTheDay, DateTime? ScheduleStartDate,
-        int OutputFormat, string CronExpression, string StoredProc);
+        int OutputFormat, string CronExpression, string StoredProc, string? TimeZoneId);
 
     public record RecipientUserRow(Guid ReportScheduleId, Guid UserId, string UserName, bool IsAssigned, string? Email);
     public record RecipientRoleRow(Guid ReportScheduleId, Guid RoleId, string RoleName, bool IsAssigned);

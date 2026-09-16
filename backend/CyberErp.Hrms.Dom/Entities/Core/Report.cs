@@ -310,6 +310,23 @@ public class ReportSchedule : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>Derived 5-part cron (Hangfire) from the cadence above.</summary>
     public string CronExpression { get; private set; } = string.Empty;
 
+    /// <summary>
+    /// The zone <see cref="CronExpression"/> is read in — an IANA id such as "Africa/Nairobi", or a
+    /// Windows id.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠️ NULL MEANS "THE ORGANISATION DEFAULT", and that is the whole reason the column is
+    /// nullable. Schedules created before this column existed were registered against the
+    /// application-wide zone, so leaving them null keeps them behaving exactly as they do today.
+    /// Back-filling them would have meant a migration guessing a zone it cannot read from
+    /// configuration — and stamping the wrong one on every existing schedule (logic §12.93).</para>
+    ///
+    /// <para>The cadence is stored as a local wall-clock time (<see cref="TimeOfTheDay"/>), so the
+    /// zone is what gives that number a meaning. Changing it re-times the schedule; it does not
+    /// convert it.</para>
+    /// </remarks>
+    public string? TimeZoneId { get; private set; }
+
     private ReportSchedule() : base() { }
 
     public void Deactivate() { IsActive = false; base.Update(); }

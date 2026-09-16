@@ -6821,3 +6821,104 @@ exactly the three declared jobs.
 the reminder falls back to mailing the employee's own address and nobody else — and the fixture trip
 was deliberately owned by the throwaway account's employee, whose address is an undeliverable
 `.test.local` one. The log confirms that address was the only recipient.
+
+### 12.93 Per-schedule time zones
+
+§12.92 gave every recurring job one organisation-wide zone and recorded the per-schedule version as
+deliberately unbuilt, because the schedule header is written through a stored procedure. This builds
+it: `Hrms.ReportSchedule.TimeZoneId`, chosen on the schedule form, honoured everywhere the job is
+registered.
+
+#### Why one zone was not enough
+
+The organisation-wide zone fixed the *hour* but not the *ownership*. `SetReportScheduleEnabled`
+re-registers a schedule whenever somebody flips the enable toggle, and it re-derived the zone from
+the application default every time. So the zone a schedule ran in was whatever the application was
+configured with at the moment of the last toggle — not what the person who created it chose. With one
+configured zone that is invisible; change the configuration, or serve tenants in two countries, and
+the schedule silently moves.
+
+#### The shape
+
+⚠️ **NULL MEANS "THE ORGANISATION DEFAULT" and the column is nullable for exactly that reason.**
+Every schedule that existed before this change keeps `TimeZoneId = NULL` and behaves precisely as it
+did. The alternative — back-filling — would have meant a **migration guessing a zone it cannot read**,
+since `Hangfire:TimeZone` lives in configuration and a migration has no access to it. Stamping that
+guess onto every existing schedule is a worse outcome than leaving them following the default they
+were already following.
+
+⚠️ **The id is validated on SAVE, not shrugged off at registration.** An unresolvable id would
+otherwise fall back to the default hours later, and the schedule would run at a time nobody chose.
+Blank is not an error — it is the explicit "follow the default" case.
+
+⚠️ **Registration still falls back to the DEFAULT, never to UTC.** A stored id can stop resolving: the
+tzdb drops and renames zones, and a host rebuilt without ICU resolves no IANA id at all. Dropping such
+a schedule to UTC would move it by hours with nobody touching it, so the fallback is the organisation
+zone plus a warning naming the schedule.
+
+The picker is served from `TimeZoneInfo.GetSystemTimeZones()` rather than a hardcoded list, because
+the save endpoint validates against exactly that set — a baked-in list would eventually offer a zone
+that save then rejects.
+
+#### Two things the runtime test caught that reading did not
+
+**1. `ScheduleRow` is materialised from TWO procedures.** The obvious one to change is
+`ReportClientScheduleRead`. But `ReportGenerateGetScheduleInfo` — which the schedule *runner* and the
+edit form both call — returns the same 17 columns into the same positional record. Dapper binds a
+positional record by constructor, so adding a column to the record without adding it to that second
+proc left it unable to materialise **anything**:
+
+```
+A parameterless default constructor or one matching signature (... System.String StoredProc)
+is required for ScheduleRow materialization
+```
+
+The schedule grid kept working (different proc), so a casual click-through would have passed while
+every scheduled report run was broken. Both procs are now updated in the same migration, and the
+remark on `ScheduleInfoProc` says why it exists.
+
+**2. `GetSystemTimeZones()` speaks a different dialect per platform.** On Windows it returns **Windows**
+ids ("E. Africa Standard Time"); on Linux, **IANA** ids ("Africa/Nairobi"). The first run offered 141
+zones and flagged **none** of them as the default, because the configured default is an IANA id and
+nothing in the list matched it. The list is now normalised to IANA via
+`TryConvertWindowsIdToIanaId`, so the vocabulary is the same on both hosts, the stored value stays
+portable if the app is rehosted, and the default is recognisable in its own list.
+
+> ⚠️ And a harness lesson worth keeping: the first run reported *"a default-following schedule reads
+> back as null — PASS"*. It did not. The endpoint was returning **409**, and reading `.json()` without
+> checking the status turned a server error into `undefined`, which the null check then accepted. A
+> test that parses a response before asserting its status can only report the failures it happens to
+> survive. The harness now asserts the status first.
+
+#### Verified
+
+All against the running API, with the migration rolled back and re-applied first so `Down()` was
+exercised rather than assumed — it removed the column, the parameter and the additions to all three
+procedures.
+
+| check | result |
+|---|---|
+| zone list served, default flagged in it | 141 zones, `Africa/Nairobi` flagged |
+| unresolvable zone (`Mars/Olympus_Mons`) | **400 at save**, not a silent fallback |
+| explicit zone saved, read back by the form | `America/New_York` |
+| no zone chosen | stored and read back as **null**, not a stamped guess |
+
+The decisive one is drift. Two schedules, both asking for **07:00**, after the New York one was
+disabled and re-enabled as a separate action:
+
+| schedule | stored | registered | fires (UTC) | local |
+|---|---|---|---|---|
+| explicit | `America/New_York` | `America/New_York` | 11:00 | **07:00** |
+| default-following | *null* | `Africa/Nairobi` | 04:00 | **07:00** |
+
+Seven hours apart in UTC, both correct on their own clock — and the toggle did not move either.
+
+All fixtures removed afterwards: both probe schedules with their children, their Hangfire
+registrations, the throwaway accounts and the job history from the run.
+
+#### Still not done
+
+**The nightly sweeps remain organisation-wide.** `employee-movements-due`,
+`trip-settlement-reminders` and `learning-compliance-sweep` run once per tenant from a single
+registration, so a per-tenant zone would mean either one registration per tenant or the runner
+re-timing itself — a larger change than this one, and no tenant has yet asked for it.

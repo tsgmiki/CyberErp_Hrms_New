@@ -27,6 +27,7 @@ namespace CyberErp.Hrms.Inf
             // Dashboard KPI row: one Dapper QueryMultipleAsync round trip instead of nine separate calls.
             services.AddScoped<App.Features.Core.Dashboard.IDashboardSummary, DashboardSummaryService>();
             services.AddScoped<App.Features.Core.Reports.IReportJobScheduler, ReportJobScheduler>();
+            services.AddScoped<App.Features.Core.Reports.IGetSchedulingTimeZones, GetSchedulingTimeZones>();
             services.AddScoped<App.Features.Core.Reports.IReportScheduleStore, ReportScheduleStore>();
             // Race-safe per-tenant business numbering (logic.md §7.1 adoption #5)
             services.AddScoped<INumberSequenceService, NumberSequenceService>();
