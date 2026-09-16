@@ -6922,3 +6922,141 @@ registrations, the throwaway accounts and the job history from the run.
 `trip-settlement-reminders` and `learning-compliance-sweep` run once per tenant from a single
 registration, so a per-tenant zone would mean either one registration per tenant or the runner
 re-timing itself — a larger change than this one, and no tenant has yet asked for it.
+
+### 12.94 Annual leave — the entitlement that fell as service rose
+
+Reported case: Tatek Getachew Wolde (hired 2016-09-19) was entitled to **24** days in FY2025/26 at 8.8
+years of service and **19** in FY2026/27 at 9.8 years. More service, fewer days.
+
+#### It was not arithmetic — the two years run different rules
+
+`AnnualLeaveSetting` is per fiscal year, and the two rows differ in `RuleType`:
+
+| FY | Rule | Base / Managerial | Increment | Milestone | PreBase |
+|---|---|---|---|---|---|
+| 2025/206 | `ServiceYears` | 16 / 20 | 1 per 2 yrs | — | — |
+| FY 2019 EC (2026/27) | **`ServiceMilestone`** | 16 / 20 | 1 per 2 yrs | 2019-07-08 | 14 + 1/yr |
+
+He is flagged **managerial** and has no external governmental experience, so:
+
+- **FY2025/26** — `ServiceYears`: `20 + floor(8/2)×1` = **24**
+- **FY2026/27** — hire ≤ milestone ⇒ pre-milestone branch: `14 + 2×1 + floor(7/2)×1` = **19**
+
+Both reproduce exactly, as do the 8.8 / 9.8 service figures. The ledger screen is not a second
+implementation — it calls the same `CalculateEntitlement` — so there was no drift between preview and
+generation to chase.
+
+#### Two real defects underneath
+
+**1. ⚠️ `baseDays` WAS DEAD CODE IN THE PRE-MILESTONE BRANCH.** The method opens with
+
+```csharp
+var baseDays = input.IsManagerial ? setting.ManagerialLeaveDays : setting.BaseLeaveDays;
+```
+
+and every rule reads it *except* the pre-milestone one, which hardcoded `PreMilestoneBaseLeaveDays`.
+So a managerial pre-milestone hire silently fell from the 20-day managerial base to the 14-day legacy
+one, and no configuration could prevent it — there is no managerial counterpart field. All six
+managerial staff are pre-milestone, so all six were affected.
+
+**2. ⚠️ THE GRANDFATHERED RULE WAS A REPLACEMENT, NOT A FLOOR — AND IT INVERTED.** Rule A credits
++1/yr only for service *before* the cutover, so somebody hired shortly before it got the lower legacy
+base with almost no pre-milestone credit. In the live data:
+
+| hire | branch | FY2026/27 |
+|---|---|---|
+| 2019-07-01 | A (pre) | **17** |
+| 2019-07-31 | B (post) | **19** |
+
+Thirty days *more* service, two days *fewer* leave. Grandfathering is supposed to mean nobody is made
+worse off; whichever branch a hire date lands in is not a policy, it is an accident.
+
+60 of 346 employees had dropped year-on-year, worst −5, and **every one of them was in the
+pre-milestone branch** — not a single post-milestone employee fell. The total had risen (7337 → 7843),
+which is why it had gone unnoticed.
+
+#### The fix
+
+Managerial staff keep their managerial base in both phases, and the grandfathered figure becomes a
+floor:
+
+```csharp
+var ordinary = baseDays + (CompletedYears(hire, asOf) / interval) * increment;   // Rule B
+...
+var preBase = input.IsManagerial ? setting.ManagerialLeaveDays : setting.PreMilestoneBaseLeaveDays;
+var grandfathered = preBase + (preYears / preInterval) * preIncrement
+                            + (postYears / interval) * increment;
+days = Math.Max(grandfathered, ordinary);
+```
+
+`PreMilestoneBaseLeaveDays` is now documented as the **non-managerial** pre-milestone base, which is
+what it always was in practice.
+
+Checked against the real 346-employee dataset through the read-only ledger preview, so nothing was
+written:
+
+| | before | after |
+|---|---|---|
+| Tatek (the report) | 19 | **25** — above last year's 24 |
+| 2019-07-01 vs 2019-07-31 | 17 vs 19 | **19 vs 19** — the cliff is gone |
+| employees a recalculation would LOWER | — | **0** |
+| employees a recalculation would RAISE | — | 82 |
+
+Nobody loses days. The long-serving managers gain most (two reach the 35-day cap), which is the direct
+consequence of them keeping the 20-day base through the legacy +1/yr phase.
+
+#### ⚠️ The fix could not reach the data, which was the bigger gap
+
+`GenerateEntitlementsAsync` **skips every employee who already has a balance**:
+
+```csharp
+if (existingSet.Contains(emp.Id)) continue;
+```
+
+That is right for repeat runs and useless after a rule correction — the wrong figures simply stay, and
+there was **no regenerate or recalculate path anywhere in the codebase**. FY2026/27 was already
+generated (346 rows), so fixing the calculation alone would have changed nothing anyone could see.
+
+`RecalculateEntitlementsAsync` is the missing counterpart, exposed as a **Recalculate** button beside
+Calculate.
+
+⚠️ **It does not delete and re-create the balances.** `CarriedForward`, `Adjusted` and `Taken` are real
+history — days carried from last year's rollover, manual HR corrections, and leave already granted.
+Only `Entitled` is the policy's to restate; deleting the row would destroy the other three and orphan
+approved leave.
+
+⚠️ **Every change posts an `Adjustment` transaction.** The balance table is a fast-read aggregate over
+an append-only ledger; rewriting `Entitled` silently would leave the ledger unable to explain the
+figure it now shows.
+
+⚠️ **A lowered entitlement is applied, not clamped, even below days already taken.** Clamping would
+quietly hide someone being over-drawn. The affected employees are returned and surfaced as an error
+toast naming them, so HR deals with each case.
+
+Verified on a **throwaway fiscal year** rather than live records — generating and restating under it
+cannot touch a real balance:
+
+| check | result |
+|---|---|
+| calculate generates, second run is a no-op | 346, then 0 |
+| ⚠️ calculate after a policy change | **still 0 — the gap** |
+| recalculate restates | 332 lowered, −1313 days net |
+| carried-forward / adjusted / taken | **7 / 2 / 3 — untouched** |
+| ledger explains the figure | `Entitlement +27`, then `Adjustment −5`, balance 28 |
+| over-taken employee | reported by name; balance visibly **−82**, not clamped |
+| recalculate run twice | idempotent — "nothing changed" |
+| real 2025/26 and 2026/27 totals | **7337 / 7843, unchanged throughout** |
+
+Probe fiscal year, its 346 balances and transactions, the borrowed employee number and the throwaway
+accounts all removed afterwards.
+
+#### Still open
+
+**The milestone date itself has not been confirmed.** It is `2019-07-08`, while the field's own example
+is `2011-07-07` and the fiscal year is labelled "FY 2019 EC" — so an Ethiopian year may have been
+entered into a Gregorian field. The floor makes this far less damaging (a wrong milestone can no longer
+*reduce* anyone), but it still decides who receives the more generous +1/yr legacy accrual, and that is
+a policy question rather than a code one.
+
+**The recalculation has not been run against the live fiscal year.** It restates 346 real leave
+balances and that is HR's call to make, not something to do on their behalf.
