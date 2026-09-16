@@ -1,10 +1,12 @@
 import { memo, useMemo, useState } from "react";
-import { BookOpenCheck, Calculator, Loader2 } from "lucide-react";
+import { BookOpenCheck, Calculator, Loader2, RefreshCw } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { EntityModuleShell, useEntityRouteModule, EntityListShell } from "@/template";
 import getAllSetting from "@/services/admin/annualLeaveSetting/getAll";
 import getAnnualLeaveLedger from "@/services/admin/annualLeaveLedger/get";
 import calculateAnnualLeaveLedger from "@/services/admin/annualLeaveLedger/calculate";
+import recalculateAnnualLeaveLedger from "@/services/admin/annualLeaveLedger/recalculate";
+import { confirm } from "@/components/common/dialog";
 import { parameterInitialData } from "@/constants/initialization";
 import type { AnnualLeaveLedgerRow } from "@/models";
 import type ParameterModel from "@/models/ParameterModel";
@@ -87,6 +89,32 @@ function AnnualLeaveLedger() {
     onError: () => toast.error("Failed to calculate the ledger."),
   });
 
+  // Recalculate restates entitlements that ALREADY exist — Calculate skips those rows entirely, so
+  // it can never repair a figure produced by an older version of the accrual rules.
+  const recalculate = useMutation({
+    mutationFn: () => recalculateAnnualLeaveLedger(settingId),
+    onSuccess: (r) => {
+      // Over-taken employees are a real HR problem, not a toast-and-forget: keep them on screen.
+      if (r?.overTaken?.length) toast.error(r.message);
+      else toast.success(r?.message ?? "Entitlements recalculated.");
+      queryClient.invalidateQueries({ queryKey: ["annualLeaveLedger", settingId] });
+      queryClient.invalidateQueries({ queryKey: ["leaveBalances"] });
+    },
+    onError: () => toast.error("Failed to recalculate the ledger."),
+  });
+
+  const confirmRecalculate = async () => {
+    const ok = await confirm({
+      title: "Recalculate entitlements?",
+      message:
+        "This restates the Entitled figure on balances that already exist, for every active employee " +
+        "under this setting. Carried-forward, adjusted and taken days are left untouched, and every " +
+        "change is written to the leave ledger as an adjustment.",
+      confirmLabel: "Recalculate",
+    });
+    if (ok) recalculate.mutate();
+  };
+
   const rows = useMemo(() => ledger?.rows ?? [], [ledger]);
 
   // Search box was previously inert on this grid — param.searchText was never read.
@@ -139,6 +167,20 @@ function AnnualLeaveLedger() {
         >
           {calculate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calculator className="h-4 w-4" />}
           Calculate
+        </button>
+        <button
+          type="button"
+          disabled={!settingId || recalculate.isPending || ledger?.fiscalYearClosed}
+          onClick={confirmRecalculate}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-foreground hover:bg-secondary disabled:opacity-50"
+          title={
+            ledger?.fiscalYearClosed
+              ? "Fiscal year is closed"
+              : "Restate entitlements that have already been generated, so a policy change reaches them"
+          }
+        >
+          {recalculate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Recalculate
         </button>
       </div>
 

@@ -20,11 +20,35 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         decimal CalculateEntitlement(EmployeeAccrualInput input, AnnualLeaveSetting setting, DateTime fyStart, DateTime fyEnd);
         /// <summary>Generates opening entitlements for every active employee under a policy. Idempotent (skips employees already generated).</summary>
         Task<int> GenerateEntitlementsAsync(Guid settingId);
+        /// <summary>
+        /// Re-applies the policy to entitlements ALREADY generated for its fiscal year, correcting
+        /// <c>Entitled</c> where the recomputed figure differs.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ <see cref="GenerateEntitlementsAsync"/> SKIPS anyone who already has a balance, which is
+        /// right for repeat runs and useless after a calculation fix — the wrong figures simply stay.
+        /// This is the missing counterpart: it exists so a corrected rule can reach rows that were
+        /// generated under the old one (logic §12.94).
+        /// </remarks>
+        Task<RecalculateResult> RecalculateEntitlementsAsync(Guid settingId);
         /// <summary>Rolls remaining balances of a fiscal year into the next one (carry-forward + expiry), then closes the source year.</summary>
         Task<RolloverResult> RolloverAsync(Guid fromFiscalYearId);
     }
 
     public record RolloverResult(int BalancesRolled, decimal TotalCarried, decimal TotalExpired);
+
+    /// <summary>Outcome of re-applying a policy to already-generated entitlements.</summary>
+    /// <param name="Examined">Active employees considered.</param>
+    /// <param name="Raised">Balances whose entitlement went up.</param>
+    /// <param name="Lowered">Balances whose entitlement went down.</param>
+    /// <param name="Created">Employees who had no balance yet (hired since generation) and now do.</param>
+    /// <param name="NetChange">Sum of every delta applied, in days.</param>
+    /// <param name="OverTaken">
+    /// Employees whose recomputed entitlement is now BELOW what they have already taken. Reported
+    /// rather than clamped — see <c>RecalculateEntitlementsAsync</c>.
+    /// </param>
+    public record RecalculateResult(
+        int Examined, int Raised, int Lowered, int Created, decimal NetChange, List<string> OverTaken);
 
     /// <summary>Per-employee facts the accrual engine needs, resolved once by the caller.</summary>
     /// <param name="ExternalExperienceMonths">Total qualifying external (government) experience in months.</param>
@@ -69,6 +93,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 case LeaveAccrualRuleType.ServiceMilestone:
                 {
                     var milestone = (setting.MilestoneDate ?? asOf).Date;
+
+                    // Rule B — the ordinary entitlement, and the FLOOR for everyone (see below).
+                    var ordinary = baseDays
+                        + (CompletedYears(hire, asOf) / setting.IncrementIntervalYears) * setting.IncrementDays;
+
                     if (hire <= milestone)
                     {
                         // Rule A — external experience may extend the pre-milestone service (toggle).
@@ -77,15 +106,29 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                         var preYears = CompletedYears(effStart, milestone);
                         var postYears = CompletedYears(milestone, asOf);
                         var preInterval = setting.PreMilestoneIntervalYears < 1 ? 1 : setting.PreMilestoneIntervalYears;
-                        days = setting.PreMilestoneBaseLeaveDays
+
+                        // ⚠️ MANAGERIAL STAFF KEEP THEIR MANAGERIAL BASE HERE TOO. This branch used to
+                        // hardcode PreMilestoneBaseLeaveDays for everyone, so a managerial pre-milestone
+                        // hire silently dropped from the 20-day managerial base to the 14-day legacy one
+                        // — baseDays was computed above and then never read (logic §12.94).
+                        var preBase = input.IsManagerial ? setting.ManagerialLeaveDays : setting.PreMilestoneBaseLeaveDays;
+
+                        var grandfathered = preBase
                              + (preYears / preInterval) * setting.PreMilestoneIncrementDays
                              + (postYears / setting.IncrementIntervalYears) * setting.IncrementDays;
+
+                        // ⚠️ THE GRANDFATHERED RULE IS A FLOOR, NOT A REPLACEMENT. Rule A credits +1/yr
+                        // only for service BEFORE the cutover, so someone hired shortly before it got the
+                        // lower legacy base with almost no pre-milestone credit — less than a colleague
+                        // hired weeks LATER received under Rule B. Taking the better of the two is what
+                        // "grandfathering" is supposed to mean: nobody is made worse off by having been
+                        // there longer (logic §12.94).
+                        days = Math.Max(grandfathered, ordinary);
                     }
                     else
                     {
-                        // Rule B — post-milestone hires never count external experience.
-                        var years = CompletedYears(hire, asOf);
-                        days = baseDays + (years / setting.IncrementIntervalYears) * setting.IncrementDays;
+                        // Post-milestone hires never count external experience.
+                        days = ordinary;
                     }
                     break;
                 }
@@ -171,6 +214,104 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             if (created > 0) await balances.SaveChangesAsync();
             logger.LogInformation("Generated {Count} entitlement(s) for setting {SettingId} ({FY})", created, settingId, fy.Name);
             return created;
+        }
+
+        /// <inheritdoc cref="ILeaveAccrualService.RecalculateEntitlementsAsync"/>
+        /// <remarks>
+        /// <para>⚠️ IT DOES NOT DELETE AND RE-CREATE THE BALANCES. <c>CarriedForward</c>, <c>Adjusted</c>
+        /// and <c>Taken</c> are real history — carried days from last year's rollover, manual HR
+        /// corrections, and leave people have already been granted. Only <c>Entitled</c> is the
+        /// policy's to restate; deleting the row would destroy the other three and orphan approved
+        /// leave.</para>
+        ///
+        /// <para>⚠️ EVERY CHANGE POSTS AN <c>Adjustment</c> TRANSACTION. The balance table is a
+        /// fast-read aggregate over an append-only ledger; silently rewriting <c>Entitled</c> would
+        /// leave the ledger unable to explain the figure it now shows.</para>
+        ///
+        /// <para>⚠️ A LOWERED ENTITLEMENT IS APPLIED, NOT CLAMPED, even when it falls below what the
+        /// employee has already taken. Clamping would quietly hide that somebody is over-drawn; the
+        /// affected employees are returned instead so HR can deal with each one.</para>
+        /// </remarks>
+        public async Task<RecalculateResult> RecalculateEntitlementsAsync(Guid settingId)
+        {
+            var setting = await settings.GetAll()
+                .Include(s => s.FiscalYear)
+                .FirstOrDefaultAsync(s => s.Id == settingId)
+                ?? throw new NotFoundException(nameof(AnnualLeaveSetting), settingId.ToString());
+            if (!setting.IsActive)
+                throw new ValidationException("id", "This leave setting is inactive.");
+            var fy = setting.FiscalYear
+                ?? throw new ValidationException("id", "The setting's fiscal year could not be loaded.");
+            if (fy.IsClosed)
+                throw new ValidationException("id", "The fiscal year is closed — its entitlements can no longer be restated.");
+
+            var fyStart = fy.StartDate.ToDateTimeUtc().Date;
+            var fyEnd = fy.EndDate.ToDateTimeUtc().Date;
+            var annualLeaveTypeId = AnnualLeave.LeaveTypeId;
+
+            var staff = await employees.GetAll()
+                .Where(e => e.EmploymentStatus == EmploymentStatus.Active)
+                .Select(e => new { e.Id, e.PersonId, e.EmployeeNumber, e.HireDate, e.IsManagerial })
+                .ToListAsync();
+
+            // Tracked, because the entitlement is written back onto these rows.
+            var existing = (await balances.GetAll()
+                    .Where(b => b.FiscalYearId == setting.FiscalYearId && b.LeaveTypeId == null)
+                    .ToListAsync())
+                .ToDictionary(b => b.EmployeeId);
+
+            var externalMonthsByPerson = await LoadExternalExperienceMonthsAsync(staff.Select(s => s.PersonId));
+            var fyStartDates = await fiscalYears.GetAll().Select(f => f.StartDate).ToListAsync();
+
+            int raised = 0, lowered = 0, created = 0;
+            decimal net = 0;
+            var overTaken = new List<string>();
+
+            foreach (var emp in staff)
+            {
+                var input = new EmployeeAccrualInput(
+                    emp.HireDate, emp.IsManagerial,
+                    externalMonthsByPerson.GetValueOrDefault(emp.PersonId),
+                    CountFiscalYearsOfService(fyStartDates, emp.HireDate, fyStart));
+                var entitled = CalculateEntitlement(input, setting, fyStart, fyEnd);
+
+                if (!existing.TryGetValue(emp.Id, out var balance))
+                {
+                    // Hired since the ledger was generated — bring them in rather than leaving a gap.
+                    balance = LeaveBalance.Create(emp.Id, annualLeaveTypeId, setting.FiscalYearId, entitled);
+                    await balances.AddAsync(balance);
+                    if (entitled > 0)
+                        await transactions.AddAsync(LeaveBalanceTransaction.Create(
+                            emp.Id, annualLeaveTypeId, setting.FiscalYearId,
+                            LeaveBalanceTransactionType.Entitlement, entitled, entitled,
+                            $"Annual entitlement {fy.Name}", setting.Id));
+                    created++;
+                    continue;
+                }
+
+                var delta = entitled - balance.Entitled;
+                if (delta == 0) continue;
+
+                balance.SetOpening(entitled, balance.CarriedForward, balance.Adjusted);
+                await transactions.AddAsync(LeaveBalanceTransaction.Create(
+                    emp.Id, annualLeaveTypeId, setting.FiscalYearId,
+                    LeaveBalanceTransactionType.Adjustment, delta, balance.Available,
+                    $"Entitlement restated by policy recalculation ({fy.Name})", setting.Id));
+
+                net += delta;
+                if (delta > 0) raised++; else lowered++;
+                if (balance.Available < 0) overTaken.Add(emp.EmployeeNumber);
+            }
+
+            if (raised + lowered + created > 0) await balances.SaveChangesAsync();
+
+            logger.LogInformation(
+                "Recalculated entitlements for setting {SettingId} ({FY}): {Raised} raised, {Lowered} lowered, " +
+                "{Created} created, net {Net} day(s){OverTaken}",
+                settingId, fy.Name, raised, lowered, created, net,
+                overTaken.Count > 0 ? $"; {overTaken.Count} employee(s) now over-taken" : string.Empty);
+
+            return new RecalculateResult(staff.Count, raised, lowered, created, net, overTaken);
         }
 
         public async Task<RolloverResult> RolloverAsync(Guid fromFiscalYearId)

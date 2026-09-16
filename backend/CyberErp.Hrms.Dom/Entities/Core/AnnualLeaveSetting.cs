@@ -5,9 +5,16 @@ namespace CyberErp.Hrms.Dom.Entities.Core;
 /// <summary>Which accrual algorithm a leave policy applies (client-configurable).</summary>
 public enum LeaveAccrualRuleType
 {
-    /// <summary>Two-phase statutory policy split at <see cref="AnnualLeaveSetting.MilestoneDate"/>: pre-milestone
-    /// hires accrue by the pre-milestone rule (e.g. 14 + 1/yr up to the milestone, then 1 per 2 yrs); post-milestone
-    /// hires accrue by the base rule (e.g. 16 + 1 per 2 yrs, external experience ignored).</summary>
+    /// <summary>
+    /// Two-phase statutory policy split at <see cref="AnnualLeaveSetting.MilestoneDate"/>: pre-milestone
+    /// hires accrue by the pre-milestone rule (e.g. 14 + 1/yr up to the milestone, then 1 per 2 yrs);
+    /// post-milestone hires accrue by the base rule (e.g. 16 + 1 per 2 yrs, external experience ignored).
+    /// <para>⚠️ The pre-milestone rule is a FLOOR, not a replacement — a pre-milestone hire receives the
+    /// BETTER of the two, so length of service can never cost somebody days. Managerial staff keep
+    /// <see cref="AnnualLeaveSetting.ManagerialLeaveDays"/> as their base in both phases;
+    /// <see cref="AnnualLeaveSetting.PreMilestoneBaseLeaveDays"/> applies to non-managerial staff only
+    /// (logic §12.94).</para>
+    /// </summary>
     ServiceMilestone = 0,
     /// <summary>Single-phase service-based accrual: base + increment per N service years.</summary>
     ServiceYears = 1,
@@ -69,7 +76,10 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     public bool ConsiderExternalExperience { get; private set; }
     /// <summary>Cutover date for <see cref="LeaveAccrualRuleType.ServiceMilestone"/> (e.g. 2011-07-07).</summary>
     public DateTime? MilestoneDate { get; private set; }
-    /// <summary>Base entitlement for pre-milestone hires (e.g. 14).</summary>
+    /// <summary>
+    /// Base entitlement for NON-MANAGERIAL pre-milestone hires (e.g. 14). Managerial staff use
+    /// <see cref="ManagerialLeaveDays"/> in both phases, so there is no managerial counterpart here.
+    /// </summary>
     public int PreMilestoneBaseLeaveDays { get; private set; }
     /// <summary>Increment days for the pre-milestone phase (e.g. 1).</summary>
     public int PreMilestoneIncrementDays { get; private set; }
