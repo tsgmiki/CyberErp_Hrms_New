@@ -13,6 +13,10 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public string? EmployeeName { get; set; }
         public string? EmployeeNumber { get; set; }
         public DateTime? HireDate { get; set; }
+        /// <summary>
+        /// Service completed by the END of this fiscal year — the service the entitlement on this row
+        /// is for. See <c>ServiceYearsAt</c> for why the year end and not the year start.
+        /// </summary>
         public decimal ServiceYears { get; set; }
         public bool IsManagerial { get; set; }
         /// <summary>Owning organization unit (via the employee's position) — the ledger groups on this.</summary>
@@ -138,7 +142,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     EmployeeName = $"{e.First} {e.Grand}".Trim(),
                     EmployeeNumber = e.EmployeeNumber,
                     HireDate = e.HireDate,
-                    ServiceYears = ServiceYearsAt(e.HireDate, fyStart),
+                    ServiceYears = ServiceYearsAt(e.HireDate, fyEnd),
                     IsManagerial = e.IsManagerial,
                     OrganizationUnitName = e.PositionId.HasValue && unitByPosition.TryGetValue(e.PositionId.Value, out var unit)
                         ? unit : null,
@@ -177,6 +181,32 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             };
         }
 
+        /// <summary>
+        /// Service length to display for a fiscal year, measured to the year's END.
+        /// </summary>
+        /// <remarks>
+        /// <para>⚠️ THE YEAR'S END, NOT ITS START — and the difference is the whole point. "Service in
+        /// FY 2025/26" means the service the employee has completed by the time that leave year is
+        /// over. Measured at the START it reads up to a full year behind: an employee hired in
+        /// September 2016 showed <c>8.8</c> against a fiscal year running to July 2026, by which point
+        /// he had 9.8 (logic §12.95).</para>
+        ///
+        /// <para>⚠️ THIS IS DELIBERATELY NOT THE FIGURE THE CALCULATION USES, and the two are
+        /// equivalent rather than inconsistent. <see cref="LeaveAccrualService.CalculateEntitlement"/>
+        /// measures to the fiscal-year START and takes <c>floor(years / interval)</c>; the statutory
+        /// wording is "the first year, plus one day per two ADDITIONAL years", i.e.
+        /// <c>floor((yearsAtYearEnd − 1) / interval)</c>. Those are normally the same number, because a
+        /// full fiscal year contains exactly one hire anniversary. Displaying the year-end figure is
+        /// what lets a reader apply the statutory wording and arrive at the Entitled column beside
+        /// it — 343 of the 344 applicable rows reproduce exactly.</para>
+        ///
+        /// <para>⚠️ THE EXCEPTION IS A HIRE DATE FALLING ON THE FISCAL-YEAR START. Such an employee
+        /// reaches their anniversary on day one, so the year holds no further anniversary and the two
+        /// forms disagree by a day; the calculation's year-start reading is the right one, since they
+        /// genuinely hold that service for the whole leave year. Their displayed service will look one
+        /// band low against the statutory arithmetic. Two employees in the live data (hired 08 July,
+        /// the fiscal-year start) sit here — worth knowing before treating such a row as a bug.</para>
+        /// </remarks>
         private static decimal ServiceYearsAt(DateTime? hireDate, DateTime asOf)
         {
             if (!hireDate.HasValue || hireDate.Value.Date > asOf) return 0m;

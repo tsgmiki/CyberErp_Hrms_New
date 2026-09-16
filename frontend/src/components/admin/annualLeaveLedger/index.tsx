@@ -36,7 +36,18 @@ const COLUMNS: DataTableColumnModel[] = [
     ),
   },
   { name: "hireDate", label: "Hire Date", render: (_v, r: AnnualLeaveLedgerRow) => day(r.hireDate) },
-  { name: "serviceYears", label: "Service (yrs)", render: (_v, r: AnnualLeaveLedgerRow) => <span className="block text-right">{r.serviceYears}</span> },
+  {
+    name: "serviceYears",
+    label: "Service (yrs)",
+    // Measured to the fiscal year's END — the service this row's entitlement is for. Said out loud
+    // on the cell because "service" without a date is ambiguous, and the year-start reading it used
+    // to show was up to a year behind.
+    render: (_v, r: AnnualLeaveLedgerRow) => (
+      <span className="block text-right" title="Service completed by the end of this fiscal year">
+        {r.serviceYears}
+      </span>
+    ),
+  },
   { name: "calculatedEntitlement", label: "Calculated", render: (_v, r: AnnualLeaveLedgerRow) => <span className="block text-right font-semibold">{num(r.calculatedEntitlement)}</span> },
   {
     name: "isGenerated",
