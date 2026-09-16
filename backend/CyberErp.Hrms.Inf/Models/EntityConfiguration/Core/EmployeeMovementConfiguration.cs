@@ -21,6 +21,9 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             // Transfer-request details (HC170/171/173). RequestedByEmployeeId is an audit snapshot (no FK).
             builder.Property(m => m.TransferKind).HasConversion<string>().HasMaxLength(30);
             builder.Property(m => m.RelocationExpense).HasPrecision(18, 2);
+            // Why the nightly sweep could not apply this movement. Truncated to 500 in the entity —
+            // an exception message, not a narrative (logic §12.92).
+            builder.Property(m => m.LastExecutionError).HasMaxLength(500);
 
             // Movement history cascades with its employee; the From* snapshot (position/scale) is
             // historical (no FK) so past actions survive master-data cleanup.

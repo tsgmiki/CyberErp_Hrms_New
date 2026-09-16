@@ -6671,3 +6671,153 @@ Recorded so they are not rediscovered from scratch:
 3. **`ExecuteDueMovements` succeeds silently** when a movement cannot be applied.
 4. **No queue separation.** Everything runs on `default`; a slow sweep blocks light work.
 5. **`JobExpirationTimeout` is left at the default**, so job history grows unbounded in `CERP`.
+
+### 12.92 Hangfire — the remaining five findings
+
+§12.91 took three of the eight review findings and listed five as unbuilt. This is those five. One of
+them turned out to be wrong as stated, and reading another turned up a bug nobody had reported.
+
+#### 1. Every cron was read in UTC
+
+The report-schedule form asks for an hour of day — "send this at 07:00" — and `RecurringJob`
+interprets a cron in **UTC** unless a `TimeZoneInfo` is passed. Nothing passed one. For an East
+African organisation every scheduled report had been arriving **three hours late** since the feature
+shipped, and the three nightly sweeps were running at 04:00–06:00 local rather than in the small
+hours they were written for.
+
+`JobTimeZone` resolves one zone from `Hangfire:TimeZone` (default `Africa/Nairobi`, matching the
+default already used for user preferences) and both registration paths now pass it.
+
+⚠️ **One organisation-wide zone, not the acting user's.** A schedule is an organisational artefact;
+resolving the zone from whoever pressed Save would mean the same schedule fired at a different time
+depending on who last enabled it. A per-schedule zone is the honest end state, but the schedule
+header is written through a stored procedure, so it needs a table and proc change rather than a code
+change — recorded here rather than half-built.
+
+⚠️ **`TryFindSystemTimeZoneById` accepts both an IANA and a Windows id** on .NET 8+, because the
+lookup is ICU-backed. It stops doing so under `InvariantGlobalization`, where an IANA id silently
+fails and every schedule quietly reverts to UTC — which is why an unresolvable id is logged as an
+error rather than shrugged off.
+
+⚠️ **This moves existing schedules.** Anything already registered now fires at the hour the user
+originally asked for, which is three hours earlier than it has been firing.
+
+Verified end to end. A report schedule created through the API at 07:00 registered as
+`TimeZoneId = Africa/Nairobi` with `NextExecution` at **04:00 UTC = 07:00 local** — the hour actually
+requested. The three sweeps moved from 01:00/02:00/03:00 UTC to the same hours local.
+
+> ⚠️ A trap worth keeping: the startup line announcing the zone did not appear on its first run.
+> `TimeSpan` does **not** support the `positive;negative;zero` section syntax that numeric formats do,
+> so `"UTC{Offset:+hh\:mm;-hh\:mm}"` threw while rendering and the message vanished silently. A log
+> line that reports a misconfiguration is worthless if its own formatting can swallow it.
+
+#### 2. The trip reminder was a nightly nag
+
+The sweep mails every traveller whose advance is past its settlement deadline — and a trip stays
+overdue **until it is settled**. With no cooldown the same person received the same e-mail every
+night, indefinitely, which is how people learn to filter a sender.
+
+`TripRequest.LastSettlementReminderOn` plus a 7-day `ReminderCooldownDays`. Weekly is the cadence a
+human would use for a dunning notice and still produces four reminders inside a month.
+
+⚠️ **Stamped only for reminders that actually went out.** Stamping the whole overdue set would
+silence the cooldown for people who were never reached — a traveller with no e-mail address would be
+marked "reminded" and then never chased again.
+
+⚠️ **`RecordSettlementReminder` does not call `base.Update()`.** A reminder is something that happened
+*to* the record, not an edit of it. Stamping `UpdatedAt`/`UpdatedBy` nightly would make the audit
+trail read as though someone had edited the request every night, and would churn the concurrency
+token under anyone holding it open.
+
+Verified over three passes against one overdue advance:
+
+| pass | result |
+|---|---|
+| first | `1 sent, 0 inside the 7-day cooldown` — and the row stamped, `UpdatedAt` still null |
+| second, same day | **`0 sent, 1 inside the 7-day cooldown`** — the nightly nag, gone |
+| third, stamp aged to 8 days | `1 sent` — the cooldown **expires**, it is not a permanent mute |
+
+The third pass is the half that matters: a cooldown that never lets go is a different bug.
+
+#### 3. The due-movement sweep reported success no matter what
+
+Every failure went to a log line and the sweep returned the count it managed. A movement that could
+not be applied — **an approved promotion or transfer that has silently not taken effect** — was
+invisible unless somebody read the logs.
+
+Now: the reason is written to `EmployeeMovement.LastExecutionError` / `LastExecutionAttemptOn`, and
+the sweep throws at the end so the job goes red.
+
+⚠️ **It will keep throwing nightly until someone fixes the movement, and that is the intent.** An
+approved movement that has not been applied is an employee whose pay or posting is wrong; it should
+stay visibly red rather than settle into a green job with a quiet log line. The reason lives on the
+row, so the dashboard is not the only place to look. `MarkExecuted` clears both columns, so a row
+stops accusing itself once it succeeds.
+
+⚠️ **A SCOPE PER MOVEMENT — a bug found while reading, not one that was reported.** Every repository
+shares one scoped `DbContext`, and `ExecuteEmployeeMovement` mutates the employee, the positions and
+the experience row *before* it saves. A movement that threw part-way therefore left those changes
+sitting in the change tracker, and **the next movement's `SaveChanges` committed them** — a
+half-applied movement riding along with an unrelated one. Isolating each execution is what makes
+"continue with the rest" actually true. The failure reasons are then written in a *third* scope,
+because the scope the execution failed in is precisely the one holding the damage.
+
+Verified with an approved, due movement whose target post had been filled since approval:
+
+```
+Due-movement sweep: 0/1 executed, 1 failed.          job state: Failed, 0 retries scheduled
+LastExecutionError = "The target position is already occupied."   UpdatedAt/UpdatedBy still null
+```
+
+The "clears on success" path was **not** exercised at runtime: proving it means actually moving a
+real employee into another post and then unpicking the position flags, the branch and the auto-created
+experience row. Two lines of assignment in `MarkExecuted` are not worth mutating production-derived
+personnel data to demonstrate.
+
+#### 4. Everything ran on one queue
+
+The nightly sweeps are long — each loops every tenant and walks its whole population — while a
+scheduled report is a short job somebody is waiting for. They shared one queue and one small worker
+pool, so a report queued behind a sweep.
+
+⚠️ **A SECOND SERVER, not merely a second queue name.** One server draining two queues still shares
+its worker pool, so a long sweep could occupy every worker and the short jobs would wait anyway. A
+dedicated server is what actually isolates them.
+
+⚠️ **One worker on the sweeps server, on purpose.** The sweeps are once-daily and each already walks
+every tenant in turn; a single worker guarantees they cannot overlap or double up on a slow night.
+
+⚠️ **`[Queue]` on the interface, next to `[AutomaticRetry]` and for the same reason** — plus one of
+its own: `RecurringJobOptions.QueueName` only covers the *scheduled* path, while the attribute covers
+every enqueue including an operator pressing **Trigger** on the dashboard. Both are set, so the
+stored definition and the runtime agree and the dashboard does not claim `default`.
+
+Verified: two servers announced — `{"WorkerCount":4,"Queues":["default"]}` and
+`{"WorkerCount":1,"Queues":["sweeps"]}` — a dashboard-triggered sweep enqueued as
+`{"Queue":"sweeps"}`, and the report schedule registered on `default`.
+
+#### 5. The retention finding was wrong — and the truth was the opposite
+
+The finding said job history grows unbounded. It does not: `JobStorage.JobExpirationTimeout` defaults
+to **one day** and the cleanup was working — every row carried an `ExpireAt` 24 hours out, and the
+whole `HangFire` schema was a few dozen rows.
+
+The real problem is the other direction. **One day is too short for a daily job.** A sweep that failed
+on Friday night had been swept out of the dashboard before anyone looked on Monday — the evidence
+expired faster than the working week. Set explicitly to **7 days**, so a failure always outlives a
+weekend, at a cost of a few thousand rows.
+
+Verified: a new job's `ExpireAt` is now 7 days out rather than 1.
+
+#### Verification run
+
+All fixtures removed afterwards: the overdue trip, the stuck movement, the probe report schedule
+(deleted through the API so its Hangfire registration went with it), both throwaway accounts, and the
+job history this run produced — including the deliberately-failed sweep, which now survives seven
+days rather than one and so had to be cleared rather than waited out. The schedule was left holding
+exactly the three declared jobs.
+
+⚠️ **No real person was e-mailed.** There is no `NotificationTemplate` for `TripSettlementOverdue`, so
+the reminder falls back to mailing the employee's own address and nobody else — and the fixture trip
+was deliberately owned by the throwaway account's employee, whose address is an undeliverable
+`.test.local` one. The log confirms that address was the only recipient.

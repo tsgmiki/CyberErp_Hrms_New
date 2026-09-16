@@ -13,6 +13,24 @@ using Microsoft.Extensions.Logging;
 
 namespace CyberErp.Hrms.Inf.Common
 {
+    /// <summary>
+    /// The queues jobs are dispatched to.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ EVERYTHING USED TO RUN ON ONE QUEUE with a handful of shared workers. The nightly sweeps
+    /// are long — they loop every tenant, and each tenant's pass walks its whole population — while a
+    /// scheduled report is a short job somebody is waiting for. On a shared queue a sweep occupied a
+    /// worker for as long as it took and the reports queued behind it (logic §12.92).
+    /// </remarks>
+    public static class HrmsQueues
+    {
+        /// <summary>Short, latency-sensitive work: report schedules, ad-hoc jobs.</summary>
+        public const string Default = "default";
+
+        /// <summary>The long nightly per-tenant sweeps. Served by their own single-worker server.</summary>
+        public const string Sweeps = "sweeps";
+    }
+
     /// <summary>The recurring sweeps that must run once per tenant.</summary>
     /// <remarks>
     /// An enum rather than a delegate or a type argument because Hangfire SERIALISES the job's
@@ -57,12 +75,17 @@ namespace CyberErp.Hrms.Inf.Common
         /// <para>A daily sweep's natural retry is TOMORROW. Failing once, loudly and visibly, is the
         /// right behaviour for an idempotent job that runs again in 24 hours.</para>
         ///
-        /// <para>⚠️ THE ATTRIBUTE BELONGS ON THE INTERFACE, NOT THE IMPLEMENTATION. The jobs are
+        /// <para>⚠️ BOTH ATTRIBUTES BELONG ON THE INTERFACE, NOT THE IMPLEMENTATION. The jobs are
         /// registered as <c>AddOrUpdate&lt;ITenantJobRunner&gt;(...)</c>, so what Hangfire stores and
-        /// later reflects over is THIS method. Moving it to <see cref="TenantJobRunner"/> would look
-        /// tidier and would silently restore the ten-retry default.</para>
+        /// later reflects over is THIS method. Moving them to <see cref="TenantJobRunner"/> would look
+        /// tidier and would silently restore the ten-retry default and the shared queue.</para>
+        ///
+        /// <para><c>[Queue]</c> rather than <c>RecurringJobOptions.QueueName</c> so it also applies
+        /// when an operator presses Trigger on the dashboard — the option only covers the scheduled
+        /// path, the attribute covers every enqueue of this method.</para>
         /// </summary>
         [AutomaticRetry(Attempts = 0)]
+        [Queue(HrmsQueues.Sweeps)]
         Task RunAsync(TenantSweep sweep);
     }
 

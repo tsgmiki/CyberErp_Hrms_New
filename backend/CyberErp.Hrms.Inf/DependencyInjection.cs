@@ -57,6 +57,9 @@ namespace CyberErp.Hrms.Inf
             services.AddScoped<IAuditReasonAccessor, AuditReasonAccessor>();
             // Runs each nightly sweep once per tenant with that tenant ambient (logic §12.91).
             services.AddScoped<ITenantJobRunner, TenantJobRunner>();
+            // The zone every cron is read in — singleton, because it is resolved once from config and
+            // a wrong value must be logged once, not on every schedule save (logic §12.92).
+            services.AddSingleton<IJobTimeZone, JobTimeZone>();
             // The training record copy is drawn with QuestPDF, so it belongs to Inf (logic §12.90).
             services.AddScoped<CyberErp.Hrms.App.Features.Core.Training.IGetTrainingRecordDocument, TrainingRecordDocument>();
             services.AddScoped<ITokenStore, TokenStore>();

@@ -61,6 +61,18 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
     public string? Remark { get; private set; }
     public DateTime? ExecutedAt { get; private set; }
 
+    /// <summary>When the nightly sweep last tried and failed to apply this movement.</summary>
+    /// <remarks>
+    /// ⚠️ A movement that cannot be applied means an employee's transfer, promotion or salary change
+    /// HAS NOT TAKEN EFFECT even though it was approved — and the sweep used to swallow the failure
+    /// into a log line and report success. These two columns put the failure on the record itself,
+    /// where HR reads it (logic §12.92).
+    /// </remarks>
+    public DateTime? LastExecutionAttemptOn { get; private set; }
+
+    /// <summary>Why the last attempt failed; null once it succeeds.</summary>
+    public string? LastExecutionError { get; private set; }
+
     // Transfer-request details (HC170/HC171/HC173).
     /// <summary>What the transfer changes (Role / Department / Location) — Transfer rows only.</summary>
     public TransferKind? TransferKind { get; private set; }
@@ -141,7 +153,27 @@ public class EmployeeMovement : BaseEntity, IAggregateRoot, IAuditable
         ToBranchId = resolvedToBranchId;
         Status = MovementStatus.Completed;
         ExecutedAt = DateTime.UtcNow;
+        // A success clears the earlier failure: the row must not keep accusing itself once the
+        // movement has actually been applied.
+        LastExecutionError = null;
+        LastExecutionAttemptOn = null;
         base.Update();
+    }
+
+    /// <summary>
+    /// Records that the nightly sweep tried to apply this movement and could not.
+    /// </summary>
+    /// <remarks>
+    /// Like the trip reminder stamp, this does NOT call <c>base.Update()</c> — a failed attempt is
+    /// something that happened *to* the record, not an edit of it, and stamping `UpdatedBy` nightly
+    /// would misattribute the change to whoever last touched the row.
+    /// </remarks>
+    public void RecordExecutionFailure(string error, DateTime attemptedOn)
+    {
+        LastExecutionAttemptOn = attemptedOn;
+        LastExecutionError = string.IsNullOrWhiteSpace(error)
+            ? "Execution failed."
+            : error.Length > 500 ? error[..500] : error;
     }
 
     public void Cancel()

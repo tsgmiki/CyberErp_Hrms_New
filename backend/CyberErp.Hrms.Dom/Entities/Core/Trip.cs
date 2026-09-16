@@ -139,6 +139,15 @@ public class TripRequest : BaseEntity, IAggregateRoot, IAuditable
     public decimal? SettlementNet { get; private set; }
     public string? SettlementReference { get; private set; }
 
+    /// <summary>
+    /// When the overdue-settlement reminder was last sent for this trip.
+    ///
+    /// <para>⚠️ THE REMINDER SWEEP RUNS NIGHTLY AND THE TRIP STAYS OVERDUE UNTIL IT IS SETTLED, so
+    /// without this stamp every traveller with an outstanding advance was mailed the same reminder
+    /// EVERY NIGHT until they acted — which trains people to filter the sender (logic §12.92).</para>
+    /// </summary>
+    public DateTime? LastSettlementReminderOn { get; private set; }
+
     private readonly List<TripExpense> _expenses = [];
     public IReadOnlyCollection<TripExpense> Expenses => _expenses;
 
@@ -220,6 +229,18 @@ public class TripRequest : BaseEntity, IAggregateRoot, IAuditable
         AdvanceReference = reference;
         base.Update();
     }
+
+    /// <summary>
+    /// Records that the overdue-settlement reminder has just gone out, so the nightly sweep can
+    /// leave this traveller alone until the cooldown expires.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does NOT call <c>base.Update()</c>: a reminder is not a change to the trip, and
+    /// stamping <c>UpdatedAt</c>/<c>UpdatedBy</c> every night would make the audit trail read as
+    /// though someone had edited the request, and would churn the concurrency token under anyone
+    /// holding the record open.
+    /// </remarks>
+    public void RecordSettlementReminder(DateTime sentOn) => LastSettlementReminderOn = sentOn;
 
     /// <summary>HC264/HC268 — settles the trip (advance reconciled against actual expenses).</summary>
     public void Settle(DateTime date, decimal net, string? reference)

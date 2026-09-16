@@ -30,26 +30,52 @@ namespace CyberErp.Hrms.Api.Configuration
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
+            // Built explicitly rather than through UseSqlServerStorage(...) so the retention below can
+            // be set on the storage instance itself.
+            var storage = new SqlServerStorage(connectionString, new SqlServerStorageOptions
+            {
+                CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+                SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+                QueuePollInterval = TimeSpan.Zero,
+                UseRecommendedIsolationLevel = true,
+                DisableGlobalLocks = true
+            })
+            {
+                // ⚠️ HANGFIRE'S DEFAULT IS ONE DAY, WHICH IS TOO SHORT FOR A DAILY JOB. A sweep that
+                // failed on Friday night had been swept out of the dashboard before anyone looked on
+                // Monday — the evidence expired faster than the working week. A week of history means
+                // a failure always outlives the weekend, and it is still only a few thousand rows
+                // (logic §12.92).
+                JobExpirationTimeout = TimeSpan.FromDays(7)
+            };
+
             services.AddHangfire(config => config
                 .SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings()
-                .UseSqlServerStorage(connectionString, new SqlServerStorageOptions
-                {
-                    CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-                    SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-                    QueuePollInterval = TimeSpan.Zero,
-                    UseRecommendedIsolationLevel = true,
-                    DisableGlobalLocks = true
-                }));
+                .UseStorage(storage));
 
             services.AddHangfireServer(options =>
             {
                 // E-mail dispatch is light, latency-tolerant I/O — a handful of workers clears any
                 // realistic backlog while capping the background claim on the SQL connection pool.
                 options.WorkerCount = Math.Clamp(Environment.ProcessorCount, 2, 4);
-                options.Queues = ["default"];
+                options.Queues = [HrmsQueues.Default];
                 options.ServerName = $"hrms-{Environment.MachineName}";
+            });
+
+            // ⚠️ A SECOND SERVER, not merely a second queue name. One server draining two queues
+            // still shares its worker pool, so a long sweep could occupy every worker and the short
+            // jobs would wait anyway. A dedicated server is what actually isolates them.
+            //
+            // ONE worker on purpose: the sweeps are once-daily and each already walks every tenant
+            // in turn, so there is nothing to gain from running two at once — and a single worker
+            // guarantees they cannot overlap each other or double up on a slow night.
+            services.AddHangfireServer(options =>
+            {
+                options.WorkerCount = 1;
+                options.Queues = [HrmsQueues.Sweeps];
+                options.ServerName = $"hrms-{Environment.MachineName}-sweeps";
             });
 
             return services;
@@ -90,13 +116,17 @@ namespace CyberErp.Hrms.Api.Configuration
         /// </summary>
         public static WebApplication UseHrmsRecurringJobs(this WebApplication app)
         {
+            // ⚠️ THE ZONE IS THE POINT. Cron.Daily(1) means 01:00 — but 01:00 WHERE? Without this
+            // every one of these ran at 01:00 UTC, which is 04:00 in the office, so the "overnight"
+            // sweeps were landing as people arrived (logic §12.92).
+            var zone = app.Services.GetRequiredService<IJobTimeZone>().Zone;
 
             // HC176: apply workflow-approved, future-dated personnel movements ON their effective
             // date. One indexed sweep per tenant per day (Status='Approved' AND EffectiveDate <= today);
             // AddOrUpdate keeps it a single recurring job across restarts.
             RecurringJob.AddOrUpdate<ITenantJobRunner>(
                 "employee-movements-due",
-                job => job.RunAsync(TenantSweep.DueMovements), Cron.Daily(1));   // 01:00 UTC daily
+                job => job.RunAsync(TenantSweep.DueMovements), Cron.Daily(1), zone, HrmsQueues.Sweeps);   // 01:00 local daily
 
             // HC263: remind employees whose trip advance is past its settlement deadline.
             //
@@ -105,7 +135,7 @@ namespace CyberErp.Hrms.Api.Configuration
             // (logic §12.73). The mapping lives in TenantJobRunner.InvokeAsync.
             RecurringJob.AddOrUpdate<ITenantJobRunner>(
                 "trip-settlement-reminders",
-                job => job.RunAsync(TenantSweep.TripSettlementReminders), Cron.Daily(2));   // 02:00 UTC daily
+                job => job.RunAsync(TenantSweep.TripSettlementReminders), Cron.Daily(2), zone, HrmsQueues.Sweeps);   // 02:00 local daily
 
             // Phase 5: reconcile mandatory-training obligations, then chase the outstanding ones
             // (logic §12.88). One nightly pass per tenant materialises new obligations for people who
@@ -113,7 +143,7 @@ namespace CyberErp.Hrms.Api.Configuration
             // recertification cycle, reminds learners and escalates to managers.
             RecurringJob.AddOrUpdate<ITenantJobRunner>(
                 "learning-compliance-sweep",
-                job => job.RunAsync(TenantSweep.LearningCompliance), Cron.Daily(3));   // 03:00 UTC daily
+                job => job.RunAsync(TenantSweep.LearningCompliance), Cron.Daily(3), zone, HrmsQueues.Sweeps);   // 03:00 local daily
 
             // ⚠️ AddOrUpdate only ever ADDS. A renamed job id would leave its old definition
             // scheduled for ever — which is how a stale definition survived a rename before and had

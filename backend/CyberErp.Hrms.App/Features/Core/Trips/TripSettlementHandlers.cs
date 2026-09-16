@@ -70,6 +70,16 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
         /// <summary>Days after a trip ends by which the advance must be settled (HC263).</summary>
         internal const int SettlementDueDays = 15;
 
+        /// <summary>
+        /// Days to leave a traveller alone after reminding them.
+        ///
+        /// <para>⚠️ THE SWEEP IS NIGHTLY BUT THE DEBT IS NOT. A trip stays overdue until it is
+        /// settled, so with no cooldown the same person got the same e-mail every night until they
+        /// acted — indefinitely. Weekly is the cadence a human would use for a dunning notice, and it
+        /// still produces four reminders inside a month (logic §12.92).</para>
+        /// </summary>
+        internal const int ReminderCooldownDays = 7;
+
         /// <summary>Trips with an issued (disbursed) advance still awaiting settlement.</summary>
         internal static IQueryable<TripRequest> OutstandingAdvances(IQueryable<TripRequest> q) =>
             q.Where(t => t.AdvanceDisbursedAt != null && t.AdvanceAmount > 0
@@ -206,15 +216,31 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
             var today = DateTime.UtcNow.Date;
             var overdue = await TripSettlement.OutstandingAdvances(repository.GetAll().AsNoTracking())
                 .Where(t => t.Status != TripRequestStatus.Requested)   // advance issued => already past Requested
-                .Select(t => new { t.Id, t.TripNumber, t.EmployeeId, t.EndDate, t.AdvanceAmount, t.Currency })
+                .Select(t => new
+                {
+                    t.Id, t.TripNumber, t.EmployeeId, t.EndDate, t.AdvanceAmount, t.Currency,
+                    t.LastSettlementReminderOn
+                })
                 .ToListAsync();
 
             var users = userRepository.GetAll();
             var sent = 0;
+            var reminded = new List<Guid>();
+            var suppressed = 0;
             foreach (var t in overdue)
             {
                 var dueBy = t.EndDate.Date.AddDays(TripSettlement.SettlementDueDays);
                 if (today <= dueBy) continue;   // not yet overdue
+
+                // ⚠️ The cooldown, and the reason this sweep is not a nightly nag. Anyone reminded
+                // inside the window is left alone; the debt is still outstanding and still shows on
+                // the aging report, which is where HR chases it from.
+                if (t.LastSettlementReminderOn is { } last
+                    && (today - last.Date).TotalDays < TripSettlement.ReminderCooldownDays)
+                {
+                    suppressed++;
+                    continue;
+                }
 
                 // Template first, hardcoded mail as the fallback — see MovementNotifier.
                 var who = await employeeRepository.GetAll().AsNoTracking()
@@ -240,15 +266,28 @@ namespace CyberErp.Hrms.App.Features.Core.Trips
                     RequesterEmployeeId: t.EmployeeId,
                     EntityType: nameof(TripRequest),
                     EntityId: t.Id));
-                if (dispatched > 0) { sent += dispatched; continue; }
+                if (dispatched > 0) { sent += dispatched; reminded.Add(t.Id); continue; }
                 var email = await users.Where(u => u.EmployeeId == t.EmployeeId && u.Email != "").Select(u => u.Email).FirstOrDefaultAsync();
                 if (string.IsNullOrWhiteSpace(email)) continue;
                 var ok = await emailService.SendAsync(email, $"Settle your travel advance — {t.TripNumber}",
                     $"Your travel advance of {t.AdvanceAmount:N2} {t.Currency} for trip {t.TripNumber} was due for settlement on {dueBy:yyyy-MM-dd}. Please submit your settlement.");
-                if (ok) sent++;
+                if (ok) { sent++; reminded.Add(t.Id); }
             }
+
+            // ⚠️ STAMPED ONLY FOR REMINDERS THAT ACTUALLY WENT OUT. Stamping the whole overdue set
+            // would silence the cooldown for people who were never reached — a traveller with no
+            // e-mail address would be marked "reminded" and then never chased again.
+            if (reminded.Count > 0)
+            {
+                var rows = await repository.GetAll().Where(t => reminded.Contains(t.Id)).ToListAsync();
+                foreach (var row in rows) row.RecordSettlementReminder(today);
+                await repository.SaveChangesAsync();
+            }
+
             if (overdue.Count > 0)
-                logger.LogInformation("Trip settlement reminders: {Sent} sent for {Overdue} outstanding advances.", sent, overdue.Count);
+                logger.LogInformation(
+                    "Trip settlement reminders: {Sent} sent, {Suppressed} inside the {Cooldown}-day cooldown, {Overdue} outstanding advances.",
+                    sent, suppressed, TripSettlement.ReminderCooldownDays, overdue.Count);
             return sent;
         }
     }

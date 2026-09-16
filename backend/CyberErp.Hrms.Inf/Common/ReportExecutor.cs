@@ -174,13 +174,19 @@ namespace CyberErp.Hrms.Inf.Common
     }
 
     /// <summary>Hangfire recurring-job registration for report schedules (reference HangfireHelperMethod).</summary>
-    public class ReportJobScheduler(IRecurringJobManager jobs) : IReportJobScheduler
+    /// <remarks>
+    /// ⚠️ The cron is registered against <see cref="IJobTimeZone"/>, NOT UTC. The schedule form asks
+    /// for an hour of day and the user means their own clock; without the zone every schedule fired
+    /// at that hour UTC (logic §12.92).
+    /// </remarks>
+    public class ReportJobScheduler(IRecurringJobManager jobs, IJobTimeZone timeZone) : IReportJobScheduler
     {
         private static string JobId(Guid id) => $"report-schedule:{id}";
 
         public void Register(Guid scheduleId, string cronExpression) =>
             jobs.AddOrUpdate<IRunReportSchedule>(JobId(scheduleId),
-                r => r.RunAsync(scheduleId), cronExpression);
+                r => r.RunAsync(scheduleId), cronExpression,
+                new RecurringJobOptions { TimeZone = timeZone.Zone });
 
         public void Remove(Guid scheduleId) => jobs.RemoveIfExists(JobId(scheduleId));
     }

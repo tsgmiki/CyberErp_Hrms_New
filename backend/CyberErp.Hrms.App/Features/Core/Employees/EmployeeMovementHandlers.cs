@@ -5,6 +5,7 @@ using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ValidationException = CyberErp.Hrms.App.Common.Exceptions.ValidationException;
 
@@ -388,36 +389,101 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
     /// stamped from the movement). One indexed query on (Status, EffectiveDate); per-row isolation so
     /// a single bad movement never blocks the rest.
     /// </summary>
+    /// <summary>
+    /// HC176 — applies approved, future-dated movements once their effective date arrives.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠️ THIS USED TO REPORT SUCCESS NO MATTER WHAT. Every failure went to a log line and the
+    /// sweep returned the count it managed, so a movement that could not be applied — an employee's
+    /// approved promotion or transfer NOT TAKING EFFECT — was invisible unless somebody read the
+    /// logs. It now records the reason on the movement itself and fails the job (logic §12.92).</para>
+    ///
+    /// <para>⚠️ A SCOPE PER MOVEMENT, which is not merely tidiness. Every repository shares one
+    /// scoped <c>DbContext</c>, and <see cref="ExecuteEmployeeMovement"/> mutates the employee, the
+    /// positions and the experience row BEFORE it saves. A movement that threw part-way therefore
+    /// left those changes sitting in the change tracker, and the NEXT movement's <c>SaveChanges</c>
+    /// committed them — a half-applied movement riding along with an unrelated one. Isolating each
+    /// execution is what makes "continue with the rest" actually true.</para>
+    /// </remarks>
     public class ExecuteDueMovements(
         IRepository<EmployeeMovement> repository,
-        IExecuteEmployeeMovement executeHandler,
+        IServiceScopeFactory scopeFactory,
         ILogger<ExecuteDueMovements> logger) : IExecuteDueMovements
     {
         public async Task<int> ExecuteAsync()
         {
             var today = DateTime.UtcNow.Date;
-            var dueIds = await repository.GetAll()
+            var dueIds = await repository.GetAll().AsNoTracking()
                 .Where(m => m.Status == MovementStatus.Approved && m.EffectiveDate <= today)
                 .OrderBy(m => m.EffectiveDate)
                 .Select(m => m.Id)
                 .ToListAsync();
 
             var executed = 0;
+            var failures = new List<(Guid Id, string Error)>();
+
             foreach (var id in dueIds)
             {
+                using var scope = scopeFactory.CreateScope();
                 try
                 {
-                    await executeHandler.ExecuteAsync(id);
+                    await scope.ServiceProvider.GetRequiredService<IExecuteEmployeeMovement>().ExecuteAsync(id);
                     executed++;
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex, "Due-movement execution failed for {Id} — continuing with the rest.", id);
+                    failures.Add((id, ex.Message));
                 }
             }
+
+            if (failures.Count > 0) await RecordFailuresAsync(failures, today);
+
             if (dueIds.Count > 0)
-                logger.LogInformation("Due-movement sweep: {Executed}/{Due} executed.", executed, dueIds.Count);
+                logger.LogInformation("Due-movement sweep: {Executed}/{Due} executed, {Failed} failed.",
+                    executed, dueIds.Count, failures.Count);
+
+            // ⚠️ THROWN ON PURPOSE, and it will keep throwing nightly until someone fixes the
+            // movement. That is the intent: an approved movement that has not been applied is an
+            // employee whose transfer or pay change has silently not happened, and it should stay
+            // visibly red rather than settle into a green job with a quiet log line. The reason is
+            // on each row, so the dashboard is not the only place to look.
+            if (failures.Count > 0)
+                throw new InvalidOperationException(
+                    $"Due-movement sweep applied {executed} of {dueIds.Count} movement(s); " +
+                    $"{failures.Count} failed: {string.Join(", ", failures.Select(f => f.Id))}. " +
+                    "Each failure is recorded on its movement in LastExecutionError.");
+
             return executed;
+        }
+
+        /// <summary>
+        /// Writes the failure reasons in a FRESH scope.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ It cannot reuse the scope the execution failed in: that context is exactly the one
+        /// holding the half-applied changes, so saving through it would commit the damage this
+        /// handler is trying to contain.
+        /// </remarks>
+        private async Task RecordFailuresAsync(List<(Guid Id, string Error)> failures, DateTime attemptedOn)
+        {
+            try
+            {
+                using var scope = scopeFactory.CreateScope();
+                var movements = scope.ServiceProvider.GetRequiredService<IRepository<EmployeeMovement>>();
+                var ids = failures.Select(f => f.Id).ToList();
+                var rows = await movements.GetAll().Where(m => ids.Contains(m.Id)).ToListAsync();
+
+                foreach (var row in rows)
+                    row.RecordExecutionFailure(failures.First(f => f.Id == row.Id).Error, attemptedOn);
+
+                await movements.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                // Best-effort: the sweep still throws below, so the failure is not lost either way.
+                logger.LogError(ex, "Could not record due-movement failure reasons.");
+            }
         }
     }
 
