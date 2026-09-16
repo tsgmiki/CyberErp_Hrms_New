@@ -365,13 +365,26 @@ if serviceMonths < 12:                      # under one year
     monthsInYear = months served within the FY (≤ 12)
     entitled = floor( (NewEmployeeLeaveDays or BaseLeaveDays) * monthsInYear/12 * 2 ) / 2   # ½-day precision
 else:
-    serviceYears = serviceMonths / 12
+    serviceYears = serviceMonths / 12                 # NB: to the FY START (see above)
     base  = IsManagerial ? ManagerialLeaveDays : BaseLeaveDays
-    extra = floor((serviceYears - 1) / IncrementIntervalYears) * IncrementDays
+    extra = floor(serviceYears / IncrementIntervalYears) * IncrementDays
     entitled = min(base + extra, MaxLeaveDays)
 ```
 Ethiopian Labour Proclamation defaults: base **16**, +**1 day / 2 service years**, managerial **20**,
 cap **35**, probation **12 months**, carry-forward expiry **2 years**.
+
+> ⚠️ **Two ends of the same year.** This block used to read `floor((serviceYears − 1) / interval)`,
+> which the code has never done — checked against the implementation it looks like a one-day
+> over-grant. It is not: the statute grants the first year plus one day per two **additional** years,
+> `floor((serviceAtYearEnd − 1) / interval)`, and a full fiscal year normally contains exactly one hire
+> anniversary, so that is the same number as `floor(serviceAtYearStart / interval)`. The
+> **Service (yrs)** column shows the year-END figure precisely so a reader can apply the statutory
+> wording and land on the Entitled beside it — 343 of 344 applicable rows reproduce exactly.
+>
+> The exception is a hire date falling **on** the fiscal-year start: that employee reaches their
+> anniversary on day one, the year holds no further anniversary, and the two forms differ by a day.
+> The year-start reading the code uses is the correct one for them. Two employees (hired 08 July) sit
+> on this boundary (logic §12.95).
 
 ### 3.3 Generation & the Ledger
 - `GenerateEntitlementsAsync(settingId)` — **idempotent**: creates a `LeaveBalance` per active employee
@@ -7060,3 +7073,79 @@ a policy question rather than a code one.
 
 **The recalculation has not been run against the live fiscal year.** It restates 346 real leave
 balances and that is HR's call to make, not something to do on their behalf.
+
+### 12.95 Annual leave — what "Service (yrs)" was measuring
+
+Follow-up to §12.94. The entitlements were now right; the **Service (yrs)** column was not. For the
+same employee (hired 2016-09-19) it read **8.8** against FY2025/26 and **9.8** against FY2026/27.
+
+#### It was measuring to the START of the fiscal year
+
+`ServiceYearsAt(e.HireDate, fyStart)`. Arithmetically correct — 105 whole months to 2025-07-08 is 8.75
+→ 8.8 — and consistent with `LeaveAccrualService`, which also measures to the year start. But it is
+the wrong number to put on a row labelled with a fiscal year that runs to **July 2026**, by which point
+the man has 9.8 years. For a September hire in a July-start fiscal year the column reads roughly ten
+months behind where the employee actually is for most of that leave year.
+
+It now measures to the fiscal year **END** — the service completed by the close of the leave year the
+entitlement is for. ⚠️ **Display only: not one entitlement changed.** Verified across both live fiscal
+years; the calculated totals held at **7337** and **7990**, and the reported employee stayed on 24 and
+25 while his displayed service moved 8.8 → 9.8 and 9.8 → 10.8.
+
+#### The documented formula disagreed with the code, and the code was right
+
+`logic.md` §3.2 and the `AnnualLeaveSetting` XML comment both specified
+
+```
+extra = floor((serviceYears − 1) / IncrementIntervalYears) × IncrementDays
+```
+
+while all three branches of `CalculateEntitlement` do `floor(serviceYears / interval)` — no `− 1`.
+Read literally that is a one-day over-grant on **105 of 346** employees.
+
+It is not a defect. The two are the same rule stated from opposite ends of the year: the statute gives
+the first year plus one day per two **additional** years — `floor((serviceAtYearEnd − 1) / interval)` —
+and a full fiscal year normally contains exactly one hire anniversary, so that equals
+`floor(serviceAtYearStart / interval)`. Modelling all four combinations over the live population made
+it explicit:
+
+| basis | total | vs current |
+|---|---|---|
+| current (FY start, no −1) | 7990 | — |
+| FY end, no −1 | 8079 | +89 |
+| FY start, **with** −1 | 7885 | −105 |
+| **FY end, with −1** | **7990** | **0 — identical to current** |
+
+So the docs were corrected to the year-start form the code actually uses, rather than the code being
+"fixed" into lowering 105 people. **Moving the display to the year end is what makes the written rule
+and the shown figure line up**: a reader can now take the Service (yrs) on screen, apply the statutory
+wording, and land on the Entitled beside it. 343 of the 344 applicable rows reproduce exactly.
+
+#### ⚠️ The one row that does not: hired ON the fiscal-year start
+
+Two employees (NVI/031 and NVI/173, both hired **08 July** — the fiscal-year start date) break the
+equivalence. Their anniversary falls on day **one** of the leave year, so the year contains no
+*further* anniversary and `serviceAtEnd == serviceAtStart`. The two forms then differ by a day:
+the statutory year-end arithmetic predicts 28 where the row shows 29.
+
+**The code is right and the arithmetic-by-hand is wrong** for them — on day one of that leave year they
+genuinely hold 26 completed years, so the 26-year band is theirs for the whole year. Their displayed
+service will simply look one band low if someone checks it by hand. Recorded here, and in the remark on
+`ServiceYearsAt`, so such a row is not mistaken for a bug later.
+
+> The check that found this was worth more than the one that passed: predicting all 344 rows from the
+> displayed figure surfaced the two boundary cases immediately, where spot-checking the reported
+> employee would have shown a clean match and moved on.
+
+#### Verified
+
+| check | result |
+|---|---|
+| Tatek FY2025/26 | service 8.8 → **9.8**, entitlement **24 unchanged** |
+| Tatek FY2026/27 | service 9.8 → **10.8**, entitlement **25 unchanged** |
+| FY2025/26 total calculated | **7337** — unchanged |
+| FY2026/27 total calculated | **7990** — unchanged |
+| statutory wording reproduces the row | 343 of 344; 2 boundary cases as above; 1 under-1-year (prorated rule) |
+
+No data was written at any point — the ledger GET recomputes for preview only. The throwaway accounts
+were removed afterwards.

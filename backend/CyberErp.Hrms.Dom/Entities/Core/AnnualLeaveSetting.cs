@@ -27,7 +27,21 @@ public enum LeaveAccrualRuleType
 /// <c>hrmsAnnualLeaveSetting</c>). Governs a single leave type and drives entitlement generation:
 /// <para>
 /// entitled = (IsManagerial ? ManagerialLeaveDays : BaseLeaveDays)
-///          + floor((serviceYears − 1) / IncrementIntervalYears) × IncrementDays, capped at MaxLeaveDays.
+///          + floor(serviceYears / IncrementIntervalYears) × IncrementDays, capped at MaxLeaveDays,
+/// where serviceYears is measured to the fiscal year's START.
+/// <para>
+/// ⚠️ THIS COMMENT USED TO SAY <c>floor((serviceYears − 1) / …)</c>, which the code has never done and
+/// which reads as a one-day over-grant when checked against the code. It is not: the statute grants
+/// the first year plus one day per two ADDITIONAL years, i.e. <c>floor((serviceAtYearEnd − 1) /
+/// interval)</c>, and a full fiscal year normally contains exactly one hire anniversary — so that is
+/// the same number as the year-start form above.
+/// <para>
+/// ⚠️ WITH ONE EXCEPTION: an employee hired ON the fiscal-year start date reaches their anniversary on
+/// day one, so the year contains no FURTHER anniversary and the two forms differ by a day. The
+/// year-start form used here is the correct one for them — they already hold that service for the
+/// whole leave year. Two employees in the live data (both hired 08 July) sit on this boundary
+/// (logic §12.95).
+/// </para>
 /// Employees with less than one year of service receive <see cref="NewEmployeeLeaveDays"/> prorated
 /// by months of service in the fiscal year. Requests are blocked until
 /// <see cref="MinExperienceMonths"/> of service (probation guard).
