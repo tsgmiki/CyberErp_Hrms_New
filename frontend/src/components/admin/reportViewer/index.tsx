@@ -16,7 +16,7 @@ import {
   getReportCatalog, getReportSchema, getReportFieldValues, saveReportFilter, getReportFilter,
   deleteReportFilter, getReportHistory, saveReportSchedule, emailReport, getReportSchedules,
   deleteReportSchedule, getReportScheduleDetail, setReportScheduleEnabled, runReportScheduleNow,
-  setReportRestrictions, getReport,
+  setReportRestrictions, getReport, getSchedulingTimeZones,
   type ReportRunModel, type ReportScheduleItem, type ScheduleOutputFieldInput,
 } from "@/services/admin/report";
 import getAllRole from "@/services/admin/role/getAll";
@@ -106,6 +106,10 @@ const from24 = (h24: number) => ({ hour: ((h24 + 11) % 12) + 1, ampm: h24 >= 12 
 const fmtTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 const emptyScheduleForm = {
+  // "" = follow the organisation default, which is what every schedule did before the zone
+  // became per-schedule. Never defaulted to the browser zone: that would silently re-time a
+  // schedule for whoever happened to open the form.
+  timeZone: "",
   frequency: "Daily", hour: 8, ampm: "AM", startDate: "", weekly: new Set<number>(),
   hideRecipients: false, subject: "", body: "",
   userIds: new Set<string>(), roleIds: new Set<string>(),
@@ -399,6 +403,14 @@ function ReportViewer() {
     queryFn: () => getReportFieldValues(schedReportKey, "@DynamicDate"),
     enabled: dialog === "schedule" && !!schedReportKey,
   });
+  // The zones THIS SERVER resolves. Fetched rather than hardcoded: the save endpoint validates the
+  // id against the same list, so a baked-in list would eventually offer a zone that save rejects.
+  const { data: timeZones } = useQuery({
+    queryKey: ["schedulingTimeZones"],
+    queryFn: getSchedulingTimeZones,
+    enabled: dialog === "schedule",
+    staleTime: Infinity,
+  });
   const { data: schedules } = useQuery({
     queryKey: ["reportSchedules", selected?.reportKey],
     queryFn: () => getReportSchedules(selected!.reportKey),
@@ -558,6 +570,7 @@ function ReportViewer() {
       setDlgName(d.name);
       setSchedFormat(d.outputFormat ?? 1);
       setSForm({
+        timeZone: d.timeZone ?? "",
         frequency: d.frequency, hour, ampm, startDate: d.scheduleStartDate ?? "",
         weekly: new Set(WEEKDAYS.filter((w) => (d.frequencyWeekly & w.bit) !== 0).map((w) => w.bit)),
         hideRecipients: d.isHideRecipients, subject: d.mailSubject ?? "", body: d.mailBody ?? "",
@@ -611,6 +624,7 @@ function ReportViewer() {
           mailSubject: sForm.subject || undefined, mailBody: sForm.body || undefined,
           isHideRecipients: sForm.hideRecipients, frequency: sForm.frequency, frequencyWeekly,
           hour24: to24(sForm.hour, sForm.ampm), scheduleStartDate: sForm.startDate || undefined,
+          timeZone: sForm.timeZone || undefined,
           outputFormat: schedFormat, recipientUserIds: [...sForm.userIds],
           recipientRoleIds: [...sForm.roleIds], recipientEmails: [],
           // Criteria tab → Hangfire filters the report data with exactly these values. The Grouping tab
@@ -744,6 +758,13 @@ function ReportViewer() {
     { name: "name", label: "Name" },
     { name: "frequency", label: "Frequency" },
     { name: "time", label: "Time", render: (_x: unknown, r: ReportScheduleItem) => fmtTime(r.timeOfTheDay) },
+    {
+      // The Time column is meaningless without the clock it is read on, and the whole point of a
+      // per-schedule zone is that two rows here can legitimately differ.
+      name: "timeZone", label: "Time zone",
+      render: (_x: unknown, r: ReportScheduleItem) =>
+        r.timeZone ?? <span className="text-muted">{t("Organisation default")}</span>,
+    },
     { name: "cronExpression", label: "Cron" },
     {
       name: "isActive", label: "Enabled",
@@ -1044,6 +1065,21 @@ function ReportViewer() {
                         <input type="date" className={FORM_INPUT_CLASS} value={sForm.startDate} onChange={(e) => setSForm((p) => ({ ...p, startDate: e.target.value }))} />
                       </FloatingLabel>
                     </div>
+
+                    {/* The hour above is a WALL-CLOCK time; this is the clock it is read on. Blank keeps
+                        the organisation default, which is what existing schedules carry. */}
+                    <FormUtility component={{
+                      name: "sched-tz", type: "select", label: t("Time zone"), floatingLabel: true,
+                      value: sForm.timeZone,
+                      data: [
+                        { id: "", name: t("Organisation default") ?? "Organisation default" },
+                        ...(timeZones ?? []).map((z) => ({
+                          id: z.id,
+                          name: `(UTC${z.offset}) ${z.id}${z.isDefault ? " — default" : ""}`,
+                        })),
+                      ],
+                      onChange: (e) => setSForm((p) => ({ ...p, timeZone: e.target.value })),
+                    }} />
 
                     {sForm.frequency === "Weekly" && (
                       <div className="flex flex-wrap gap-4 rounded-md border border-border/70 px-3 py-2">

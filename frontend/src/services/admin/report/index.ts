@@ -131,6 +131,8 @@ export interface SaveReportScheduleInput {
   frequencyWeekly: number;
   hour24: number;
   scheduleStartDate?: string;
+  /** IANA/Windows zone the hour is expressed in; blank = the organisation default. */
+  timeZone?: string | null;
   outputFormat: number;
   recipientUserIds: string[];
   recipientRoleIds: string[];
@@ -176,11 +178,25 @@ export interface ReportScheduleItem {
   cronExpression: string;
   timeOfTheDay: number;
   scheduleStartDate?: string | null;
+  timeZone?: string | null;
   isActive: boolean;
   isScheduled: boolean;
 }
 
 export type ReportScheduleDetail = SaveReportScheduleInput;
+
+export interface SchedulingTimeZone {
+  id: string;
+  label: string;
+  /** "+03:00" — shown beside the label and used for ordering. */
+  offset: string;
+  /** The zone applied when a schedule names none. */
+  isDefault: boolean;
+}
+
+/** The zones this SERVER can resolve — never a hardcoded list, or save would reject the choice. */
+export const getSchedulingTimeZones = () =>
+  api.get<SchedulingTimeZone[]>("Report/schedules/time-zones");
 
 export const getReportSchedules = (reportKey: string) =>
   api.get<ReportScheduleItem[]>(`Report/schedules?reportKey=${encodeURIComponent(reportKey)}`);

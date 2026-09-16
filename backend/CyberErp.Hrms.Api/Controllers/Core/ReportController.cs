@@ -32,6 +32,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IDeleteReportSchedule deleteScheduleHandler,
         ISetReportScheduleEnabled setScheduleEnabledHandler,
         IRunReportSchedule runScheduleHandler,
+        IGetSchedulingTimeZones timeZonesHandler,
         IEmailGeneratedReport emailHandler,
         ISetReportRestrictions setRestrictionsHandler,
         ISeedDefaultReports seedHandler,
@@ -61,6 +62,11 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         [RequirePermission("reports")]
         [HttpPost("email")]
         public Task<ScheduleRunResultDto> Email([FromBody] EmailReportDto dto) => emailHandler.SendAsync(dto);
+
+        /// <summary>The zones the schedule form may choose from — exactly what this server resolves.</summary>
+        [RequirePermission("reportDefinition")]
+        [HttpGet("schedules/time-zones")]
+        public ActionResult<List<TimeZoneOptionDto>> ScheduleTimeZones() => timeZonesHandler.Get();
 
         [RequirePermission("reportDefinition")]
         [HttpPost("schedules")]

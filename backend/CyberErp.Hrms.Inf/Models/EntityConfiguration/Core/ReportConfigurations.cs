@@ -77,6 +77,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.CronExpression).IsRequired().HasMaxLength(100);
             builder.Property(x => x.MailSubject).HasMaxLength(300);
             builder.Property(x => x.Frequency).IsRequired().HasMaxLength(20);
+            // IANA ("Africa/Nairobi") or Windows ("E. Africa Standard Time") id; 100 covers both.
+            builder.Property(x => x.TimeZoneId).HasMaxLength(100);
             builder.HasOne<Report>().WithMany().HasForeignKey(x => x.ReportId).OnDelete(DeleteBehavior.Cascade);
             builder.HasIndex(x => x.ReportId);
         }

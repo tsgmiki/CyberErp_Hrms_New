@@ -49,6 +49,7 @@ namespace CyberErp.Hrms.Inf.Common
             p.Add("ScheduleStartDate", h.ScheduleStartDate is { } d ? d.ToDateTime(TimeOnly.MinValue) : (DateTime?)null);
             p.Add("OutputFormat", h.OutputFormat);
             p.Add("CronExpression", h.CronExpression);
+            p.Add("TimeZoneId", h.TimeZoneId);
             await conn.ExecuteAsync(SchemaPrefix + "ReportClientSchedule", p, commandType: CommandType.StoredProcedure);
             return p.Get<Guid>("ReportScheduleId");
         }

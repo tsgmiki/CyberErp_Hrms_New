@@ -13,9 +13,28 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
     /// <summary>Hangfire port: registers/removes the recurring job for a schedule (implemented in Inf).</summary>
     public interface IReportJobScheduler
     {
-        void Register(Guid scheduleId, string cronExpression);
+        /// <param name="timeZoneId">
+        /// The zone the cron is read in. ⚠️ NULL MEANS THE ORGANISATION DEFAULT — it is what every
+        /// schedule created before the column existed carries, and it must keep meaning what it has
+        /// always meant rather than silently becoming UTC (logic §12.93).
+        /// </param>
+        void Register(Guid scheduleId, string cronExpression, string? timeZoneId);
         void Remove(Guid scheduleId);
     }
+
+    /// <summary>One selectable zone for the schedule form's time-zone picker.</summary>
+    public class TimeZoneOptionDto
+    {
+        /// <summary>The id stored on the schedule.</summary>
+        public string Id { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        /// <summary>Current offset as "+03:00", for sorting and for showing next to the label.</summary>
+        public string Offset { get; set; } = string.Empty;
+        /// <summary>True for the zone used when a schedule does not name one.</summary>
+        public bool IsDefault { get; set; }
+    }
+
+    public interface IGetSchedulingTimeZones { List<TimeZoneOptionDto> Get(); }
 
     /// <summary>One selected output column posted from the "Fields" popup on the schedule form.</summary>
     public class ScheduleOutputFieldDto
@@ -48,6 +67,10 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         public int Hour24 { get; set; }
         /// <summary>Start date (yyyy-MM-dd) — supplies day/month for Monthly/Quarterly/Yearly.</summary>
         public string? ScheduleStartDate { get; set; }
+        /// <summary>
+        /// The zone <see cref="Hour24"/> is expressed in. Null/blank keeps the organisation default.
+        /// </summary>
+        public string? TimeZone { get; set; }
         /// <summary>1=CSV, 2=Excel, 3=PDF.</summary>
         public int OutputFormat { get; set; } = 1;
         public List<Guid> RecipientUserIds { get; set; } = [];
@@ -67,6 +90,8 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         public string CronExpression { get; set; } = string.Empty;
         public int TimeOfTheDay { get; set; }
         public DateTime? ScheduleStartDate { get; set; }
+        /// <summary>Null when the schedule follows the organisation default.</summary>
+        public string? TimeZone { get; set; }
         public bool IsActive { get; set; }
         public bool IsScheduled { get; set; }
     }
@@ -86,6 +111,8 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         public int Hour24 { get; set; }
         public string? ScheduleStartDate { get; set; }
         public int OutputFormat { get; set; }
+        /// <summary>Null when the schedule follows the organisation default.</summary>
+        public string? TimeZone { get; set; }
         public List<Guid> RecipientUserIds { get; set; } = [];
         public List<Guid> RecipientRoleIds { get; set; } = [];
         public List<string> RecipientEmails { get; set; } = [];
@@ -154,6 +181,14 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             if (dto.Hour24 is < 0 or > 23)
                 throw new ValidationException("hour", "Hour must be between 0 and 23.");
 
+            // ⚠️ REJECTED HERE, NOT SHRUGGED OFF LATER. An id this machine cannot resolve would
+            // otherwise fall back to the organisation default at registration time, and the schedule
+            // would quietly run at an hour nobody chose. Blank is not an error — it means "follow the
+            // organisation default" (logic §12.93).
+            var timeZoneId = string.IsNullOrWhiteSpace(dto.TimeZone) ? null : dto.TimeZone.Trim();
+            if (timeZoneId is not null && !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out _))
+                throw new ValidationException("timeZone", $"'{timeZoneId}' is not a time zone this server recognises.");
+
             var tenantId = string.Empty; // empty ⇒ the store resolves the ambient (request) tenant
             var startDate = ParseDate(dto.ScheduleStartDate);
             var timeOfDay = dto.Hour24 * 60;
@@ -162,7 +197,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             var id = await store.UpsertHeaderAsync(new ScheduleHeader(
                 dto.Id, tenantId, currentUser.GetCurrentUserId(), report.Id, dto.Name.Trim(), dto.IsScheduled,
                 dto.MailSubject, dto.MailBody, dto.IsHideRecipients, dto.Frequency, dto.FrequencyWeekly,
-                timeOfDay, startDate, dto.OutputFormat, cron));
+                timeOfDay, startDate, dto.OutputFormat, cron, timeZoneId));
 
             // Re-save = clear then re-insert children (reference _x_ReportClientScheduleDelete pisModifyOnly=1).
             await store.DeleteAsync(id, modifyOnly: true);
@@ -180,11 +215,11 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             foreach (var email in dto.RecipientEmails.Where(e => !string.IsNullOrWhiteSpace(e)).Distinct())
                 await store.AddRecipientAsync(id, null, null, email.Trim(), tenantId);
 
-            if (dto.IsScheduled) jobScheduler.Register(id, cron);
+            if (dto.IsScheduled) jobScheduler.Register(id, cron, timeZoneId);
             else jobScheduler.Remove(id);
 
-            logger.LogInformation("Report schedule {Id} ({Name}) saved; cron '{Cron}', scheduled={Scheduled}",
-                id, dto.Name, cron, dto.IsScheduled);
+            logger.LogInformation("Report schedule {Id} ({Name}) saved; cron '{Cron}' in {Zone}, scheduled={Scheduled}",
+                id, dto.Name, cron, timeZoneId ?? "the organisation default", dto.IsScheduled);
             return id;
         }
 
@@ -204,7 +239,8 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
             {
                 Id = s.ReportScheduleId, ReportKey = s.ReportKey, Name = s.Name, Frequency = s.Frequency,
                 CronExpression = s.CronExpression, TimeOfTheDay = s.TimeOfTheDay,
-                ScheduleStartDate = s.ScheduleStartDate, IsActive = s.IsActive, IsScheduled = s.IsScheduled
+                ScheduleStartDate = s.ScheduleStartDate, TimeZone = s.TimeZoneId,
+                IsActive = s.IsActive, IsScheduled = s.IsScheduled
             }).ToList();
         }
     }
@@ -228,6 +264,7 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
                 IsHideRecipients = head.IsHideRecipients, Frequency = head.Frequency,
                 FrequencyWeekly = head.FrequencyWeekly, Hour24 = head.TimeOfTheDay / 60,
                 ScheduleStartDate = head.ScheduleStartDate?.ToString("yyyy-MM-dd"), OutputFormat = head.OutputFormat,
+                TimeZone = head.TimeZoneId,
                 RecipientUserIds = users.Where(u => u.IsAssigned).Select(u => u.UserId).ToList(),
                 RecipientRoleIds = roles.Where(r => r.IsAssigned).Select(r => r.RoleId).ToList(),
                 RecipientEmails = info?.RecipientEmails
@@ -251,13 +288,21 @@ namespace CyberErp.Hrms.App.Features.Core.Reports
         }
     }
 
+    /// <summary>
+    /// The enable/disable toggle on the schedule grid.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ RE-REGISTERS WITH THE SCHEDULE'S OWN ZONE, read back from the row. This is the drift the
+    /// per-schedule zone exists to prevent: re-deriving it from the caller would mean a schedule
+    /// fired at a different hour depending on who last flipped the switch (logic §12.93).
+    /// </remarks>
     public class SetReportScheduleEnabled(IReportScheduleStore store, IReportJobScheduler jobScheduler) : ISetReportScheduleEnabled
     {
         public async Task SetAsync(Guid id, bool enabled)
         {
             await store.EnableAsync(id, enabled);
             var head = await store.ReadAsync(id, string.Empty);
-            if (enabled && head is not null) jobScheduler.Register(id, head.CronExpression);
+            if (enabled && head is not null) jobScheduler.Register(id, head.CronExpression, head.TimeZoneId);
             else jobScheduler.Remove(id);
         }
     }

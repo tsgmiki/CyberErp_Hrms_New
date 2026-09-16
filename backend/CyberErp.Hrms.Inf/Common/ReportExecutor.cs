@@ -8,6 +8,7 @@ using Dapper;
 using Hangfire;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CyberErp.Hrms.Inf.Common
 {
@@ -175,19 +176,96 @@ namespace CyberErp.Hrms.Inf.Common
 
     /// <summary>Hangfire recurring-job registration for report schedules (reference HangfireHelperMethod).</summary>
     /// <remarks>
-    /// ⚠️ The cron is registered against <see cref="IJobTimeZone"/>, NOT UTC. The schedule form asks
-    /// for an hour of day and the user means their own clock; without the zone every schedule fired
-    /// at that hour UTC (logic §12.92).
+    /// <para>⚠️ The cron is registered against a real zone, NOT UTC. The schedule form asks for an
+    /// hour of day and the user means their own clock; without a zone every schedule fired at that
+    /// hour UTC (logic §12.92).</para>
+    ///
+    /// <para>⚠️ The zone comes from THE SCHEDULE, falling back to the organisation default only when
+    /// the schedule does not name one. Deriving it from the caller instead would re-time the schedule
+    /// every time somebody else re-saved or re-enabled it (logic §12.93).</para>
     /// </remarks>
-    public class ReportJobScheduler(IRecurringJobManager jobs, IJobTimeZone timeZone) : IReportJobScheduler
+    public class ReportJobScheduler(
+        IRecurringJobManager jobs,
+        IJobTimeZone timeZone,
+        ILogger<ReportJobScheduler> logger) : IReportJobScheduler
     {
         private static string JobId(Guid id) => $"report-schedule:{id}";
 
-        public void Register(Guid scheduleId, string cronExpression) =>
+        public void Register(Guid scheduleId, string cronExpression, string? timeZoneId) =>
             jobs.AddOrUpdate<IRunReportSchedule>(JobId(scheduleId),
                 r => r.RunAsync(scheduleId), cronExpression,
-                new RecurringJobOptions { TimeZone = timeZone.Zone });
+                new RecurringJobOptions { TimeZone = Resolve(scheduleId, timeZoneId) });
 
         public void Remove(Guid scheduleId) => jobs.RemoveIfExists(JobId(scheduleId));
+
+        /// <summary>
+        /// The schedule's own zone, or the organisation default when it does not name one.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ Falls back to the ORGANISATION DEFAULT and not to UTC. A stored id can stop resolving —
+        /// the tzdb drops and renames zones, and a server rebuilt without ICU resolves no IANA id at
+        /// all — and silently dropping such a schedule to UTC would move it by hours without anyone
+        /// touching it. The save path validates the id, so reaching the warning means the world
+        /// changed underneath a schedule that was already saved.
+        /// </remarks>
+        private TimeZoneInfo Resolve(Guid scheduleId, string? timeZoneId)
+        {
+            if (string.IsNullOrWhiteSpace(timeZoneId)) return timeZone.Zone;
+            if (TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId, out var zone)) return zone;
+
+            logger.LogWarning(
+                "Report schedule {ScheduleId} names time zone '{TimeZoneId}', which this server no longer " +
+                "recognises — falling back to {Fallback}. Re-save the schedule to pick a valid zone.",
+                scheduleId, timeZoneId, timeZone.Zone.Id);
+            return timeZone.Zone;
+        }
+    }
+
+    /// <summary>
+    /// The zones offered by the schedule form's picker.
+    /// </summary>
+    /// <remarks>
+    /// <para>Built from <see cref="TimeZoneInfo.GetSystemTimeZones"/> so the list is exactly what this
+    /// server can actually resolve — offering a zone the save path would then reject is worse than
+    /// offering a short list.</para>
+    ///
+    /// <para>⚠️ NORMALISED TO IANA IDS. <c>GetSystemTimeZones</c> returns WINDOWS ids on Windows
+    /// ("E. Africa Standard Time") and IANA ids on Linux ("Africa/Nairobi"), so an un-normalised list
+    /// would offer a different vocabulary depending on the host, store whichever the user happened to
+    /// click, and fail to recognise its own configured default — which is exactly what it did on the
+    /// first run of this code: not one of the 141 zones matched "Africa/Nairobi" (logic §12.93).</para>
+    /// </remarks>
+    public class GetSchedulingTimeZones(IJobTimeZone timeZone) : IGetSchedulingTimeZones
+    {
+        /// <summary>
+        /// The IANA id for a zone when this platform can give one, else the id unchanged.
+        /// </summary>
+        /// <remarks>
+        /// IANA is the portable form — it resolves on both Windows and Linux under ICU, while a
+        /// Windows id is meaningless off Windows. Storing the portable one keeps a schedule valid if
+        /// the application is ever rehosted.
+        /// </remarks>
+        private static string PreferIana(string id) =>
+            TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var iana) ? iana : id;
+
+        public List<TimeZoneOptionDto> Get()
+        {
+            var defaultId = PreferIana(timeZone.Zone.Id);
+
+            return [.. TimeZoneInfo.GetSystemTimeZones()
+                .Select(z => new { Id = PreferIana(z.Id), z.DisplayName, z.BaseUtcOffset })
+                // Several Windows zones can normalise onto one IANA id; the picker shows each once.
+                .GroupBy(z => z.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .Select(z => new TimeZoneOptionDto
+                {
+                    Id = z.Id,
+                    Label = z.DisplayName,
+                    Offset = (z.BaseUtcOffset < TimeSpan.Zero ? "-" : "+") + z.BaseUtcOffset.Duration().ToString(@"hh\:mm"),
+                    IsDefault = string.Equals(z.Id, defaultId, StringComparison.OrdinalIgnoreCase)
+                })
+                .OrderBy(z => z.Offset, StringComparer.Ordinal)
+                .ThenBy(z => z.Id, StringComparer.OrdinalIgnoreCase)];
+        }
     }
 }
