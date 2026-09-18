@@ -33,6 +33,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         Task<RecalculateResult> RecalculateEntitlementsAsync(Guid settingId);
         /// <summary>Rolls remaining balances of a fiscal year into the next one (carry-forward + expiry), then closes the source year.</summary>
         Task<RolloverResult> RolloverAsync(Guid fromFiscalYearId);
+        /// <summary>
+        /// Rolls over the fiscal year a leave policy governs — the setting-scoped entry point.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ Rollover is driven from the LEAVE SETTING, not the fiscal year: the carry-forward cap it
+        /// honours (<see cref="AnnualLeaveSetting.CarryForwardMaxDays"/>) and the expiry rule both live
+        /// on the policy, so the policy is where an operator can see what a rollover will do before
+        /// running it. It still closes the underlying fiscal year (logic §12.97).
+        /// </remarks>
+        Task<RolloverResult> RolloverForSettingAsync(Guid settingId);
     }
 
     public record RolloverResult(int BalancesRolled, decimal TotalCarried, decimal TotalExpired);
@@ -312,6 +322,23 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 overTaken.Count > 0 ? $"; {overTaken.Count} employee(s) now over-taken" : string.Empty);
 
             return new RecalculateResult(staff.Count, raised, lowered, created, net, overTaken);
+        }
+
+        /// <inheritdoc cref="ILeaveAccrualService.RolloverForSettingAsync"/>
+        public async Task<RolloverResult> RolloverForSettingAsync(Guid settingId)
+        {
+            var setting = await settings.GetAll().AsNoTracking()
+                .Where(s => s.Id == settingId)
+                .Select(s => new { s.FiscalYearId, s.IsActive })
+                .FirstOrDefaultAsync()
+                ?? throw new NotFoundException(nameof(AnnualLeaveSetting), settingId.ToString());
+
+            // An inactive policy is not the one governing the year, so rolling "its" year over from
+            // here would be misleading about which carry cap was applied.
+            if (!setting.IsActive)
+                throw new ValidationException("id", "This leave setting is inactive.");
+
+            return await RolloverAsync(setting.FiscalYearId);
         }
 
         public async Task<RolloverResult> RolloverAsync(Guid fromFiscalYearId)

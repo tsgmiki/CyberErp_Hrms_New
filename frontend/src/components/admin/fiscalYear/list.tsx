@@ -1,16 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import GridAction from "../../common/gridAction/gridAction";
 import getAllFiscalYear from "@/services/admin/fiscalYear/getAll";
 import deleteFiscalYear from "@/services/admin/fiscalYear/delete";
-import rolloverFiscalYear from "@/services/admin/fiscalYear/rollover";
 import type { FiscalYearModel } from "@/models";
 import type DataTableColumnModel from "@/models/DataTableColumnModel";
 import { EntityListShell, useEntityList } from "@/template";
-import { confirm } from "@/components/common/dialog";
-import { toast } from "@/components/common/toast";
 
 interface Props {
   editHandler: (id: string) => void;
@@ -18,29 +14,19 @@ interface Props {
 
 const fmt = (v?: string) => (v ? String(v).slice(0, 10) : "");
 
+/**
+ * Fiscal years — plain CRUD.
+ *
+ * The year-end leave **Rollover** used to live on this grid. It moved to Annual Leave Settings,
+ * because the carry-forward cap it applies and the expiry rule are both fields of the leave policy,
+ * not of the year (logic §12.97). A closed year here is one that has already been rolled over there.
+ */
 function FiscalYearList({ editHandler }: Props) {
-  const queryClient = useQueryClient();
   const list = useEntityList({
     queryKey: "fiscalYears",
     fetchPage: getAllFiscalYear,
     deleteById: deleteFiscalYear,
   });
-
-  const doRollover = async (r: FiscalYearModel) => {
-    if (!r.id) return;
-    if (
-      !(await confirm({
-        title: "Roll over fiscal year",
-        message: `Roll all leave balances of "${r.name}" into the next fiscal year and close it? This cannot be undone.`,
-        confirmLabel: "Roll over",
-        variant: "destructive",
-      }))
-    )
-      return;
-    const result = await rolloverFiscalYear(r.id);
-    toast.success(result?.message ?? "Rollover complete");
-    queryClient.invalidateQueries({ queryKey: ["fiscalYears"] });
-  };
 
   const columns = useMemo(
     () =>
@@ -62,7 +48,12 @@ function FiscalYearList({ editHandler }: Props) {
           label: "Status",
           render: (_t: unknown, r: FiscalYearModel) =>
             r.isClosed ? (
-              <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs text-slate-500">Closed</span>
+              <span
+                className="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs text-slate-500"
+                title="Rolled over from Annual Leave Settings — accepts no further leave activity"
+              >
+                Closed
+              </span>
             ) : r.isActive ? (
               <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-600">Active</span>
             ) : (
@@ -73,27 +64,15 @@ function FiscalYearList({ editHandler }: Props) {
           name: "Action",
           label: "Action",
           render: (_t: unknown, r: FiscalYearModel) => (
-            <div className="flex items-center gap-2">
-              {!r.isClosed && (
-                <button
-                  type="button"
-                  onClick={() => doRollover(r)}
-                  className="rounded-md border border-border px-2 py-1 text-xs hover:bg-primary/10"
-                  title="Carry remaining leave into the next fiscal year and close this one"
-                >
-                  Rollover
-                </button>
-              )}
-              <GridAction
-                id={r.id || ""}
-                record={r}
-                showAdd={false}
-                showEdit={!r.isClosed}
-                showDelete={!r.isClosed}
-                editHandler={editHandler}
-                deleteHandler={() => r.id && list.deleteRecord(r.id)}
-              />
-            </div>
+            <GridAction
+              id={r.id || ""}
+              record={r}
+              showAdd={false}
+              showEdit={!r.isClosed}
+              showDelete={!r.isClosed}
+              editHandler={editHandler}
+              deleteHandler={() => r.id && list.deleteRecord(r.id)}
+            />
           ),
         },
       ] as DataTableColumnModel[],

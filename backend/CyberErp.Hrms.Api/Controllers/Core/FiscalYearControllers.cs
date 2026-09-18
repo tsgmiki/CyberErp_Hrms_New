@@ -5,14 +5,16 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace CyberErp.Hrms.Api.Controllers.Core
 {
-    /// <summary>Fiscal years (Core.FiscalYear) — anchor for leave balances, accrual and rollover.</summary>
+    /// <summary>
+    /// Fiscal years (Core.FiscalYear) — the anchor for leave balances and accrual. Plain CRUD: the
+    /// year-end leave rollover is driven from the leave setting instead (logic §12.97).
+    /// </summary>
     [RequirePermission("fiscalYear")]
     public class FiscalYearController(
         ISaveFiscalYear saveHandler,
         IGetFiscalYearById getByIdHandler,
         IGetAllFiscalYears getAllHandler,
-        IDeleteFiscalYear deleteHandler,
-        ILeaveAccrualService accrualService) : BaseController
+        IDeleteFiscalYear deleteHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<FiscalYearDto>> GetAll([FromQuery] GetAllRequest request)
@@ -38,22 +40,12 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             return Ok(new { message = "Deleted successfully" });
         }
 
-        /// <summary>
-        /// Year-end rollover: carries remaining balances into the following fiscal year (respecting
-        /// carry-forward caps), expires over-aged carry, and closes this year.
-        /// </summary>
-        [HttpPost("{id:guid}/rollover-leave")]
-        public async Task<IActionResult> RolloverLeave(Guid id)
-        {
-            var result = await accrualService.RolloverAsync(id);
-            return Ok(new
-            {
-                message = $"Rolled {result.BalancesRolled} balance(s): {result.TotalCarried} day(s) carried, {result.TotalExpired} expired.",
-                result.BalancesRolled,
-                result.TotalCarried,
-                result.TotalExpired
-            });
-        }
+        // ⚠️ THE LEAVE ROLLOVER USED TO LIVE HERE, at POST {id}/rollover-leave. It moved to
+        // AnnualLeaveSettingController (logic §12.97) and the endpoint is REMOVED rather than merely
+        // unlinked from the UI: it closes a fiscal year and expires people's carried leave, so leaving
+        // a second live route to it — reachable by anyone with the URL or a stale SPA build — is worse
+        // than having no route at all. Rollover is now reached only through the leave policy that
+        // defines the carry cap it applies.
     }
 
     /// <summary>Annual-leave accrual policy per fiscal year (successor of legacy hrmsAnnualLeaveSetting).</summary>
@@ -95,6 +87,34 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         {
             var count = await accrualService.GenerateEntitlementsAsync(id);
             return Ok(new { message = $"{count} entitlement(s) generated.", count });
+        }
+
+        /// <summary>
+        /// Year-end rollover for the fiscal year this policy governs: carries remaining balances into
+        /// the following year up to this policy's carry-forward cap, expires over-aged carry, and
+        /// closes the year.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ MOVED HERE FROM THE FISCAL YEAR SCREEN (logic §12.97). The cap it honours
+        /// (<c>CarryForwardMaxDays</c>) and the expiry rule are both fields of this policy, so this is
+        /// where an operator can see what a rollover is about to do. <paramref name="id"/> is the
+        /// SETTING id, not the fiscal year's.
+        ///
+        /// <para>⚠️ It still CLOSES the fiscal year and it cannot be undone — the destructive confirm
+        /// on the grid is load-bearing.</para>
+        /// </remarks>
+        [RequirePermission("annualLeaveSetting", Access = PermissionAccess.Edit)]
+        [HttpPost("{id:guid}/rollover-leave")]
+        public async Task<IActionResult> RolloverLeave(Guid id)
+        {
+            var result = await accrualService.RolloverForSettingAsync(id);
+            return Ok(new
+            {
+                message = $"Rolled {result.BalancesRolled} balance(s): {result.TotalCarried} day(s) carried, {result.TotalExpired} expired.",
+                result.BalancesRolled,
+                result.TotalCarried,
+                result.TotalExpired
+            });
         }
     }
 }
