@@ -7065,11 +7065,10 @@ accounts all removed afterwards.
 
 #### Still open
 
-**The milestone date itself has not been confirmed.** It is `2019-07-08`, while the field's own example
-is `2011-07-07` and the fiscal year is labelled "FY 2019 EC" — so an Ethiopian year may have been
-entered into a Gregorian field. The floor makes this far less damaging (a wrong milestone can no longer
-*reduce* anyone), but it still decides who receives the more generous +1/yr legacy accrual, and that is
-a policy question rather than a code one.
+~~**The milestone date itself has not been confirmed.**~~ **Confirmed correct — see §12.96.** The
+suspicion recorded here (that an Ethiopian year had been typed into a Gregorian field) was **wrong**:
+`2019-07-08` is Hamle 1, 2011 EC, the Ethiopian fiscal-year start matching the proclamation the
+14 → 16 base change comes from.
 
 **The recalculation has not been run against the live fiscal year.** It restates 346 real leave
 balances and that is HR's call to make, not something to do on their behalf.
@@ -7149,3 +7148,74 @@ service will simply look one band low if someone checks it by hand. Recorded her
 
 No data was written at any point — the ledger GET recomputes for preview only. The throwaway accounts
 were removed afterwards.
+
+### 12.96 The milestone date is correct — and the doc example was the trap
+
+§12.94 left the `ServiceMilestone` cutover unconfirmed and floated the suspicion that an Ethiopian year
+had been typed into a Gregorian field. **That suspicion was wrong.** Checked with the application's own
+converter (`frontend/src/components/util/ethiopianDate.ts`) rather than by hand:
+
+```
+MilestoneDate                    2019-07-08  =  Hamle 1, 2011 EC
+FY "2025/206" start              2025-07-08  =  Hamle 1, 2017 EC
+FY "FY 2019 EC (2026/27)" start  2026-07-08  =  Hamle 1, 2018 EC
+FY "FY 2019 EC (2026/27)" end    2027-07-07  =  Sene 30, 2019 EC
+```
+
+`2019-07-08` is **Hamle 1, 2011 EC** — the first day of the Ethiopian fiscal year matching the current
+Labour Proclamation (numbered for 2011 EC), the one that raised the statutory annual-leave base from
+**14** to **16** days. That is precisely what the policy row holds: `PreMilestoneBaseLeaveDays = 14`,
+`BaseLeaveDays = 16`. The date, the two bases and the proclamation all agree.
+
+The fiscal-year label is consistent too: the year running Hamle 1, 2018 EC → Sene 30, 2019 EC is named
+by the year it *ends* in, hence "FY 2019 EC (2026/27)". Nothing was mistyped.
+
+⚠️ **THE DOC COMMENT WAS THE ONLY THING WRONG.** `MilestoneDate` carried "e.g. 2011-07-07", which the
+same converter puts at **Sene 30, 2003 EC** — a different Ethiopian year entirely. It reads as though
+someone had written an Ethiopian year as a Gregorian date, which is exactly the false conclusion it led
+to. Configuring that example value for real would cost **131 employees 413 days** between them. The
+comment now states the live value with its Ethiopian rendering and says why it is that date.
+
+#### The data corroborates deliberate placement
+
+| | |
+|---|---|
+| last pre-milestone hire | **2019-07-01** |
+| first post-milestone hire | **2019-07-31** |
+| hired exactly on the milestone | **0** |
+
+A clean 30-day gap straddling the boundary, and nobody sitting on it. Somebody chose the fiscal-year
+start; it did not land there by accident.
+
+#### What moving it would actually do — the surprising part
+
+22 employees were hired between Hamle 1, 2011 EC and the proclamation's publication two months later,
+which looked like the population the choice was about. Modelled across all 346 employees under the
+current floor-based rule:
+
+| candidate milestone | total | vs configured | employees changed |
+|---|---|---|---|
+| **2019-07-08 — Hamle 1, 2011 EC (configured)** | **7990** | — | — |
+| 2019-09-05 — proclamation published | 8008 | +18 | 18 |
+| 2019-09-11 — Meskerem 1, 2012 EC | 8018 | +28 | 28 |
+| 2020-07-08 — Hamle 1, 2012 EC | 8133 | +143 | 143 |
+| 2011-07-07 — the old doc example | 7577 | **−413** | 131 |
+
+⚠️ **NOT ONE OF THOSE 22 MOVES.** Every one of the 18 who change under the publication date was
+**already** pre-milestone — all hired July–September, gaining a day only because shifting the boundary
+past their anniversary re-splits their pre/post service between two phases that accrue at different
+rates (1/yr before, 1 per 2 yrs after). The 22 are untouched because they have essentially no
+pre-milestone service, so the legacy branch computes *less* for them and the floor from §12.94 holds
+them at the ordinary figure.
+
+That is worth keeping in mind: **the milestone is not a dial for the people near it.** It is a lever on
+the long-serving staff whose anniversary happens to fall close to it, which is an artefact of the
+two-phase formula rather than anything a policy intends. Treat it as a policy date and leave it alone.
+
+#### Residual
+
+The reading that the pre/post bases of 14 and 16 correspond to the old and current labour
+proclamations, and that the cutover therefore belongs at Hamle 1 of 2011 EC, is inferred from the
+configured numbers and the calendar — it is not written down anywhere in the repository. It fits every
+piece of evidence, but a one-line confirmation from whoever set the policy would turn a very
+well-supported inference into a recorded fact.
