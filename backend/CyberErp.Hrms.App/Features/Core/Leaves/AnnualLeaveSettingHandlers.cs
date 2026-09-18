@@ -15,6 +15,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public Guid Id { get; set; }
         public Guid FiscalYearId { get; set; }
         public string? FiscalYearName { get; set; }
+        /// <summary>
+        /// Whether the governed fiscal year is already closed. Carried so the Leave Setting grid can
+        /// hide Rollover on a year that has already been rolled, the way the Fiscal Year grid used to
+        /// (logic §12.97).
+        /// </summary>
+        public bool FiscalYearClosed { get; set; }
         public int MinExperienceMonths { get; set; }
         public int NewEmployeeLeaveDays { get; set; }
         public int BaseLeaveDays { get; set; }
@@ -109,6 +115,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             Id = s.Id,
             FiscalYearId = s.FiscalYearId,
             FiscalYearName = s.FiscalYear != null ? s.FiscalYear.Name : null,
+            FiscalYearClosed = s.FiscalYear != null && s.FiscalYear.IsClosed,
 
 
             MinExperienceMonths = s.MinExperienceMonths,

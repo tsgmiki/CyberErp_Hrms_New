@@ -3,6 +3,8 @@ import type AbstractModel from "../AbstractModel";
 export default interface AnnualLeaveSettingModel extends AbstractModel {
   fiscalYearId?: string;
   fiscalYearName?: string;
+  /** True once the governed fiscal year has been rolled over — Rollover is then spent. */
+  fiscalYearClosed?: boolean;
   minExperienceMonths?: number;
   newEmployeeLeaveDays?: number;
   baseLeaveDays?: number;

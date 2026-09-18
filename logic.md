@@ -7219,3 +7219,84 @@ proclamations, and that the cutover therefore belongs at Hamle 1 of 2011 EC, is 
 configured numbers and the calendar — it is not written down anywhere in the repository. It fits every
 piece of evidence, but a one-line confirmation from whoever set the policy would turn a very
 well-supported inference into a recorded fact.
+
+### 12.97 Rollover moved from Fiscal Year to Leave Setting
+
+Year-end leave rollover was triggered from the **Fiscal Year** grid. It now lives on **Annual Leave
+Settings**, and the fiscal-year route is gone.
+
+#### Why the leave setting is the right home
+
+The rollover's two decisions are both fields of the **policy**, not of the year:
+
+- `CarryForwardMaxDays` — how many days may cross into the next year
+- `ExpiryYears` / the carry-again rule — what is written off
+
+Sitting on the Fiscal Year grid, the button gave an operator no sight of either. On the policy row the
+cap is in the same record, and the confirm now states it outright — "no cap — every remaining day
+carries", "0 days — nothing carries", or "up to N day(s) per employee" — instead of a generic "this
+cannot be undone".
+
+#### ⚠️ The old route is REMOVED, not merely unlinked
+
+`POST FiscalYear/{id}/rollover-leave` is deleted, along with its frontend service and the
+`ILeaveAccrualService` injection the controller only held for it. Leaving a live second route to an
+operation that **closes a fiscal year and expires people's carried leave** — reachable by anyone with
+the URL or a stale SPA build — is worse than having no route at all. Verified: the old path returns
+**404**.
+
+`RolloverForSettingAsync(settingId)` is the new entry point. It resolves the policy's fiscal year and
+delegates to the unchanged `RolloverAsync(fiscalYearId)`, so the rollover logic itself did not move —
+only its doorway. It refuses an **inactive** policy: rolling "its" year from there would misrepresent
+which carry cap was applied.
+
+#### Access is unchanged
+
+Both screens are held by the same three roles with the same rights, so nobody gained or lost the
+ability:
+
+| link | Department Manager | HR Officer | HR Admin |
+|---|---|---|---|
+| `/hrms/fiscalYear` | View+Edit | View+Edit | View+Edit |
+| `/hrms/annualLeaveSetting` | View+Edit | View+Edit | View+Edit |
+
+The new endpoint additionally requires **Edit** on `annualLeaveSetting` — the old one inherited only
+the controller-level View gate, so this is slightly tighter than before, not looser.
+
+#### The button's gate
+
+`AnnualLeaveSettingDto` gained `FiscalYearClosed` so the grid can hide Rollover on a year already
+rolled — the same condition the Fiscal Year grid applied. The Fiscal Year grid keeps its Closed chip,
+now captioned to say where the closing happens.
+
+#### Verified
+
+Against a **throwaway pair of fiscal years** — rollover closes a year and expires leave, so it was
+never pointed at a real one. The policy carried a deliberate 5-day cap against a 12-day balance:
+
+| check | result |
+|---|---|
+| old Fiscal Year route | **404 — removed** |
+| `fiscalYearClosed` exposed on the list | yes, starts `false` |
+| new Leave Setting route | 200 — "Rolled 1 balance(s): **5.00 carried, 7.00 expired**" |
+| the cap was honoured | 12 available → 5 carried, 7 expired |
+| ledger | `Expiry −7`, `CarryForward +5` into the next year |
+| `fiscalYearClosed` after | flips **true**, hiding the button |
+| rolling again | refused — "This fiscal year is already closed." |
+
+Against the real data the gate resolves correctly: 2025/206 shows **no** Rollover (already rolled),
+FY 2019 EC (2026/27) shows it.
+
+Probe years, policy, balances, transactions and the throwaway accounts removed afterwards.
+
+#### ⚠️ Noticed while checking the gate: the two years disagree about carry-forward
+
+| fiscal year | `CarryForwardMaxDays` |
+|---|---|
+| 2025/206 | **5** |
+| FY 2019 EC (2026/27) | **null — unlimited** |
+
+2025/206 was rolled over on 2026-09-18 under a 5-day cap. When 2026/27 is rolled, **every remaining
+day will carry** unless the cap is set. That may be deliberate, but the two policies were written
+differently and nothing in the UI previously said so at the moment of the decision. The new confirm
+does — which is much of the argument for the button living on the policy row.
