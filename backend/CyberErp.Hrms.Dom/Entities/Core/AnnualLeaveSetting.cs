@@ -88,7 +88,26 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     /// <summary>Count qualifying external (government) experience toward service years. Never applied to
     /// post-milestone hires under <see cref="LeaveAccrualRuleType.ServiceMilestone"/>.</summary>
     public bool ConsiderExternalExperience { get; private set; }
-    /// <summary>Cutover date for <see cref="LeaveAccrualRuleType.ServiceMilestone"/> (e.g. 2011-07-07).</summary>
+    /// <summary>
+    /// Cutover date for <see cref="LeaveAccrualRuleType.ServiceMilestone"/>, as a GREGORIAN date.
+    /// Live value: <c>2019-07-08</c> = <b>Hamle 1, 2011 EC</b>, the first day of the Ethiopian fiscal
+    /// year matching the current Labour Proclamation — the one that raised the statutory base from
+    /// <b>14</b> to <b>16</b> days, which is exactly what <see cref="PreMilestoneBaseLeaveDays"/> and
+    /// <see cref="BaseLeaveDays"/> hold.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ THE EXAMPLE HERE USED TO READ "e.g. 2011-07-07", WHICH IS A TRAP. That is a Gregorian date
+    /// falling in Sene 2003 EC — a different Ethiopian year entirely — so it reads as though an
+    /// Ethiopian year had been typed into a Gregorian field and makes a correctly-configured 2019 date
+    /// look wrong. Configuring that example value instead would cost 131 employees a total of 413 days
+    /// (logic §12.96).
+    ///
+    /// <para>⚠️ Moving this date does not only reclassify hires around it — it re-splits the pre/post
+    /// service of EVERY pre-milestone employee, because the two phases accrue at different rates
+    /// (1/yr before, 1 per 2 yrs after). Shifting it by two months changes 18 long-serving employees
+    /// whose anniversary falls near the boundary, while changing none of the 22 hired just after it.
+    /// It is a policy date, not a tuning knob.</para>
+    /// </remarks>
     public DateTime? MilestoneDate { get; private set; }
     /// <summary>
     /// Base entitlement for NON-MANAGERIAL pre-milestone hires (e.g. 14). Managerial staff use
