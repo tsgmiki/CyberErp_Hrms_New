@@ -419,11 +419,23 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     /// - A year with an active policy but no materialized rows falls back to the policy's default
     ///   entitlement so new employees still see their implicit opening balance.
     /// </summary>
+    /// <summary>
+    /// The signed-in employee's leave balances for the dashboard cards.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ TWO SOURCES, BECAUSE THE TWO KINDS OF LEAVE ARE STORED DIFFERENTLY. Annual leave is
+    /// ledger-backed — a real <see cref="LeaveBalance"/> row per fiscal year. The OTHER leaves
+    /// (maternity, paternity, …) are a static allocation on <c>OtherLeaveSetting</c> with the taken
+    /// days derived from the requests themselves, and they never write a <c>LeaveBalance</c> row at
+    /// all. Reading only the ledger therefore showed annual leave and nothing else, which is what made
+    /// both Home cards look like annual-only widgets (logic §12.98).
+    /// </remarks>
     public class GetMyAnnualLeaveBalance(
         IRepository<LeaveBalance> balances,
         IRepository<AnnualLeaveSetting> settings,
         IRepository<FiscalYear> fiscalYears,
         IRepository<LeaveType> leaveTypes,
+        IGetOtherLeaveBalances otherLeaveBalances,
         Performance.IPerformanceVisibilityService visibility) : IGetMyAnnualLeaveBalance
     {
         public async Task<MyAnnualLeaveBalancesDto> GetAsync()
@@ -505,6 +517,42 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     IsAnnual = true,
                     Entitled = s.DefaultAnnualEntitlement,
                     Available = s.DefaultAnnualEntitlement,
+                });
+            }
+
+            // The OTHER leaves (maternity, paternity, …). Derived, not ledger-backed: the allocation
+            // is a static figure on the policy and "taken" is the sum of the employee's own pending +
+            // approved requests. Reused from the request form's handler rather than recomputed, so
+            // the dashboard can never disagree with the entitlement dropdown about what is left.
+            //
+            // ⚠️ Self-scoped: employeeId comes from the visibility scope, never from the caller.
+            foreach (var o in await otherLeaveBalances.GetAsync(employeeId))
+            {
+                // Only the active years this widget already covers; a policy on some other year is
+                // not something the employee can draw on now.
+                if (!yearNames.ContainsKey(o.FiscalYearId)) continue;
+
+                // ⚠️ A ledger row wins if one somehow exists for the same type and year. Nothing
+                // creates both today, but the card keys its rows on (fiscalYearId, leaveTypeId) — a
+                // duplicate would be a React key collision, and two rows claiming different balances
+                // for one entitlement is worse than either alone.
+                if (dto.Items.Any(i => i.FiscalYearId == o.FiscalYearId && i.LeaveTypeId == o.LeaveTypeId)) continue;
+
+                dto.Items.Add(new MyAnnualLeaveBalanceItemDto
+                {
+                    FiscalYearId = o.FiscalYearId,
+                    FiscalYearName = o.FiscalYearName ?? yearNames.GetValueOrDefault(o.FiscalYearId),
+                    LeaveTypeId = o.LeaveTypeId,
+                    LeaveTypeName = o.Name,
+                    IsAnnual = false,
+                    Entitled = o.Allocation,
+                    // No carry-forward or adjustment exists for these — the allocation resets with the
+                    // fiscal year. Left at zero rather than invented so the card's arithmetic
+                    // (entitled + carried + adjusted − taken) still reads true.
+                    CarriedForward = 0,
+                    Adjusted = 0,
+                    Taken = o.Reserved,
+                    Available = o.Remaining,
                 });
             }
 

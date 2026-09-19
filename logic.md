@@ -7300,3 +7300,80 @@ Probe years, policy, balances, transactions and the throwaway accounts removed a
 day will carry** unless the cap is set. That may be deliberate, but the two policies were written
 differently and nothing in the UI previously said so at the moment of the decision. The new confirm
 does — which is much of the argument for the button living on the policy row.
+
+### 12.98 The Home leave cards showed annual leave only
+
+"Leave Available" and "My Leave Balances" on the Home dashboard were reporting annual leave and
+nothing else. Both read `AnnualLeave/my-balance`, and the fault was in two places at once.
+
+#### ⚠️ The two kinds of leave are stored differently
+
+That is the whole cause, and it is not obvious from either card:
+
+| | annual leave | the other leaves (maternity, paternity, …) |
+|---|---|---|
+| entitlement | a real `LeaveBalance` row per fiscal year | a static allocation on `OtherLeaveSetting` |
+| taken | ledger transactions | **derived** from the employee's own pending + approved requests |
+| rows in `LeaveBalance` | 692 | **0** |
+
+`GetMyAnnualLeaveBalance` read `LeaveBalance` and nothing else. It was not filtering annual leave —
+it joined nothing away and even avoided an inner join to `LeaveType` on purpose so the type-less
+annual rows survived. There was simply nothing else in that table to find. Every other leave in the
+system is invisible to a ledger query by construction.
+
+The handler now also folds in `IGetOtherLeaveBalances` — the same handler the Other Leave request form
+uses for its entitlement dropdown, **reused rather than recomputed**, so the dashboard can never
+disagree with the request form about what is left. It is self-scoped: the employee id comes from the
+visibility scope, never from the caller.
+
+Two guards on the merge:
+
+- Only fiscal years the widget already covers. A policy on some other year is not something the
+  employee can draw on now.
+- A ledger row wins on a `(fiscalYearId, leaveTypeId)` collision. Nothing creates both today, but the
+  card keys its rows on exactly that pair — a duplicate would be a React key collision, and two rows
+  claiming different balances for one entitlement is worse than either alone.
+
+`CarriedForward` and `Adjusted` stay at zero for these: the allocation resets with the fiscal year and
+neither concept exists for it. Left at zero rather than invented, so the card's own arithmetic
+(`entitled + carried + adjusted − taken`) still reads true.
+
+#### ⚠️ And the KPI was narrowing a second time
+
+Even once the data arrived, the tile would still have shown annual alone:
+
+```ts
+const annual = balanceItems.filter((b) => b.isAnnual);
+const base = annual.length > 0 ? annual : balanceItems;     // ← other leaves dropped whenever annual exists
+```
+
+It now sums every item. The caption names what the figure covers — "across N leave types" — because a
+bare total spanning several kinds of leave is unreadable without it.
+
+`OtherLeaveBalanceDto` gained `FiscalYearId` and `LeaveTypeId`; the projection behind it already
+carried both, they were just not surfaced.
+
+#### Verified end to end
+
+Signed in as a **male** employee, so the gender filter was exercised rather than assumed:
+
+| check | result |
+|---|---|
+| a non-annual leave appears | **Paternity Leave**, alongside Annual |
+| Maternity withheld (employee is male) | not returned |
+| annual leave still present | yes |
+| configured allocation carried | entitled **5** |
+| arithmetic holds | 5 + 0 + 0 − 0 = 5 |
+| duplicate row keys | none |
+| **derived "taken"** — planted an approved 2-day request | entitled 5, **taken 2, available 3** |
+| "Leave Available" tile | **39 across 2 leave types** (was 34, annual only) |
+
+The derived half is the one worth testing: the allocation is static and hard to get wrong, while
+"taken" is computed from the request rows each time it is asked for.
+
+#### Worth knowing
+
+**Sick Leave will still not appear.** It is an active `LeaveType`, but it has no `OtherLeaveSetting`
+and no `LeaveBalance` rows — so there is no entitlement anywhere to show. That is a configuration
+gap, not a display one: give it an Other Leave Setting for the active fiscal year and it will appear
+in both cards with no further code change.
