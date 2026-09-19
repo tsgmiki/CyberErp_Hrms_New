@@ -7338,17 +7338,30 @@ Two guards on the merge:
 neither concept exists for it. Left at zero rather than invented, so the card's own arithmetic
 (`entitled + carried + adjusted − taken`) still reads true.
 
-#### ⚠️ And the KPI was narrowing a second time
+#### The tile stays annual; the card lists everything
 
-Even once the data arrived, the tile would still have shown annual alone:
+The two are deliberately **not** the same figure.
+
+**"My Leave Balances" (the card)** lists every active leave — that is what the widening above is for.
+It already grouped by fiscal year and rendered whatever types it received, Annual badge included, so
+it needed no change once the data arrived.
+
+**"Leave Available" (the tile)** counts **annual leave only**. Maternity and paternity are not days an
+employee chooses to spend, and folding them into a single "available" number inflates it into
+something nobody can act on — 20 annual + 180 maternity reading as *200 days available*. The caption
+now says "annual leave · \<fiscal year\>" out loud, so the tile is not mistaken for a total of the card
+beside it.
+
+⚠️ **The old fallback had to go with it.** The tile used to sum everything when no annual row existed:
 
 ```ts
 const annual = balanceItems.filter((b) => b.isAnnual);
-const base = annual.length > 0 ? annual : balanceItems;     // ← other leaves dropped whenever annual exists
+const base = annual.length > 0 ? annual : balanceItems;     // ← harmless then, wrong now
 ```
 
-It now sums every item. The caption names what the figure covers — "across N leave types" — because a
-bare total spanning several kinds of leave is unreadable without it.
+That was harmless while annual was all the API returned. Once the other leaves arrive it would put
+paternity days under a heading that means annual leave, so an employee with no annual row now sees
+"—" and "no annual leave balance" rather than a borrowed figure.
 
 `OtherLeaveBalanceDto` gained `FiscalYearId` and `LeaveTypeId`; the projection behind it already
 carried both, they were just not surfaced.
@@ -7366,7 +7379,9 @@ Signed in as a **male** employee, so the gender filter was exercised rather than
 | arithmetic holds | 5 + 0 + 0 − 0 = 5 |
 | duplicate row keys | none |
 | **derived "taken"** — planted an approved 2-day request | entitled 5, **taken 2, available 3** |
-| "Leave Available" tile | **39 across 2 leave types** (was 34, annual only) |
+| the **card** | lists Annual Leave 34 **and Paternity Leave 5** |
+| the **tile** | **34** — annual only, captioned "annual leave · FY 2019 EC (2026/27)" |
+| the tile excludes the other leaves | 34, where all types would total 39 |
 
 The derived half is the one worth testing: the allocation is static and hard to get wrong, while
 "taken" is computed from the request rows each time it is asked for.
