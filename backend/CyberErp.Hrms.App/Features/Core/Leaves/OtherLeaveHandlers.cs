@@ -152,6 +152,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public Guid OtherLeaveSettingId { get; set; }
         public string Name { get; set; } = string.Empty;
+        /// <summary>The fiscal year this allocation belongs to. Carried so callers outside the request
+        /// form can group these alongside ledger-backed balances (logic §12.98).</summary>
+        public Guid FiscalYearId { get; set; }
+        /// <summary>The underlying <see cref="LeaveType"/>, for callers that key on it.</summary>
+        public Guid LeaveTypeId { get; set; }
         public string? FiscalYearName { get; set; }
         public string Gender { get; set; } = nameof(GenderEligibility.All);
         public bool IsLumpSum { get; set; }
@@ -327,6 +332,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 {
                     OtherLeaveSettingId = x.Id,
                     Name = x.Name,
+                    FiscalYearId = x.FiscalYearId,
+                    LeaveTypeId = x.LeaveTypeId,
                     FiscalYearName = x.FiscalYearName,
                     Gender = x.Gender,
                     IsLumpSum = x.IsLumpSum,
