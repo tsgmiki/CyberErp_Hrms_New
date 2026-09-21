@@ -7631,3 +7631,75 @@ shape to the other 345.
 deleted. The figures are the accrual engine's and correct; only the attribution names an account that
 no longer exists. Left as written rather than edited, because rewriting an audit field to look tidier
 is worse than an odd-looking one.
+
+### 12.102 One rule for when a leave year is usable
+
+Reported: the inactive 2025/2026 setting still appeared on the Annual Leave card, and inactive or
+closed settings were being offered when submitting a request.
+
+#### ⚠️ The rule was expressed four ways, and no two agreed
+
+| where | what it checked | what was wrong |
+|---|---|---|
+| dashboard cards | `FiscalYear.IsActive` → then `!IsClosed` | singleton flag (§12.101); then admitted years whose **policy** was off |
+| request form's ledger dropdown | **nothing** | offered every year the employee had ever held a balance in |
+| `SubmitAnnualLeave` | **nothing** | the policy lookup was allowed to return null and was used only for the probation gate |
+| Other Leave (both list and submit) | `FiscalYear.IsActive` | singleton again — and the submit error already said *"closed"* while checking *active* |
+
+It now lives in one place:
+
+```csharp
+public static IQueryable<Guid> UsableFiscalYearIds(IRepository<AnnualLeaveSetting> settings) =>
+    settings.GetAll()
+        .Where(s => s.IsActive && s.FiscalYear != null && !s.FiscalYear.IsClosed)
+        .Select(s => s.FiscalYearId);
+```
+
+**Active policy AND not-closed year.** Both halves matter, and neither is `FiscalYear.IsActive` —
+that flag is a singleton (`SaveFiscalYear`: "only one active fiscal year at a time"), so it can never
+describe more than one usable year. Returning an `IQueryable<Guid>` lets every caller compose it into
+its own query instead of round-tripping, which is what keeps it a single expression.
+
+#### Applied in four places
+
+- **The dashboard cards** — the year set is now the usable set.
+- **The ledger dropdown** — `GetLeaveBalances` takes `selectableOnly`. ⚠️ **A parameter, not a blanket
+  filter**: the HR Leave Balance screen adjusts opening figures on historical years and must keep
+  seeing them. Request forms in both applications pass `true`.
+- **`SubmitAnnualLeave`** — an explicit guard, because a filtered dropdown is not enforcement. The
+  ledger id arrives in the request body, so a stale tab or a direct call could still name a dead year.
+  There was previously **no check at all**.
+- **Other Leave** — list and submit moved to the same rule together, so the dropdown can never offer
+  what the submit path refuses.
+
+#### ⚠️ This unblocked Other Leave, which was entirely unusable
+
+The live maternity and paternity policies sit on FY 2019 EC (2026/27) — open, but not the *current*
+year. Under `FiscalYear.IsActive` neither was offered to anybody: the entitlement dropdown returned
+nothing and no other-leave request could be made at all. Under the new rule Paternity is reachable
+again (verified: allocation 5, remaining 5 for a male employee). This was flagged as an aside in
+§12.101 and turns out to be fixed by the same correction.
+
+#### Verified against the live configuration
+
+2025/206 has an **inactive** policy on an open year; FY 2019 EC (2026/27) has an active policy on an
+open year.
+
+| check | result |
+|---|---|
+| inactive-policy year on the cards | **gone** |
+| active-policy year on the cards | present |
+| not merely re-listed as "awaiting generation" | `awaitingGeneration: []` |
+| request dropdown | offers **only** FY 2019 EC (2026/27) |
+| HR balance screen | still sees **both** — history preserved |
+| submitting against the inactive year | **400** — *"There is no active annual-leave policy for 2025/206, so leave cannot be requested against it."* |
+| Other Leave entitlements | Paternity offered again |
+
+Throwaway accounts removed; no leave data was altered.
+
+#### Deliberately left alone
+
+**HR administration screens still list every setting.** `GetAllAnnualLeaveSettings` and the Annual
+Leave Ledger's setting picker return inactive ones too — that is how an administrator reactivates a
+policy or generates a ledger for a year that is being prepared. The rule governs who may *use* a
+year's leave, not who may *administer* it.

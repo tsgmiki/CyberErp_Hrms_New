@@ -50,15 +50,26 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     }
 
     // ---- Interfaces ---------------------------------------------------------
-    public interface IGetLeaveBalances { Task<List<LeaveBalanceDto>> GetAsync(Guid employeeId, Guid? fiscalYearId); }
+    public interface IGetLeaveBalances
+    {
+        /// <param name="selectableOnly">
+        /// ⚠️ TRUE for a REQUEST FORM, false for the HR balance screen. When true the result is
+        /// narrowed to fiscal years whose leave may actually be drawn on (see <see cref="LeaveYearRule"/>)
+        /// — the ledger dropdown was offering closed years and deactivated policies, and the employee
+        /// could pick one. The HR screen adjusts opening figures on historical years and must keep
+        /// seeing them, which is why this is a parameter and not a blanket filter (logic §12.102).
+        /// </param>
+        Task<List<LeaveBalanceDto>> GetAsync(Guid employeeId, Guid? fiscalYearId, bool selectableOnly = false);
+    }
     public interface ISetLeaveBalance { Task SetAsync(SetLeaveBalanceDto dto); }
 
     // ---- Get balances for an employee ---------------------------------------
     public class GetLeaveBalances(
         IRepository<LeaveBalance> repository,
+        IRepository<AnnualLeaveSetting> settings,
         Performance.IPerformanceVisibilityService visibility) : IGetLeaveBalances
     {
-        public async Task<List<LeaveBalanceDto>> GetAsync(Guid employeeId, Guid? fiscalYearId)
+        public async Task<List<LeaveBalanceDto>> GetAsync(Guid employeeId, Guid? fiscalYearId, bool selectableOnly = false)
         {
             // HR admin, the employee themselves, or their manager (subtree) only.
             if (!await visibility.CanAccessEmployeeAsync(employeeId))
@@ -67,6 +78,13 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var query = repository.GetAll().Where(b => b.EmployeeId == employeeId);
             if (fiscalYearId.HasValue && fiscalYearId.Value != Guid.Empty)
                 query = query.Where(b => b.FiscalYearId == fiscalYearId.Value);
+
+            // A request may only be charged to a year that is still usable.
+            if (selectableOnly)
+            {
+                var usableIds = LeaveYearRule.UsableFiscalYearIds(settings);
+                query = query.Where(b => usableIds.Contains(b.FiscalYearId));
+            }
 
             return await query
                 .OrderByDescending(b => b.FiscalYear!.StartDate).ThenBy(b => b.LeaveType!.Code)

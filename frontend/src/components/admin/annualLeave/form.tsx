@@ -71,9 +71,12 @@ function AnnualLeaveForm({
     enabled: !viewing && !lockedEmployeeId,
   });
   // The employee's ledgers (LeaveBalance rows) — the user picks the annual-leave one to charge.
+  // selectableOnly: offer only years that may still be charged (active policy, year not closed).
+  // The dropdown used to list closed years and deactivated policies, and they could be picked
+  // (HRMS logic §12.102). The server enforces the same rule on submit regardless.
   const { data: balances } = useQuery({
-    queryKey: ["leaveBalances", meta.employeeId],
-    queryFn: () => getLeaveBalances(meta.employeeId!),
+    queryKey: ["leaveBalances", meta.employeeId, "selectable"],
+    queryFn: () => getLeaveBalances(meta.employeeId!, undefined, true),
     enabled: !viewing && !!meta.employeeId,
   });
 

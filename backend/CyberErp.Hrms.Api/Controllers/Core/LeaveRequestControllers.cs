@@ -98,9 +98,15 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetLeaveBalances getHandler,
         ISetLeaveBalance setHandler) : BaseController
     {
+        /// <param name="selectableOnly">
+        /// ⚠️ Request forms pass <c>true</c> so the ledger dropdown offers only years that may still
+        /// be charged. The HR balance screen leaves it off, because adjusting a historical year's
+        /// opening figures is exactly what that screen is for (logic §12.102).
+        /// </param>
         [HttpGet]
-        public Task<List<LeaveBalanceDto>> GetByEmployee([FromQuery] Guid employeeId, [FromQuery] Guid? fiscalYearId)
-            => getHandler.GetAsync(employeeId, fiscalYearId);
+        public Task<List<LeaveBalanceDto>> GetByEmployee(
+            [FromQuery] Guid employeeId, [FromQuery] Guid? fiscalYearId, [FromQuery] bool selectableOnly = false)
+            => getHandler.GetAsync(employeeId, fiscalYearId, selectableOnly);
 
         [HttpPost]
         public async Task<IActionResult> Set([FromBody] SetLeaveBalanceDto dto)
