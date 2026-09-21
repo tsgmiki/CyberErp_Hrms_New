@@ -35,7 +35,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int PreMilestoneBaseLeaveDays { get; set; }
         public int PreMilestoneIncrementDays { get; set; }
         public int PreMilestoneIntervalYears { get; set; }
-        public decimal DefaultAnnualEntitlement { get; set; }
         public decimal? CarryForwardMaxDays { get; set; }
         public int? MaxConsecutiveDays { get; set; }
         public bool AllowHalfDay { get; set; } = true;
@@ -62,8 +61,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public int PreMilestoneBaseLeaveDays { get; set; } = 14;
         public int PreMilestoneIncrementDays { get; set; } = 1;
         public int PreMilestoneIntervalYears { get; set; } = 1;
-        /// <summary>Fallback entitlement for balances the accrual engine has not generated (was LeaveType.DefaultAnnualEntitlement).</summary>
-        public decimal DefaultAnnualEntitlement { get; set; }
         /// <summary>Rollover carry cap; null = unlimited, 0 = none (was LeaveType.CarryForwardMaxDays).</summary>
         public decimal? CarryForwardMaxDays { get; set; }
         /// <summary>Cap on one continuous request; null = no cap (was LeaveType.MaxConsecutiveDays).</summary>
@@ -96,7 +93,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .WithMessage("A milestone date is required for the service-milestone rule.");
             RuleFor(x => x.PreMilestoneBaseLeaveDays).GreaterThanOrEqualTo(0);
             RuleFor(x => x.PreMilestoneIncrementDays).GreaterThanOrEqualTo(0);
-            RuleFor(x => x.DefaultAnnualEntitlement).GreaterThanOrEqualTo(0);
             RuleFor(x => x.CarryForwardMaxDays).GreaterThanOrEqualTo(0).When(x => x.CarryForwardMaxDays.HasValue);
             RuleFor(x => x.MaxConsecutiveDays).GreaterThan(0).When(x => x.MaxConsecutiveDays.HasValue);
         }
@@ -132,7 +128,6 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             PreMilestoneBaseLeaveDays = s.PreMilestoneBaseLeaveDays,
             PreMilestoneIncrementDays = s.PreMilestoneIncrementDays,
             PreMilestoneIntervalYears = s.PreMilestoneIntervalYears,
-            DefaultAnnualEntitlement = s.DefaultAnnualEntitlement,
             CarryForwardMaxDays = s.CarryForwardMaxDays,
             MaxConsecutiveDays = s.MaxConsecutiveDays,
             AllowHalfDay = s.AllowHalfDay,
@@ -168,7 +163,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays, dto.IncrementIntervalYears,
                     dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience, dto.MilestoneDate,
                     dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays, dto.PreMilestoneIntervalYears,
-                    dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.IsActive, dto.AllowHalfDay);
+                    dto.CarryForwardMaxDays, dto.MaxConsecutiveDays, dto.IsActive, dto.AllowHalfDay);
                 repository.UpdateAsync(entity);
                 await repository.SaveChangesAsync();
                 return entity.Id;
@@ -178,7 +173,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 dto.NewEmployeeLeaveDays, dto.BaseLeaveDays, dto.ManagerialLeaveDays, dto.IncrementDays,
                 dto.IncrementIntervalYears, dto.MaxLeaveDays, dto.ExpiryYears, ruleType, dto.ConsiderExternalExperience,
                 dto.MilestoneDate, dto.PreMilestoneBaseLeaveDays, dto.PreMilestoneIncrementDays,
-                dto.PreMilestoneIntervalYears, dto.DefaultAnnualEntitlement, dto.CarryForwardMaxDays,
+                dto.PreMilestoneIntervalYears, dto.CarryForwardMaxDays,
                 dto.MaxConsecutiveDays, dto.IsActive, dto.AllowHalfDay);
             await repository.AddAsync(created);
             await repository.SaveChangesAsync();

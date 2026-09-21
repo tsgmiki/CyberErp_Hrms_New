@@ -72,8 +72,6 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
     public int ExpiryYears { get; private set; } = 2;
 
     // ---- Policy figures moved here from LeaveType ---------------------------
-    /// <summary>Fallback entitlement in days for balances the accrual engine has not generated.</summary>
-    public decimal DefaultAnnualEntitlement { get; private set; }
     /// <summary>Maximum days that may carry forward into the next year (null = unlimited, 0 = none).</summary>
     public decimal? CarryForwardMaxDays { get; private set; }
     /// <summary>Optional cap on the length of a single continuous request.</summary>
@@ -131,13 +129,13 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
         int baseLeaveDays, int managerialLeaveDays, int incrementDays, int incrementIntervalYears,
         int maxLeaveDays, int expiryYears, LeaveAccrualRuleType ruleType, bool considerExternalExperience,
         DateTime? milestoneDate, int preMilestoneBaseLeaveDays, int preMilestoneIncrementDays,
-        int preMilestoneIntervalYears, decimal defaultAnnualEntitlement, decimal? carryForwardMaxDays,
+        int preMilestoneIntervalYears, decimal? carryForwardMaxDays,
         int? maxConsecutiveDays, bool isActive = true, bool allowHalfDay = true)
     {
         Validate(fiscalYearId, minExperienceMonths, newEmployeeLeaveDays, baseLeaveDays,
             managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears,
             ruleType, milestoneDate, preMilestoneIntervalYears,
-            defaultAnnualEntitlement, carryForwardMaxDays, maxConsecutiveDays);
+            carryForwardMaxDays, maxConsecutiveDays);
         return new AnnualLeaveSetting
         {
             FiscalYearId = fiscalYearId,
@@ -155,7 +153,6 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
             PreMilestoneBaseLeaveDays = preMilestoneBaseLeaveDays,
             PreMilestoneIncrementDays = preMilestoneIncrementDays,
             PreMilestoneIntervalYears = preMilestoneIntervalYears < 1 ? 1 : preMilestoneIntervalYears,
-            DefaultAnnualEntitlement = defaultAnnualEntitlement,
             CarryForwardMaxDays = carryForwardMaxDays,
             MaxConsecutiveDays = maxConsecutiveDays,
             AllowHalfDay = allowHalfDay,
@@ -168,13 +165,13 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
         int baseLeaveDays, int managerialLeaveDays, int incrementDays, int incrementIntervalYears,
         int maxLeaveDays, int expiryYears, LeaveAccrualRuleType ruleType, bool considerExternalExperience,
         DateTime? milestoneDate, int preMilestoneBaseLeaveDays, int preMilestoneIncrementDays,
-        int preMilestoneIntervalYears, decimal defaultAnnualEntitlement, decimal? carryForwardMaxDays,
+        int preMilestoneIntervalYears, decimal? carryForwardMaxDays,
         int? maxConsecutiveDays, bool isActive, bool allowHalfDay = true)
     {
         Validate(fiscalYearId, minExperienceMonths, newEmployeeLeaveDays, baseLeaveDays,
             managerialLeaveDays, incrementDays, incrementIntervalYears, maxLeaveDays, expiryYears,
             ruleType, milestoneDate, preMilestoneIntervalYears,
-            defaultAnnualEntitlement, carryForwardMaxDays, maxConsecutiveDays);
+            carryForwardMaxDays, maxConsecutiveDays);
         FiscalYearId = fiscalYearId;
         MinExperienceMonths = minExperienceMonths;
         NewEmployeeLeaveDays = newEmployeeLeaveDays;
@@ -190,7 +187,6 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
         PreMilestoneBaseLeaveDays = preMilestoneBaseLeaveDays;
         PreMilestoneIncrementDays = preMilestoneIncrementDays;
         PreMilestoneIntervalYears = preMilestoneIntervalYears < 1 ? 1 : preMilestoneIntervalYears;
-        DefaultAnnualEntitlement = defaultAnnualEntitlement;
         CarryForwardMaxDays = carryForwardMaxDays;
         MaxConsecutiveDays = maxConsecutiveDays;
         AllowHalfDay = allowHalfDay;
@@ -202,10 +198,8 @@ public class AnnualLeaveSetting : BaseEntity, IAggregateRoot, IAuditable
         int newEmployeeLeaveDays, int baseLeaveDays, int managerialLeaveDays, int incrementDays,
         int incrementIntervalYears, int maxLeaveDays, int expiryYears,
         LeaveAccrualRuleType ruleType, DateTime? milestoneDate, int preMilestoneIntervalYears,
-        decimal defaultAnnualEntitlement, decimal? carryForwardMaxDays, int? maxConsecutiveDays)
+        decimal? carryForwardMaxDays, int? maxConsecutiveDays)
     {
-        if (defaultAnnualEntitlement < 0)
-            throw new ArgumentException("Default annual entitlement cannot be negative.", nameof(defaultAnnualEntitlement));
         if (carryForwardMaxDays is < 0)
             throw new ArgumentException("Carry-forward maximum cannot be negative.", nameof(carryForwardMaxDays));
         if (maxConsecutiveDays is < 1)

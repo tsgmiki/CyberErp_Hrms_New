@@ -7407,11 +7407,16 @@ balance to show and quoted the policy default instead.
 
 #### ⚠️ Why that was worse than showing nothing
 
-**Nothing else in the system honours that number.** `DefaultAnnualEntitlement` is read in exactly one
-place — that fallback — and nowhere else. `SubmitAnnualLeave` charges against a real `LeaveBalance`
-row, looked up by `AnnualLeaveLedgerId`, and throws `NotFoundException` without one. So the employee
-could not request a single one of the days the dashboard was promising; the request form had no ledger
-to select at all.
+**The annual-leave request path does not honour that number.** `SubmitAnnualLeave` charges against a
+real `LeaveBalance` row, looked up by `AnnualLeaveLedgerId`, and throws `NotFoundException` without
+one. So the employee could not request a single one of the days the dashboard was promising; the
+request form had no ledger to select at all.
+
+> ⚠️ **Correction.** This section originally claimed the setting was "read in exactly one place — that
+> fallback — and nowhere else". **That was wrong**, and it came from reading a truncated grep.
+> `LeaveBalanceService.GetAvailableAsync` read it too, as the implicit opening balance for any leave
+> type with no ledger row — a second and worse defect, since it was keyed on the fiscal year rather
+> than the leave type. Both are gone; see §12.100.
 
 Three further problems on top of the lie:
 
@@ -7476,3 +7481,76 @@ regenerated**: `LeaveBalance` is still empty, exactly as found.
 the Annual Leave Setting form, and is read by nothing. It should either be removed from the entity and
 the form, or given a real meaning — but leaving an editable field that silently does nothing is its own
 trap. Not done here because deleting a column is a migration and a form change that nobody asked for.
+
+### 12.100 DefaultAnnualEntitlement removed — and the second defect it was hiding
+
+§12.99 stopped the dashboard quoting `DefaultAnnualEntitlement` as a balance and recorded the field as
+dead configuration. Removing it turned up that it was **not** dead.
+
+#### ⚠️ It had a second reader, and that one was worse
+
+`LeaveBalanceService.GetAvailableAsync` fell back to it whenever no ledger row existed:
+
+```csharp
+var balance = await FindAsync(employeeId, leaveTypeId, fiscalYearId);
+if (balance != null) return balance.Available;
+return await DefaultEntitlementAsync(fiscalYearId);   // ← the annual policy's default
+```
+
+**That fallback was keyed on the FISCAL YEAR, not the leave type.** So every accruing leave type with
+no ledger row of its own inherited the *annual* policy's 16 days. `SubmitLeaveRequest`'s sufficiency
+check — the one that decides whether a request is allowed — consulted exactly this. Sick Leave and
+Paternity Leave both carry `AccrualMethod = Annual` and have **zero** balance rows, so both were
+silently spendable up to 16 days that no policy had ever granted them.
+
+`GetOrCreateAsync` compounded it: a new row was seeded with the same figure and posted an
+`Initial annual entitlement` transaction for it, writing the invented number into the append-only
+ledger as though it were a grant.
+
+> ⚠️ §12.99 asserted the setting was "read in exactly one place and nowhere else". **That was wrong.**
+> It came from a grep truncated at ten results, which cut the `LeaveBalanceService` hit. The claim has
+> been corrected in place. A conclusion drawn from a truncated search is not a finding.
+
+#### What was removed
+
+| | |
+|---|---|
+| `AnnualLeaveSetting.DefaultAnnualEntitlement` | property, constructor parameters, validation |
+| EF | `HasPrecision(6,2)` config + migration `DropDefaultAnnualEntitlement` |
+| App | DTO fields, FluentValidation rule, projection, save handler |
+| `LeaveBalanceService` | `DefaultEntitlementAsync`, the `IRepository<AnnualLeaveSetting>` dependency, and the now-meaningless `postInitialEntitlement` parameter |
+| HRMS SPA | model field, form default of 16, the "Annual Entitlement (days)" input, `numberFields` entry |
+
+`GetAvailableAsync` now returns **0** when there is no ledger row. The ledger is the only source of
+entitlement; nothing in it means nothing to draw. `GetOrCreateAsync` opens a row at zero and posts no
+opening transaction — a row created there exists only to carry a deduction or reversal, and the
+sufficiency check upstream has already decided whether that is allowed.
+
+⚠️ **The parameter went too.** `postInitialEntitlement` no longer changed anything; a parameter that
+callers still pass but that does nothing is worse than no parameter.
+
+#### ⚠️ This is a behaviour change, not only a cleanup
+
+Leave types with `AccrualMethod != None` and no generated ledger row go from an implicit 16-day
+allowance to **0 available**, and requests against them are refused with *"Insufficient X balance:
+requested N day(s) but only 0 available."* In the live data that is **Sick Leave** and **Paternity
+Leave**, neither of which has a single `LeaveBalance` row.
+
+That is the correct behaviour — an allowance conjured from an unrelated policy is not an entitlement —
+but it will surface as those requests starting to fail. The fix for a leave type that *should* be
+requestable is to give it real balances, not to restore the fallback.
+
+#### Verified
+
+| check | result |
+|---|---|
+| column dropped | `sys.columns` count **0**; both settings rows intact |
+| settings list loads | 2 settings |
+| field absent from the payload | yes |
+| an existing setting still saves | 200 "Updated successfully" — validation not tripped |
+| dashboard | still no phantom balance; `awaitingGeneration: ["2025/206"]` |
+
+`Down` restores the column at its original precision but not its values — the figure was
+configuration, not records.
+
+Throwaway accounts removed. No ledger was generated: `LeaveBalance` remains empty, as found.

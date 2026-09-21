@@ -27,7 +27,6 @@ const NEW_DEFAULTS: AnnualLeaveSettingModel = {
   expiryYears: 2,
   ruleType: "ServiceYears",
   considerExternalExperience: false,
-  defaultAnnualEntitlement: 16,
   preMilestoneBaseLeaveDays: 14,
   preMilestoneIncrementDays: 1,
   preMilestoneIntervalYears: 1,
@@ -133,7 +132,6 @@ function AnnualLeaveSettingForm(props: { id: string; setId: (id: string) => void
             num("newEmployeeLeaveDays", "New-Employee Basis (days)"),
             num("expiryYears", "Carry-forward Expiry (years)"),
             // Policy figures moved here from Leave Type.
-            num("defaultAnnualEntitlement", "Annual Entitlement (days)"),
             num("carryForwardMaxDays", "Carry-forward Max (days, empty = unlimited)"),
             num("maxConsecutiveDays", "Max Consecutive Days (empty = no cap)"),
             {
