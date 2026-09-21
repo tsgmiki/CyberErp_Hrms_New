@@ -7554,3 +7554,80 @@ requestable is to give it real balances, not to restore the fallback.
 configuration, not records.
 
 Throwaway accounts removed. No ledger was generated: `LeaveBalance` remains empty, as found.
+
+### 12.101 Only one fiscal year could ever reach the leave cards
+
+Reported: two active annual leave settings, but only 2025/2026 appeared in "Leave Available" and
+"My Leave Balances".
+
+#### ⚠️ `FiscalYear.IsActive` is a SINGLETON, and the card filtered on it
+
+`SaveFiscalYear` enforces *"only one active fiscal year at a time"* — saving a year active clears the
+flag on every other:
+
+```csharp
+if (dto.IsActive)
+{
+    var others = await repository.GetAll().Where(x => x.IsActive && x.Id != id).ToListAsync();
+    foreach (var other in others) { other.SetActive(false); ... }
+}
+```
+
+`GetMyAnnualLeaveBalance` opened with `.Where(f => f.IsActive)`, so it could return **at most one
+year**, whatever the settings said. Both of the reported settings were active; the 2026/27 *fiscal
+year* simply had `IsActive = 0`, `IsClosed = 0`.
+
+The handler's own comment promised the opposite — balances "across overlapping active years during a
+year transition" — describing precisely the case the data model forbids. That transition is real: the
+outgoing year is still open and un-rolled while the new one is current, and the employee holds genuine
+ledger rows in both. Only one was ever shown.
+
+**`IsClosed` is the flag that means what this needs.** `FiscalYear` states it plainly: *"Closed years
+accept no further leave activity (rollover source only)."* An open year is one the employee can still
+draw on — exactly what these cards report. The filter is now `!f.IsClosed`, newest year first.
+
+#### ⚠️ The two kinds of leave deliberately span different year sets
+
+Annual balances now cover every open year. The OTHER leaves still come from
+`GetOtherLeaveBalances`, which is tied to the single active year — **and must stay that way**:
+`SubmitOtherLeave` rejects a request whose setting is not on the active year, so widening only the
+dropdown would offer allocations the submit path then refuses. Changing both is a real change to the
+request path and was not asked for.
+
+#### Verified
+
+One balance planted per open year for a throwaway account — 2025/206 (17 available) and
+FY 2019 EC (2026/27) (29 available, the year with `IsActive = 0`):
+
+| check | result |
+|---|---|
+| both open fiscal years appear | **2** years |
+| the non-current year (IsActive=0, IsClosed=0) included | yes |
+| the current year still included | yes |
+| newest year first | FY 2019 EC (2026/27) |
+| tile sums annual across both | **46** (17 + 29) |
+| caption | "annual leave · 2 fiscal years" |
+
+#### ⚠️ A fixture of mine deleted two real rows, and how they were put back
+
+The ledger had been regenerated between sessions — 690 rows where this session had last seen zero.
+The fixture cleared the test employee's rows before inserting its own, which removed **two genuine
+generated balances** for NVI/035. Caught by the teardown's own row count reading 690 instead of the
+expected 0.
+
+Repaired through the application, not by hand: `Recalculate` on each setting, which creates a row for
+any active employee lacking one. It reported **created = 1, raised = 0, lowered = 0, net = 0** for
+both years — only the missing rows, nobody else touched. Afterwards both years held 346 rows with zero
+employees missing and totals of **7337** and **7990**, matching what this session measured before the
+damage. No employee has carry-forward, adjusted or taken days, so the restored rows are identical in
+shape to the other 345.
+
+> The lesson is in the fixture, not the repair: a `DELETE … WHERE EmployeeId = @emp` before an INSERT
+> is safe only while that employee is known to have no real rows — an assumption that was true when the
+> script was written and false by the time it ran. Fixtures that touch real employees should assert
+> the pre-state rather than clear it.
+
+⚠️ The two restored rows carry `CreatedBy = 'zz_lms_admin'`, the throwaway account that has since been
+deleted. The figures are the accrual engine's and correct; only the attribution names an account that
+no longer exists. Left as written rather than edited, because rewriting an audit field to look tidier
+is worse than an odd-looking one.
