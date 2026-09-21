@@ -9,5 +9,5 @@ export default createSaveService("AnnualLeaveSetting", AnnualLeaveSettingSchema,
     "preMilestoneBaseLeaveDays", "preMilestoneIncrementDays", "preMilestoneIntervalYears",
     "maxConsecutiveDays",
   ],
-  numberFields: ["defaultAnnualEntitlement", "carryForwardMaxDays"],
+  numberFields: ["carryForwardMaxDays"],
 });

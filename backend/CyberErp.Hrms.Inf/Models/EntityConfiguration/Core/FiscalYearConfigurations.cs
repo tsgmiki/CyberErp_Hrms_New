@@ -30,7 +30,6 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.RuleType).HasConversion<string>().HasMaxLength(20).IsRequired();
 
             // Policy figures moved here from hrmsLeaveType.
-            builder.Property(x => x.DefaultAnnualEntitlement).HasPrecision(6, 2);
             builder.Property(x => x.CarryForwardMaxDays).HasPrecision(6, 2);
 
             builder.HasOne(x => x.FiscalYear).WithMany().HasForeignKey(x => x.FiscalYearId).OnDelete(DeleteBehavior.Restrict);
