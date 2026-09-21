@@ -399,28 +399,41 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         /// <summary>False when the account has no linked employee.</summary>
         public bool HasData { get; set; }
-        /// <summary>Per leave type, per ACTIVE fiscal year (newest year first, annual types first).</summary>
+        /// <summary>
+        /// Per leave type, per ACTIVE fiscal year (newest year first, annual types first).
+        /// ⚠️ REAL BALANCES ONLY — every row here is something the employee can actually draw on.
+        /// </summary>
         public List<MyAnnualLeaveBalanceItemDto> Items { get; set; } = [];
+        /// <summary>
+        /// Fiscal years that have an active annual-leave policy but NO generated ledger row for this
+        /// employee — "HR has not run Calculate yet", not "you have no leave".
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ A SEPARATE SIGNAL, NOT A FAKE BALANCE. This used to be reported as an ordinary item
+        /// carrying the policy's <c>DefaultAnnualEntitlement</c> as both Entitled and Available, so the
+        /// dashboard advertised days that could not be requested: submitting annual leave requires a
+        /// real <c>LeaveBalance</c> row to charge against, and there was none (logic §12.99).
+        /// </remarks>
+        public List<string> AwaitingGeneration { get; set; } = [];
     }
 
     public interface IGetMyAnnualLeaveBalance { Task<MyAnnualLeaveBalancesDto> GetAsync(); }
 
     /// <summary>
-    /// The signed-in employee's leave balances across ALL active fiscal years — a lean read for the
-    /// portal dashboard. Strictly self-scoped (the caller's own employee id from the visibility
-    /// scope); never returns another employee's figures.
+    /// The signed-in employee's leave balances for the dashboard cards, across every ACTIVE fiscal
+    /// year. Strictly self-scoped (the caller's own employee id from the visibility scope); never
+    /// returns another employee's figures.
     ///
-    /// Robustness (the "dashboard shows zero" class of bugs):
-    /// - Driven by the employee's OWN LeaveBalance rows in every ACTIVE fiscal year — a real balance
-    ///   is shown even when the year's leave policy row is missing or inactive.
-    /// - Multi-type safe: one row per leave type (annual-accrual types flagged, listed first) — it
-    ///   never binds to a single resolved "annual" type, so misconfigured/overlapping accrual
-    ///   methods can neither throw nor silently pick the wrong type.
-    /// - A year with an active policy but no materialized rows falls back to the policy's default
-    ///   entitlement so new employees still see their implicit opening balance.
-    /// </summary>
-    /// <summary>
-    /// The signed-in employee's leave balances for the dashboard cards.
+    /// <para>Robustness (the "dashboard shows zero" class of bugs):</para>
+    /// <list type="bullet">
+    /// <item>Driven by the employee's OWN LeaveBalance rows — a real balance is shown even when the
+    /// year's leave policy row is missing or inactive.</item>
+    /// <item>Multi-type safe: one row per leave type (annual flagged and listed first) — it never
+    /// binds to a single resolved "annual" type, so misconfigured or overlapping accrual methods can
+    /// neither throw nor silently pick the wrong type.</item>
+    /// <item>A year with an active policy but no generated row is reported through
+    /// <see cref="MyAnnualLeaveBalancesDto.AwaitingGeneration"/> — NOT as an invented balance.</item>
+    /// </list>
     /// </summary>
     /// <remarks>
     /// ⚠️ TWO SOURCES, BECAUSE THE TWO KINDS OF LEAVE ARE STORED DIFFERENTLY. Annual leave is
@@ -499,26 +512,32 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 });
             }
 
-            // Policy-default fallback: an active policy year where the employee has NO annual row yet
-            // still shows the implicit opening entitlement.
-            var defaultSettings = await settings.GetAll()
-                .Where(s => s.IsActive && yearIds.Contains(s.FiscalYearId) && s.DefaultAnnualEntitlement > 0)
-                .Select(s => new { s.FiscalYearId, s.DefaultAnnualEntitlement })
+            // ⚠️ THIS USED TO INVENT A BALANCE. An active policy year with no generated row for the
+            // employee had the policy's DefaultAnnualEntitlement reported as a normal item, Entitled
+            // AND Available both set to it — so the Home tile showed "16 days available" for someone
+            // whose ledger had never been calculated.
+            //
+            // Nothing else in the system honours that number. DefaultAnnualEntitlement is read in this
+            // one place and nowhere else; SubmitAnnualLeave charges against a real LeaveBalance row and
+            // throws NotFoundException without one, so the employee could not request a single one of
+            // the days the dashboard promised. It also hid the thing HR actually needed to know —
+            // that the entitlements had not been generated — behind a plausible-looking figure, and
+            // the flat policy default is not even the right number (the accrual engine would have
+            // given this employee 24 by service).
+            //
+            // Reported as a named signal instead, so the UI can say "not generated yet" rather than
+            // quoting an unspendable balance (logic §12.99).
+            var awaiting = await settings.GetAll()
+                .Where(s => s.IsActive && yearIds.Contains(s.FiscalYearId))
+                .Select(s => s.FiscalYearId)
+                .Distinct()
                 .ToListAsync();
-            foreach (var s in defaultSettings.GroupBy(x => x.FiscalYearId).Select(g => g.First()))
-            {
-                if (dto.Items.Any(i => i.FiscalYearId == s.FiscalYearId && i.IsAnnual)) continue;
-                dto.Items.Add(new MyAnnualLeaveBalanceItemDto
-                {
-                    FiscalYearId = s.FiscalYearId,
-                    FiscalYearName = yearNames.GetValueOrDefault(s.FiscalYearId),
-                    LeaveTypeId = AnnualLeave.LeaveTypeId,
-                    LeaveTypeName = AnnualLeave.DisplayName,
-                    IsAnnual = true,
-                    Entitled = s.DefaultAnnualEntitlement,
-                    Available = s.DefaultAnnualEntitlement,
-                });
-            }
+            dto.AwaitingGeneration = awaiting
+                .Where(fyId => !dto.Items.Any(i => i.FiscalYearId == fyId && i.IsAnnual))
+                .OrderBy(fyId => yearRank.GetValueOrDefault(fyId, int.MaxValue))
+                .Select(fyId => yearNames.GetValueOrDefault(fyId) ?? string.Empty)
+                .Where(n => n.Length > 0)
+                .ToList();
 
             // The OTHER leaves (maternity, paternity, …). Derived, not ledger-backed: the allocation
             // is a static figure on the policy and "taken" is the sum of the employee's own pending +
