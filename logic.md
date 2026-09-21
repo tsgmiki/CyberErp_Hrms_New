@@ -7392,3 +7392,87 @@ The derived half is the one worth testing: the allocation is static and hard to 
 and no `LeaveBalance` rows — so there is no entitlement anywhere to show. That is a configuration
 gap, not a display one: give it an Other Leave Setting for the active fiscal year and it will appear
 in both cards with no further code change.
+
+### 12.99 The dashboard invented a balance that could not be spent
+
+Reported: "Leave Available" showed **16** for `tatekg` when no annual leave ledger had been calculated.
+
+#### Where the 16 came from
+
+`GetMyAnnualLeaveBalance` ended with a "policy-default fallback": for an active policy year where the
+employee had no generated row, it added an ordinary item carrying the policy's
+`DefaultAnnualEntitlement` as **both** `Entitled` and `Available`. That setting is `16.00` on both live
+policies, and every `LeaveBalance` row in the database had been deleted — so the card had no real
+balance to show and quoted the policy default instead.
+
+#### ⚠️ Why that was worse than showing nothing
+
+**Nothing else in the system honours that number.** `DefaultAnnualEntitlement` is read in exactly one
+place — that fallback — and nowhere else. `SubmitAnnualLeave` charges against a real `LeaveBalance`
+row, looked up by `AnnualLeaveLedgerId`, and throws `NotFoundException` without one. So the employee
+could not request a single one of the days the dashboard was promising; the request form had no ledger
+to select at all.
+
+Three further problems on top of the lie:
+
+- **It hid the thing HR needed to see.** "The entitlements have not been generated yet" is actionable —
+  somebody has to press Calculate. A plausible-looking 16 buries that.
+- **It was not even the right figure.** The flat policy default is the same for everyone; the accrual
+  engine would have given this employee **24** by service length (§12.94).
+- **It reported as fact what was a guess.** The item was indistinguishable from a real balance — same
+  shape, same fields — so no consumer could tell the difference.
+
+#### The fix: report the state, not a substitute figure
+
+The fallback is gone. The DTO gained a separate, named signal:
+
+```csharp
+/// Fiscal years with an active annual policy but NO generated ledger row for this employee.
+public List<string> AwaitingGeneration { get; set; } = [];
+```
+
+`Items` now contains **real balances only** — every row is something the employee can actually draw
+on, which restores the invariant the card's arithmetic depends on. "Not generated yet" travels as its
+own fact rather than as a number pretending to be a balance.
+
+The Home dashboard reads it in both places:
+
+- **The tile** shows **—** with the caption *"entitlement not generated yet"*, instead of a figure.
+  "Not generated" is not "no leave", and it is certainly not "16 days available".
+- **The card** gets a distinct empty state naming the year and who acts: *"Your annual leave for
+  2025/206 has not been calculated yet. HR generates it from the Annual Leave Ledger."* When some
+  years are generated and others are not, the generated ones list normally with a note above naming
+  the outstanding ones — otherwise a reader has to notice a year is *missing* from a list.
+
+#### Verified in the reported state
+
+All `LeaveBalance` rows are currently deleted, so the live database *is* the reported case:
+
+| check | result |
+|---|---|
+| fabricated annual balance | **none returned** |
+| the 16 | **gone** |
+| un-generated year reported | `awaitingGeneration: ["2025/206"]` |
+| tile | **"—"**, caption "entitlement not generated yet" |
+| card | "Entitlement not generated yet — 2025/206" |
+
+And the opposite direction, so the fix did not simply blank the widget — a throwaway **active** fiscal
+year carrying one generated balance of 21, against the real 2025/206 which has none:
+
+| check | result |
+|---|---|
+| generated year still shows its real balance | 21 |
+| un-generated year still reported as awaiting | `2025/206` |
+| that year's `DefaultAnnualEntitlement` of 16 | **not** reported as a balance |
+| generated year absent from awaiting | correct |
+| tile | **21** — counts only the real balance |
+
+Probe year, its policy and balance, and the throwaway accounts removed afterwards. **No ledger was
+regenerated**: `LeaveBalance` is still empty, exactly as found.
+
+#### Worth knowing
+
+**`DefaultAnnualEntitlement` is now dead configuration.** It is still on the policy, still editable on
+the Annual Leave Setting form, and is read by nothing. It should either be removed from the entity and
+the form, or given a real meaning — but leaving an editable field that silently does nothing is its own
+trap. Not done here because deleting a column is a migration and a form change that nobody asked for.
