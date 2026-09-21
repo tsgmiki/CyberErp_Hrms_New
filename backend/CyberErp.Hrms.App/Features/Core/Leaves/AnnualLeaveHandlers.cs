@@ -420,9 +420,16 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public interface IGetMyAnnualLeaveBalance { Task<MyAnnualLeaveBalancesDto> GetAsync(); }
 
     /// <summary>
-    /// The signed-in employee's leave balances for the dashboard cards, across every ACTIVE fiscal
-    /// year. Strictly self-scoped (the caller's own employee id from the visibility scope); never
-    /// returns another employee's figures.
+    /// The signed-in employee's leave balances for the dashboard cards, across every OPEN (not
+    /// closed) fiscal year. Strictly self-scoped (the caller's own employee id from the visibility
+    /// scope); never returns another employee's figures.
+    ///
+    /// <para>⚠️ The two kinds of leave span different sets of years, deliberately. ANNUAL balances are
+    /// reported for every open year, because the employee holds real ledger rows in each and can draw
+    /// on them. The OTHER leaves come from <see cref="IGetOtherLeaveBalances"/>, which is tied to the
+    /// single current year — and must stay that way, because <c>SubmitOtherLeave</c> rejects a request
+    /// whose setting is not on the active year. Widening only the dropdown would offer allocations the
+    /// submit path then refuses (logic §12.101).</para>
     ///
     /// <para>Robustness (the "dashboard shows zero" class of bugs):</para>
     /// <list type="bullet">
@@ -457,21 +464,32 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             if (scope.EmployeeId is not Guid employeeId)
                 return new MyAnnualLeaveBalancesDto { HasData = false };
 
-            // Every ACTIVE fiscal year, newest first (an employee can hold balances across
-            // overlapping active years during a year transition).
-            var activeYears = await fiscalYears.GetAll()
-                .Where(f => f.IsActive)
+            // Every OPEN fiscal year, newest first.
+            //
+            // ⚠️ NOT `IsActive`. That flag is a SINGLETON — SaveFiscalYear deactivates every other year
+            // whenever one is saved active ("only one active fiscal year at a time"), so filtering on
+            // it could only ever return ONE year, no matter how many were open. The comment here used
+            // to promise balances "across overlapping active years during a year transition", which is
+            // precisely the case the data model forbids: at a transition the outgoing year is still
+            // open and un-rolled while the new one is current, and the employee holds real balances in
+            // both — but only the current one was ever shown (logic §12.101).
+            //
+            // `IsClosed` is the flag that actually means what this needs: "closed years accept no
+            // further leave activity" (FiscalYear). An open year is one an employee can still draw on,
+            // which is exactly what these cards report.
+            var openYears = await fiscalYears.GetAll()
+                .Where(f => !f.IsClosed)
                 .OrderByDescending(f => f.StartDate)
                 .Select(f => new { f.Id, f.Name })
                 .ToListAsync();
-            if (activeYears.Count == 0)
+            if (openYears.Count == 0)
                 return new MyAnnualLeaveBalancesDto { HasData = true };
 
-            var yearIds = activeYears.Select(f => f.Id).ToList();
-            var yearNames = activeYears.ToDictionary(f => f.Id, f => f.Name);
-            var yearRank = activeYears.Select((f, i) => (f.Id, i)).ToDictionary(x => x.Id, x => x.i);
+            var yearIds = openYears.Select(f => f.Id).ToList();
+            var yearNames = openYears.ToDictionary(f => f.Id, f => f.Name);
+            var yearRank = openYears.Select((f, i) => (f.Id, i)).ToDictionary(x => x.Id, x => x.i);
 
-            // The employee's balances for all active years in ONE query. Deliberately NOT joined to
+            // The employee's balances for all open years in ONE query. Deliberately NOT joined to
             // LeaveType: the annual rows have no type (that is what makes them annual), so an inner
             // join would drop exactly the figure this widget exists to show.
             var rows = await balances.GetAll()
