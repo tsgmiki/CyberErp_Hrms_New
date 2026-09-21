@@ -304,9 +304,13 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 .FirstOrDefaultAsync()
                 ?? throw new NotFoundException(nameof(Employee), employeeId.ToString());
 
-            // Only the ACTIVE fiscal year's settings apply, filtered by the employee's gender.
+            // ⚠️ ACTIVE SETTING ON A YEAR THAT IS NOT CLOSED — the same rule annual leave uses
+            // (LeaveYearRule). This used to require FiscalYear.IsActive, which is a SINGLETON flag, so
+            // an entitlement on any other open year was unreachable: the live maternity and paternity
+            // policies sat on an open-but-not-current year and could not be requested at all, while
+            // the submit guard's own message already said "closed" (logic §12.102).
             var applicable = await settings.GetAll()
-                .Where(x => x.IsActive && x.FiscalYear != null && x.FiscalYear.IsActive)
+                .Where(x => x.IsActive && x.FiscalYear != null && !x.FiscalYear.IsClosed)
                 .Select(OtherLeaveMapper.SettingProjection)
                 .ToListAsync();
             applicable = applicable.Where(x =>
@@ -431,10 +435,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var leaveName = setting.LeaveType?.Name ?? "This leave";
             if (!setting.IsActive)
                 throw new ValidationException("otherLeaveSettingId", $"{leaveName} is inactive.");
-            // Rule: settings apply to the ACTIVE fiscal year only.
-            if (setting.FiscalYear is null || !setting.FiscalYear.IsActive)
+            // ⚠️ The check and its message now agree. It read FiscalYear.IsActive while telling the
+            // user the year was "closed" — two different things, and the singleton flag was the wrong
+            // one (logic §12.102).
+            if (setting.FiscalYear is null || setting.FiscalYear.IsClosed)
                 throw new ValidationException("otherLeaveSettingId",
-                    $"{leaveName} belongs to a closed fiscal year — only the active fiscal year's settings can be used.");
+                    $"{leaveName} belongs to the closed fiscal year {setting.FiscalYear?.Name}, which can no longer be charged.");
 
             var emp = await employees.GetAll().Where(e => e.Id == dto.EmployeeId)
                 .Select(e => new

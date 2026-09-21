@@ -172,6 +172,19 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             var setting = await leaveSettings.GetAll().FirstOrDefaultAsync(s =>
                 s.FiscalYearId == ledger.FiscalYearId && s.IsActive);
 
+            // ⚠️ ENFORCED HERE, NOT ONLY IN THE DROPDOWN. The form now lists selectable ledgers only,
+            // but the ledger id arrives in the request body — a stale tab, a bookmarked payload or a
+            // direct call could still name a closed year or one whose policy has been switched off.
+            // There was previously NO check at all: `setting` was allowed to come back null and was
+            // used only for the probation gate, so a request against a dead year sailed through
+            // (logic §12.102).
+            if (ledger.FiscalYear!.IsClosed)
+                throw new ValidationException("annualLeaveLedgerId",
+                    $"The fiscal year {ledger.FiscalYear.Name} is closed and can no longer be charged.");
+            if (setting is null)
+                throw new ValidationException("annualLeaveLedgerId",
+                    $"There is no active annual-leave policy for {ledger.FiscalYear.Name}, so leave cannot be requested against it.");
+
             // Validate + cost each detail row against the ledger's fiscal year.
             foreach (var d in dto.Details)
             {
@@ -464,21 +477,12 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             if (scope.EmployeeId is not Guid employeeId)
                 return new MyAnnualLeaveBalancesDto { HasData = false };
 
-            // Every OPEN fiscal year, newest first.
-            //
-            // ⚠️ NOT `IsActive`. That flag is a SINGLETON — SaveFiscalYear deactivates every other year
-            // whenever one is saved active ("only one active fiscal year at a time"), so filtering on
-            // it could only ever return ONE year, no matter how many were open. The comment here used
-            // to promise balances "across overlapping active years during a year transition", which is
-            // precisely the case the data model forbids: at a transition the outgoing year is still
-            // open and un-rolled while the new one is current, and the employee holds real balances in
-            // both — but only the current one was ever shown (logic §12.101).
-            //
-            // `IsClosed` is the flag that actually means what this needs: "closed years accept no
-            // further leave activity" (FiscalYear). An open year is one an employee can still draw on,
-            // which is exactly what these cards report.
+            // The usable fiscal years, newest first — active policy AND not closed
+            // (see LeaveYearRule; §12.101 got half of this right by dropping FiscalYear.IsActive, but
+            // then admitted years whose POLICY had been deactivated).
+            var usableIds = LeaveYearRule.UsableFiscalYearIds(settings);
             var openYears = await fiscalYears.GetAll()
-                .Where(f => !f.IsClosed)
+                .Where(f => usableIds.Contains(f.Id))
                 .OrderByDescending(f => f.StartDate)
                 .Select(f => new { f.Id, f.Name })
                 .ToListAsync();
