@@ -7786,3 +7786,57 @@ format is required either way.
 - **SRMS does not rehash on login.** It now accepts both formats, so nothing is broken; accounts that
   only ever use SRMS simply stay on the legacy format until they sign in to HRMS. `NeedsRehash` is
   exposed there if that is ever wanted.
+
+### 12.104 Signing in no longer rewrites your password hash
+
+§12.103 fixed SRMS so it could *read* the salted format. This addresses the thing actually being
+asked about: **signing in should not change your stored credential at all.**
+
+#### Why the upgrade-on-login was the wrong shape
+
+The mechanism was sound in isolation and wrong in context:
+
+- **`Core.User` has three readers** — HRMS, the Home portal and SRMS — each with its own copy of the
+  hashing code. Rewriting a hash into a format one of them does not understand does not degrade that
+  application, it **locks the account out of it entirely** (§12.103).
+- **A sign-in is not a request to change your credential.** The user presented a password to be
+  verified; rewriting the stored row as a side effect is doing something they did not ask for, to
+  shared data, on a schedule nobody controls.
+- **The security benefit was close to nil in this deployment anyway.** Every account currently holds
+  the same administratively-set password. Salting stops two identical passwords sharing a stored
+  hash; it does nothing when the password itself is uniform and known.
+
+#### The fix
+
+`Security:RehashLegacyPasswordsOnLogin`, **defaulting to false**.
+
+⚠️ **A switch, not a deletion.** The salted format and the upgrade path are both still there and
+still correct — what changed is that this process no longer rewrites shared data unilaterally. The
+flag is the deployment gate: turn it on once **every** application reading `Core.User` understands
+`v2:`, which after §12.103 means every SRMS copy that actually deploys.
+
+#### Verified both ways
+
+Reproduced first, on a throwaway account seeded with a legacy hash — not on a real employee, because
+logging in as one would have converted their hash and locked them out of SRMS, which is the very
+problem:
+
+| | |
+|---|---|
+| before the fix, one login | `legacy` → `v2:XSiW4tta…`, log line *"Upgraded password hash…"* |
+| after the fix, **four** logins across two accounts | hash **unchanged**, zero rehash log lines |
+| wrong password | still rejected, 401 |
+| with `Security__RehashLegacyPasswordsOnLogin=true` | converts again — the gate is real, not a one-way removal |
+
+#### ⚠️ Three accounts are already converted and are NOT healed by this
+
+`tatekg`, `fanua` and `sileshb` hold `v2:` hashes from before the flag existed. Turning the upgrade
+off stops any further accounts converting; it does not convert these back. Until an SRMS build
+carrying the §12.103 fix is deployed, those three cannot sign in to SRMS. Either deploy that build,
+or rewrite those three hashes to the legacy form the way the bulk reset did.
+
+#### What this does not solve
+
+The empty-salt weakness is still there, dormant: 508 accounts on a handful of shared hashes. The
+upgrade path is the right answer to it, and it can be switched on the moment the other applications
+can read the result. What made it a defect was sequencing, not the idea.

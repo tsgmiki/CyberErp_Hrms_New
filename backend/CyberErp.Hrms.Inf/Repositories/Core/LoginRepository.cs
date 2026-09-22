@@ -7,6 +7,7 @@ using CyberErp.Hrms.Dom.Entities.Core;
 using CyberErp.Hrms.Inf.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace CyberErp.Hrms.Inf.Repositories.Core;
@@ -21,8 +22,27 @@ public class LoginRepository(
     ITokenParser tokenParser,
     IHttpContextAccessor httpContextAccessor,
     ILogger<LoginRepository> logger,
+    IConfiguration configuration,
     IExceptionHandler exceptionHandler) : ILoginRepository
 {
+    /// <summary>
+    /// Whether a successful sign-in rewrites a legacy password hash in the salted format.
+    /// </summary>
+    /// <remarks>
+    /// <para>⚠️ DEFAULTS TO FALSE, AND THAT IS DELIBERATE. <c>Core.User</c> has THREE readers — HRMS,
+    /// the Home portal and SRMS — and each carries its own copy of the hashing code. Rewriting a hash
+    /// into a format one of them does not understand does not degrade that application, it locks the
+    /// account out of it completely: SRMS's verifier threw <c>FormatException</c> on a <c>v2:</c>
+    /// value and refused the sign-in for ever (logic §12.103).</para>
+    ///
+    /// <para>So the upgrade is opt-in per environment, and the switch is the deployment gate: turn it
+    /// on only once EVERY application reading this table understands the salted format. Until then a
+    /// password hash is shared infrastructure and this process does not get to rewrite it
+    /// unilaterally (logic §12.104).</para>
+    /// </remarks>
+    private readonly bool _rehashLegacyOnLogin =
+        configuration.GetValue("Security:RehashLegacyPasswordsOnLogin", false);
+
     private readonly IRepository<LoginTrail> _loginTrailRepository = loginTrailRepository;
     private readonly IRepository<User> _userRepository = userRepository;
     private readonly IRepository<TenantUser> _tenantUserRepository = tenantUserRepository;
@@ -185,6 +205,9 @@ public class LoginRepository(
     /// </summary>
     private async Task RehashIfLegacyAsync(User user, string password)
     {
+        // ⚠️ OFF UNLESS THE ENVIRONMENT OPTS IN — see _rehashLegacyOnLogin. Signing in is not a
+        // request to change your stored credential, and this table is read by three applications.
+        if (!_rehashLegacyOnLogin) return;
         if (!Encryption.NeedsRehash(user.PasswordHash)) return;
 
         try
