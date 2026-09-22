@@ -63,6 +63,23 @@ namespace CyberErp.Hrms.Inf.Common
             SELECT COUNT(*) FROM Hrms.Employee
               WHERE TenantId = @TenantId AND (@BranchScopeId IS NULL OR BranchId = @BranchScopeId)
                 AND EmploymentStatus = 'Active' AND DateOfBirth IS NOT NULL AND DateOfBirth < @RetirementThreshold;
+
+            -- Approved leave whose LAST day is already past. Joined to Employee so the branch scope
+            -- applies to the person, exactly as the row-level list does; the NOT EXISTS mirrors its
+            -- "no line ends today or later" test rather than a MAX() in a predicate.
+            SELECT
+              (SELECT COUNT(*) FROM Hrms.AnnualLeaveHeader h
+                 JOIN Hrms.Employee e ON e.Id = h.EmployeeId
+                WHERE h.TenantId = @TenantId AND (@BranchScopeId IS NULL OR e.BranchId = @BranchScopeId)
+                  AND h.Status = 'Approved'
+                  AND EXISTS (SELECT 1 FROM Hrms.AnnualLeaveDetail d WHERE d.AnnualLeaveHeaderId = h.Id)
+                  AND NOT EXISTS (SELECT 1 FROM Hrms.AnnualLeaveDetail d WHERE d.AnnualLeaveHeaderId = h.Id AND d.EndDate >= @Today))
+            + (SELECT COUNT(*) FROM Hrms.OtherLeave h
+                 JOIN Hrms.Employee e ON e.Id = h.EmployeeId
+                WHERE h.TenantId = @TenantId AND (@BranchScopeId IS NULL OR e.BranchId = @BranchScopeId)
+                  AND h.Status = 'Approved'
+                  AND EXISTS (SELECT 1 FROM Hrms.OtherLeaveDetail d WHERE d.OtherLeaveHeaderId = h.Id)
+                  AND NOT EXISTS (SELECT 1 FROM Hrms.OtherLeaveDetail d WHERE d.OtherLeaveHeaderId = h.Id AND d.EndDate >= @Today));
             """;
 
         public async Task<DashboardSummaryDto> GetAsync()
@@ -85,7 +102,7 @@ namespace CyberErp.Hrms.Inf.Common
 
             using var multi = await conn.QueryMultipleAsync(
                 Sql,
-                new { TenantId = tenantId, BranchScopeId = branchScopeId, RetirementThreshold = retirementThreshold },
+                new { TenantId = tenantId, BranchScopeId = branchScopeId, RetirementThreshold = retirementThreshold, Today = DateTime.Today },
                 commandType: CommandType.Text,
                 commandTimeout: 10);
 
@@ -101,6 +118,7 @@ namespace CyberErp.Hrms.Inf.Common
 
             dto.ProbationCount = await multi.ReadSingleAsync<int>();
             dto.RetirementCount = await multi.ReadSingleAsync<int>();
+            dto.OverdueLeaveReturnCount = await multi.ReadSingleAsync<int>();
 
             return dto;
         }

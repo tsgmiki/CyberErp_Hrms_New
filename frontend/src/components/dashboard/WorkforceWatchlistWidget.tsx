@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import getEmployeesOnProbation from "@/services/admin/employee/onProbation";
 import getUpcomingRetirements from "@/services/admin/employee/upcomingRetirements";
+import getOverdueLeaveReturns from "@/services/admin/dashboard/overdueLeaveReturns";
 import { UserCheck } from "lucide-react";
 import {
   DaysBadge,
@@ -22,7 +23,10 @@ import {
 const COLS = "grid-cols-[minmax(0,1fr)_88px_84px]";
 import { useDashboardSummary } from "./useDashboardSummary";
 
-type WatchTab = "probation" | "retirements";
+type WatchTab = "probation" | "retirements" | "notReturned";
+
+/** The Not Returned tab needs a wider first column for the leave name, and no "date + remaining" pair. */
+const RETURN_COLS = "grid-cols-[minmax(0,1fr)_96px_84px]";
 
 /**
  * Probation / Retirement watchlist. Tab BADGE counts come from the aggregated summary (always
@@ -48,10 +52,17 @@ function WorkforceWatchlistWidget() {
     staleTime: 60_000,
     enabled: activeTab === "retirements",
   });
+  const { data: notReturned, isLoading: lnr } = useQuery({
+    queryKey: ["overdueLeaveReturns"],
+    queryFn: getOverdueLeaveReturns,
+    staleTime: 60_000,
+    enabled: activeTab === "notReturned",
+  });
 
   const tabs: { key: WatchTab; label: string; count: number }[] = [
     { key: "probation", label: t("On Probation"), count: summary?.probationCount ?? 0 },
     { key: "retirements", label: t("Upcoming Retirements"), count: summary?.retirementCount ?? 0 },
+    { key: "notReturned", label: t("Not Returned"), count: summary?.overdueLeaveReturnCount ?? 0 },
   ];
 
   return (
@@ -143,6 +154,48 @@ function WorkforceWatchlistWidget() {
                 </span>
                 <span className="justify-self-end">
                   <DaysBadge days={e.daysRemaining} warnAt={14} />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activeTab === "notReturned" && (
+        <>
+          <div className={`${TABLE_HEAD} ${RETURN_COLS}`}>
+            <span className={TH}>{t("Employee", "Employee")}</span>
+            <span className={`${TH} text-right`}>{t("Due Back", "Due Back")}</span>
+            <span className={`${TH} text-right`}>{t("Overdue", "Overdue")}</span>
+          </div>
+          <div className={`divide-y ${HAIRLINE}`}>
+            {lnr && <EmptyRow text={`${t("Loading", "Loading")}…`} />}
+            {!lnr && (notReturned?.length ?? 0) === 0 && (
+              <EmptyRow text={t("Everyone is back from leave.", "Everyone is back from leave.")} />
+            )}
+            {notReturned?.map((e) => (
+              <Link
+                key={`${e.source}-${e.requestId}`}
+                // Annual rows are actionable — the return is confirmed on the Annual Leave screen.
+                // Other Leave has no return step, so that row goes to its own register instead.
+                to={e.source === "AnnualLeave" ? "/annualLeave" : "/otherLeave"}
+                className={`${TABLE_ROW} ${RETURN_COLS}`}
+              >
+                <div className="min-w-0">
+                  <p className={TD_STRONG}>{e.fullName}</p>
+                  <p className={TD}>
+                    {e.employeeNumber} · {e.leaveName}
+                    {/* Said on the row, because "overdue" invites an action that does not exist for
+                        Other Leave — there is nothing to confirm, only something to notice. */}
+                    {!e.hasReturnConfirmation && ` · ${t("no return step", "no return step")}`}
+                  </p>
+                </div>
+                <span className={`text-right ${TD}`}>
+                  {new Date(e.plannedEndDate).toLocaleDateString()}
+                </span>
+                <span className="justify-self-end">
+                  {/* DaysBadge renders negatives as "Nd overdue" — which is exactly this. */}
+                  <DaysBadge days={-e.daysOverdue} warnAt={0} />
                 </span>
               </Link>
             ))}

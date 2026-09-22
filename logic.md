@@ -7915,3 +7915,75 @@ counts.
 > `Cannot convert string value 'All' …`, surfacing as a 409 on an unrelated submit. Two enums with
 > three near-identical members and one differing name is a live hazard for anything writing these
 > tables directly.
+
+### 12.106 "Not Returned" — tracking who is still away
+
+A third tab on the HRMS dashboard's Workforce Watchlist: employees whose approved leave has ended
+without a recorded return, across **both** leave modules.
+
+#### ⚠️ The two modules define "returned" differently, so the feature has to as well
+
+| | annual leave | other leave |
+|---|---|---|
+| statuses | Pending / Approved / Rejected / Cancelled / **ReturnPending** / **Closed** | Pending / Approved / Rejected / Cancelled |
+| return step | yes — confirming moves it off `Approved` | **none** |
+| what the row means | *not yet back, or not yet confirmed* — actionable | *this leave has ended* — informational |
+| can the row be cleared? | yes | **no** |
+
+For annual leave "still `Approved` with the last day past" is exactly the unreturned set, and the row
+leaves the list the moment somebody confirms — `CloseOnTimeReturn` sets `Closed`,
+`BeginReturnAdjustment` sets `ReturnPending`. Pleasingly, a *rejected* adjustment puts it back to
+`Approved`, so the row correctly **reappears** until the return is genuinely settled.
+
+Other Leave has no return step at all, so the same query can only say the leave has ended.
+`HasReturnConfirmation` carries that distinction to the UI, and the row says **"no return step"**
+out loud — because labelling something "overdue" invites an action, and for those rows there is
+nothing to confirm, only something to notice.
+
+> ⚠️ Those rows therefore never clear. Adding a return step to Other Leave is the real fix if that
+> matters; it was not built here because it is a feature, not a display detail.
+
+#### Built as a tab, not a new panel
+
+The Workforce Watchlist already owns the tabbed shape, the badge counts sourced from the aggregated
+summary, and the lazy per-tab fetch (`enabled: activeTab === key`) so an unopened tab costs nothing.
+A third tab inherits all of it — and needed no space found for it in the dashboard grid.
+
+- `IGetOverdueLeaveReturns` — the row-level list, `Take(100)`, longest overdue first.
+- `DashboardSummaryDto.OverdueLeaveReturnCount` — the badge, in the existing single round trip.
+- `GET Dashboard/overdue-leave-returns`.
+
+⚠️ **The endpoint is gated; the summary beside it is not.** The summary returns counts, this returns
+NAMES — who is absent and for how long. It carries `[RequirePermission("annualLeave", "otherLeave")]`,
+matching `LeaveBalanceController`.
+
+⚠️ **Scoped by JOINING the employee repository**, not by walking the header's navigation property.
+`GetAll()` applies the tenant and branch filters to the table it is called on; a navigation from an
+unfiltered header would reach employees outside the caller's branch. The join makes the employee
+table — and its filters — part of the query. The KPI's raw SQL does the same thing with an explicit
+`JOIN Hrms.Employee`.
+
+#### Verified against live data
+
+Both shapes already existed, which made the test real rather than synthetic:
+
+| check | result |
+|---|---|
+| the overdue **annual** leave is listed | NVI/281, 2 days overdue |
+| the overdue **other** leave is listed | Sick Leave, 1 day overdue |
+| annual marked confirmable / other not | correct on both |
+| every row genuinely past its last day | 2, 1 |
+| the **Cancelled** request excluded | 2 rows from 3 requests |
+| longest overdue first | 2 ≥ 1 |
+| **the KPI badge matches the list** | 2 vs 2 |
+
+That last one matters more than it looks: the badge count is hand-written SQL in
+`DashboardSummaryService` while the list is an EF query in the App layer — two independent
+definitions of "overdue". They agree, which is the only way to know the tab won't show a badge of 5
+over a list of 3.
+
+The "confirming clears the row" property was verified **by reading** `CloseOnTimeReturn` /
+`BeginReturnAdjustment`, not by confirming a real employee's return — settling a live leave request
+moves the ledger, and that is not a test to run on somebody's record.
+
+Throwaway accounts removed; no leave data was altered.
