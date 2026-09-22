@@ -26,6 +26,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public bool IsLumpSum { get; set; }
         /// <summary>WorkingDays (skip holidays/weekends) or CalendarDays (count them).</summary>
         public string DayCounting { get; set; } = nameof(LeaveDayCounting.WorkingDays);
+        /// <summary>
+        /// Projected from the LEAVE TYPE, read-only here: half-day permission is configured on the
+        /// type, not per fiscal year. Carried so the request form knows whether to offer the control.
+        /// </summary>
+        public bool AllowHalfDay { get; set; }
         public bool IsActive { get; set; } = true;
         public string? Description { get; set; }
     }
@@ -69,6 +74,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
         public decimal LeaveDays { get; set; }
+        /// <summary>"Morning" / "Afternoon", or null for a full day.</summary>
+        public string? HalfDayPart { get; set; }
     }
 
     /// <summary>Attachment METADATA only — the bytes are fetched separately, on demand.</summary>
@@ -112,6 +119,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     {
         public DateTime StartDate { get; set; }
         public DateTime EndDate { get; set; }
+        /// <summary>Morning / Afternoon for a half day; null (the default) means a full day.</summary>
+        public HalfDayPart? HalfDayPart { get; set; }
     }
 
     public class SaveOtherLeaveDto
@@ -162,6 +171,11 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
         public bool IsLumpSum { get; set; }
         /// <summary>WorkingDays (holidays/weekends skipped) or CalendarDays (counted).</summary>
         public string DayCounting { get; set; } = nameof(LeaveDayCounting.WorkingDays);
+        /// <summary>
+        /// Whether this leave type permits half days, so the request form knows whether to offer the
+        /// control at all. Read from the LEAVE TYPE, which is where the toggle is configured.
+        /// </summary>
+        public bool AllowHalfDay { get; set; }
         public decimal Allocation { get; set; }
         public decimal Reserved { get; set; }
         public decimal Remaining { get; set; }
@@ -342,6 +356,9 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     Gender = x.Gender,
                     IsLumpSum = x.IsLumpSum,
                     DayCounting = x.DayCounting,
+                    // ⚠️ A lump-sum block cannot be halved, so the form must not offer it even when
+                    // the leave type allows half days in general.
+                    AllowHalfDay = x.AllowHalfDay && !x.IsLumpSum,
                     Allocation = allocation,
                     Reserved = taken,
                     Remaining = Math.Max(0, allocation - taken)
@@ -477,22 +494,37 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     throw new ValidationException("details",
                         $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} falls outside the fiscal year ({fyStart:yyyy-MM-dd}–{fyEnd:yyyy-MM-dd}).");
 
+                // ⚠️ HALF-DAY. The leave type's AllowHalfDay was previously read by the generic
+                // LeaveRequest path only, so setting it on a type used through THIS module changed
+                // nothing and the request form offered no way to pick a half day (logic §12.105).
+                var halfDay = d.HalfDayPart.HasValue;
+                if (halfDay && !setting.LeaveType!.AllowHalfDay)
+                    throw new ValidationException("details", $"{leaveName} does not allow half-day leave.");
+                if (halfDay && setting.IsLumpSum)
+                    throw new ValidationException("details",
+                        $"{leaveName} must be taken as one continuous block, so it cannot be taken as a half day.");
+
                 // Day-counting config: CalendarDays charges EVERY day (holidays/weekends count);
                 // WorkingDays skips them via the working calendar.
                 decimal leaveDays;
                 if (setting.DayCounting == LeaveDayCounting.CalendarDays)
                 {
-                    leaveDays = (decimal)(end - start).TotalDays + 1;
+                    // A calendar day still has halves; the working calendar is bypassed here precisely
+                    // because this mode charges rest days too, so the single-date rule is enforced
+                    // locally rather than borrowed from it.
+                    if (halfDay && start != end)
+                        throw new ValidationException("details", "Half-day leave must be a single day.");
+                    leaveDays = halfDay ? 0.5m : (decimal)(end - start).TotalDays + 1;
                 }
                 else
                 {
-                    try { leaveDays = await calendar.CountWorkingDaysAsync(start, end); }
+                    try { leaveDays = await calendar.CountWorkingDaysAsync(start, end, halfDay); }
                     catch (ArgumentException ex) { throw new ValidationException("details", ex.Message); }
                     if (leaveDays <= 0)
                         throw new ValidationException("details", $"Line {start:yyyy-MM-dd}→{end:yyyy-MM-dd} contains no working days (only rest days/holidays).");
                 }
 
-                header.AddDetail(start, end, leaveDays);
+                header.AddDetail(start, end, leaveDays, d.HalfDayPart);
             }
 
             // Overlap — within the request …
@@ -792,6 +824,7 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                 LeaveTypeId = x.LeaveTypeId,
                 Name = x.LeaveType != null ? x.LeaveType.Name : string.Empty,
                 Gender = x.Gender.ToString(),
+                AllowHalfDay = x.LeaveType != null && x.LeaveType.AllowHalfDay,
                 StandardDays = x.StandardDays,
                 ManagerialDays = x.ManagerialDays,
                 IsLumpSum = x.IsLumpSum,
@@ -821,7 +854,8 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
                     Id = d.Id,
                     StartDate = d.StartDate,
                     EndDate = d.EndDate,
-                    LeaveDays = d.LeaveDays
+                    LeaveDays = d.LeaveDays,
+                    HalfDayPart = d.HalfDayPart != null ? d.HalfDayPart.ToString() : null
                 }).ToList(),
                 // METADATA only — never the bytes. Projecting Content here would load every
                 // attachment of every row on the list query, which is the difference between a few

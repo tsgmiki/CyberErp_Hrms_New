@@ -68,6 +68,8 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
             builder.Property(x => x.LeaveDays).HasPrecision(6, 2);
             builder.Property(x => x.StartDate).HasColumnType("date");
             builder.Property(x => x.EndDate).HasColumnType("date");
+            // Stored as text, matching AnnualLeaveDetail.HalfDayPart — null means a full day.
+            builder.Property(x => x.HalfDayPart).HasConversion<string>().HasMaxLength(20);
 
             builder.HasIndex(x => x.OtherLeaveHeaderId);
             builder.HasIndex(x => new { x.OtherLeaveHeaderId, x.StartDate, x.EndDate });

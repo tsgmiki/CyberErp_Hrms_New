@@ -37,6 +37,8 @@ export interface OtherLeaveDetailModel {
   startDate?: string;
   endDate?: string;
   leaveDays?: number;
+  /** "Morning" | "Afternoon" for a half day; null/undefined means a full day. */
+  halfDayPart?: string | null;
 }
 
 /** Request header (hrmsOtherLeave). Status: Pending | Approved | Rejected | Cancelled. */
@@ -65,6 +67,11 @@ export interface OtherLeaveBalanceModel {
   isLumpSum: boolean;
   /** WorkingDays | CalendarDays — how request blocks are costed. */
   dayCounting: string;
+  /**
+   * Whether this entitlement may be taken as a half day. Comes from the LEAVE TYPE's Allow Half-day
+   * toggle, and is already false for lump-sum types since a mandated block cannot be halved.
+   */
+  allowHalfDay: boolean;
   allocation: number;
   reserved: number;
   remaining: number;

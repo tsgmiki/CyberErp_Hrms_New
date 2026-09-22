@@ -98,7 +98,9 @@ function OtherLeaveForm({
   // Preview honoring the setting's day-counting rule: CalendarDays charges every day in the
   // range (holidays/weekends included); WorkingDays skips them (the backend mirrors this).
   const countsCalendarDays = selectedBalance?.dayCounting === "CalendarDays";
-  const previewDays = (s?: string, e?: string) => {
+  const previewDays = (s?: string, e?: string, halfDayPart?: string | null) => {
+    // A half day is always a single date and always costs 0.5, whichever counting mode applies.
+    if (halfDayPart) return 0.5;
     if (!countsCalendarDays) return calc(s, e);
     const sd = parseDate(s ?? "");
     const ed = parseDate(e ?? "");
@@ -114,7 +116,9 @@ function OtherLeaveForm({
 
   // Lump-sum: whenever the start date changes, the server computes the block's end date.
   const onStartChange = async (key: number, value: string) => {
-    setDetails((p) => p.map((d) => (d._key === key ? { ...d, startDate: value } : d)));
+    setDetails((p) =>
+      p.map((d) => (d._key === key ? { ...d, startDate: value, endDate: d.halfDayPart ? value : d.endDate } : d)),
+    );
     if (selectedBalance?.isLumpSum && value && employeeId && meta.otherLeaveSettingId) {
       try {
         const end = await getLumpSumEnd(employeeId, meta.otherLeaveSettingId, value);
@@ -123,10 +127,21 @@ function OtherLeaveForm({
     }
   };
 
+  // ⚠️ A half day is ONE date — the server rejects a range — so picking a part collapses the line
+  // onto its start date rather than leaving an end date the submit would refuse.
+  const onHalfDayChange = (key: number, value: string) =>
+    setDetails((p) =>
+      p.map((d) =>
+        d._key === key
+          ? { ...d, halfDayPart: value || null, endDate: value ? d.startDate : d.endDate }
+          : d,
+      ),
+    );
+
   const addDetail = () => setDetails((p) => [...p, { _key: nextKey(), startDate: "", endDate: "" }]);
   const removeDetail = (key: number) => setDetails((p) => p.filter((d) => d._key !== key));
 
-  const totalPreview = details.reduce((sum, d) => sum + previewDays(d.startDate, d.endDate), 0);
+  const totalPreview = details.reduce((sum, d) => sum + previewDays(d.startDate, d.endDate, d.halfDayPart), 0);
 
   const submitHandler = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,7 +157,7 @@ function OtherLeaveForm({
       remark: meta.remark || undefined,
       details: details
         .filter((d) => d.startDate && d.endDate)
-        .map((d) => ({ startDate: d.startDate, endDate: d.endDate })),
+        .map((d) => ({ startDate: d.startDate, endDate: d.endDate, halfDayPart: d.halfDayPart || undefined })),
       attachments,
     });
     setFormState(res.ok
@@ -187,7 +202,8 @@ function OtherLeaveForm({
           <h4 className="mb-2 text-sm font-semibold">{t("Leave Lines")}</h4>
           {(record.details ?? []).map((d) => (
             <p key={d.id} className="border-b border-border/60 py-1.5 text-sm last:border-0">
-              {fmt(d.startDate)} → {fmt(d.endDate)} · <b className="tabular-nums">{d.leaveDays}</b> {t("day(s)")}
+              {fmt(d.startDate)} → {fmt(d.endDate)}
+              {d.halfDayPart ? ` · ${t(d.halfDayPart)}` : ""} · <b className="tabular-nums">{d.leaveDays}</b> {t("day(s)")}
             </p>
           ))}
         </div>
@@ -258,7 +274,14 @@ function OtherLeaveForm({
         </div>
         <div className="space-y-2">
           {(selectedBalance?.isLumpSum ? details.slice(0, 1) : details).map((d) => (
-            <div key={d._key} className="grid grid-cols-1 items-end gap-2 rounded-md border border-border/70 bg-secondary/20 p-2.5 md:grid-cols-[1fr_1fr_90px_auto]">
+            <div
+              key={d._key}
+              className={`grid grid-cols-1 items-end gap-2 rounded-md border border-border/70 bg-secondary/20 p-2.5 ${
+                selectedBalance?.allowHalfDay
+                  ? "md:grid-cols-[1fr_1fr_130px_90px_auto]"
+                  : "md:grid-cols-[1fr_1fr_90px_auto]"
+              }`}
+            >
               <div>
                 <label className={LABEL}>{t("From")} *</label>
                 <input type="date" className={INPUT} value={d.startDate ?? ""} onChange={(e) => onStartChange(d._key, e.target.value)} required />
@@ -268,13 +291,29 @@ function OtherLeaveForm({
                 <input
                   type="date" className={INPUT} value={d.endDate ?? ""}
                   onChange={(e) => setDetails((p) => p.map((x) => (x._key === d._key ? { ...x, endDate: e.target.value } : x)))}
-                  readOnly={!!selectedBalance?.isLumpSum}
+                  readOnly={!!selectedBalance?.isLumpSum || !!d.halfDayPart}
                   required
                 />
               </div>
+              {/* Only when the leave type permits it — and never for a lump-sum block, which the
+                  server already excludes from allowHalfDay. */}
+              {selectedBalance?.allowHalfDay && (
+                <div>
+                  <label className={LABEL}>{t("Day Part")}</label>
+                  <select
+                    className={INPUT}
+                    value={d.halfDayPart ?? ""}
+                    onChange={(e) => onHalfDayChange(d._key, e.target.value)}
+                  >
+                    <option value="">{t("Full day")}</option>
+                    <option value="Morning">{t("Morning")}</option>
+                    <option value="Afternoon">{t("Afternoon")}</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className={LABEL}>{t("Days")}</label>
-                <input className={INPUT} value={previewDays(d.startDate, d.endDate) || ""} readOnly disabled />
+                <input className={INPUT} value={previewDays(d.startDate, d.endDate, d.halfDayPart) || ""} readOnly disabled />
               </div>
               <div className="pb-1">
                 {!selectedBalance?.isLumpSum && details.length > 1 && (

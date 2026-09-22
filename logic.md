@@ -7840,3 +7840,78 @@ or rewrite those three hashes to the legacy form the way the bulk reset did.
 The empty-salt weakness is still there, dormant: 508 accounts on a handful of shared hashes. The
 upgrade path is the right answer to it, and it can be switched on the moment the other applications
 can read the result. What made it a defect was sequencing, not the idea.
+
+### 12.105 Other Leave never supported half days at all
+
+Reported: "Allow Half-day" is set on the leave type, but the Other Leave request form shows no
+half-day control in either application.
+
+#### It was not a missing control — it was a missing feature
+
+`LeaveType.AllowHalfDay` **is** honoured, but only by the generic `LeaveRequest` path
+(`LeaveRequestHandlers.cs:201`). The **Other Leave** module — the one with `OtherLeaveSetting`,
+lump-sum blocks and gender rules — had no half-day concept anywhere in it:
+
+| | |
+|---|---|
+| `OtherLeaveDetail` | `StartDate`, `EndDate`, `LeaveDays` — nothing else |
+| `SaveOtherLeaveDetailDto` | two dates |
+| submit handler | full days only |
+| request form (both apps) | no control |
+
+So the toggle on the leave type was real, was saved, was read by a different module, and did nothing
+for the module the user was actually in. Two leave subsystems, one shared `LeaveType` master, and only
+one of them implemented the flag.
+
+#### What was added
+
+- `OtherLeaveDetail.HalfDayPart` — nullable, plus a migration for the column.
+- The same field through `SaveOtherLeaveDetailDto`, the read DTO and the projection.
+- `OtherLeaveBalanceDto.AllowHalfDay`, so the form knows whether to offer the control at all.
+- The control itself in both the HRMS and Home request forms.
+
+⚠️ **ONE NULLABLE FIELD, NOT A USAGE ENUM PLUS A PART.** Annual leave carries `LeaveUsage` *and*
+`HalfDayPart`, which permits the contradictory state "HalfDay with no part" — its validator exists
+solely to reject that. Making the part itself the whole answer removes the state rather than guarding
+it: null is a full day, a value is that half.
+
+⚠️ **A half day is always a single date.** `IWorkingCalendar.CountWorkingDaysAsync` already enforced
+that and charges 0.5, so the WorkingDays path simply passes the flag through. The **CalendarDays**
+path bypasses the calendar by design (it charges rest days too), so the single-date rule is enforced
+locally there rather than silently skipped.
+
+⚠️ **A lump-sum block cannot be halved.** Maternity and paternity must cover exactly their allocation,
+and the submit already checks that. `AllowHalfDay` is therefore reported as false for any lump-sum
+entitlement regardless of the leave type's own toggle, and the submit refuses it with a reason that
+names the block rule rather than the toggle.
+
+#### Verified end to end
+
+Against a fixture leave type with Allow Half-day on, and a second lump-sum type with the toggle *also*
+on so the block rule was genuinely exercised rather than shadowed by the first check:
+
+| check | result |
+|---|---|
+| the balance carries `allowHalfDay` | true for the enabled type |
+| false for the lump-sum type | correct, despite its toggle being on |
+| a half-day request is accepted | 200 |
+| **it costs 0.5 days, not 1** | `totalLeaveDays: 0.5` |
+| the part is stored and read back | `halfDayPart: "Morning"` |
+| a half day spanning a range | refused, 400 |
+| a half day on a lump-sum type | refused — *"must be taken as one continuous block"* |
+
+Fixtures and throwaway accounts removed afterwards; the three real leave types and the one real
+request are untouched.
+
+#### Worth knowing
+
+**Sick Leave already has the toggle on**, so it picks the control up immediately. Maternity and
+Paternity have it off *and* are lump-sum, so nothing changes for them — which is correct on both
+counts.
+
+> A trap met while writing the fixture: `LeaveType.GenderEligibility` and
+> `OtherLeaveSetting.Gender` are **different enums** — `Any`/`Female`/`Male` versus
+> `All`/`Female`/`Male`. Writing `All` into the leave type made every read of that row throw
+> `Cannot convert string value 'All' …`, surfacing as a 409 on an unrelated submit. Two enums with
+> three near-identical members and one differing name is a live hazard for anything writing these
+> tables directly.
