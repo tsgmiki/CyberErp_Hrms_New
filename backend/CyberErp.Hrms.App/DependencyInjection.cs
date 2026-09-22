@@ -205,6 +205,8 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetEmployeePhoto, GetEmployeePhoto>();
             services.AddScoped<IGetEmployeesOnProbation, GetEmployeesOnProbation>();
             services.AddScoped<IGetUpcomingRetirements, GetUpcomingRetirements>();
+            // Employees whose approved leave has ended without a recorded return (logic §12.106).
+            services.AddScoped<Features.Core.Leaves.IGetOverdueLeaveReturns, Features.Core.Leaves.GetOverdueLeaveReturns>();
             services.AddScoped<ISaveEmployeeEducation, SaveEmployeeEducation>();
             services.AddScoped<IDeleteEmployeeEducation, DeleteEmployeeEducation>();
             services.AddScoped<IGetEmployeeEducations, GetEmployeeEducations>();

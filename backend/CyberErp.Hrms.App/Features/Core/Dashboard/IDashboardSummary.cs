@@ -19,6 +19,11 @@ namespace CyberErp.Hrms.App.Features.Core.Dashboard
 
         public int ProbationCount { get; set; }
         public int RetirementCount { get; set; }
+        /// <summary>
+        /// Employees whose approved leave has ended without a recorded return. Annual leave and
+        /// other leave together — see IGetOverdueLeaveReturns for the row-level list (logic §12.106).
+        /// </summary>
+        public int OverdueLeaveReturnCount { get; set; }
     }
 
     /// <summary>

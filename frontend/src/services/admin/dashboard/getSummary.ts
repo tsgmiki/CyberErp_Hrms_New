@@ -11,6 +11,8 @@ export interface DashboardSummaryModel {
   workflowRejected: number;
   probationCount: number;
   retirementCount: number;
+  /** Approved leave, annual and other, whose last day has passed with no recorded return. */
+  overdueLeaveReturnCount: number;
 }
 
 export default function getDashboardSummary(): Promise<DashboardSummaryModel> {
