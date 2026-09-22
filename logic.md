@@ -7703,3 +7703,86 @@ Throwaway accounts removed; no leave data was altered.
 Leave Ledger's setting picker return inactive ones too — that is how an administrator reactivates a
 policy or generates a ledger for a year that is being prepared. The rule governs who may *use* a
 year's leave, not who may *administer* it.
+
+### 12.103 The rehash locked users out of SRMS
+
+Reported as "the PasswordHash changes by itself on login". The change itself is the §12.90 upgrade
+working as designed — but it had a consequence nobody had traced: **it locks the account out of
+SRMS.**
+
+#### ⚠️ THREE APPLICATIONS SHARE ONE `Core.User` TABLE
+
+SRMS, HRMS and the Home portal all authenticate against the same `Core.User` rows in the same `CERP`
+database. Verified from SRMS's own configuration:
+
+```
+Server=CLOUDX-SICS2\SQLEXPRESS;Database=CERP;...
+```
+
+So a hash written by one application is read by the other two. §12.90 introduced the salted
+`v2:<salt>.<hash>` format in HRMS and had it rewrite each legacy hash on the owner's next successful
+sign-in — **without changing SRMS, which has its own copy of `Encryption`.** That copy understood
+only the legacy form, and its verifier opened with:
+
+```csharp
+storedHashBytes = Convert.FromBase64String(storedHash);   // ← on a "v2:…" value
+```
+
+A `v2:` string is not valid base64. Reproduced with .NET's own parser:
+
+> `FormatException: The input is not a valid Base-64 string as it contains a non-base 64 character…`
+
+The `catch (FormatException)` returned `false`, so the sign-in was refused — **every time, for ever**.
+One login to HRMS or Home was enough to lock the account out of SRMS, and the user could not even
+reach the screen where they were supposed to change their password.
+
+#### The fix
+
+SRMS's `Encryption` is now the same class as the HRMS one: it **verifies both** formats and
+**generates the salted one**.
+
+⚠️ Generating v2 matters as much as verifying it. SRMS is where users change their password. Had it
+kept writing unsalted hashes, every password change would have re-created the shared-hash weakness
+the upgrade exists to remove — and HRMS would then quietly upgrade it again on the next login.
+
+The class carries a header saying it must stay in step with the HRMS copy, and why: two independent
+implementations of one stored format is the shape of this bug, and the next divergence will do the
+same thing.
+
+#### Verified against the real assembly
+
+A throwaway console referencing `CyberErp.Srms.Inf` called the actual class with the actual hashes
+from the live system — not a re-implementation:
+
+| check | result |
+|---|---|
+| the legacy hash from the bulk reset still verifies | pass |
+| ⚠️ the v2 hash from tatekg's login **now verifies** | pass — this was the lockout |
+| wrong password rejected on both formats | pass |
+| `NeedsRehash` flags legacy, ignores v2 | pass |
+| SRMS now **writes** the salted format | pass |
+| each generated hash gets its own salt | pass |
+| malformed input returns false instead of throwing | pass |
+
+That the v2 hash verifies against `P@$$w0rd@123` also confirms the rehash preserves the password
+exactly — the stored representation changed, the credential did not.
+
+#### ⚠️ Deploy SRMS FIRST
+
+Until the rebuilt SRMS is deployed, **every HRMS or Home login locks one more account out of SRMS.**
+At the time of writing exactly one account is affected (`tatekg`, the first to sign in after the bulk
+reset flattened all 508 hashes back to the legacy form). The alternative ordering — disabling the
+rehash in HRMS — would leave the already-converted accounts locked out anyway, so teaching SRMS the
+format is required either way.
+
+#### Loose ends
+
+- **SRMS is not a git repository**, so there is no commit for this change. The original file is kept
+  beside it as `Encryption.cs.pre-v2-backup`.
+- **There are three SRMS copies** — `CYBER_ERP_SRMS`, `CYBER_ERP_SRMS1`, `CYBER_ERP_SRMS2` — and all
+  three carried the legacy-only verifier. Only the first was fixed: it is the one whose `appsettings`
+  points at the live `CERP` and the only one with build output newer than mid-August. If either of
+  the others is what actually deploys, it needs the same file.
+- **SRMS does not rehash on login.** It now accepts both formats, so nothing is broken; accounts that
+  only ever use SRMS simply stay on the legacy format until they sign in to HRMS. `NeedsRehash` is
+  exposed there if that is ever wanted.
