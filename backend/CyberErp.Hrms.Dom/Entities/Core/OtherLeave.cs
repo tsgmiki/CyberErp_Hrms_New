@@ -169,9 +169,9 @@ public class OtherLeaveHeader : BaseEntity, IAggregateRoot, IAuditable
     }
 
     /// <summary>Adds a detail row and re-totals the request.</summary>
-    public void AddDetail(DateTime startDate, DateTime endDate, decimal leaveDays)
+    public void AddDetail(DateTime startDate, DateTime endDate, decimal leaveDays, HalfDayPart? halfDayPart = null)
     {
-        _details.Add(OtherLeaveDetail.Create(Id, startDate, endDate, leaveDays));
+        _details.Add(OtherLeaveDetail.Create(Id, startDate, endDate, leaveDays, halfDayPart));
         TotalLeaveDays = _details.Sum(d => d.LeaveDays);
     }
 
@@ -204,29 +204,47 @@ public class OtherLeaveHeader : BaseEntity, IAggregateRoot, IAuditable
     }
 }
 
-/// <summary>DETAIL row of an <see cref="OtherLeaveHeader"/> — one full-day date range (hrmsOtherLeaveDetail).</summary>
+/// <summary>DETAIL row of an <see cref="OtherLeaveHeader"/> — one date range (hrmsOtherLeaveDetail).</summary>
 public class OtherLeaveDetail : BaseEntity
 {
     public Guid OtherLeaveHeaderId { get; private set; }
     public DateTime StartDate { get; private set; }
     public DateTime EndDate { get; private set; }
-    /// <summary>Chargeable working days for this row (weekends/holidays excluded).</summary>
+    /// <summary>Chargeable days for this row (weekends/holidays excluded under WorkingDays counting).</summary>
     public decimal LeaveDays { get; private set; }
+
+    /// <summary>Which half of the day, or <c>null</c> for a full day.</summary>
+    /// <remarks>
+    /// <para>⚠️ ONE NULLABLE FIELD, NOT A USAGE ENUM PLUS A PART. Annual leave carries
+    /// <c>LeaveUsage</c> AND <c>HalfDayPart</c>, which allows the contradictory combination
+    /// "HalfDay with no part" — its validator exists to reject exactly that. Making the part itself
+    /// the whole answer removes the state rather than guarding it: null is a full day, a value is
+    /// that half (logic §12.105).</para>
+    ///
+    /// <para>A half day is always a SINGLE date — <c>IWorkingCalendar.CountWorkingDaysAsync</c>
+    /// enforces it — so this never describes half of a range.</para>
+    /// </remarks>
+    public HalfDayPart? HalfDayPart { get; private set; }
 
     private OtherLeaveDetail() : base() { }
 
-    public static OtherLeaveDetail Create(Guid otherLeaveHeaderId, DateTime startDate, DateTime endDate, decimal leaveDays)
+    public static OtherLeaveDetail Create(
+        Guid otherLeaveHeaderId, DateTime startDate, DateTime endDate, decimal leaveDays,
+        HalfDayPart? halfDayPart = null)
     {
         if (endDate.Date < startDate.Date)
             throw new ArgumentException("End date cannot be before start date.", nameof(endDate));
         if (leaveDays <= 0)
             throw new ArgumentException("A detail row must span at least one working day.", nameof(leaveDays));
+        if (halfDayPart.HasValue && startDate.Date != endDate.Date)
+            throw new ArgumentException("A half day must be a single date.", nameof(halfDayPart));
         return new OtherLeaveDetail
         {
             OtherLeaveHeaderId = otherLeaveHeaderId,
             StartDate = startDate.Date,
             EndDate = endDate.Date,
-            LeaveDays = leaveDays
+            LeaveDays = leaveDays,
+            HalfDayPart = halfDayPart
         };
     }
 }
