@@ -6,6 +6,16 @@ export const appConfig = {
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL as string,
   appName: (import.meta.env.VITE_APP_NAME as string | undefined) ?? "Cyber HRMS",
   defaultLocale: (import.meta.env.VITE_DEFAULT_LOCALE as string | undefined) ?? "en",
+  /**
+   * Where the system manual PDF is served from.
+   *
+   * Default: `public/manuals/user-manual.pdf`, which Vite copies into `dist/` verbatim — so
+   * replacing the manual on a live site is dropping a file beside the deployed app, with no
+   * rebuild. Override with VITE_MANUAL_URL to rename it, or to point every subsystem at one
+   * shared absolute URL.
+   */
+  manualUrl:
+    (import.meta.env.VITE_MANUAL_URL as string | undefined)?.trim() || "/manuals/user-manual.pdf",
 } as const;
 
 /**

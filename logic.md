@@ -8133,3 +8133,83 @@ today — the on-time branch simply takes the other path.
 
 Backend builds with 0 errors; `tsc -b` clean on both SPAs.
 
+### 12.109 The Manual button, wired to a real PDF
+
+The 📖 icon in the header has been there all along as a bare link:
+
+```tsx
+<a href="/manual" ...>   // a route that was never registered
+```
+
+`/manual` matched nothing, so every click fell through the SPA's history fallback and rendered
+**Not Found**. It now serves a PDF, and each user chooses how it opens.
+
+#### Where the PDF lives
+
+`frontend/public/manuals/` → served at **`/manuals/user-manual.pdf`**, in both SPAs.
+
+`public/` is copied into `dist/` verbatim, so **a published site needs no rebuild** — the same file
+dropped into the deployed `dist/manuals/` is live on the next request. That is the entire reason it
+sits there rather than being imported into the bundle: a manual is revised on a different clock
+from the code, and by different people.
+
+The name and location are `appConfig.manualUrl`, from **`VITE_MANUAL_URL`** — rename the file, or
+point every subsystem at one shared absolute URL. Env config goes through `appConfig.ts`, which
+says so at the top: *"Import from here instead of `import.meta.env` scattered across the app."*
+
+#### The setting — in the button, not in Settings
+
+Clicking the icon opens a `HeaderDropdown` (the same primitive the language and theme switchers
+use, so outside-click, Escape and portal positioning come for free):
+
+```
+  📖  Open manual
+  ─────────────────
+  OPEN IT
+  ▣  In this page        ✓
+  ↗  In a new tab
+```
+
+Persisted per user in `localStorage` under `manual-open:<user id>`, mirroring
+`useFormLayoutPreference` and `useListColumnSelection` exactly — same try/catch, same valid-value
+guard, same per-user key so two people sharing a workstation keep their own choice. Default is
+**embedded**.
+
+⚠️ The preference deliberately lives **in this menu and not on the Settings page**. It is a property
+of this button, and nobody goes looking in Settings to find out how a header icon behaves. The
+Settings page is also tenant-level deployment config (SMTP, backup) — a per-user reading preference
+does not belong beside it.
+
+⚠️ The new tab opens with **`noopener,noreferrer`**. A tab opened without it keeps a `window.opener`
+handle that can navigate the app it came from; a PDF has no need of one.
+
+#### Embedded: the browser's viewer, not ours
+
+The `/manual` route renders an `<iframe>`, **not** the app's existing `documentViewer` component.
+
+That component loads its pdf.js worker from the **unpkg CDN** — and the manual is precisely the page
+somebody opens when the network or the deployment is already misbehaving. A help page that needs
+the public internet to render is a help page that fails exactly when it is needed. The native
+viewer costs nothing in bundle size, needs no CDN, and brings its own zoom, search, print and
+download toolbar. (`react-pdf` is a **1.4 MB** chunk; this route adds none of it.)
+
+The route sits **outside** `PermissionGate`: help is not a privilege, and a user who cannot open the
+manual cannot be told how to ask for the privileges they are missing.
+
+#### ⚠️ "Not published yet" needs a content-type check, not a status check
+
+The page probes the URL before rendering, so a missing manual says something useful instead of
+showing a blank grey viewer. The obvious probe is wrong:
+
+> A file missing under the SPA's own origin **does not 404**. It falls through the history fallback,
+> which answers **200 with index.html**.
+
+So `r.ok` alone reports every missing manual as present. The check is `r.ok && content-type contains
+"pdf"`. And a **cross-origin** URL is not probed at all — a cross-origin `HEAD` is blocked by CORS
+and would report a perfectly good file as missing.
+
+The empty state names the exact address it looked for, because *"the manual is unavailable"* sends
+somebody to open a ticket while a file path sends them to drop a file in a folder.
+
+Verified: `tsc -b` clean and `npm run build` green on both SPAs; `dist/manuals/` is produced by the
+build, and the route and header button code-split into their own chunks. ESLint clean.

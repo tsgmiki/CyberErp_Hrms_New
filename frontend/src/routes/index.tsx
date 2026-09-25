@@ -7,6 +7,7 @@ import { ENTITY_ROUTES, renderEntityRoutes } from "./entityRoutes";
 // either way and a lazy wrapper here would only add a pointless Suspense boundary.
 import NotFoundPage from "@/pages/home/notFound";
 const UnauthorizedPage = memo(lazy(() => import("@/pages/home/unauthorized")));
+const ManualPage = memo(lazy(() => import("@/pages/home/manual")));
 const LoginPage = memo(lazy(() => import("@/pages/auth/login/page")));
 const LoginOutPage = memo(lazy(() => import("@/pages/auth/logout/page")));
 const RegisterPage = memo(lazy(() => import("@/pages/auth/register/page")));
@@ -92,6 +93,10 @@ export default function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="unauthorized" element={<UnauthorizedPage />} />
+        {/* The system manual, embedded. Intentionally OUTSIDE the PermissionGate below: help is
+            not a privilege, and a user who cannot open the manual cannot be told how to ask for
+            the privileges they are missing. */}
+        <Route path="manual" element={<ManualPage />} />
         {/* Everything below is role-permission gated: a direct URL to an operation the
             user's role lacks CanView for redirects to /unauthorized (PermissionGate). */}
         <Route element={<PermissionGate />}>
