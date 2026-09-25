@@ -7987,3 +7987,149 @@ The "confirming clears the row" property was verified **by reading** `CloseOnTim
 moves the ledger, and that is not a test to run on somebody's record.
 
 Throwaway accounts removed; no leave data was altered.
+
+### 12.107 "Actual Return" was never a return date
+
+Reported: Delhawit Hirphaye (NVI/281) came back on **2026-09-23**, but Leave Request History shows
+**Actual Return 2026-09-21**. Two separate defects produced that, and only one of them is a display
+problem.
+
+#### What is actually stored
+
+`Hrms.AnnualLeaveReturn.ActualEndDate` is the **last day ON leave** — the day *before* the employee
+resumed work. That is not incidental; the whole day-count depends on it:
+
+| code | why it needs last-day-on-leave |
+|---|---|
+| `ActualDaysAsync` | `CountWorkingDaysAsync(d.StartDate, end)` counts `end` **inclusive**, as a day taken |
+| the late overrun | `CountWorkingDaysAsync(plannedEnd.AddDays(1), end)` — again `end` is a leave day |
+| the early guard | `actualEnd < plannedStart.AddDays(-1)` permits exactly "the day before it began" = zero days |
+
+So the stored meaning is right, internally consistent, and must not be changed. `PlannedEndDate` is
+the same shape — `Details.Max(d => d.EndDate)`, the last approved day.
+
+#### Defect 1 — the labels promised a return date
+
+`historyModal.tsx` rendered those two fields as **"Planned return"** and **"Actual return"**. Both
+values are last-days-on-leave, so both read **one day early**, on every request in the system, for
+every user. The HRMS dashboard's *Not Returned* tab had the identical fault: a **"Due Back"** header
+over `plannedEndDate`.
+
+Fixed by naming the stored value and deriving the return from it:
+
+- history → **"Last approved day"** / **"Last day on leave"**, each with `due back` / `back at work`
+  = *+1 day* underneath.
+- dashboard → the column is now **"Last Day"**. The row set and `DaysOverdue` are untouched, so the
+  tab badge (hand-written SQL in `DashboardSummaryService`) and the list (an EF query) keep the
+  agreement verified in §12.106. A row is therefore `1d` on the morning the employee is due back.
+- `nextDay()` is built from **UTC parts**, not `new Date(string)` — an ISO date with no zone parses
+  as LOCAL and one ending in `Z` parses as UTC, which shifts the answer by a day and would have
+  reintroduced the very bug being fixed.
+
+#### Defect 2 — the form confirmed an on-time return by default ⚠️
+
+This is the one that produced the wrong *data*, and it is the more serious of the two.
+
+```tsx
+// before
+const [actualEndDate, setActualEndDate] = useState(day(request.plannedEndDate));
+```
+
+The field pre-filled with the approved last day. Press **Confirm** without touching it and the
+system records *"came back exactly as approved"* — `ReturnType = OnTime`, `AdjustmentDays = 0`,
+header `Closed` — **without anybody having asserted it**. There is no `max`, no warning, and the
+preview panel dutifully shows a reassuring green "Returning as approved".
+
+Delhawit's row is exactly that shape: `PlannedEndDate` `2026-09-21`, `ActualEndDate` `2026-09-21`,
+`OnTime`, `ActualDays 1.00`, confirmed by `delhawitn` at `2026-09-22 21:23 UTC` — i.e. **00:23 local
+on the 23rd**, the morning she came back, with the default left alone.
+
+The submit path was audited end to end first and is clean: the input is bound to state, `submit()`
+sends that state, `ConfirmAsync` stores `dto.ActualEndDate.Date` verbatim. Nothing mangled the date
+— the default *was* the date.
+
+Fixed by removing the default entirely:
+
+- the field starts **blank**, so a return cannot be recorded without somebody choosing a day
+  (`canSubmit` already required `!!actualEndDate`, so this needed no new gate);
+- the common case keeps its shortcut as a **"Returned as approved"** button — one click, but a
+  deliberate one;
+- the hint now echoes the consequence back: once a date is entered it reads **"Back at work on
+  <date+1>"**, which is the off-by-one stated out loud at the moment of entry.
+
+Both SPAs carried byte-identical copies of both modals; both were patched. `tsc -b` clean on each.
+
+#### ⚠️ Her record is still wrong, and was left alone
+
+The display fix makes the label honest; it cannot fix the stored day. Under the correct semantics a
+return to work on 09-23 means a last day on leave of **09-22** — a **Late** return of 2.00 days,
+one extra day deducted from her entitlement, requiring a comment and the adjustment approval chain.
+
+The request is `Closed`, and **there is no reopen path**: `CanConfirmReturn` rejects `Closed`
+outright, and only cancellation reverses a balance. Correcting it means re-opening a settled request
+and moving a real employee's ledger, which is a decision to take deliberately, not a cleanup to
+perform while fixing a label.
+
+### 12.108 Making a return date impossible to confirm by accident
+
+Follow-up to §12.107, where the employee pressed **Confirm** without touching a field that had
+pre-filled itself with the approved end date. Removing the default was necessary but not sufficient:
+a blank field can still be filled in wrongly and confirmed just as fast. Four layers now stand
+between a careless click and a settled ledger.
+
+| # | layer | stops | costs |
+|---|---|---|---|
+| 1 | no pre-filled date (§12.107) | confirming without choosing a day | one click, via **"Returned as approved"** |
+| 2 | `max` on the input + server bound | a date that has not happened yet | nothing |
+| 3 | **required acknowledgement** restating the derived return date | confirming a date nobody read back | one tick |
+| 4 | *policy — not built, see below* | self-certification itself | an approval per return |
+
+#### Layer 2 — there was no upper bound at all
+
+`ConfirmAsync` guarded the lower end (`actualEnd < plannedStart.AddDays(-1)`) and nothing else. A
+confirmation could name a date years out and close the request on it.
+
+```csharp
+if (actualEnd > DateTime.UtcNow.Date.AddDays(1))
+    throw new ValidationException(nameof(dto.ActualEndDate), "The last day on leave cannot be in the future.");
+```
+
+⚠️ Bounded against **UTC + 1 day**, not the server's `Today`. The server may run UTC while the
+employee is at UTC+3 — at 00:30 in Addis the honest answer "yesterday" is still *tomorrow* in UTC,
+and a tighter bound would reject a correct entry. The browser's `max` uses the employee's own
+local date, which is the calendar they are answering from.
+
+#### Layer 3 — the guard that actually addresses the reported failure
+
+A date means nothing until it is read back as the thing it decides. The modal now refuses to submit
+until the employee ticks a box that restates the **derived** return date in words:
+
+> ☐ I confirm the last day on leave was **2026-09-21**, and that work resumed on **2026-09-22**.
+
+Somebody who walked back in on the 23rd has to actively affirm "work resumed on the 22nd" before
+the request will close. The tick is bound to one specific date — changing the date, or pressing the
+**"Returned as approved"** shortcut, clears it — so it can never carry an acknowledgement of a figure
+that has since changed.
+
+⚠️ **Deliberately an inline checkbox and NOT a `confirm()` dialog.** This modal renders through
+`<dialog>.showModal()`, which puts it in the browser's TOP LAYER and marks the rest of the page
+inert; a normal-layer confirm portal would be invisible *and* unclickable above it, and no z-index
+can beat a top-layer element (memory.md: modal top-layer trap). An inline control lives inside the
+dialog and has no such problem — and restating the figure in place is stronger than a dialog anyway.
+
+#### Layer 4 — the one real configuration decision, left to the client
+
+Layers 1–3 all rest on the same person being careful. The only structural fix is a **second party**:
+`AnnualLeaveSetting` is the natural home — it already carries `AllowHalfDay`, `MaxConsecutiveDays`
+and `CarryForwardMaxDays` per fiscal year — and would gain something like
+`RequireReturnConfirmationApproval`. When set, an **on-time** return stops auto-closing and goes to
+`ReturnPending` like an adjustment already does, so a supervisor signs off on every return rather
+than only on the ones that move days.
+
+That is a workflow change for every employee on the system, not a validation tweak, so it was not
+built unasked. The plumbing it needs already exists: `BeginReturnAdjustment`, the workflow
+definition lookup and the `RequiresApproval` flag on the result DTO are all in `ConfirmAsync`
+today — the on-time branch simply takes the other path.
+
+Backend builds with 0 errors; `tsc -b` clean on both SPAs.
+

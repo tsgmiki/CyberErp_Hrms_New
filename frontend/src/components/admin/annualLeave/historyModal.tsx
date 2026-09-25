@@ -20,6 +20,21 @@ const fmt = (v?: string | null) => (v ? String(v).replace("T", " ").slice(0, 16)
 const day = (v?: string | null) => (v ? String(v).slice(0, 10) : "—");
 
 /**
+ * The day AFTER a stored leave date — the day the employee was due back, or actually came back.
+ *
+ * <p>⚠️ The stored dates are LAST DAYS ON LEAVE, not return dates; the two are one day apart. This
+ * panel used to label them "Planned return"/"Actual return", which read a day early to everyone
+ * looking at it. Built on UTC parts rather than `new Date(string)`: an ISO date with no zone parses
+ * as LOCAL while one ending in Z parses as UTC, which shifts the answer by a day.</p>
+ */
+const nextDay = (v?: string | null) => {
+  if (!v) return "—";
+  const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+};
+
+/**
  * Icon + tone per entry kind. A rejection has to read differently from an approval at a glance —
  * an approver scanning the thread should not have to read every line to find where it turned.
  */
@@ -78,13 +93,22 @@ function AnnualLeaveHistoryModal({ annualLeaveId, onClose }: Props) {
                   {data.actualDays == null ? "—" : `${data.actualDays} ${t("day(s)")}`}
                 </p>
               </div>
+              {/* Both tiles show the LAST DAY ON LEAVE — which is what is stored — and name it as
+                  such, with the return date derived underneath. Labelling the stored value "return"
+                  made every request read a day early. */}
               <div>
-                <p className="uppercase text-muted">{t("Planned return")}</p>
+                <p className="uppercase text-muted">{t("Last approved day")}</p>
                 <p className="font-semibold tabular-nums text-foreground">{day(data.plannedEndDate)}</p>
+                <p className="text-[10px] text-muted">
+                  {t("due back")} {nextDay(data.plannedEndDate)}
+                </p>
               </div>
               <div>
-                <p className="uppercase text-muted">{t("Actual return")}</p>
+                <p className="uppercase text-muted">{t("Last day on leave")}</p>
                 <p className="font-semibold tabular-nums text-foreground">{day(data.actualEndDate)}</p>
+                <p className="text-[10px] text-muted">
+                  {t("back at work")} {nextDay(data.actualEndDate)}
+                </p>
               </div>
             </div>
             {adj !== 0 && (

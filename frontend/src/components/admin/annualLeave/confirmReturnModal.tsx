@@ -24,6 +24,26 @@ const LABEL = "block text-xs font-medium text-muted mb-1";
 const day = (v?: string | null) => (v ? String(v).slice(0, 10) : "");
 
 /**
+ * The day AFTER a given date — i.e. the day the employee is back at work.
+ *
+ * <p>Built on UTC parts rather than `new Date(string)`: an ISO date with no zone is parsed as LOCAL
+ * time while one ending in Z is parsed as UTC, so the naive version shifts the answer by a day
+ * depending on which shape the server happened to send.</p>
+ */
+const nextDay = (v?: string | null) => {
+  if (!v) return "";
+  const [y, m, d] = String(v).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+};
+
+/** Today in the BROWSER's own zone — the employee's calendar, which is the one they answer from. */
+const today = () => {
+  const n = new Date();
+  return new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+/**
  * "I'm back" — the employee confirms their return date.
  *
  * <p>The consequence is computed SERVER-SIDE as the date changes ({@link previewAnnualLeaveReturn}),
@@ -38,9 +58,17 @@ function ConfirmReturnModal({ request, onClose }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  // Default to the approved last day — the common case is "I came back as planned".
-  const [actualEndDate, setActualEndDate] = useState(day(request.plannedEndDate));
+  // ⚠️ DELIBERATELY BLANK — do not restore the default.
+  //
+  // This used to pre-fill with the approved last day, so a form nobody touched confirmed an ON-TIME
+  // return: press Confirm and the system records "came back exactly as approved" without anyone
+  // having asserted it. That is how a late return came to be stored as on time. The common case
+  // keeps its shortcut below, but as a button somebody presses rather than a silent default.
+  const [actualEndDate, setActualEndDate] = useState("");
   const [comment, setComment] = useState("");
+  // Ticked against ONE specific date. Changing the date clears it, so the box can never carry an
+  // acknowledgement of a figure the employee has since changed.
+  const [acknowledged, setAcknowledged] = useState(false);
   const [preview, setPreview] = useState<AnnualLeaveReturnPreviewModel | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,7 +88,8 @@ function ConfirmReturnModal({ request, onClose }: Props) {
   const adj = preview?.adjustmentDays ?? 0;
   const needsComment = preview?.commentRequired === true;
   const canSubmit =
-    !!actualEndDate && !!preview && !isSaving && (!needsComment || comment.trim().length > 0);
+    !!actualEndDate && !!preview && !isSaving && acknowledged
+    && (!needsComment || comment.trim().length > 0);
 
   const submit = async () => {
     if (!request.id || !canSubmit) return;
@@ -108,11 +137,30 @@ function ConfirmReturnModal({ request, onClose }: Props) {
             type="date"
             className={INPUT}
             value={actualEndDate}
-            onChange={(e) => setActualEndDate(e.target.value)}
+            // You cannot have been on leave on a day that has not happened yet. The server enforces
+            // this too — the input bound is the courtesy, the server check is the rule.
+            max={today()}
+            onChange={(e) => { setActualEndDate(e.target.value); setAcknowledged(false); }}
           />
-          <p className="mt-1 text-[11px] text-muted">
-            {t("The day before you resumed work.")}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+            {/* Echoing the RETURN date back is the whole point: this field is the last day ON leave,
+                one day earlier than the day the employee walked back in, and that off-by-one is the
+                single most-confused thing on the form. Saying both removes the guess. */}
+            <p className="text-[11px] text-muted">
+              {actualEndDate
+                ? `${t("Back at work on")} ${nextDay(actualEndDate)}`
+                : t("The day before you resumed work.")}
+            </p>
+            {request.plannedEndDate && actualEndDate !== day(request.plannedEndDate) ? (
+              <button
+                type="button"
+                className="shrink-0 text-[11px] font-medium text-primary hover:underline"
+                onClick={() => { setActualEndDate(day(request.plannedEndDate)); setAcknowledged(false); }}
+              >
+                {t("Returned as approved")}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {previewError && <p className="text-xs text-error">{previewError}</p>}
@@ -159,6 +207,31 @@ function ConfirmReturnModal({ request, onClose }: Props) {
               {t("This is what the approver reads when deciding, so be specific.")}
             </p>
           </div>
+        )}
+
+        {/* ⚠️ THE GUARD THAT MATTERS. The date field alone can be filled in and still be wrong,
+            because a date means nothing until it is read back as the thing it decides. This restates
+            the DERIVED return date in words and refuses to submit until somebody agrees with it —
+            so "back at work on the 22nd" has to be actively affirmed by a person who came back on
+            the 23rd. Deliberately an inline checkbox and NOT a confirm() dialog: this modal renders
+            through <dialog>.showModal(), which puts it in the browser's TOP LAYER and marks the rest
+            of the page inert, so a normal-layer confirm portal would be invisible AND unclickable
+            above it (memory.md: modal top-layer trap). */}
+        {actualEndDate && preview && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-secondary/20 px-3 py-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--primary)]"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />
+            <span className="text-[11px] leading-relaxed text-foreground">
+              {t("I confirm the last day on leave was")}{" "}
+              <span className="font-semibold tabular-nums">{actualEndDate}</span>,{" "}
+              {t("and that work resumed on")}{" "}
+              <span className="font-semibold tabular-nums">{nextDay(actualEndDate)}</span>.
+            </span>
+          </label>
         )}
 
         <div className="flex items-center justify-end gap-2 pt-1">
