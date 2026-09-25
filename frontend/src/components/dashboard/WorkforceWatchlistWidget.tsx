@@ -165,7 +165,10 @@ function WorkforceWatchlistWidget() {
         <>
           <div className={`${TABLE_HEAD} ${RETURN_COLS}`}>
             <span className={TH}>{t("Employee", "Employee")}</span>
-            <span className={`${TH} text-right`}>{t("Due Back", "Due Back")}</span>
+            {/* "Last Day", not "Due Back": the value is plannedEndDate — the last APPROVED DAY
+                OF LEAVE, which is one day before the employee is due back. Labelling it "Due Back"
+                showed every row a day early, the same off-by-one the history panel had. */}
+            <span className={`${TH} text-right`}>{t("Last Day", "Last Day")}</span>
             <span className={`${TH} text-right`}>{t("Overdue", "Overdue")}</span>
           </div>
           <div className={`divide-y ${HAIRLINE}`}>
@@ -194,7 +197,8 @@ function WorkforceWatchlistWidget() {
                   {new Date(e.plannedEndDate).toLocaleDateString()}
                 </span>
                 <span className="justify-self-end">
-                  {/* DaysBadge renders negatives as "Nd overdue" — which is exactly this. */}
+                  {/* Days since the leave ENDED, so a row is 1d the morning after the last leave day
+                      — the day they are due back. DaysBadge renders negatives as "Nd overdue". */}
                   <DaysBadge days={-e.daysOverdue} warnAt={0} />
                 </span>
               </Link>

@@ -13,7 +13,14 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
     public class ConfirmAnnualLeaveReturnDto
     {
         public Guid AnnualLeaveHeaderId { get; set; }
-        /// <summary>Last day actually on leave — the day BEFORE the employee resumed work.</summary>
+        /// <summary>
+        /// Last day actually on leave — the day BEFORE the employee resumed work.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ NOT the return date, and one day earlier than it. The UI must never pre-fill this from
+        /// the approved end date: a form nobody edited then confirms an ON-TIME return that nobody
+        /// asserted, which is exactly how a late return came to be stored as on time (logic §12.107).
+        /// </remarks>
         public DateTime ActualEndDate { get; set; }
         /// <summary>Required when the return differs from what was approved.</summary>
         public string? Comment { get; set; }
@@ -210,6 +217,15 @@ namespace CyberErp.Hrms.App.Features.Core.Leaves
             if (actualEnd < plannedStart.AddDays(-1))
                 throw new ValidationException(nameof(dto.ActualEndDate),
                     $"The return date cannot be before the leave started ({plannedStart:yyyy-MM-dd}).");
+
+            // ⚠️ AND THERE WAS NO UPPER BOUND AT ALL. You cannot have been on leave on a day that has
+            // not happened yet, but nothing said so: a confirmation could name a date years out and
+            // close the request on it. Bounded against UTC + 1 DAY rather than the server's today,
+            // because the server may run UTC while the employee is at UTC+3 — at 00:30 in Addis the
+            // honest answer "yesterday" is still tomorrow in UTC, and a tighter bound would reject it.
+            if (actualEnd > DateTime.UtcNow.Date.AddDays(1))
+                throw new ValidationException(nameof(dto.ActualEndDate),
+                    "The last day on leave cannot be in the future.");
 
             var actualDays = await AnnualLeaveReturnShared.ActualDaysAsync(calendar, details, actualEnd);
             var adjustment = actualDays - header.TotalLeaveDays;
