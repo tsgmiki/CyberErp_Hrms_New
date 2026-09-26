@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
@@ -122,16 +123,46 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     public class SaveCalibrationItem(
         IRepository<CalibrationItem> itemRepository,
         IRepository<CalibrationSession> sessionRepository,
+        IRepository<ReviewCycle> reviewCycleRepository,
+        IRepository<RatingScaleLevel> ratingLevelRepository,
         ILogger<SaveCalibrationItem> logger) : ISaveCalibrationItem
     {
         public async Task SaveAsync(SaveCalibrationItemDto dto)
         {
             var item = await itemRepository.GetAll().FirstOrDefaultAsync(i => i.Id == dto.ItemId)
                 ?? throw new NotFoundException(nameof(CalibrationItem), dto.ItemId.ToString());
-            var status = await sessionRepository.GetAll().Where(s => s.Id == item.CalibrationSessionId)
-                .Select(s => s.Status).FirstOrDefaultAsync();
-            if (status != CalibrationStatus.Draft)
+            var session = await sessionRepository.GetAll().AsNoTracking()
+                .Where(s => s.Id == item.CalibrationSessionId)
+                .Select(s => new { s.Status, s.ReviewCycleId })
+                .FirstOrDefaultAsync();
+            if (session is null || session.Status != CalibrationStatus.Draft)
                 throw new ValidationException(nameof(dto.ItemId), "A finalized calibration session can no longer be modified.");
+
+            // ⚠️ Calibration is the ONLY path that can overwrite a finished appraisal's score, and
+            // until now it was also the only write path with no bound on that score at all. Score
+            // ENTRY is guarded (logic §12.111); without the same guard here, correcting an
+            // out-of-scale score could simply set another one — and this override reaches appraisals
+            // that are already Completed, where nothing downstream would question it.
+            if (dto.CalibratedScore is decimal candidate)
+            {
+                var scaleId = await reviewCycleRepository.GetAll().AsNoTracking()
+                    .Where(c => c.Id == session.ReviewCycleId)
+                    .Select(c => c.RatingScaleId).FirstOrDefaultAsync();
+                var levels = scaleId == Guid.Empty
+                    ? []
+                    : await ratingLevelRepository.GetAll().AsNoTracking()
+                        .Where(l => l.RatingScaleId == scaleId)
+                        .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                        .ToListAsync();
+
+                if (levels.Count > 0 && !AppraisalScore.IsInRange(candidate, levels))
+                {
+                    var (low, high, _) = AppraisalScore.RangeOf(levels);
+                    throw new ValidationException(nameof(dto.CalibratedScore),
+                        $"A calibrated score of {candidate:0.##} is outside this review cycle's rating scale "
+                        + $"({low:0.##}-{high:0.##}).");
+                }
+            }
 
             item.Calibrate(dto.CalibratedScore, dto.Justification);
             await itemRepository.SaveChangesAsync();
@@ -161,9 +192,19 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
                 var appraisal = await appraisalRepository.GetAll().FirstOrDefaultAsync(a => a.Id == item.AppraisalId);
                 if (appraisal is null) continue;
                 var levelId = await ResolveRatingLevelAsync(appraisal.ReviewCycleId, item.CalibratedScore!.Value);
+
+                // Capture what it WAS. An audit line reading "calibrated to 4.55" cannot be checked
+                // by anybody later; "from 91 to 4.55" is the correction itself, on the record. This
+                // matters most for the case calibration exists to handle — overriding an appraisal
+                // that is already Completed and can no longer be re-scored the ordinary way.
+                var previous = appraisal.OverallScore;
+                var stageAtOverride = appraisal.Stage;
+
                 appraisal.ApplyCalibration(item.CalibratedScore.Value, levelId);
                 await history.WriteAsync("Appraisal", appraisal.Id, "Calibrated",
-                    $"Score calibrated to {item.CalibratedScore.Value} ({item.Justification ?? "no justification"}).");
+                    $"Score calibrated from {(previous.HasValue ? previous.Value.ToString("0.##") : "none")} "
+                    + $"to {item.CalibratedScore.Value:0.##} while at stage {stageAtOverride} "
+                    + $"({item.Justification ?? "no justification"}).");
                 applied++;
             }
 

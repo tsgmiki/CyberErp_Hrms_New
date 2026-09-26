@@ -33,4 +33,10 @@ var app = builder.Build();
 app.UseHrmsSwagger(app.Environment);
 app.UseHrmsMiddlewarePipeline();
 
+// Development-only, and only when DevAdmin:Enabled is set with a password — see DevAdminSeeder.
+await app.Services.SeedDevAdminAsync(
+    app.Configuration,
+    app.Environment,
+    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("DevAdminSeeder"));
+
 app.Run();

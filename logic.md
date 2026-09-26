@@ -8429,3 +8429,113 @@ clean; frontend builds and lints.
 so rather than inventing a figure. Correcting it is an HR act, not a migration: the appraisal is
 `Completed`, so stage locking blocks re-scoring, and calibration (`ApplyCalibration`) is the path
 that can set an overall score on a finished appraisal.
+
+### 12.112 Registration was broken three ways, and the calibration correction
+
+Two outstanding items closed, both verified end to end against a running API.
+
+#### `POST /Auth/register` — three independent faults
+
+**1. `Tenant.OrganizationId` was never set (500).** When CompanyProfile was consolidated into
+`Organization` (2026-08-15) `Tenant` gained a REQUIRED foreign key, but `Tenant.Create` does not
+take one and the register path never called `SetOrganization`. Every self-registration died inside
+`SaveChanges`:
+
+> The value of 'Tenant.OrganizationId' is unknown when attempting to save changes.
+
+Registration now creates the owning organization first. That is the right shape, not a workaround:
+an organization sits ABOVE the tenant and carries no `TenantId` of its own, so there is no
+chicken-and-egg, and a self-registration genuinely is a new legal entity signing up.
+
+**2. No tenant membership (login 401).** Even with the tenant saved, the new account could not sign
+in — *"This account is not assigned to any organization."* `Core.User` lost its `TenantId` on
+2026-08-13 and `LoginRepository` resolves the session's tenant from a `Core.TenantUser` row instead;
+registration was still only setting `user.TenantId`, a column the login path no longer consults. It
+now writes the membership (active, default).
+
+**3. The Google path never saved its user.** `RegisterWithGoogleAsync` called `AddAsync(user)` with
+no `SaveChangesAsync` — it created a tenant, handed back a token, and never persisted the account
+it reported creating. The password path beside it always saved; this one simply never did.
+
+Verified: register → **200 + token**, login → **200**, and a freshly-registered owner reaches gated
+endpoints (403 on permissions is correct — a brand-new tenant has no roles seeded, which is a
+separate question from being able to sign in).
+
+#### A dev credential for `headoffice`
+
+`DevAdminSeeder` creates ONE named account in an existing tenant. Three things must all hold: a
+Development host, `DevAdmin:Enabled`, and a non-empty `DevAdmin:Password`. There is no default
+account name and no default password.
+
+⚠️ **CREATE-ONLY, by design.** If the account exists it is left completely alone — never a password
+rewrite, never a re-enabled membership, never another account touched. A startup path that could
+reset an existing user's credentials is a way into any account on the system, and no configuration
+flag makes that acceptable. To rotate, delete the account and let it seed again.
+
+⚠️ It grants an existing role; it does not invent permissions. `Administrator` in the live tenant
+holds **zero** permission rows — `HR Admin` is the one with 149, including `/hrms/organizationUnit`
+and `/hrms/calibration`.
+
+#### The org-tree move, finally verified authenticated
+
+**19/19 against `headoffice`**: reorder to front, reorder after a sibling, reparent in, reparent
+back out, and all three guards refusing with the right message — own-subtree ("A unit cannot be
+moved inside one of its own sub-units"), self-drop, and stale anchor ("The hierarchy changed while
+you were dragging"). Ran against its own throwaway subtree; a before/after dump of all 121 real
+units is byte-identical.
+
+⚠️ The harness failed first with every post-login call returning 401. Cause: `set-cookie` headers
+merged into one string and split on commas — which breaks on the comma inside an `Expires=` date.
+`headers.getSetCookie()` keeps them separate.
+
+#### Getaneh's score, corrected through calibration
+
+My earlier claim that stage locking blocked this **was wrong**: `ApplyCalibration` has no stage
+guard at all. Calibration is precisely the designed override for a finished appraisal, and
+`CreateCalibrationSession` pulls the whole cycle's cohort regardless of stage. Nothing needed
+unblocking.
+
+What it *did* need was the guard from §12.111. Calibration is the only path that can overwrite a
+finished appraisal's score, and it was also the only write path with **no bound on that score at
+all** — so the fix for an out-of-scale score could have set another one, on a Completed record where
+nothing downstream would question it. `SaveCalibrationItem` now validates against the cycle's scale.
+
+The audit line now records what the score WAS. "Calibrated to 4.55" cannot be checked by anybody
+later; "from 91 to 4.55 while at stage Completed" is the correction itself, on the record.
+
+Performed through the API — session → item → finalize, no direct DB write:
+
+```
+[Created]    Calibration session created with 1 appraisal(s).            by devadmin
+[Calibrated] Score calibrated from 91 to 4.55 while at stage Completed
+             (Original score 91 was entered as a percentage of goal attainment, but this cycle
+              runs the 5 Point Competency Scale (1-5). Converted proportionally: 91% of 5 = 4.55.
+              HR to confirm the intended rating with the reviewing manager.)
+[Finalized]  Finalized; 1 appraisal(s) adjusted.                          by devadmin
+```
+
+Result: `OverallScore 4.55`, `IsCalibrated 1`, level resolved to **Role Model**, and the transfer
+tab now reads **91%** with no warning flag.
+
+That 91% is worth pausing on. It is the number the manager typed in the first place — they always
+meant 91%. The system now reaches it *correctly*, from a valid 4.55 on a 1–5 scale, instead of
+accidentally arriving at 1820%. The conversion is an inference about intent and says so in its own
+justification; HR should confirm the intended rating with the reviewing manager.
+
+187/187 tests green; frontend typechecks. Throwaway tenants, users and organizations removed —
+1 tenant, 1 organization, 121 org units, exactly as before.
+
+> ⚠️ **The dev password is not in the repository.** `appsettings.Development.json` ships the
+> `DevAdmin` block with `Enabled: false` and an empty password, because that file is committed and
+> `headoffice` holds real data — a working credential in git history is one you cannot take back.
+> Supply it through user-secrets instead:
+>
+> ```
+> dotnet user-secrets set "DevAdmin:Password" "<password>" --project CyberErp.Hrms.Api
+> dotnet user-secrets set "DevAdmin:Enabled"  "true"       --project CyberErp.Hrms.Api
+> ```
+>
+> The `devadmin` account created during this work already exists in the database, and the seeder is
+> create-only, so turning it off changes nothing about signing in — it only stops the seeder running
+> again unasked. **That account still carries HR Admin's 149 permissions in the production-data
+> tenant**: delete it, or rotate it, before this reaches anywhere but a developer's machine.
