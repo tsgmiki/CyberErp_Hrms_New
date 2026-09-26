@@ -120,6 +120,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         IRepository<User> users,
         IDelegationEligibilityService eligibility,
         IDelegationScopeService scope,
+        IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         IValidator<SaveApprovalDelegationDto> validator,
         ILogger<SaveApprovalDelegation> logger) : ISaveApprovalDelegation
@@ -181,6 +182,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             var limit = dto.ApprovalLimit ?? policy.DefaultApprovalLimit;
 
             ApprovalDelegation entity;
+            var isAmendment = dto.Id is Guid existing && existing != Guid.Empty;
             if (dto.Id is Guid id && id != Guid.Empty)
             {
                 entity = await repository.GetAll().Include(d => d.Scopes).FirstOrDefaultAsync(d => d.Id == id)
@@ -215,6 +217,8 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             logger.LogInformation(
                 "Delegation {Id}: {From} -> {To} {Start:yyyy-MM-dd}..{End:yyyy-MM-dd} limit {Limit}",
                 entity.Id, dto.FromEmployeeId, dto.ToEmployeeId, dto.StartDate, dto.EndDate, limit);
+
+            await NotifyDelegateAsync(entity, isAmendment);
             return entity.Id;
         }
 
@@ -225,6 +229,83 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             return await users.GetAll().AsNoTracking()
                 .Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
         }
+
+        /// <summary>
+        /// Tell the delegate, in the portal, that they are now standing in for somebody.
+        /// </summary>
+        /// <remarks>
+        /// <para>⚠️ A delegation used to take effect in complete silence. Approvals simply began
+        /// appearing in somebody's queue on another person's authority, and the one person best
+        /// placed to notice that a delegation is wider than intended — the delegate — was the only
+        /// one never told it existed.</para>
+        ///
+        /// <para>An AMENDMENT notifies too. Quietly widening somebody's authority, or moving its
+        /// dates, is the same problem as granting it silently; the wording distinguishes the two so
+        /// the alert does not claim to be news when it is a change.</para>
+        ///
+        /// <para>Severity tracks whether it is live: a delegation that starts TODAY may already
+        /// have requests waiting, which is an Action; one scheduled for next month is Info. Both are
+        /// worth saying, but only one of them is worth interrupting somebody for.</para>
+        ///
+        /// <para>Best-effort, like every other portal alert in this codebase — a notification
+        /// failure must never undo a delegation that is already saved and legally in force.</para>
+        /// </remarks>
+        private async Task NotifyDelegateAsync(ApprovalDelegation delegation, bool isAmendment)
+        {
+            try
+            {
+                var recipients = await users.GetAll().AsNoTracking()
+                    .Where(u => u.EmployeeId == delegation.ToEmployeeId)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                if (recipients.Count == 0)
+                {
+                    // An employee with no login cannot be told, and cannot act either. Worth a line
+                    // in the log: the delegation is valid but nothing will reach them.
+                    logger.LogInformation(
+                        "Delegation {Id}: delegate {EmployeeId} has no user account — no portal alert raised.",
+                        delegation.Id, delegation.ToEmployeeId);
+                    return;
+                }
+
+                var approverName = await employees.GetAll().AsNoTracking()
+                    .Where(e => e.Id == delegation.FromEmployeeId)
+                    .Select(e => e.Person != null
+                        ? e.Person.FirstName + " " + e.Person.GrandFatherName
+                        : e.EmployeeNumber)
+                    .FirstOrDefaultAsync();
+                approverName = string.IsNullOrWhiteSpace(approverName) ? "a colleague" : approverName.Trim();
+
+                var live = delegation.IsEffectiveOn(DateTime.UtcNow.Date);
+                var covers = delegation.AllProcesses
+                    ? "all request types"
+                    : string.Join(", ", delegation.Scopes.Select(s => s.EntityType));
+                var ceiling = delegation.ApprovalLimit is decimal cap
+                    ? $", up to {cap:N0}"
+                    : string.Empty;
+
+                var title = isAmendment
+                    ? $"Your delegation from {approverName} has changed"
+                    : $"You are standing in for {approverName}";
+                var body =
+                    $"{delegation.StartDate:yyyy-MM-dd} to {delegation.EndDate:yyyy-MM-dd} — {covers}{ceiling}. "
+                    + (live
+                        ? "Their requests now appear in your approvals, marked as acting on their behalf."
+                        : "Their requests will appear in your approvals once it starts.");
+
+                await portalNotifier.NotifyUsersAsync(
+                    recipients, title, body,
+                    // The portal screen, where they can see exactly what they were given.
+                    "/myDelegations",
+                    live ? "Action" : "Info",
+                    nameof(ApprovalDelegation),
+                    delegation.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Delegation {Id}: failed to alert the delegate", delegation.Id);
+            }
+        }
     }
 
     // ---- Revoke -------------------------------------------------------------
@@ -232,6 +313,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
     public class RevokeApprovalDelegation(
         IRepository<ApprovalDelegation> repository,
         IRepository<User> users,
+        IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         ILogger<RevokeApprovalDelegation> logger) : IRevokeApprovalDelegation
     {
@@ -253,6 +335,19 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Delegation {Id} revoked", dto.Id);
+
+            // ⚠️ Clear the "you are standing in for X" alert this delegation raised. An alert that
+            // outlives the authority it announced is worse than never having sent one: the delegate
+            // is left believing they are covering, and requests sit waiting for somebody who no
+            // longer can act. Best-effort — the withdrawal itself is already committed.
+            try
+            {
+                await portalNotifier.ResolveAsync(nameof(ApprovalDelegation), entity.Id);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Delegation {Id}: failed to clear the delegate's portal alert", entity.Id);
+            }
         }
     }
 
