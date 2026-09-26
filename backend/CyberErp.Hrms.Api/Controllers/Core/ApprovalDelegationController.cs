@@ -22,6 +22,7 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetMyDelegations myHandler,
         ICheckDelegationEligibility eligibilityHandler,
         IGetDelegationPolicy getPolicyHandler,
+        IGetMyDelegationScope myScopeHandler,
         ISaveDelegationPolicy savePolicyHandler) : BaseController
     {
         /// <summary>Every delegation in the tenant — the HR administration screen.</summary>
@@ -62,6 +63,13 @@ namespace CyberErp.Hrms.Api.Controllers.Core
             await revokeHandler.RevokeAsync(dto);
             return Ok(new { message = "Delegation withdrawn" });
         }
+
+        /// <summary>
+        /// Whether the caller has anyone they could delegate to — the portal sidebar's probe.
+        /// </summary>
+        [HttpGet("my-scope")]
+        [SelfScoped]
+        public Task<MyDelegationScopeDto> MyScope() => myScopeHandler.GetAsync();
 
         /// <summary>The tenant's eligibility rules.</summary>
         [HttpGet("policy")]

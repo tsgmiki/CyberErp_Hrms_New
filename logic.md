@@ -8686,3 +8686,86 @@ ship (memory: *Tailwind palette not registered*).
 
 `tsc -b` clean, `npm run build` green, ESLint 0 errors. All three endpoints the screens call answer
 200 against the live API.
+
+### 12.114 Department-head delegation, from the portal
+
+§12.113 built the engine and put it on an HR screen. The people who most need it cannot reach that
+screen: HRMS is HR's application, and a department head is an ordinary employee who happens to hold
+approval authority. Their only door into the platform is the Home portal — so delegation had to
+arrive there, or it reached nobody who needed it.
+
+#### What was already sufficient, and what was not
+
+The self-service endpoints were **already reachable** by a department head. `[SelfScoped]` exempts
+an action from its controller's `RequirePermission` on the understanding that the handler confines
+the answer to the caller, and `/mine`, `/eligibility`, `POST` and `/revoke` all carry it. No
+permission work was needed.
+
+What was missing was the **scope rule** and the screen.
+
+#### The department rule
+
+`IDelegationScopeService` — the organisational half of "may this person stand in for me", beside
+the seniority half in `IDelegationEligibilityService`. A head may delegate **downward and sideways
+within their own branch**: anyone in a unit they manage, anyone beneath it, and their own
+colleagues. Nothing above them, nothing across the organisation.
+
+⚠️ **The own-unit fallback is not a loophole, it is the non-manager case.** Approval authority does
+not only belong to heads — an HR officer named directly on a workflow step has it too, and
+`EmployeesInMyManagedUnitsAsync` returns EMPTY for them because they manage no unit. Without the
+fallback the subtree rule would silently forbid every non-manager from ever arranging cover, which
+reads as the feature being broken rather than as a policy.
+
+⚠️ **Enforced server-side, not only in the picker.** The portal's `EmployeePicker` is already
+role-scoped (`scope: "Unit"` → the manager's subtree), which happens to match — but a scope that
+exists only in the browser is a suggestion. HR is exempt, and that exemption lives in the handler
+with the other authorisation decisions, not in the scope service, which only answers a question
+about the org chart.
+
+Verified against the live org tree: the CEO's scope is **352 of 491** employees — bounded, not
+everyone — while a directorate head's is **5** and a general director's **16**.
+
+#### ⚠️ A leak I had introduced, closed
+
+`GET /eligibility` is `[SelfScoped]`, which is a promise that the handler confines the answer to
+the caller. **It did not.** It took `fromEmployeeId` from the query string and answered for any
+pair, so a signed-in employee could walk employee ids and read back *"the delegate's salary is 143%
+of the approver's"* for colleagues whose pay they have no business knowing. Non-HR callers may now
+only ask about their own authority.
+
+This is exactly the failure the attribute's own doc warns about — *"an action that can return
+another person's data is not self-scoped, whatever its route is called"* — and I wrote it anyway,
+one section after quoting the rule.
+
+#### The portal screen
+
+`/myDelegations` in Home: the two lists from §12.113 plus an inline **Arrange cover** panel, so a
+head never leaves the page. The live seniority verdict appears as the stand-in is picked, and Save
+is disabled while the verdict is negative.
+
+⚠️ **A SECOND menu row, not the HRMS one.** The two subsystems store links differently — HRMS
+namespaces them (`/hrms/approvalDelegation`), the portal does not (`/annualLeave`, `/myExit`).
+Reusing the HRMS row would put the item in the wrong sidebar and match nothing in the portal's
+router. Seeded into the module the other self-service items share, and granted wherever **Annual
+Leave** is granted: arranging your own cover is an ordinary employee action, and a head holds that
+grant while emphatically not holding the administrative one.
+
+⚠️ **Hidden at runtime for anyone with nobody to delegate to.** `CONDITIONAL_MENU` probes
+`ApprovalDelegation/my-scope`; an employee who manages no one and sits alone in their unit never
+sees the item, rather than finding a screen whose only control cannot be used. Permissions decide
+who MAY see it, the probe decides who it APPLIES to — the same split the exit-interview and
+clearance items already use.
+
+⚠️ **Home's palette is not HRMS's.** `bg-warning/10` ships in HRMS and **does not ship in Home**, so
+two banners here would have rendered with no background. Caught against the BUILT css and switched
+to the registered `/15`. Checking the other SPA's theme file would not have revealed this.
+
+#### Verified
+
+210/210 tests; both SPAs typecheck, build and lint clean. `my-scope` returns
+`{canArrangeCover:false}` for an account with no employee link, which is what hides the menu item.
+
+⚠️ **Not verified: the non-HR path end to end.** `devadmin` is head office and therefore *exempt*
+from the very rule this section adds, so it cannot exercise it; testing the refusal needs a
+department head's credentials, which is the same gap as §12.112. The rule itself is a set-membership
+test over the scope proven correct against live data above.

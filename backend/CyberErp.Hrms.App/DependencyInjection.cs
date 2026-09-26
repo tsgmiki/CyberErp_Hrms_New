@@ -63,6 +63,8 @@ namespace CyberErp.Hrms.App
             // approval inbox asks them once per row.
             services.AddScoped<Features.Core.Delegations.IDelegationEligibilityService,
                 Features.Core.Delegations.DelegationEligibilityService>();
+            services.AddScoped<Features.Core.Delegations.IDelegationScopeService,
+                Features.Core.Delegations.DelegationScopeService>();
             services.AddScoped<Features.Core.Delegations.IApprovalDelegationResolver,
                 Features.Core.Delegations.ApprovalDelegationResolver>();
             services.AddScoped<Features.Core.Delegations.ISaveApprovalDelegation,
@@ -75,6 +77,8 @@ namespace CyberErp.Hrms.App
                 Features.Core.Delegations.GetMyDelegations>();
             services.AddScoped<Features.Core.Delegations.ICheckDelegationEligibility,
                 Features.Core.Delegations.CheckDelegationEligibility>();
+            services.AddScoped<Features.Core.Delegations.IGetMyDelegationScope,
+                Features.Core.Delegations.GetMyDelegationScope>();
             services.AddScoped<Features.Core.Delegations.IGetDelegationPolicy,
                 Features.Core.Delegations.GetDelegationPolicy>();
             services.AddScoped<Features.Core.Delegations.ISaveDelegationPolicy,
