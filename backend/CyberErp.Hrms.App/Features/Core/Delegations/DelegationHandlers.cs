@@ -68,6 +68,8 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         public int MaxDelegationDays { get; set; }
         public decimal? DefaultApprovalLimit { get; set; }
         public bool AllowSelfServiceDelegation { get; set; }
+        /// <summary>Confine delegates to the approver's own department and those beneath it.</summary>
+        public bool RestrictToOwnDepartment { get; set; }
     }
 
     /// <summary>The eligibility answer, for the "can this person stand in?" preview on the form.</summary>
@@ -158,7 +160,8 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             // branch of the org chart. Enforced HERE and not only in the picker: the picker is
             // scoped for convenience, but a scope that exists only in the browser is a suggestion.
             // HR is exempt — administering other people's delegations is the job.
-            if (!isHrAdmin && !await scope.CanDelegateToAsync(dto.FromEmployeeId, dto.ToEmployeeId))
+            if (policy.RestrictToOwnDepartment && !isHrAdmin
+                && !await scope.CanDelegateToAsync(dto.FromEmployeeId, dto.ToEmployeeId))
                 throw new ValidationException(nameof(dto.ToEmployeeId),
                     "You can only delegate to someone in your own department or a department beneath it.");
 
@@ -594,7 +597,8 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                 RequireManagerialDelegate = p.RequireManagerialDelegate,
                 MaxDelegationDays = p.MaxDelegationDays,
                 DefaultApprovalLimit = p.DefaultApprovalLimit,
-                AllowSelfServiceDelegation = p.AllowSelfServiceDelegation
+                AllowSelfServiceDelegation = p.AllowSelfServiceDelegation,
+                RestrictToOwnDepartment = p.RestrictToOwnDepartment
             };
         }
     }
@@ -615,7 +619,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             {
                 entity.Update(dto.MinDelegateExperienceYears, dto.MinSalaryRatioPercent,
                     dto.RequireManagerialDelegate, dto.MaxDelegationDays, dto.DefaultApprovalLimit,
-                    dto.AllowSelfServiceDelegation);
+                    dto.AllowSelfServiceDelegation, dto.RestrictToOwnDepartment);
             }
             catch (ArgumentException ex) { throw new ValidationException("policy", ex.Message); }
 

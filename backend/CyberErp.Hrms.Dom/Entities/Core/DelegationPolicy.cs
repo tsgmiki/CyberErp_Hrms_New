@@ -43,6 +43,25 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
     public bool RequireManagerialDelegate { get; private set; } = true;
 
     /// <summary>
+    /// Confine a delegate to the approver's own department and the departments beneath it.
+    /// </summary>
+    /// <remarks>
+    /// <para>On by default, and the rule most organisations want: a department head covers their
+    /// own area, not somebody else's. Turning it OFF lets an approver name anyone in the tenant,
+    /// which suits a flat organisation or one that covers across sites — the seniority rules still
+    /// apply, so it widens WHO may be chosen, never what they may do.</para>
+    ///
+    /// <para>⚠️ This is the ONLY one of the delegation guards that is configurable, and
+    /// deliberately so. The other three are invariants, not preferences: authority received through
+    /// a delegation cannot be delegated onward (the chain moves real approval rights to somebody
+    /// nobody chose), a delegate can never approve their own request, and an open workflow step
+    /// confers nothing because there is no authority there to lend. An organisation that wanted any
+    /// of those switched off would be asking for an approval chain that does not mean anything, and
+    /// a settings page that offers the option implies it is a reasonable thing to want.</para>
+    /// </remarks>
+    public bool RestrictToOwnDepartment { get; private set; } = true;
+
+    /// <summary>
     /// Longest delegation window, in days. 0 disables the rule.
     /// </summary>
     /// <remarks>
@@ -66,7 +85,7 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
 
     public void Update(int minDelegateExperienceYears, int minSalaryRatioPercent,
         bool requireManagerialDelegate, int maxDelegationDays, decimal? defaultApprovalLimit,
-        bool allowSelfServiceDelegation)
+        bool allowSelfServiceDelegation, bool restrictToOwnDepartment)
     {
         if (minDelegateExperienceYears < 0)
             throw new ArgumentException("Minimum experience cannot be negative.", nameof(minDelegateExperienceYears));
@@ -83,6 +102,7 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
         MaxDelegationDays = maxDelegationDays;
         DefaultApprovalLimit = defaultApprovalLimit;
         AllowSelfServiceDelegation = allowSelfServiceDelegation;
+        RestrictToOwnDepartment = restrictToOwnDepartment;
         base.Update();
     }
 }
