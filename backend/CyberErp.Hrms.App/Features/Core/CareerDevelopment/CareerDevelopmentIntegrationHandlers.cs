@@ -1,4 +1,5 @@
 using CyberErp.Hrms.App.Common.Exceptions;
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Performance;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -107,11 +108,16 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
             {
                 var scaleId = await reviewCycles.GetAll().Where(c => c.Id == latest.ReviewCycleId)
                     .Select(c => c.RatingScaleId).FirstOrDefaultAsync();
-                var scaleMax = scaleId != Guid.Empty
-                    ? await ratingLevels.GetAll().Where(l => l.RatingScaleId == scaleId && l.MaxScore != null)
-                        .MaxAsync(l => (decimal?)l.MaxScore) : null;
-                if (scaleMax is decimal max && max > 0)
-                    performanceScore = Math.Round(Math.Clamp(score / max * 100m, 0m, 100m), 1);
+                // Was max(MaxScore) with a Clamp — closer than the other three readers, but the
+                // clamp turned an out-of-scale score into a confident 100%. Now shared, and an
+                // unreadable score contributes nothing instead of a perfect mark.
+                var levels = scaleId == Guid.Empty
+                    ? []
+                    : await ratingLevels.GetAll()
+                        .Where(l => l.RatingScaleId == scaleId)
+                        .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                        .ToListAsync();
+                performanceScore = AppraisalScore.ToPercent(score, levels).Percent;
             }
 
             var components = new List<decimal>();

@@ -1,4 +1,5 @@
 using CyberErp.Hrms.App.Common.Exceptions;
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Performance;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -79,13 +80,22 @@ namespace CyberErp.Hrms.App.Features.Core.Training
                     .Where(c => c.Id == latest.ReviewCycleId)
                     .Select(c => new { c.Name, c.RatingScaleId })
                     .FirstOrDefaultAsync();
-                var max = cycle is null ? 0m : await ratingLevelRepository.GetAll().AsNoTracking()
-                    .Where(l => l.RatingScaleId == cycle.RatingScaleId)
-                    .Select(l => (decimal?)l.Value).MaxAsync() ?? 0m;
+                // Shared with the transfer, career-development and reward readers — see
+                // AppraisalScore for why five private versions of this became one.
+                var levels = cycle is null
+                    ? []
+                    : await ratingLevelRepository.GetAll().AsNoTracking()
+                        .Where(l => l.RatingScaleId == cycle.RatingScaleId)
+                        .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                        .ToListAsync();
+                var max = levels.Count == 0 ? 0m : AppraisalScore.RangeOf(levels).High;
+                var overallPercentOrNull = AppraisalScore.ToPercent(overall, levels).Percent;
 
-                if (max > 0)
+                // ⚠️ A score that cannot be read against its scale suggests NOTHING. Suggesting
+                // "performance improvement training" off an uninterpretable number would put a
+                // training need on an employee's record because of a data-entry fault.
+                if (max > 0 && overallPercentOrNull is decimal overallPercent)
                 {
-                    var overallPercent = Math.Round(overall / max * 100m, 1);
                     if (overallPercent < LowScorePercent)
                     {
                         suggestions.Add(new TrainingNeedSuggestionDto
