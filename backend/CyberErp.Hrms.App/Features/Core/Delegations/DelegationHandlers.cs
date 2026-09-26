@@ -51,6 +51,15 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         public string? Reason { get; set; }
     }
 
+    /// <summary>Whether the caller has anyone they could hand their approvals to.</summary>
+    public class MyDelegationScopeDto
+    {
+        /// <summary>True when at least one colleague is inside their delegation scope.</summary>
+        public bool CanArrangeCover { get; set; }
+        /// <summary>How many — drives an honest empty state rather than a bare "no".</summary>
+        public int DelegatableCount { get; set; }
+    }
+
     public class DelegationPolicyDto
     {
         public int MinDelegateExperienceYears { get; set; }
@@ -97,6 +106,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
     public interface IGetMyDelegations { Task<List<ApprovalDelegationDto>> GetAsync(); }
     public interface ICheckDelegationEligibility { Task<DelegationEligibilityDto> CheckAsync(Guid fromEmployeeId, Guid toEmployeeId); }
     public interface IGetDelegationPolicy { Task<DelegationPolicyDto> GetAsync(); }
+    public interface IGetMyDelegationScope { Task<MyDelegationScopeDto> GetAsync(); }
     public interface ISaveDelegationPolicy { Task SaveAsync(DelegationPolicyDto dto); }
 
     // ---- Save ---------------------------------------------------------------
@@ -109,6 +119,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         IRepository<Employee> employees,
         IRepository<User> users,
         IDelegationEligibilityService eligibility,
+        IDelegationScopeService scope,
         ICurrentUserService currentUser,
         IValidator<SaveApprovalDelegationDto> validator,
         ILogger<SaveApprovalDelegation> logger) : ISaveApprovalDelegation
@@ -140,6 +151,15 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                     throw new ValidationException(nameof(dto.EndDate),
                         $"A delegation may run for at most {policy.MaxDelegationDays} day(s); this one is {days:0}.");
             }
+
+            // ---- Department scope -------------------------------------------------------------
+            // ⚠️ A department head may only hand their authority to somebody inside their own
+            // branch of the org chart. Enforced HERE and not only in the picker: the picker is
+            // scoped for convenience, but a scope that exists only in the browser is a suggestion.
+            // HR is exempt — administering other people's delegations is the job.
+            if (!isHrAdmin && !await scope.CanDelegateToAsync(dto.FromEmployeeId, dto.ToEmployeeId))
+                throw new ValidationException(nameof(dto.ToEmployeeId),
+                    "You can only delegate to someone in your own department or a department beneath it.");
 
             // ---- Seniority: experience + salary --------------------------------------------
             var verdict = await eligibility.EvaluateAsync(dto.FromEmployeeId, dto.ToEmployeeId);
@@ -341,10 +361,34 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         }
     }
 
-    public class CheckDelegationEligibility(IDelegationEligibilityService eligibility) : ICheckDelegationEligibility
+    /// <summary>
+    /// The live "may this person stand in?" check behind the delegation form.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ SCOPED TO THE CALLER'S OWN AUTHORITY. The endpoint is <c>[SelfScoped]</c>, which exempts
+    /// it from the controller's permission gate on the understanding that the HANDLER confines the
+    /// answer to the caller — and this one did not. It took <c>fromEmployeeId</c> from the query
+    /// string and answered for ANY pair, so a signed-in employee could walk employee ids and read
+    /// back "the delegate's salary is 143% of the approver's" for colleagues whose pay they have no
+    /// business knowing. Non-HR callers may now only ask about their own authority.
+    /// </remarks>
+    public class CheckDelegationEligibility(
+        IDelegationEligibilityService eligibility,
+        IRepository<User> users,
+        ICurrentUserService currentUser) : ICheckDelegationEligibility
     {
         public async Task<DelegationEligibilityDto> CheckAsync(Guid fromEmployeeId, Guid toEmployeeId)
         {
+            if (!currentUser.IsHeadOffice())
+            {
+                var userId = currentUser.GetCurrentUserId();
+                var me = userId is null ? null : await users.GetAll().AsNoTracking()
+                    .Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
+                if (me is null || me.Value != fromEmployeeId)
+                    throw new ValidationException(nameof(fromEmployeeId),
+                        "You can only check delegates for your own approval authority.");
+            }
+
             var r = await eligibility.EvaluateAsync(fromEmployeeId, toEmployeeId);
             return new DelegationEligibilityDto
             {
@@ -353,6 +397,32 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                 DelegateExperienceYears = r.DelegateExperienceYears,
                 SalaryRatioPercent = r.SalaryRatioPercent
             };
+        }
+    }
+
+    /// <summary>
+    /// "Could I arrange cover at all?" — the portal sidebar's visibility probe.
+    /// </summary>
+    /// <remarks>
+    /// The Home sidebar hides an item whose screen would be empty, so it needs a cheap yes/no
+    /// before rendering the entry. A department head manages a unit and gets people; an employee
+    /// who manages nothing and sits alone in their unit gets none, and never sees the menu item.
+    /// </remarks>
+    public class GetMyDelegationScope(
+        IDelegationScopeService scope,
+        IRepository<User> users,
+        ICurrentUserService currentUser) : IGetMyDelegationScope
+    {
+        public async Task<MyDelegationScopeDto> GetAsync()
+        {
+            var userId = currentUser.GetCurrentUserId();
+            if (userId is null) return new MyDelegationScopeDto();
+            var me = await users.GetAll().AsNoTracking()
+                .Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
+            if (me is null) return new MyDelegationScopeDto();
+
+            var ids = await scope.DelegatableEmployeeIdsAsync(me.Value);
+            return new MyDelegationScopeDto { CanArrangeCover = ids.Count > 0, DelegatableCount = ids.Count };
         }
     }
 
