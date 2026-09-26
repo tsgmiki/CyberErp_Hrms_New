@@ -104,9 +104,38 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IWorkflowApproverAuth approverAuth,
         IOrgManagerResolver managerResolver,
         IPortalNotifier portalNotifier,
+        IRepository<Employee> employees,
         ICurrentUserService currentUser,
         ILogger<WorkflowService> logger) : IWorkflowService
     {
+        /// <summary>
+        /// Prefixes a decision's comment when it was taken under a DELEGATION.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ The actor stays the real person — the log's <c>user</c> is whoever actually pressed
+        /// the button, and that must never be rewritten to the delegator. What this adds is whose
+        /// AUTHORITY was exercised. Without it the approval history reads as though the delegator
+        /// personally signed, and a delegation becomes a way to put somebody's name on a decision
+        /// they never saw.
+        /// </remarks>
+        private async Task<string?> AnnotateForDelegationAsync(WorkflowInstance instance, string? comment)
+        {
+            var acting = await approverAuth.ResolveActingDelegationAsync(
+                instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId,
+                instance.EntityType, instance.EntityId);
+            if (acting is null) return comment;
+
+            var name = await employees.GetAll().AsNoTracking()
+                .Where(e => e.Id == acting.FromEmployeeId)
+                .Select(e => e.Person != null
+                    ? e.Person.FirstName + " " + e.Person.GrandFatherName
+                    : e.EmployeeNumber)
+                .FirstOrDefaultAsync();
+
+            var prefix = $"[Acting for {(string.IsNullOrWhiteSpace(name) ? "another approver" : name.Trim())}]";
+            return string.IsNullOrWhiteSpace(comment) ? prefix : $"{prefix} {comment}";
+        }
+
         /// <summary>Source-entity key correlating portal alerts to the workflow instance that raised them.</summary>
         private const string PortalSource = "WorkflowInstance";
 
@@ -269,6 +298,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             EnsureNotModuleDriven(instance);
             await approverAuth.EnsureCanDecideAsync(instance);
             var user = currentUser.GetCurrentUserName();
+            comment = await AnnotateForDelegationAsync(instance, comment);
 
             await actionLogs.AddAsync(WorkflowActionLog.Create(
                 instance.Id, instance.CurrentStepOrder, instance.CurrentStepName,
@@ -360,6 +390,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             EnsureNotModuleDriven(instance);
             await approverAuth.EnsureCanDecideAsync(instance);
             var user = currentUser.GetCurrentUserName();
+            comment = await AnnotateForDelegationAsync(instance, comment);
 
             await actionLogs.AddAsync(WorkflowActionLog.Create(
                 instance.Id, instance.CurrentStepOrder, instance.CurrentStepName,
@@ -390,6 +421,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var instance = await GetRunningAsync(instanceId);
             await approverAuth.EnsureCanDecideAsync(instance);
             var user = currentUser.GetCurrentUserName();
+            comment = await AnnotateForDelegationAsync(instance, comment);
 
             await actionLogs.AddAsync(WorkflowActionLog.Create(
                 instance.Id, instance.CurrentStepOrder, instance.CurrentStepName,

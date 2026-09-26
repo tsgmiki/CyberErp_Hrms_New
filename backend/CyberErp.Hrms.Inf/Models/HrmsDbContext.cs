@@ -284,6 +284,11 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<WorkflowStepApprover> WorkflowStepApprover { get; set; }
     public DbSet<WorkflowInstance> WorkflowInstance { get; set; }
     public DbSet<WorkflowActionLog> WorkflowActionLog { get; set; }
+    // Approval delegation (substitution) — every BaseEntity needs an explicit DbSet or the
+    // NodaTime/Instant conventions in OnModelCreating skip it and the migration comes out wrong.
+    public DbSet<ApprovalDelegation> ApprovalDelegation { get; set; }
+    public DbSet<ApprovalDelegationScope> ApprovalDelegationScope { get; set; }
+    public DbSet<DelegationPolicy> DelegationPolicy { get; set; }
     public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
     public DbSet<NotificationEvent> NotificationEvent { get; set; }
     public DbSet<NotificationTemplate> NotificationTemplate { get; set; }
@@ -658,6 +663,9 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new WorkflowStepApproverConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowInstanceConfiguration());
         modelBuilder.ApplyConfiguration(new WorkflowActionLogConfiguration());
+        modelBuilder.ApplyConfiguration(new ApprovalDelegationConfiguration());
+        modelBuilder.ApplyConfiguration(new ApprovalDelegationScopeConfiguration());
+        modelBuilder.ApplyConfiguration(new DelegationPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationEventConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationTemplateConfiguration());

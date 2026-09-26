@@ -58,6 +58,37 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetOrganizationTree, GetOrganizationTree>();
             services.AddScoped<IMoveOrganizationUnit, MoveOrganizationUnit>();
 
+            // ---- Approval delegation (substitution) ------------------------------------
+            // The resolver and eligibility service are SCOPED: both memoise per request, and the
+            // approval inbox asks them once per row.
+            services.AddScoped<Features.Core.Delegations.IDelegationEligibilityService,
+                Features.Core.Delegations.DelegationEligibilityService>();
+            services.AddScoped<Features.Core.Delegations.IApprovalDelegationResolver,
+                Features.Core.Delegations.ApprovalDelegationResolver>();
+            services.AddScoped<Features.Core.Delegations.ISaveApprovalDelegation,
+                Features.Core.Delegations.SaveApprovalDelegation>();
+            services.AddScoped<Features.Core.Delegations.IRevokeApprovalDelegation,
+                Features.Core.Delegations.RevokeApprovalDelegation>();
+            services.AddScoped<Features.Core.Delegations.IGetApprovalDelegations,
+                Features.Core.Delegations.GetApprovalDelegations>();
+            services.AddScoped<Features.Core.Delegations.IGetMyDelegations,
+                Features.Core.Delegations.GetMyDelegations>();
+            services.AddScoped<Features.Core.Delegations.ICheckDelegationEligibility,
+                Features.Core.Delegations.CheckDelegationEligibility>();
+            services.AddScoped<Features.Core.Delegations.IGetDelegationPolicy,
+                Features.Core.Delegations.GetDelegationPolicy>();
+            services.AddScoped<Features.Core.Delegations.ISaveDelegationPolicy,
+                Features.Core.Delegations.SaveDelegationPolicy>();
+
+            // Amount providers apply a delegation's money ceiling. Registered as a SET, the same
+            // way IWorkflowEntityHandler is — a process with no provider simply has no amount.
+            services.AddScoped<Features.Core.Delegations.IDelegationAmountProvider,
+                Features.Core.Delegations.LoanDelegationAmountProvider>();
+            services.AddScoped<Features.Core.Delegations.IDelegationAmountProvider,
+                Features.Core.Delegations.MedicalClaimDelegationAmountProvider>();
+            services.AddScoped<Features.Core.Delegations.IDelegationAmountProvider,
+                Features.Core.Delegations.SalaryRevisionDelegationAmountProvider>();
+
             // Positions
             services.AddScoped<ICreatePosition, CreatePosition>();
             services.AddScoped<IUpdatePosition, UpdatePosition>();
