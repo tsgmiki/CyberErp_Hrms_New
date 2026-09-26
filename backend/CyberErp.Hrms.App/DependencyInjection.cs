@@ -56,6 +56,7 @@ namespace CyberErp.Hrms.App
             services.AddScoped<IGetAllOrganizationUnits, GetAllOrganizationUnits>();
             services.AddScoped<IGetMyOrganizationUnits, GetMyOrganizationUnits>();
             services.AddScoped<IGetOrganizationTree, GetOrganizationTree>();
+            services.AddScoped<IMoveOrganizationUnit, MoveOrganizationUnit>();
 
             // Positions
             services.AddScoped<ICreatePosition, CreatePosition>();

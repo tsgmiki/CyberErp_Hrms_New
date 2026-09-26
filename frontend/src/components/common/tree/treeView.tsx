@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -29,6 +29,127 @@ export interface TreeViewNode {
   selectable?: boolean;
 }
 
+/** Where a dragged row was released, relative to the row under the cursor. */
+type DropBand = "before" | "into" | "after";
+
+/** One completed drag, in the shape the server's move endpoint takes. */
+export interface TreeMove {
+  /** The node that was dragged. */
+  id: string;
+  /** Its new parent; `null` makes it a root node. */
+  parentId: string | null;
+  /**
+   * The sibling it should sit immediately AFTER; `null` puts it first.
+   *
+   * ⚠️ An anchor, not an index. An index stops meaning anything the moment the tree the user
+   * dragged on differs from the tree on the server — "after this specific node" survives that.
+   */
+  afterId: string | null;
+}
+
+/** Flattened parent/child lookups, rebuilt whenever `nodes` changes. */
+interface TreeIndex {
+  parentOf: Map<string, string | null>;
+  /** Ordered child ids, keyed by parent id — ROOT_KEY for the top level. */
+  childIds: Map<string, string[]>;
+}
+
+/** Map key standing in for "no parent"; "" can never collide with a real id. */
+const ROOT_KEY = "";
+
+function buildIndex(nodes: TreeViewNode[]): TreeIndex {
+  const parentOf = new Map<string, string | null>();
+  const childIds = new Map<string, string[]>();
+  const walk = (list: TreeViewNode[], parent: string | null) => {
+    childIds.set(parent ?? ROOT_KEY, list.map((n) => n.id));
+    for (const n of list) {
+      parentOf.set(n.id, parent);
+      if (n.children && n.children.length > 0) walk(n.children, n.id);
+      else childIds.set(n.id, []);
+    }
+  };
+  walk(nodes, null);
+  return { parentOf, childIds };
+}
+
+/** Is `candidateId` somewhere beneath `ancestorId`? Iterative — a deep tree must not blow the stack. */
+function isDescendant(idx: TreeIndex, ancestorId: string, candidateId: string): boolean {
+  const stack = [...(idx.childIds.get(ancestorId) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (id === candidateId) return true;
+    const kids = idx.childIds.get(id);
+    if (kids) stack.push(...kids);
+  }
+  return false;
+}
+
+/**
+ * ⚠️ THE RULE THAT PROTECTS THE TREE. Dropping a node inside its own subtree detaches that whole
+ * branch: every row still has a parent and nothing in the data is malformed, it simply stops being
+ * reachable from any root and disappears. A mouse can do it in one gesture, so the drag is refused
+ * outright — the row shows a "no entry" cursor rather than accepting a drop that would delete a
+ * branch from view. The server checks the same thing; this is the half that can say so instantly.
+ */
+function canDropOn(idx: TreeIndex, dragId: string, targetId: string): boolean {
+  return dragId !== targetId && !isDescendant(idx, dragId, targetId);
+}
+
+/** Where `dragId` actually sits now, so a drag that changes nothing can be dropped silently. */
+function currentPosition(idx: TreeIndex, dragId: string): { parentId: string | null; afterId: string | null } {
+  const parentId = idx.parentOf.get(dragId) ?? null;
+  const sibs = idx.childIds.get(parentId ?? ROOT_KEY) ?? [];
+  const i = sibs.indexOf(dragId);
+  return { parentId, afterId: i > 0 ? sibs[i - 1] : null };
+}
+
+/** Turn "dropped on node X, in band B" into a move — or null when it would change nothing. */
+function resolveMove(idx: TreeIndex, dragId: string, targetId: string | null, band: DropBand): TreeMove | null {
+  let parentId: string | null;
+  let afterId: string | null;
+
+  if (targetId === null) {
+    // The root row: promote to the top level, at the end of it.
+    parentId = null;
+    const roots = (idx.childIds.get(ROOT_KEY) ?? []).filter((r) => r !== dragId);
+    afterId = roots.length > 0 ? roots[roots.length - 1] : null;
+  } else if (band === "into") {
+    parentId = targetId;
+    const kids = (idx.childIds.get(targetId) ?? []).filter((k) => k !== dragId);
+    afterId = kids.length > 0 ? kids[kids.length - 1] : null;
+  } else {
+    parentId = idx.parentOf.get(targetId) ?? null;
+    const sibs = (idx.childIds.get(parentId ?? ROOT_KEY) ?? []).filter((s) => s !== dragId);
+    const i = sibs.indexOf(targetId);
+    afterId = band === "after" ? targetId : i > 0 ? sibs[i - 1] : null;
+  }
+
+  const now = currentPosition(idx, dragId);
+  if (now.parentId === parentId && now.afterId === afterId) return null;
+  return { id: dragId, parentId, afterId };
+}
+
+/** Which third of the row the pointer is in. The middle band is widest — "into" is the common intent. */
+function bandFor(e: { clientY: number }, rect: DOMRect): DropBand {
+  const y = (e.clientY - rect.top) / rect.height;
+  if (y < 0.3) return "before";
+  if (y > 0.7) return "after";
+  return "into";
+}
+
+/** Everything the rows need to take part in a drag. Assembled once by TreeView. */
+interface DndState {
+  dragId: string | null;
+  hover: { id: string | null; band: DropBand } | null;
+  index: TreeIndex;
+  start: (id: string) => void;
+  over: (id: string | null, band: DropBand) => void;
+  drop: (id: string | null, band: DropBand) => void;
+  end: () => void;
+  /** Auto-expands a collapsed row the pointer has hovered over mid-drag. */
+  hoverExpand: (id: string) => void;
+}
+
 export interface TreeViewProps {
   nodes: TreeViewNode[];
   selectedId?: string;
@@ -55,6 +176,16 @@ export interface TreeViewProps {
    * trees). Omit for the default all-expanded behaviour; the user can still toggle freely after.
    */
   defaultCollapsedIds?: string[];
+  /**
+   * Enable drag-and-drop reordering and reparenting. OFF by default, so every other tree in the
+   * app keeps its read-only behaviour untouched.
+   */
+  draggable?: boolean;
+  /**
+   * Fires once a drop resolves to a real change. A drag that lands back where it started, or on an
+   * illegal target, never reaches here.
+   */
+  onMove?: (move: TreeMove) => void;
   /** Extra classes for the expanded panel container. */
   className?: string;
 }
@@ -68,15 +199,62 @@ interface NodeProps {
   onSelect: (node: TreeViewNode) => void;
   /** Lower-cased active search term, for highlighting. Empty when not searching. */
   query: string;
+  /** Present only when drag-and-drop is enabled. */
+  dnd?: DndState;
 }
 
-function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect, query }: NodeProps) {
+function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect, query, dnd }: NodeProps) {
   const hasChildren = !!node.children && node.children.length > 0;
   const isOpen = !collapsed.has(node.id);
   const isSelected = node.id === selectedId;
   const selectable = node.selectable !== false;
   // A grouping-only row (selectable=false) toggles its children on click instead of selecting.
   const activate = () => (selectable ? onSelect(node) : hasChildren && toggle(node.id));
+
+  const isDragging = dnd?.dragId === node.id;
+  const hovered = dnd?.hover?.id === node.id ? dnd.hover.band : null;
+  // An illegal target is shown as illegal rather than silently ignoring the drop.
+  const allowed = dnd?.dragId ? canDropOn(dnd.index, dnd.dragId, node.id) : true;
+
+  const dragProps = dnd
+    ? {
+        draggable: true,
+        onDragStart: (e: React.DragEvent) => {
+          e.stopPropagation();
+          // Required for Firefox to start a drag at all, and it makes the row's label the
+          // drag image's accessible text.
+          e.dataTransfer.setData("text/plain", node.id);
+          e.dataTransfer.effectAllowed = "move";
+          dnd.start(node.id);
+        },
+        onDragOver: (e: React.DragEvent) => {
+          if (!dnd.dragId) return;
+          const band = bandFor(e, e.currentTarget.getBoundingClientRect());
+          if (!allowed) {
+            e.dataTransfer.dropEffect = "none";
+            return;
+          }
+          // preventDefault is what actually marks this a valid drop target in HTML5 DnD —
+          // without it the browser refuses the drop and fires nothing.
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "move";
+          dnd.over(node.id, band);
+          // Dropping into a collapsed branch is impossible unless it opens, so hovering opens it.
+          if (band === "into" && hasChildren && !isOpen) dnd.hoverExpand(node.id);
+        },
+        onDrop: (e: React.DragEvent) => {
+          if (!dnd.dragId || !allowed) return;
+          e.preventDefault();
+          e.stopPropagation();
+          dnd.drop(node.id, bandFor(e, e.currentTarget.getBoundingClientRect()));
+        },
+        onDragEnd: (e: React.DragEvent) => {
+          e.stopPropagation();
+          dnd.end();
+        },
+      }
+    : {};
 
   return (
     <div>
@@ -85,14 +263,22 @@ function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect, query 
         tabIndex={0}
         onClick={activate}
         onKeyDown={(e) => e.key === "Enter" && activate()}
+        {...dragProps}
         // w-max lets a deep row grow past the panel so the container can scroll to it; min-w-full
         // keeps short rows full-width so the hover/selected background and the right-aligned badge
         // still span the panel.
+        // The three drop bands read differently on purpose: a LINE means "between these two rows",
+        // a filled ring means "inside this one". Without that distinction the two outcomes of a
+        // drag look identical right up until the tree rearranges itself.
         className={`group flex w-max min-w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-sm transition-colors ${
           isSelected
             ? "bg-primary/15 font-semibold text-primary"
             : "text-sidebar-foreground hover:bg-secondary"
-        }`}
+        } ${isDragging ? "opacity-40" : ""} ${
+          hovered === "into" ? "bg-primary/20 ring-2 ring-inset ring-primary" : ""
+        } ${hovered === "before" ? "border-t-2 border-t-primary" : ""} ${
+          hovered === "after" ? "border-b-2 border-b-primary" : ""
+        } ${dnd?.dragId && !allowed ? "cursor-no-drop" : ""}`}
         style={{ paddingLeft: depth * 16 + 8 }}
       >
         {hasChildren ? (
@@ -146,6 +332,7 @@ function TreeNode({ node, depth, selectedId, collapsed, toggle, onSelect, query 
               toggle={toggle}
               onSelect={onSelect}
               query={query}
+              dnd={dnd}
             />
           ))}
         </div>
@@ -235,6 +422,8 @@ function TreeView({
   searchable = true,
   searchPlaceholder,
   defaultCollapsedIds,
+  draggable = false,
+  onMove,
   className = "",
 }: TreeViewProps) {
   const { t } = useTranslation();
@@ -259,6 +448,69 @@ function TreeView({
       return next;
     });
 
+  // ---- drag and drop -------------------------------------------------------
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [hover, setHover] = useState<{ id: string | null; band: DropBand } | null>(null);
+  const expandTimer = useRef<{ id: string; timer: number } | null>(null);
+
+  // Built from the FULL tree, never the filtered one — see the searching guard below.
+  const index = useMemo(() => buildIndex(nodes), [nodes]);
+
+  const clearExpandTimer = useCallback(() => {
+    if (expandTimer.current) {
+      window.clearTimeout(expandTimer.current.timer);
+      expandTimer.current = null;
+    }
+  }, []);
+
+  const endDrag = useCallback(() => {
+    setDragId(null);
+    setHover(null);
+    clearExpandTimer();
+  }, [clearExpandTimer]);
+
+  const dnd: DndState | undefined = useMemo(() => {
+    if (!draggable || !onMove) return undefined;
+    return {
+      dragId,
+      hover,
+      index,
+      start: (id: string) => setDragId(id),
+      over: (id: string | null, band: DropBand) =>
+        // Only write state when the target actually changed: dragover fires continuously, and
+        // setting state on every event re-renders the whole tree many times a second.
+        setHover((prev) => (prev && prev.id === id && prev.band === band ? prev : { id, band })),
+      drop: (id: string | null, band: DropBand) => {
+        if (!dragId) return;
+        const move = resolveMove(index, dragId, id, band);
+        endDrag();
+        // resolveMove returns null when the node landed exactly where it already was — a very
+        // common way to end a drag, and not something to send to the server or toast about.
+        if (move) onMove(move);
+      },
+      end: endDrag,
+      hoverExpand: (id: string) => {
+        if (expandTimer.current?.id === id) return;
+        clearExpandTimer();
+        expandTimer.current = {
+          id,
+          timer: window.setTimeout(() => {
+            setCollapsed((prev) => {
+              if (!prev.has(id)) return prev;
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+            expandTimer.current = null;
+          }, 600),
+        };
+      },
+    };
+  }, [draggable, onMove, dragId, hover, index, endDrag, clearExpandTimer]);
+
+  // Drop the timer if the component goes away mid-drag.
+  useEffect(() => clearExpandTimer, [clearExpandTimer]);
+
   const query = search.trim().toLowerCase();
   const visibleNodes = useMemo(
     () => (query ? filterNodes(nodes, query) : nodes),
@@ -277,6 +529,12 @@ function TreeView({
     [visibleNodes, query],
   );
   const effectiveCollapsed = searchCollapsed ?? collapsed;
+
+  // ⚠️ NO DRAGGING WHILE SEARCHING. A filtered tree is not the tree: its rows are the survivors of
+  // a match, so the node visually above another may not be its real neighbour and whole branches
+  // are missing. "Drop after this row" would resolve against siblings the user cannot see, and
+  // land the unit somewhere they never pointed at. Clear the box to rearrange.
+  const activeDnd = query ? undefined : dnd;
 
   // Collapsed rail — mirrors the app sidebar's collapse behaviour.
   if (collapsible && panelCollapsed) {
@@ -345,15 +603,39 @@ function TreeView({
       )}
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {rootLabel && (
+          // Doubles as the "make this a top-level node" drop target. Without it a node dragged out
+          // of a branch has nowhere to go: every other target is inside somebody's subtree, so
+          // promoting to the root would be the one rearrangement a mouse could not express.
           <div
             role="button"
             tabIndex={0}
             onClick={() => onSelect(null)}
             onKeyDown={(e) => e.key === "Enter" && onSelect(null)}
+            onDragOver={
+              activeDnd?.dragId
+                ? (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    activeDnd.over(null, "into");
+                  }
+                : undefined
+            }
+            onDrop={
+              activeDnd?.dragId
+                ? (e) => {
+                    e.preventDefault();
+                    activeDnd.drop(null, "into");
+                  }
+                : undefined
+            }
             className={`mb-1 w-max min-w-full cursor-pointer whitespace-nowrap rounded-md px-2 py-1.5 text-sm transition-colors ${
               !selectedId
                 ? "bg-primary/15 font-semibold text-primary"
                 : "text-sidebar-foreground hover:bg-secondary"
+            } ${
+              activeDnd?.hover?.id === null && activeDnd?.dragId
+                ? "bg-primary/20 ring-2 ring-inset ring-primary"
+                : ""
             }`}
           >
             {rootLabel}
@@ -380,6 +662,7 @@ function TreeView({
             toggle={toggle}
             onSelect={onSelect}
             query={query}
+            dnd={activeDnd}
           />
         ))}
       </div>

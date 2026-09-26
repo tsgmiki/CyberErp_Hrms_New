@@ -19,6 +19,7 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
     public interface IGetAllOrganizationUnits { Task<PaginatedResponse<OrganizationUnitDto>> GetAsync(GetAllRequest request); }
     public interface IGetMyOrganizationUnits { Task<PaginatedResponse<OrganizationUnitDto>> GetAsync(GetAllRequest request); }
     public interface IGetOrganizationTree { Task<List<OrgUnitTreeNodeDto>> GetAsync(); }
+    public interface IMoveOrganizationUnit { Task MoveAsync(MoveOrganizationUnitDto dto); }
 
     public class CreateOrganizationUnit(
         IRepository<OrganizationUnit> repository,
@@ -122,6 +123,106 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
             repository.Delete(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Deleted OrganizationUnit {Id}", id);
+        }
+    }
+
+    /// <summary>
+    /// One drag-and-drop: reparent a unit and place it among its new siblings.
+    /// </summary>
+    /// <remarks>
+    /// <para>Separate from <see cref="UpdateOrganizationUnit"/> on purpose. An edit posts the whole
+    /// unit; a drag knows only where it was dropped. Routing the drag through Update would mean the
+    /// client sending back every field it did not touch, and any field it got wrong — or simply had
+    /// stale — would be written as if the user had typed it.</para>
+    ///
+    /// <para>⚠️ BranchId is deliberately NOT changed by a move. A branch unit legitimately hangs
+    /// under a head-office parent, so inheriting the parent's branch would silently re-home units
+    /// (and for a branch admin, silently move them out of their own scope). Branch reassignment
+    /// stays an explicit edit, where it is already guarded.</para>
+    ///
+    /// <para>⚠️ Nor does a move check UnitType ordering. Nothing stops the edit form putting a
+    /// Directorate under a Team today, and a drag that refused what the form allows would just read
+    /// as a broken drag. If that rule is wanted it belongs in both places at once.</para>
+    /// </remarks>
+    public class MoveOrganizationUnit(
+        IRepository<OrganizationUnit> repository,
+        IValidator<MoveOrganizationUnitDto> validator,
+        ILogger<MoveOrganizationUnit> logger) : IMoveOrganizationUnit
+    {
+        public async Task MoveAsync(MoveOrganizationUnitDto dto)
+        {
+            var validation = await validator.ValidateAsync(dto);
+            if (!validation.IsValid) throw new ValidationException(validation.ToDictionary());
+
+            // Tracked, so the RowVersion concurrency token is the real one. GetAll() also applies
+            // the tenant and branch filters, so a unit outside the caller's scope is simply not
+            // found here rather than being silently moved.
+            var entity = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == dto.Id)
+                ?? throw new NotFoundException(nameof(OrganizationUnit), dto.Id.ToString());
+
+            // The whole level map, in one read: it answers "does the parent exist", "is the anchor
+            // really a sibling" and "would this be a cycle" without three separate round trips.
+            var all = await repository.GetAll()
+                .Select(x => new { x.Id, x.ParentId, x.SortOrder, x.UnitType, x.Name })
+                .ToListAsync();
+            var parentMap = all.ToDictionary(x => x.Id, x => x.ParentId);
+
+            if (dto.ParentId.HasValue && !parentMap.ContainsKey(dto.ParentId.Value))
+                throw new NotFoundException(nameof(OrganizationUnit), dto.ParentId.Value.ToString(),
+                    "The unit it was dropped on was not found.");
+
+            // ⚠️ THE GUARD THAT MATTERS FOR DRAG-AND-DROP. Dropping a unit onto its own descendant
+            // detaches that whole subtree from the tree: it still exists, every row still has a
+            // parent, and nothing in the schema is violated — it simply stops being reachable from
+            // any root, so it vanishes from the org chart and from every manager climb that walks
+            // ParentId. A mouse can do it in one gesture, which is exactly why this is checked
+            // server-side and not only in the UI.
+            if (HierarchyGuard.WouldCreateCycle(parentMap, dto.Id, dto.ParentId))
+                throw new ValidationException(nameof(dto.ParentId),
+                    "A unit cannot be moved inside one of its own sub-units.");
+
+            if (dto.AfterId.HasValue)
+            {
+                if (!parentMap.TryGetValue(dto.AfterId.Value, out var anchorParent))
+                    throw new NotFoundException(nameof(OrganizationUnit), dto.AfterId.Value.ToString(),
+                        "The unit it was dropped after was not found.");
+
+                // A stale client tree is the normal way this fails: the anchor was itself moved
+                // elsewhere since the page loaded. Refusing beats quietly dropping the unit at a
+                // position the user never pointed at.
+                if (anchorParent != dto.ParentId)
+                    throw new ValidationException(nameof(dto.AfterId),
+                        "The hierarchy changed while you were dragging. Refresh and try again.");
+            }
+
+            // Siblings of the DESTINATION in their current order. Same tie-breakers as the tree
+            // query, so the ranks handed back describe the level the user was actually looking at.
+            var siblings = all
+                .Where(x => x.ParentId == dto.ParentId)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.UnitType).ThenBy(x => x.Name)
+                .Select(x => x.Id);
+
+            // Renumber the whole level. Cheap — a level is a handful of rows — and it keeps the
+            // gaps even, so repeated dragging never converges on adjacent integers with nowhere
+            // left to insert between them.
+            var order = SiblingOrder.Place(siblings, dto.Id, dto.AfterId);
+            var moved = order.First(o => o.Id == dto.Id);
+
+            entity.MoveTo(dto.ParentId, moved.Rank);
+            repository.UpdateAsync(entity);
+
+            foreach (var (id, rank) in order.Where(o => o.Id != dto.Id))
+            {
+                var sibling = await repository.GetAll().FirstOrDefaultAsync(x => x.Id == id);
+                if (sibling is null) continue;
+                sibling.SetSortOrder(rank);   // no-op when the rank is unchanged
+                repository.UpdateAsync(sibling);
+            }
+
+            await repository.SaveChangesAsync();
+            logger.LogInformation(
+                "Moved OrganizationUnit {Id} under {ParentId} at rank {Rank} ({Siblings} siblings resequenced)",
+                dto.Id, dto.ParentId, moved.Rank, order.Count - 1);
         }
     }
 
@@ -270,8 +371,14 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits
         public async Task<List<OrgUnitTreeNodeDto>> GetAsync()
         {
             // One query, assembled into a tree in memory (org structures are small).
+            //
+            // SortOrder leads, because the hierarchy is now arranged by hand (drag-and-drop) and a
+            // unit has to stay where somebody put it. UnitType and Name remain as tie-breakers: they
+            // are what ordered the tree before SortOrder existed, and they still decide units that
+            // have never been dragged (all sitting on the same seeded value) — so an un-arranged
+            // level looks exactly as it always did instead of falling into insertion order.
             var all = await repository.GetAll()
-                .OrderBy(x => x.UnitType).ThenBy(x => x.Name)
+                .OrderBy(x => x.SortOrder).ThenBy(x => x.UnitType).ThenBy(x => x.Name)
                 .Select(o => new { o.Id, o.Code, o.Name, o.UnitType, o.AllocatedHeadcount, o.ParentId })
                 .ToListAsync();
 

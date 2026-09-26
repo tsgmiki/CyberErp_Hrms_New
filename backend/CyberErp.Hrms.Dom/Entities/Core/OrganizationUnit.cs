@@ -26,6 +26,18 @@ public class OrganizationUnit : BaseEntity, IAggregateRoot, IBranchScoped, IAudi
     public string? Description { get; private set; }
     public bool IsActive { get; private set; } = true;
 
+    /// <summary>
+    /// Position among SIBLINGS, ascending. Sparse by design — the resequencer numbers 10, 20, 30…
+    /// so a later insertion between two units does not have to renumber the whole level.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Deliberately NOT a parameter of <see cref="Update"/>. Ordering is set by dragging, and the
+    /// edit form knows nothing about it — if it travelled through Update, every ordinary save of a
+    /// unit's name would silently reset its position to whatever the form last happened to hold.
+    /// It moves only through <see cref="MoveTo"/> and <see cref="SetSortOrder"/>.
+    /// </remarks>
+    public int SortOrder { get; private set; }
+
     // Branch this unit belongs to (null = global / Head-Office level). Drives branch isolation.
     public Guid? BranchId { get; private set; }
 
@@ -84,6 +96,32 @@ public class OrganizationUnit : BaseEntity, IAggregateRoot, IBranchScoped, IAudi
             Description = description,
             IsActive = isActive
         };
+    }
+
+    /// <summary>
+    /// Reparent this unit and/or place it among its new siblings — the drag-and-drop operation.
+    /// </summary>
+    /// <remarks>
+    /// Only the SELF-parent case is caught here. "The new parent must not be one of my own
+    /// descendants" needs every other node to answer, which an entity cannot see; the handler
+    /// checks it with <c>HierarchyGuard.WouldCreateCycle</c> before calling this.
+    /// </remarks>
+    public void MoveTo(Guid? parentId, int sortOrder)
+    {
+        if (parentId.HasValue && parentId.Value == Id)
+            throw new ArgumentException("An organization unit cannot be its own parent.", nameof(parentId));
+
+        ParentId = parentId;
+        SortOrder = sortOrder;
+        base.Update();
+    }
+
+    /// <summary>Renumber this unit within its level, without moving it. Used by the resequencer.</summary>
+    public void SetSortOrder(int sortOrder)
+    {
+        if (SortOrder == sortOrder) return;
+        SortOrder = sortOrder;
+        base.Update();
     }
 
     public void Update(

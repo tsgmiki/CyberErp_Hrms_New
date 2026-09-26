@@ -8213,3 +8213,121 @@ somebody to open a ticket while a file path sends them to drop a file in a folde
 
 Verified: `tsc -b` clean and `npm run build` green on both SPAs; `dist/manuals/` is produced by the
 build, and the route and header button code-split into their own chunks. ESLint clean.
+
+### 12.110 Drag-and-drop in the org structure tree
+
+Rearranging the hierarchy used to mean opening a unit, finding the Parent field, and picking a new
+parent from a dropdown — one unit at a time, with no sense of the shape you were building. The tree
+now accepts the gesture directly: drag a unit onto another to reparent it, or between two to place
+it among their siblings.
+
+#### ⚠️ Ordering had nowhere to live
+
+The first thing this ran into is that **sibling order was not stored at all**. The tree query
+ordered by `UnitType` then `Name`, so a dropped unit would have sprung straight back to its
+alphabetical slot — a drag that visibly does nothing is worse than no drag.
+
+So `OrganizationUnit` gains `SortOrder` (int), and the tree orders by it first:
+
+```csharp
+.OrderBy(x => x.SortOrder).ThenBy(x => x.UnitType).ThenBy(x => x.Name)
+```
+
+`UnitType`/`Name` stay as tie-breakers, which is what makes this safe to ship: they still decide any
+level nobody has dragged, so an un-arranged tree looks exactly as it always did rather than
+collapsing into insertion order.
+
+⚠️ **`SortOrder` is deliberately not a parameter of `Update`.** Ordering is set by dragging and the
+edit form knows nothing about it — routed through `Update`, every ordinary save of a unit's *name*
+would silently reset its position to whatever the form last held. It moves only through the new
+`MoveTo(parentId, sortOrder)` and `SetSortOrder(rank)`.
+
+#### The migration seeds the order that is already on screen
+
+Adding the column is not enough; 121 live units would all land on `0`. The migration numbers every
+existing unit with the position it already occupies, reproducing the old `UnitType, Name` ordering:
+
+```sql
+ROW_NUMBER() OVER (PARTITION BY TenantId, ParentId ORDER BY UnitType, Name) * 10
+```
+
+⚠️ `UnitType` is persisted as a **string** (`HasConversion<string>`), so both the old LINQ ordering
+and this `ORDER BY` sort by the type's NAME, not its enum value. Ordering by the enum here would
+have "fixed" that into a different order and silently rearranged every level on the way in.
+Partitioned by `TenantId` as well as `ParentId`, because roots of different tenants are all
+`ParentId NULL` and must not interleave.
+
+**Verified against CERP**: 121 rows seeded, ranks 10–140, none left at 0, and a before/after dump of
+every unit's position is **byte-identical**. Nothing moved.
+
+#### `PUT OrganizationUnit/move` — its own endpoint
+
+Not a flavour of `Update`. A drag knows only where the unit was dropped; making it post the whole
+unit back would let every field it did not touch — or simply had stale — be written as if typed.
+
+The payload is `{ id, parentId, afterId }`. ⚠️ **`afterId` is an anchor, not an index.** An index
+stops meaning anything the moment the dragger's tree differs from the server's — somebody adds a
+unit and "position 3" is a different place. "After this specific unit" survives that, and when the
+anchor has itself moved the move is **refused** ("The hierarchy changed while you were dragging")
+rather than landing somewhere nobody pointed at.
+
+Two things a move deliberately does **not** do:
+
+- **It does not change `BranchId`.** A branch unit legitimately hangs under a head-office parent, so
+  inheriting the parent's branch would silently re-home units — and for a branch admin, silently
+  move them out of their own scope. Reassignment stays an explicit edit, where it is already guarded.
+- **It does not enforce `UnitType` ordering.** Nothing stops the edit form putting a Directorate
+  under a Team today, and a drag that refused what the form allows just reads as a broken drag. If
+  that rule is wanted it belongs in both places at once.
+
+#### ⚠️ The guard that matters: dropping a unit inside its own subtree
+
+This is the one failure a mouse can cause in a single gesture that nothing else in the system can.
+It detaches the whole branch: every row still has a parent, no constraint is violated, the data is
+not malformed — the subtree simply stops being reachable from any root. It vanishes from the org
+chart and from every "Immediate Manager" climb that walks `ParentId`.
+
+`HierarchyGuard.WouldCreateCycle` already existed for the edit form and is reused unchanged. The UI
+runs the same check locally so an illegal row shows a no-entry cursor instead of accepting a drop
+and reporting failure afterwards — but the server is the one that decides.
+
+#### Frontend
+
+`TreeView` is shared with the report catalogue, so drag-and-drop is **opt-in** (`draggable` +
+`onMove`); every other tree keeps its current behaviour untouched. Three drop bands per row — top
+30% before, middle 40% into, bottom 30% after — shown differently on purpose: a **line** means
+"between these two", a **filled ring** means "inside this one", because otherwise the two outcomes
+of a drag look identical until the tree rearranges itself.
+
+- The **root row doubles as a drop target**, so promoting a unit to the top level is expressible.
+  Without it, every target is inside somebody's subtree and that one rearrangement is impossible.
+- **Hovering a collapsed branch opens it** after 600 ms — otherwise a deep drop needs the user to
+  expand everything first.
+- **Dragging is disabled while searching.** ⚠️ A filtered tree is not the tree: rows are the
+  survivors of a match, so the node above another may not be its real neighbour. "Drop after this
+  row" would resolve against siblings the user cannot see.
+- A drag that lands back where it started resolves to `null` and never reaches the server.
+- The move is **optimistic** with rollback on error, then reconciled — the server resequences the
+  whole level and its numbering is what the next drag reasons about.
+
+#### What is verified, and what is not
+
+`SiblingOrder.Place` was pulled out of the handler as a pure function precisely so the arithmetic
+could be tested without a database — 13 new xUnit tests (171/171 in the suite):
+
+| covered | |
+|---|---|
+| insert first / mid / last, even 10-20-30 gaps | ✓ |
+| reorder inside the same parent does not duplicate the unit | ✓ |
+| unknown anchor falls back predictably | ✓ |
+| drop onto own child, grandchild, **four levels down** | all refused |
+| promote to root, move onto an unrelated branch | both allowed |
+
+Route registered, gated (401 unauthenticated) and listed in Swagger. Backend builds clean; frontend
+typechecks, lints and builds.
+
+⚠️ **NOT verified: an authenticated round-trip, or the browser drag itself.** The throwaway-tenant
+harness this repo normally uses cannot run — `POST /Auth/register` is broken independently of this
+work (*"The value of 'Tenant.OrganizationId' is unknown when attempting to save changes"*, 500) —
+and no documented dev credential still opens the `headoffice` tenant. Guessing further was not
+appropriate. The endpoint needs one authenticated pass before it is trusted in front of users.
