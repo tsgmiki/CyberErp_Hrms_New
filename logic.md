@@ -8769,3 +8769,61 @@ to the registered `/15`. Checking the other SPA's theme file would not have reve
 from the very rule this section adds, so it cannot exercise it; testing the refusal needs a
 department head's credentials, which is the same gap as §12.112. The rule itself is a set-membership
 test over the scope proven correct against live data above.
+
+### 12.115 Telling the delegate
+
+A delegation used to take effect in complete silence. Approvals simply began appearing in somebody's
+queue on another person's authority, and the one person best placed to notice that a delegation is
+wider than intended — the delegate — was the only one never told it existed.
+
+Raised through `IPortalNotifier` into `Core.Notification`, the table the Home portal's bell reads.
+Best-effort and wrapped, like every other portal alert here: a notification failure must never undo
+a delegation that is already saved and in force.
+
+| | |
+|---|---|
+| **to** | the DELEGATE's user account(s), not the delegator's |
+| **link** | `/myDelegations` — the portal screen, where they can see exactly what they were given |
+| **severity** | `Action` when it is live today, `Info` when scheduled for later |
+| **source** | `ApprovalDelegation` + the delegation id, so the alert can be resolved later |
+
+**An amendment notifies too**, with different wording — *"Your delegation from X has changed"*
+rather than *"You are standing in for X"*. Quietly widening somebody's authority, or moving its
+dates, is the same problem as granting it silently; the wording keeps the alert from claiming to be
+news when it is a change.
+
+⚠️ **Severity is not decoration here.** A delegation starting today may already have requests
+waiting, which is an `Action`; one scheduled for next month is `Info`. Both are worth saying, only
+one is worth interrupting somebody for.
+
+⚠️ **A delegate with no login gets a log line, not silence.** The delegation is valid and they
+cannot act on it either — worth recording that nothing will reach them, rather than appearing to
+have notified somebody who has no way to be notified.
+
+#### ⚠️ Revocation clears the alert
+
+Not a second feature — the first one being correct. An alert that outlives the authority it
+announced is **worse than never having sent one**: the delegate is left believing they are covering,
+and requests sit waiting for somebody who no longer can act. `RevokeApprovalDelegation` calls
+`ResolveAsync(nameof(ApprovalDelegation), id)`, which marks every alert for that delegation read.
+
+#### Verified end to end
+
+Against the live API, with a real pair (NVI/193 → NVI/057) and cleaned up afterwards:
+
+| step | result |
+|---|---|
+| create, starting today | one row, to **`rojer(dr)b`** — the delegate |
+| title | *"You are standing in for Takele (Dr.) Tefera"* |
+| body | *"2026-09-26 to 2026-10-05 — AnnualLeave, EmployeeLoan, up to 25,000. Their requests now appear in your approvals…"* |
+| severity / link | `Action` · `/myDelegations` |
+| amend | second alert, *"Your delegation from … has **changed**"* |
+| revoke | **both alerts `read=1`** |
+
+Test delegation, its scopes and its alerts removed; policy restored to 80%. 210/210 tests.
+
+#### Not done
+
+**No alert when a delegation is withdrawn.** Revocation clears the stale one, so nobody is left
+holding a false belief, but the delegate is not actively told the cover has ended — it simply stops
+appearing. A one-line addition if that silence matters.
