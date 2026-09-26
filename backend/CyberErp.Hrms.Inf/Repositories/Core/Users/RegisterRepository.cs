@@ -17,6 +17,8 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
     public class RegisterRepository(
         IRepository<UserEntity> userRepository,
         IRepository<Tenant> tenantRepository,
+        IRepository<Organization> organizationRepository,
+        IRepository<TenantUser> tenantUserRepository,
         IRepository<TenantSubscription> tenantSubscriptionRepository,
         IAuthentication authentication,
         ITokenStore tokenStore,
@@ -27,6 +29,8 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
     {
         private readonly IRepository<UserEntity> _userRepository = userRepository;
         private readonly IRepository<Tenant> _tenantRepository = tenantRepository;
+        private readonly IRepository<Organization> _organizationRepository = organizationRepository;
+        private readonly IRepository<TenantUser> _tenantUserRepository = tenantUserRepository;
         private readonly IRepository<TenantSubscription> _tenantSubscriptionRepository = tenantSubscriptionRepository;
         private readonly IAuthentication _authentication = authentication;
         private readonly ITokenStore _tokenStore = tokenStore;
@@ -34,6 +38,57 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
         private readonly ILogger<RegisterRepository> _logger = logger;
         private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
         private readonly IExceptionHandler _exceptionHandler = exceptionHandler;
+
+        /// <summary>
+        /// Creates the legal entity a new tenant belongs to, and returns its id.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ THIS IS WHY REGISTRATION WAS RETURNING 500. <c>Tenant.OrganizationId</c> is a REQUIRED
+        /// foreign key added when CompanyProfile was consolidated into <c>Organization</c>
+        /// (2026-08-15), but <c>Tenant.Create</c> does not take one and this path never called
+        /// <c>SetOrganization</c> — so every self-registration died inside SaveChanges with
+        /// "The value of 'Tenant.OrganizationId' is unknown when attempting to save changes."
+        ///
+        /// <para>A new organization per registration is the right shape: an organization sits ABOVE
+        /// the tenant and carries no TenantId of its own, so there is no chicken-and-egg, and a
+        /// self-registration genuinely IS a new legal entity signing up. One organization may later
+        /// hold several tenants, which is an administrative act, not a signup one.</para>
+        /// </remarks>
+        private async Task<Guid> CreateOrganizationForAsync(string tenantName, string tenantIdentifier, string? email)
+        {
+            var code = string.IsNullOrWhiteSpace(tenantIdentifier) ? tenantName : tenantIdentifier;
+            var organization = Organization.Create(
+                code: code.Trim(),
+                legalName: tenantName.Trim(),
+                displayName: tenantName.Trim());
+
+            await _organizationRepository.AddAsync(organization);
+            await _organizationRepository.SaveChangesAsync();
+            _logger.LogInformation("Organization created for new tenant: {OrganizationId} ({Code})", organization.Id, code);
+            return organization.Id;
+        }
+
+        /// <summary>
+        /// Records the new user's membership of the new tenant.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ THE SECOND REASON REGISTRATION DID NOT WORK. Even once the tenant saved, the account
+        /// could not sign in: login answered "This account is not assigned to any organization."
+        ///
+        /// <para><c>Core.User</c> lost its <c>TenantId</c> on 2026-08-13 and <c>LoginRepository</c>
+        /// now resolves the session's tenant from a <c>Core.TenantUser</c> membership row instead.
+        /// Registration was still only setting <c>user.TenantId</c> — a column the login path no
+        /// longer consults — so it created a tenant and a user that had nothing joining them.</para>
+        ///
+        /// <para>Default membership, active: this is the account that just created the tenant.</para>
+        /// </remarks>
+        private async Task AddTenantMembershipAsync(Guid tenantId, Guid userId)
+        {
+            var membership = TenantUser.Create(tenantId, userId, status: true, isDefaultTenant: true);
+            await _tenantUserRepository.AddAsync(membership);
+            await _tenantUserRepository.SaveChangesAsync();
+            _logger.LogInformation("Tenant membership created: user {UserId} -> tenant {TenantId}", userId, tenantId);
+        }
 
         public Task<RegisterResult> RegisterAsync(RegisterUserDto dto) =>
             RepositoryExecutor.ExecuteAsync(
@@ -69,15 +124,20 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
                         }
                     }
 
+                    var identifier = string.IsNullOrEmpty(dto.TenantIdentifier) ? "00" : dto.TenantIdentifier;
+
+                    // The owning legal entity first — the tenant's FK to it is required.
+                    var organizationId = await CreateOrganizationForAsync(dto.TenantName, identifier, dto.Email);
+
                     // Create tenant
                     var tenant = Tenant.Create(
                         name: dto.TenantName,
-                        identifier: string.IsNullOrEmpty(dto.TenantIdentifier) ?
-                        "00" : dto.TenantIdentifier,
+                        identifier: identifier,
                         address: dto.TenantAddress,
                         phoneNumber: dto.TenantPhoneNumber,
                         email: dto.Email
                     );
+                    tenant.SetOrganization(organizationId);
 
                     await _tenantRepository.AddAsync(tenant);
                     await _tenantRepository.SaveChangesAsync();
@@ -100,6 +160,8 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
                     await _userRepository.AddAsync(user);
                     await _userRepository.SaveChangesAsync();
                     _logger.LogInformation("User created: {UserId }, UserName: {UserName }, TenantId: {TenantId }", user.Id, user.UserName, tenant.Id);
+
+                    await AddTenantMembershipAsync(tenant.Id, user.Id);
 
                     // Generate token
                     var tokenId = Guid.NewGuid();
@@ -159,6 +221,9 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
                         }
                     }
 
+                    // The owning legal entity first — the tenant's FK to it is required.
+                    var organizationId = await CreateOrganizationForAsync(dto.TenantName, dto.TenantIdentifier, dto.Email);
+
                     // Create tenant
                     var tenant = Tenant.Create(
                         name: dto.TenantName,
@@ -167,6 +232,7 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
                         phoneNumber: dto.TenantPhoneNumber,
                         email: dto.Email
                     );
+                    tenant.SetOrganization(organizationId);
 
                     await _tenantRepository.AddAsync(tenant);
                     await _tenantRepository.SaveChangesAsync();
@@ -189,7 +255,14 @@ namespace CyberErp.Hrms.Inf.Repositories.Core.Users
                     // No employee link → resolves to Head Office (global visibility) at login.
 
                     await _userRepository.AddAsync(user);
+                    // ⚠️ This SaveChanges was missing entirely, so the Google path created a tenant
+                    // and an organization, handed back a token, and never persisted the USER — the
+                    // account it reported creating could not sign in. The password path beside it
+                    // has always saved; this one simply never did.
+                    await _userRepository.SaveChangesAsync();
                     _logger.LogInformation("User created via Google signup: {UserId }, Email: {Email }, TenantId: {TenantId }", user.Id, user.Email, tenant.Id);
+
+                    await AddTenantMembershipAsync(tenant.Id, user.Id);
 
                     // Generate token
                     var tokenId = Guid.NewGuid();
