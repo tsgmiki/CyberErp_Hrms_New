@@ -14,7 +14,8 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         IGetOrganizationUnitById getByIdHandler,
         IGetAllOrganizationUnits getAllHandler,
         IGetMyOrganizationUnits myUnitsHandler,
-        IGetOrganizationTree getTreeHandler) : BaseController
+        IGetOrganizationTree getTreeHandler,
+        IMoveOrganizationUnit moveHandler) : BaseController
     {
         [HttpGet]
         public Task<PaginatedResponse<OrganizationUnitDto>> GetAll([FromQuery] GetAllRequest request)
@@ -47,6 +48,22 @@ namespace CyberErp.Hrms.Api.Controllers.Core
         {
             await updateHandler.UpdateAsync(dto);
             return Ok(new { message = "Updated successfully" });
+        }
+
+        /// <summary>
+        /// PUT api/v1/OrganizationUnit/move — one drag-and-drop in the structure tree.
+        /// </summary>
+        /// <remarks>
+        /// Its own endpoint rather than a flavour of Update: a drag knows only where the unit was
+        /// dropped, so asking it to post the whole unit back would let stale fields overwrite real
+        /// ones. Same permission as any other write to the hierarchy.
+        /// </remarks>
+        [HttpPut("move")]
+        [RequirePermission("organizationUnit")]
+        public async Task<IActionResult> Move([FromBody] MoveOrganizationUnitDto dto)
+        {
+            await moveHandler.MoveAsync(dto);
+            return Ok(new { message = "Moved successfully" });
         }
 
         [HttpDelete("{id:guid}")]

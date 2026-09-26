@@ -50,6 +50,39 @@ namespace CyberErp.Hrms.App.Features.Core.OrganizationUnits.DTOs
         public Guid Id { get; set; }
     }
 
+    /// <summary>One drag-and-drop: where a unit was dropped in the hierarchy.</summary>
+    public class MoveOrganizationUnitDto
+    {
+        /// <summary>The unit being dragged.</summary>
+        public Guid Id { get; set; }
+        /// <summary>Its new parent. <c>null</c> makes it a root unit.</summary>
+        public Guid? ParentId { get; set; }
+        /// <summary>
+        /// The sibling this unit should sit immediately AFTER. <c>null</c> puts it first.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ An ANCHOR, not an index. An index is meaningless the moment the caller's tree is a
+        /// little stale — somebody else adds a unit and position 3 is a different place than the
+        /// dragger saw. "After this specific unit" still means what it meant. If the anchor has
+        /// since moved or been deleted, the move is rejected rather than landing somewhere random.
+        /// </remarks>
+        public Guid? AfterId { get; set; }
+    }
+
+    public class MoveOrganizationUnitDtoValidator : AbstractValidator<MoveOrganizationUnitDto>
+    {
+        public MoveOrganizationUnitDtoValidator()
+        {
+            RuleFor(x => x.Id).NotEmpty();
+            RuleFor(x => x.ParentId)
+                .Must((dto, parentId) => parentId != dto.Id)
+                .WithMessage("An organization unit cannot be its own parent.");
+            RuleFor(x => x.AfterId)
+                .Must((dto, afterId) => afterId != dto.Id)
+                .WithMessage("An organization unit cannot be placed after itself.");
+        }
+    }
+
     public class CreateOrganizationUnitDtoValidator : AbstractValidator<CreateOrganizationUnitDto>
     {
         public CreateOrganizationUnitDtoValidator()
