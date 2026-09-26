@@ -8822,8 +8822,30 @@ Against the live API, with a real pair (NVI/193 → NVI/057) and cleaned up afte
 
 Test delegation, its scopes and its alerts removed; policy restored to 80%. 210/210 tests.
 
-#### Not done
+#### Withdrawal says so too
 
-**No alert when a delegation is withdrawn.** Revocation clears the stale one, so nobody is left
-holding a false belief, but the delegate is not actively told the cover has ended — it simply stops
-appearing. A one-line addition if that silence matters.
+Clearing the grant alert stops the delegate seeing a claim that is no longer true, but it tells
+them nothing — they would simply find, at some point, that requests had stopped arriving. Somebody
+who believes they are covering a colleague needs to hear that they are not.
+
+⚠️ **ORDER MATTERS.** Resolve first, then raise the ending alert. `ResolveAsync` marks every unread
+alert for the delegation read, so raising the new one first would mark it read on the spot and the
+delegate would never see it.
+
+⚠️ **`Info`, never `Action`.** Nothing is being asked of them; the entire content is that they can
+stop watching. An alert that interrupts somebody to tell them they have LESS to do has misjudged
+what interrupting is for.
+
+**Who ended it changes the wording.** Their own approver taking the cover back is ordinary — *"X
+has ended your cover"*; HR removing it, possibly without either party asking, is worth naming as
+different — *"Your cover for X has been withdrawn"*. The reason is included when one was given.
+
+Verified end to end, with HR doing the revoking so both branches showed:
+
+| | |
+|---|---|
+| grant alert | `Action` → **`read=1`** |
+| ending alert | `Info` · **`read=0`** · *"Your cover for Takele (Dr.) Tefera has been withdrawn — Their requests no longer appear in your approvals. Reason: back early"* |
+| wording branch | HR revoked, so *"has been withdrawn"* and not *"has ended your cover"* — correct |
+
+Test delegation and alerts removed; policy restored to 80%. 210/210.

@@ -313,6 +313,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
     public class RevokeApprovalDelegation(
         IRepository<ApprovalDelegation> repository,
         IRepository<User> users,
+        IRepository<Employee> employees,
         IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         ILogger<RevokeApprovalDelegation> logger) : IRevokeApprovalDelegation
@@ -331,27 +332,87 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             if (!(currentUser.IsHeadOffice() || (myEmployeeId.HasValue && myEmployeeId.Value == entity.FromEmployeeId)))
                 throw new ValidationException("id", "Only the delegating approver or HR can withdraw a delegation.");
 
+            // Who ended it changes what the delegate should be told: their own approver taking
+            // the cover back is ordinary, HR removing it behind both their backs is not.
+            var endedByDelegator = myEmployeeId.HasValue && myEmployeeId.Value == entity.FromEmployeeId;
+
             entity.Revoke(currentUser.GetCurrentUserName(), dto.Reason);
             repository.UpdateAsync(entity);
             await repository.SaveChangesAsync();
             logger.LogInformation("Delegation {Id} revoked", dto.Id);
 
-            // ⚠️ Clear the "you are standing in for X" alert this delegation raised. An alert that
-            // outlives the authority it announced is worse than never having sent one: the delegate
-            // is left believing they are covering, and requests sit waiting for somebody who no
-            // longer can act. Best-effort — the withdrawal itself is already committed.
+            // ⚠️ ORDER MATTERS. Clear the "you are standing in for X" alert FIRST, then raise the
+            // ending one — ResolveAsync marks every unread alert for this delegation read, so
+            // raising the new one first would immediately mark it read and the delegate would never
+            // see it.
+            //
+            // The clear on its own is not enough. An alert that outlives the authority it announced
+            // is worse than never having sent one — the delegate is left believing they are
+            // covering, and requests sit waiting for somebody who can no longer act — but silently
+            // withdrawing the alert leaves the same belief, just without the evidence. Say it.
+            //
+            // Best-effort throughout: the withdrawal itself is already committed and must stand
+            // whatever the portal does.
             try
             {
                 await portalNotifier.ResolveAsync(nameof(ApprovalDelegation), entity.Id);
+                await NotifyDelegateOfEndAsync(entity, endedByDelegator, dto.Reason);
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Delegation {Id}: failed to clear the delegate's portal alert", entity.Id);
+                logger.LogWarning(ex, "Delegation {Id}: failed to update the delegate's portal alerts", entity.Id);
             }
+        }
+
+        /// <summary>
+        /// Tell the delegate their cover has ended.
+        /// </summary>
+        /// <remarks>
+        /// <para>The counterpart of the grant alert. Clearing the old one stops the delegate seeing
+        /// a claim that is no longer true, but it does not tell them anything — they would simply
+        /// find, at some point, that requests had stopped arriving. Somebody who believes they are
+        /// covering a colleague needs to hear that they are not.</para>
+        ///
+        /// <para>⚠️ Info, never Action. Nothing is being asked of them; the whole content is that
+        /// they can stop watching. An alert that interrupts somebody to tell them they have less to
+        /// do has misjudged what interrupting is for.</para>
+        ///
+        /// <para>The reason is included when one was given, and WHO ended it changes the wording —
+        /// their own approver taking the cover back is ordinary; HR removing it, possibly without
+        /// either party asking, is worth naming as different.</para>
+        /// </remarks>
+        private async Task NotifyDelegateOfEndAsync(
+            ApprovalDelegation delegation, bool endedByDelegator, string? reason)
+        {
+            var recipients = await users.GetAll().AsNoTracking()
+                .Where(u => u.EmployeeId == delegation.ToEmployeeId)
+                .Select(u => u.Id)
+                .ToListAsync();
+            if (recipients.Count == 0) return;
+
+            var approverName = await employees.GetAll().AsNoTracking()
+                .Where(e => e.Id == delegation.FromEmployeeId)
+                .Select(e => e.Person != null
+                    ? e.Person.FirstName + " " + e.Person.GrandFatherName
+                    : e.EmployeeNumber)
+                .FirstOrDefaultAsync();
+            approverName = string.IsNullOrWhiteSpace(approverName) ? "a colleague" : approverName.Trim();
+
+            var title = endedByDelegator
+                ? $"{approverName} has ended your cover"
+                : $"Your cover for {approverName} has been withdrawn";
+            var body = "Their requests no longer appear in your approvals."
+                + (string.IsNullOrWhiteSpace(reason) ? string.Empty : $" Reason: {reason.Trim()}");
+
+            await portalNotifier.NotifyUsersAsync(
+                recipients, title, body, "/myDelegations",
+                // Info, not Action: there is nothing left for them to do.
+                "Info", nameof(ApprovalDelegation), delegation.Id);
         }
     }
 
     // ---- Reads --------------------------------------------------------------
+
 
     internal static class DelegationMapper
     {
