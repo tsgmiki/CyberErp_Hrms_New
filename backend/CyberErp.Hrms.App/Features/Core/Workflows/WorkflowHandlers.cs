@@ -155,6 +155,8 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<User> users,
         IWorkflowApproverAuth approverAuth,
         IOrgManagerResolver managerResolver,
+        Delegations.IApprovalDelegationResolver delegationResolver,
+        IRepository<ApprovalDelegation> delegations,
         Common.Services.ICurrentUserService currentUser) : IGetMyApprovals
     {
         public async Task<MyApprovalsDto> GetAsync()
@@ -261,11 +263,19 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             var dynamicDefIds = dynamicSteps.Select(s => s.DefinitionId).Distinct().ToList();
             var dynamicOrders = dynamicSteps.Select(s => s.StepOrder).Distinct().ToList();
 
+            // A fourth way a step reaches a person: they are STANDING IN for an approver. The
+            // delegation's covered process types are the narrowing available in SQL — who the
+            // delegator is and whether they could act on this particular step is settled per row
+            // below, the same way the dynamic case is. Empty for the overwhelming majority of
+            // callers, who hold no delegations and pay nothing for this.
+            var (delegatedTypes, delegatorNames) = await DelegatedToMeAsync();
+
             var candidates = await repository.GetAll()
                 .Where(x => x.Status == WorkflowInstanceStatus.Running)
                 .Where(x =>
                     // open steps — the definition has no approver rows for the current step at all
                     (canActOnOpenSteps)
+                    || delegatedTypes.Contains(x.EntityType)
                     || (staticDefIds.Contains(x.DefinitionId) && staticOrders.Contains(x.CurrentStepOrder))
                     || (subjectDefIds.Contains(x.DefinitionId) && subjectOrders.Contains(x.CurrentStepOrder)
                         && x.EmployeeId != null && x.EmployeeId == myEmp)
@@ -283,6 +293,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
             // independently, so it can admit a row whose definition and step never occur together.
             var running = candidates
                 .Where(x => !stepsWithApprovers.Contains((x.DefinitionId, x.CurrentStepOrder))
+                         || delegatedTypes.Contains(x.EntityType)
                          || staticSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder)
                          || subjectSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder)
                          || dynamicSteps.Any(s => s.DefinitionId == x.DefinitionId && s.StepOrder == x.CurrentStepOrder))
@@ -326,6 +337,20 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                         (mine, _) = await approverAuth.EvaluateAsync(x.DefinitionId, x.CurrentStepOrder, x.EmployeeId);
                     }
                 }
+                // Not theirs by their own authority — are they standing in for somebody whose it is?
+                // Last, so the ordinary approver never pays for the lookup.
+                Guid? onBehalfOf = null;
+                if (!mine && delegatedTypes.Contains(x.EntityType))
+                {
+                    var acting = await approverAuth.ResolveActingDelegationAsync(
+                        x.DefinitionId, x.CurrentStepOrder, x.EmployeeId, x.EntityType, x.EntityId);
+                    if (acting is not null)
+                    {
+                        mine = true;
+                        onBehalfOf = acting.FromEmployeeId;
+                    }
+                }
+
                 if (!mine) continue;
 
                 items.Add(new MyApprovalItemDto
@@ -338,11 +363,63 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                     CurrentStepName = x.CurrentStepName,
                     TotalSteps = x.TotalSteps,
                     RequestedBy = x.RequestedBy,
-                    RequestedAt = x.CreatedAt.ToDateTimeUtc()
+                    RequestedAt = x.CreatedAt.ToDateTimeUtc(),
+                    // Non-null = the caller is acting for somebody else. The inbox says so on the
+                    // row: approving in another person's name should never look identical to
+                    // approving in your own.
+                    OnBehalfOfEmployeeId = onBehalfOf,
+                    OnBehalfOfName = onBehalfOf.HasValue && delegatorNames.TryGetValue(onBehalfOf.Value, out var dn)
+                        ? dn : null
                 });
             }
 
             return new MyApprovalsDto { IsApprover = true, Items = items };
+        }
+
+        /// <summary>
+        /// The process types the caller currently stands in for, and the delegators' names.
+        /// </summary>
+        /// <remarks>
+        /// One query. Returns an EMPTY set for everybody who holds no delegation, which is almost
+        /// everybody — so the inbox's cost is unchanged for the ordinary approver, and the widened
+        /// candidate filter below collapses to nothing.
+        /// </remarks>
+        private async Task<(HashSet<string> Types, Dictionary<Guid, string> Names)> DelegatedToMeAsync()
+        {
+            var userId = currentUser.GetCurrentUserId();
+            if (userId is null) return ([], []);
+            var me = await users.GetAll().AsNoTracking()
+                .Where(u => u.Id == userId.Value).Select(u => u.EmployeeId).FirstOrDefaultAsync();
+            if (me is null) return ([], []);
+
+            var today = DateTime.UtcNow.Date;
+            var mine = await delegations.GetAll().AsNoTracking()
+                .Include(d => d.Scopes)
+                .Where(d => d.ToEmployeeId == me.Value && !d.IsRevoked
+                            && d.StartDate <= today && d.EndDate >= today)
+                .ToListAsync();
+            if (mine.Count == 0) return ([], []);
+
+            var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (mine.Any(d => d.AllProcesses))
+            {
+                // An all-processes delegation covers every type this tenant actually runs.
+                foreach (var t in await definitions.GetAll().Select(d => d.EntityType).Distinct().ToListAsync())
+                    types.Add(t);
+            }
+            foreach (var scope in mine.SelectMany(d => d.Scopes)) types.Add(scope.EntityType);
+
+            var delegatorIds = mine.Select(d => d.FromEmployeeId).Distinct().ToList();
+            var names = await employees.GetAll().AsNoTracking()
+                .Where(e => delegatorIds.Contains(e.Id))
+                .Select(e => new
+                {
+                    e.Id,
+                    Name = e.Person != null ? e.Person.FirstName + " " + e.Person.GrandFatherName : e.EmployeeNumber
+                })
+                .ToDictionaryAsync(x => x.Id, x => x.Name.Trim());
+
+            return (types, names);
         }
     }
 

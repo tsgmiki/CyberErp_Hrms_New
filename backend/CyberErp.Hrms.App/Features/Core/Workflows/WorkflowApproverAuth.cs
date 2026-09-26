@@ -1,4 +1,5 @@
 using CyberErp.Hrms.App.Common.Authorization;
+using CyberErp.Hrms.App.Features.Core.Delegations;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Common.Services;
 using CyberErp.Hrms.Dom.Constants;
@@ -24,6 +25,18 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         Task<(bool CanDecide, List<string> ApproverNames)> EvaluateAsync(Guid definitionId, int stepOrder, Guid? requesterEmployeeId);
         /// <summary>Throws a 400 when the current user is not authorized for the instance's current step.</summary>
         Task EnsureCanDecideAsync(WorkflowInstance instance);
+
+        /// <summary>
+        /// The delegation letting the caller act on this request on somebody else's behalf, or null
+        /// when they act on their own authority (or cannot act at all).
+        /// </summary>
+        /// <remarks>
+        /// Callers use this for the AUDIT LINE — a decision taken under a delegation has to record
+        /// whose authority was exercised, or the approval history quietly attributes an executive's
+        /// sign-off to whoever happened to be standing in.
+        /// </remarks>
+        Task<ActiveDelegation?> ResolveActingDelegationAsync(
+            Guid definitionId, int stepOrder, Guid? requesterEmployeeId, string entityType, Guid entityId);
         /// <summary>Role ids held by the current user (for batch evaluation in list queries).</summary>
         Task<HashSet<Guid>> GetCurrentUserRoleIdsAsync();
 
@@ -64,6 +77,7 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         IRepository<TenantOperation> tenantOperations,
         IRepository<TenantRole> tenantRoles,
         IOrgManagerResolver managerResolver,
+        IApprovalDelegationResolver delegationResolver,
         ICurrentUserService currentUser) : IWorkflowApproverAuth
     {
         /// <summary>
@@ -100,6 +114,10 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         private Guid? _myEmployeeId;
         private bool _myEmployeeLoaded;
         private readonly Dictionary<(Guid DefinitionId, int StepOrder), List<StepApprover>> _stepApprovers = [];
+        /// <summary>Resolved approver USER ids per step — reused by the delegation check below.</summary>
+        private readonly Dictionary<(Guid DefinitionId, int StepOrder, Guid? Requester), HashSet<Guid>> _stepUserIds = [];
+        /// <summary>Employee id -> their login user ids, for "could THAT person have decided this?".</summary>
+        private readonly Dictionary<Guid, List<Guid>> _employeeUserIds = [];
 
         /// <summary>Approver row as this service needs it (flattened out of the definition aggregate).</summary>
         private sealed record StepApprover(WorkflowApproverType ApproverType, Guid ApproverId, string DisplayName);
@@ -315,9 +333,61 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
                 .Distinct()
                 .ToListAsync();
 
+        /// <summary>
+        /// Could <paramref name="candidateEmployeeId"/> have decided this step on their OWN authority?
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ Deliberately built on <see cref="ResolveApproverUserIdsAsync"/> rather than a second
+        /// copy of the approver rules. A delegation must confer exactly the authority the delegator
+        /// had — no more, no less — and the only way to guarantee that is to ask the same question
+        /// the same way. A parallel implementation would drift, and it would drift in the direction
+        /// of granting rights nobody holds.
+        /// </remarks>
+        private async Task<bool> CouldEmployeeDecideAsync(
+            Guid definitionId, int stepOrder, Guid? requesterEmployeeId, Guid candidateEmployeeId)
+        {
+            var key = (definitionId, stepOrder, requesterEmployeeId);
+            if (!_stepUserIds.TryGetValue(key, out var approverUserIds))
+            {
+                approverUserIds = await ResolveApproverUserIdsAsync(definitionId, stepOrder, requesterEmployeeId);
+                _stepUserIds[key] = approverUserIds;
+            }
+
+            // An OPEN step resolves to nobody. Delegation must not turn "anyone entitled may act"
+            // into "and also whoever they delegated to" — there is no authority here to lend.
+            if (approverUserIds.Count == 0) return false;
+
+            if (!_employeeUserIds.TryGetValue(candidateEmployeeId, out var candidateUserIds))
+            {
+                candidateUserIds = await users.GetAll().AsNoTracking()
+                    .Where(u => u.EmployeeId == candidateEmployeeId)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+                _employeeUserIds[candidateEmployeeId] = candidateUserIds;
+            }
+
+            return candidateUserIds.Any(approverUserIds.Contains);
+        }
+
+        public Task<ActiveDelegation?> ResolveActingDelegationAsync(
+            Guid definitionId, int stepOrder, Guid? requesterEmployeeId, string entityType, Guid entityId) =>
+            delegationResolver.ResolveForRequestAsync(entityType, entityId, requesterEmployeeId,
+                candidate => CouldEmployeeDecideAsync(definitionId, stepOrder, requesterEmployeeId, candidate));
+
         public async Task EnsureCanDecideAsync(WorkflowInstance instance)
         {
             var (canDecide, names) = await EvaluateAsync(instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId);
+
+            // Own authority first; a delegation is only consulted when the caller has none of their
+            // own, so the ordinary path costs nothing extra.
+            if (!canDecide)
+            {
+                var acting = await ResolveActingDelegationAsync(
+                    instance.DefinitionId, instance.CurrentStepOrder, instance.EmployeeId,
+                    instance.EntityType, instance.EntityId);
+                if (acting is not null) return;
+            }
+
             if (!canDecide)
                 throw new ValidationException("approver",
                     $"You are not an authorized approver for step '{instance.CurrentStepName}'." +

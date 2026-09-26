@@ -8,6 +8,7 @@ import { ENTITY_ROUTES, renderEntityRoutes } from "./entityRoutes";
 import NotFoundPage from "@/pages/home/notFound";
 const UnauthorizedPage = memo(lazy(() => import("@/pages/home/unauthorized")));
 const ManualPage = memo(lazy(() => import("@/pages/home/manual")));
+const MyDelegationsPage = memo(lazy(() => import("@/pages/admin/myDelegations")));
 const LoginPage = memo(lazy(() => import("@/pages/auth/login/page")));
 const LoginOutPage = memo(lazy(() => import("@/pages/auth/logout/page")));
 const RegisterPage = memo(lazy(() => import("@/pages/auth/register/page")));
@@ -97,6 +98,10 @@ export default function AppRoutes() {
             not a privilege, and a user who cannot open the manual cannot be told how to ask for
             the privileges they are missing. */}
         <Route path="manual" element={<ManualPage />} />
+        {/* Self-service: an approver's OWN delegations. Deliberately outside PermissionGate —
+            needing the administrative delegation permission to arrange your own stand-in would
+            mean only HR could ever go on leave cleanly. The API scopes it to the caller. */}
+        <Route path="myDelegations" element={<MyDelegationsPage />} />
         {/* Everything below is role-permission gated: a direct URL to an operation the
             user's role lacks CanView for redirects to /unauthorized (PermissionGate). */}
         <Route element={<PermissionGate />}>

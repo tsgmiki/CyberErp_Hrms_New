@@ -55,6 +55,18 @@ namespace CyberErp.Hrms.App.Features.Core.Workflows
         public int TotalSteps { get; set; }
         public string? RequestedBy { get; set; }
         public DateTime RequestedAt { get; set; }
+
+        /// <summary>
+        /// Set when the caller reaches this row through a DELEGATION rather than their own
+        /// authority — the employee whose authority they are exercising.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ The inbox must say so on the row. Approving in somebody else's name should never look
+        /// identical to approving in your own, and the person acting is the one best placed to
+        /// notice if a delegation is wider than they expected.
+        /// </remarks>
+        public Guid? OnBehalfOfEmployeeId { get; set; }
+        public string? OnBehalfOfName { get; set; }
     }
 
     /// <summary>The current user's approval inbox + whether they are an assigned approver at all.</summary>

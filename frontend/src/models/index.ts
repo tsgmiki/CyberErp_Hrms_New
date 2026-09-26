@@ -110,6 +110,11 @@ export type {
   MyApprovalsModel,
 } from "./masters/HrWorkflowModel";
 export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDepartmentModel";
+export type { default as ApprovalDelegationModel } from "./masters/ApprovalDelegationModel";
+export type {
+  DelegationEligibilityModel,
+  DelegationPolicyModel,
+} from "./masters/ApprovalDelegationModel";
 export type {
   HiringRequestModel,
   RecruitmentBudgetRowModel,

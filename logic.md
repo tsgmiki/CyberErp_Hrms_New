@@ -8539,3 +8539,150 @@ justification; HR should confirm the intended rating with the reviewing manager.
 > create-only, so turning it off changes nothing about signing in — it only stops the seeder running
 > again unasked. **That account still carries HR Admin's 149 permissions in the production-data
 > tenant**: delete it, or rotate it, before this reaches anywhere but a developer's machine.
+
+### 12.113 Approval delegation — the substitution engine
+
+Enterprise "substitution": one approver lends their authority to another for a bounded period.
+Scope agreed with the client up front — **approvals only**, with **both** eligibility rules and
+authority limits.
+
+#### One seam, twenty-eight workflows
+
+Delegation hooks into `WorkflowApproverAuth`, the single place that answers "may this person decide
+this step". Every workflow type inherits it at once; not one of the 28 modules was touched.
+
+```
+EnsureCanDecideAsync ─┬─ own authority?  ──────────── yes ─► act
+                      └─ no ─► ResolveActingDelegationAsync ─► act on behalf of
+```
+
+⚠️ **The delegation check reuses `ResolveApproverUserIdsAsync`** rather than a second copy of the
+approver rules. A delegation must confer exactly the authority the delegator had — no more — and
+the only way to guarantee that is to ask the same question the same way. A parallel implementation
+would drift, and it would drift toward granting rights nobody holds.
+
+#### Four rules that exist because the obvious version is dangerous
+
+| rule | what it stops |
+|---|---|
+| **No re-delegation** — the resolver never recurses | A→B→C silently moving an executive's authority to somebody nobody chose. Every record in such a chain looks reasonable on its own. |
+| **Never your own request** | Standing in for your manager becoming a way to approve your own leave while they are away. |
+| **Open steps confer nothing** | "Anyone entitled may act" turning into "…and whoever they delegated to". There is no authority there to lend. |
+| **Above the ceiling ⇒ waits, never rejects** | A stand-in who cannot sign for the amount is a reason to wait, not a reason to refuse somebody's loan. |
+
+#### Eligibility: Experience and Salary
+
+The client asked delegation to respect both, and `DelegationPolicy` (a per-tenant singleton) is
+where they land.
+
+⚠️ **Experience is both halves** — internal service from `HireDate` plus prior `EmployeeExperience`
+rows. Internal-only would rule out an experienced senior hire in their first year, exactly the
+person most likely to be asked to stand in; prior-only would ignore a twenty-year veteran who has
+never worked anywhere else. Overlapping prior engagements are merged into continuous intervals
+first: two concurrent part-time posts over the same three years are three years, not six.
+
+⚠️ **Salary, not job grade.** "Within N grades" is the obvious rule and it is *not computable here*:
+`JobGrade` carries a name and a code and **no rank at all**, so grades cannot be ordered or
+subtracted. Salary is the ordered measure this schema has, and it is what a grade ultimately
+expresses (`SalaryScale.Salary` per grade and step).
+
+⚠️ **A missing figure never silently passes a rule.** If either salary is absent the ratio cannot be
+computed and the rule says so, rather than treating unknown as a pass — otherwise incomplete records
+become the easiest ones to delegate through.
+
+#### Authority limits
+
+`IDelegationAmountProvider`, registered as a set exactly like `IWorkflowEntityHandler`. Three
+shipped: **loan** (principal, not total repayable — the decision is "may they borrow this much"),
+**medical claim** (`ClaimedAmount`, because `ApprovedAmount` is set *by* the decision the ceiling
+governs and would read as null on every unapproved claim), and **salary revision** (the largest
+`ProposedSalary` in the batch — the proposed figure, not the delta, or a 4,000 rise onto a 200,000
+salary would pass a 5,000 ceiling and the biggest salaries would be the easiest to approve).
+
+An amount that cannot be read is treated as **within** any ceiling: making "unknown" mean "blocked"
+would strand every process without a provider, which is most of them.
+
+#### Visible where it matters
+
+The approval inbox gains a fourth route to a person — *standing in for an approver* — narrowed in
+SQL by the delegation's covered process types and confirmed per row, mirroring how the dynamic
+manager case already works. Rows reached this way carry `OnBehalfOfEmployeeId`/`OnBehalfOfName`:
+⚠️ approving in somebody else's name must never look identical to approving in your own.
+
+All three decision paths (approve, reject, advance-to-step) prefix the logged comment with
+`[Acting for <name>]`. ⚠️ The actor stays the real person — rewriting the log's user to the delegator
+would put their name on a decision they never saw.
+
+#### ⚠️ The menu row is not optional
+
+`ApprovalDelegationController` carries `[RequirePermission("approvalDelegation")]`, resolved against
+`TenantOperation.Link`. An operation nobody defined matches nothing, so **every call answers 403 for
+everyone, administrators included** — shipping the code without the menu row is shipping a feature
+switched off in a way no setting can switch on. A second migration seeds it (namespaced
+`/hrms/approvalDelegation`) and grants it wherever **Workflow Definitions** is already granted:
+re-routing an approval chain is an administrative act, so anyone who may not edit the chain does not
+silently gain the right to delegate it away.
+
+#### Verified end to end
+
+23 new unit tests (210/210). Against the live API as `devadmin`:
+
+| check | result |
+|---|---|
+| policy singleton created on first read | defaults returned |
+| senior → junior | refused: 0% salary ratio **and** not managerial |
+| senior → peer manager at 80% | refused: **78.3%** — the rule is real, not decorative |
+| same pair at 75% | created; status derived **Active**, scopes + 25,000 ceiling stored |
+| delegate tries to delegate onward | **400** — "Authority received through a delegation cannot be delegated onward" |
+| 366-day window | **400** — capped at 90 days |
+| experience | 21.8 yrs for the peer (internal + prior, merged) |
+
+Test delegation deleted and the policy restored to 80%; no delegation rows remain.
+
+#### Not built
+
+**The React screens.** The engine, API and rules are complete and verified, but there is no UI yet —
+an HR administration screen and a "My Delegations" self-service page. Everything they need is in
+place: `GET /ApprovalDelegation`, `/mine`, `/eligibility` (for the live check as the form is filled),
+`POST`, `PUT /revoke`, and `GET|PUT /policy`.
+
+#### The screens (added)
+
+Two, because there are two audiences.
+
+**Approval Delegation** (`/approvalDelegation`) — HR's register, built from the mandatory template
+(`EntityModuleShell` + `useEntityCrudModule`, `EntityListShell`, config-driven `FormProvider`,
+service factories) and registered in `ENTITY_ROUTES` so it gets the URL-backed trio
+(`/x`, `/x/new`, `/x/{guid}`) rather than three hand-written routes.
+
+⚠️ **The seniority verdict is shown LIVE**, as the two employees are picked, not at save. A rule
+that speaks for the first time when you press Save reads as the system being obstructive; the same
+rule shown while you choose reads as the policy it is. It names the figures it judged on —
+*"Experience: 21.8 yr(s) · salary 78.3% of the approver's · policy requires 2 yr(s) and 80%"* — so
+the answer can be argued with instead of merely obeyed.
+
+Both employee fields go through the role-scoped `EmployeePicker`, so the SERVER decides which
+employees the caller may even see; the delegate picker passes `excludeId` so the approver cannot
+appear in their own stand-in list.
+
+**My Delegations** (`/myDelegations`) — the approver's own view, deliberately **outside**
+`PermissionGate`. Needing the administrative delegation permission to arrange your own stand-in
+would mean only HR could ever go on leave cleanly; the API scopes `/mine` to the caller.
+
+⚠️ **Two lists, not one.** "Authority I lent out" and "authority I am holding" are different
+questions with different consequences — the first is something you can withdraw, the second is
+something you are answerable for. A merged list makes the reader work out which side of each row
+they are on, and the row that matters most (somebody else's approvals landing in your inbox) is the
+one that would be easiest to miss. The held list says so out loud in a banner.
+
+Withdrawal asks first, through the standard imperative `confirm()` with `variant: "destructive"` —
+it is terminal and not undoable. The button only appears on a live delegation; offering it on an
+expired one would be a dead control.
+
+⚠️ **Palette check, against the BUILT css.** `border-success/40` is not registered and emits
+nothing, so the "eligible" banner would have had no border; switched to the registered
+`border-success/20` rather than growing the palette. Every other variant used here was confirmed to
+ship (memory: *Tailwind palette not registered*).
+
+`tsc -b` clean, `npm run build` green, ESLint 0 errors. All three endpoints the screens call answer
+200 against the live API.
