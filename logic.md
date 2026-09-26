@@ -8331,3 +8331,101 @@ harness this repo normally uses cannot run — `POST /Auth/register` is broken i
 work (*"The value of 'Tenant.OrganizationId' is unknown when attempting to save changes"*, 500) —
 and no documented dev credential still opens the `headoffice` tenant. Guessing further was not
 appropriate. The endpoint needs one authenticated pass before it is trusted in front of users.
+
+### 12.111 The 1820% performance score
+
+Reported on the transfer request Assessment tab for Getaneh Ashenafi Deneke. The arithmetic was
+exactly what it looked like:
+
+```csharp
+var max = ratingLevels.Where(l => l.RatingScaleId == cycle.RatingScaleId)
+                      .Select(l => (decimal?)l.Value).MaxAsync() ?? 0m;
+dto.PerformanceScorePercent = max > 0 ? Math.Round(score / max * 100m, 1) : null;
+```
+
+`91 / 5 × 100 = 1820`. Three separate faults stack up behind that one number.
+
+#### Fault 1 — nothing ever checked a score against its own scale ⚠️
+
+His appraisal has one goal, scored **91**, on a cycle running the **5 Point Competency Scale**. A
+manager plainly meant "91% of the goal" and typed it into a field that wanted 1–5.
+
+Nothing stopped them. `SetSelfScore`/`SetManagerScore` take any `decimal`, the DTO validator had no
+bound, and the UI offered none — so 91 was stored, weighted-averaged into `OverallScore`, and read
+back by five separate features as a percentage of 5. **This is the root cause**; everything below
+is a consequence.
+
+Fixed at entry, in `SaveAppraisalScores`, because that is the only place that can stop it being
+stored. It is checked in the handler rather than the DTO validator because the bound is not a
+constant — it belongs to the review cycle's rating scale and only a query can supply it.
+
+#### Fault 2 — the wrong denominator on a banded scale
+
+`RatingScaleLevel` carries both `Value` (the ordinal) and `MinScore`/`MaxScore` (an inclusive score
+band). `ResolveRatingLevelAsync` already treats the bands as authoritative — *"Percentage bands take
+priority when configured"* — but three of the five readers divided by `max(Value)`.
+
+The live data has both shapes, and on the **Percentage Goal Attainment Scale** they diverge wildly:
+
+| scale | ordinals | bands | `max(Value)` | truth |
+|---|---|---|---|---|
+| 5 Point Competency | 1–5 | 1–1 … 5–5 | 5 | 5 |
+| Percentage Goal Attainment | 1–4 | 0–59 … 101–130 | **4** | **130** |
+
+A score of 100 on that scale read **2500%**. And dividing by 130 would be wrong too — on a
+percentage scale the score *is* the percentage; renormalising reports 100% attainment as 77%.
+
+⚠️ The entity says bands are "null for pure numeric levels", but the seeded numeric scales fill
+them in anyway (level 3 carrying the band 3–3), so "has bands" cannot mean "is a percentage scale".
+What separates them is that a real percentage scale's bands reach **beyond** its ordinals.
+
+#### Fault 3 — five callers, five different answers
+
+| caller | denominator | out of range |
+|---|---|---|
+| transfer assessment | `max(Value)` | 1820% |
+| training suggestions | `max(Value)` | 1820% |
+| **reward auto-grant** | `max(Value)` | **1820%** |
+| career development (×2) | `max(MaxScore)` | clamped to 100% |
+
+One employee could show a different performance figure on every screen that mentioned it. All five
+now call `AppraisalScore.ToPercent`.
+
+⚠️ **The reward auto-grant is the one that did more than mislead.** It grants badges whose
+`AutoGrantMinScore <= percent`. At 1820% that clears every threshold any badge could define — one
+mis-keyed score would have auto-granted the entire badge catalogue, publicly, on the recognition
+wall. An unreadable score now grants nothing.
+
+#### Why an out-of-range score is refused, not clamped
+
+Clamping was the tempting fix and it is worse. **100% reads as a top performer** — a plausible wrong
+answer instead of an obviously broken one, and nobody would ever have reported it. `ToPercent`
+returns null plus a sentence, and the assessment shows it as an advisory flag:
+
+> The recorded appraisal score (91) is outside its rating scale (1–5), so it cannot be read as a
+> percentage. Re-score the appraisal against the scale its cycle uses.
+
+The flag also distinguishes this from "no appraisal on record", which is what the tab said before —
+sending somebody to look for an appraisal that exists and is merely unreadable.
+
+#### ⚠️ And the flag was invisible
+
+The advisory banner uses `bg-warning/10 border-warning/30`. **Neither was ever registered.** Every
+palette opacity variant is hand-written in `theme.css`; Tailwind does not know these colours, so an
+unwritten `/nn` silently emits *nothing* rather than failing the build. The banner was bare amber
+text with no background or border — so the explanation this fix adds would have arrived nearly
+invisible. Both are now registered and confirmed **in the built CSS**, not by eye.
+
+58 usages across the app still reference unregistered warning variants (`bg-warning/5`, `/20`,
+`border-warning/40`, `/50`); only the two on this path were fixed here.
+
+#### Verified
+
+16 new xUnit tests (187/187 in the suite) covering the reported case, both scale shapes, stretch
+scores above 100, bandless scales, fractional weighted averages, and the entry guard. Backend builds
+clean; frontend builds and lints.
+
+⚠️ **The data is still wrong.** Getaneh's appraisal holds 91 on a 1–5 scale and the tab will now say
+so rather than inventing a figure. Correcting it is an HR act, not a migration: the appraisal is
+`Completed`, so stage locking blocks re-scoring, and calibration (`ApplyCalibration`) is the path
+that can set an overall score on a finished appraisal.

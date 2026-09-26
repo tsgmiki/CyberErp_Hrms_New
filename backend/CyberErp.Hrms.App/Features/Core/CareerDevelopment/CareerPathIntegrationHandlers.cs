@@ -1,4 +1,5 @@
 using CyberErp.Hrms.App.Common.Exceptions;
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Workflows;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -143,11 +144,13 @@ namespace CyberErp.Hrms.App.Features.Core.CareerDevelopment
 
             var scaleId = await reviewCycleRepository.GetAll().Where(c => c.Id == latest.ReviewCycleId)
                 .Select(c => c.RatingScaleId).FirstOrDefaultAsync();
-            var scaleMax = scaleId != Guid.Empty
-                ? await ratingLevelRepository.GetAll().Where(l => l.RatingScaleId == scaleId && l.MaxScore != null)
-                    .MaxAsync(l => (decimal?)l.MaxScore)
-                : null;
-            return scaleMax is decimal max && max > 0 ? Math.Round(Math.Clamp(score / max * 100m, 0m, 100m), 1) : null;
+            var levels = scaleId == Guid.Empty
+                ? []
+                : await ratingLevelRepository.GetAll()
+                    .Where(l => l.RatingScaleId == scaleId)
+                    .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                    .ToListAsync();
+            return AppraisalScore.ToPercent(score, levels).Percent;
         }
     }
 

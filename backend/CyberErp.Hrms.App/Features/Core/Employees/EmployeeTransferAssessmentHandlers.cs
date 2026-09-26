@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Exceptions;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -41,7 +42,14 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
         public TransferPlacementDto Target { get; set; } = new();
 
         // Eligibility inputs
-        /// <summary>Latest appraisal overall score normalised 0–100 against its rating scale (null = none).</summary>
+        /// <summary>
+        /// Latest appraisal overall score as a percentage of its rating scale.
+        /// </summary>
+        /// <remarks>
+        /// null when there is no appraisal, or when the recorded score cannot be read against the
+        /// scale its cycle uses — the reason is then in <see cref="Flags"/>. May legitimately
+        /// exceed 100 on a stretch scale whose top band does.
+        /// </remarks>
         public decimal? PerformanceScorePercent { get; set; }
         public string? PerformanceCycleName { get; set; }
         public int TenureMonthsTotal { get; set; }
@@ -117,6 +125,7 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                 .OrderByDescending(a => a.CreatedAt)
                 .Select(a => new { a.OverallScore, a.ReviewCycleId })
                 .FirstOrDefaultAsync();
+            string? performanceProblem = null;
             if (latest?.OverallScore is decimal score)
             {
                 var cycle = await reviewCycleRepository.GetAll()
@@ -124,10 +133,22 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
                     .Select(c => new { c.Name, c.RatingScaleId })
                     .FirstOrDefaultAsync();
                 dto.PerformanceCycleName = cycle?.Name;
-                var max = cycle is null ? 0m : await ratingLevelRepository.GetAll()
-                    .Where(l => l.RatingScaleId == cycle.RatingScaleId)
-                    .Select(l => (decimal?)l.Value).MaxAsync() ?? 0m;
-                dto.PerformanceScorePercent = max > 0 ? Math.Round(score / max * 100m, 1) : null;
+
+                // ⚠️ This used to be `score / max(Value) * 100`, which produced 1820% for a score of
+                // 91 recorded against a 1–5 scale. Two separate faults: the score was never checked
+                // against its scale, and max(Value) is the wrong denominator for a banded
+                // percentage scale. Both now live in AppraisalScore, shared with the four other
+                // callers that each had their own version of this arithmetic.
+                var levels = cycle is null
+                    ? []
+                    : await ratingLevelRepository.GetAll().AsNoTracking()
+                        .Where(l => l.RatingScaleId == cycle.RatingScaleId)
+                        .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                        .ToListAsync();
+
+                var percent = AppraisalScore.ToPercent(score, levels);
+                dto.PerformanceScorePercent = percent.Percent;
+                performanceProblem = percent.Problem;
             }
 
             var now = DateTime.UtcNow.Date;
@@ -174,7 +195,11 @@ namespace CyberErp.Hrms.App.Features.Core.Employees
             dto.SalaryUnchanged = true;   // domain rule: a transfer never changes pay
 
             // ---- Advisory flags -------------------------------------------------------
-            if (dto.PerformanceScorePercent is null)
+            // Say WHICH of the two it is. "No appraisal on record" sent somebody looking for an
+            // appraisal that exists and is simply unreadable against its scale.
+            if (performanceProblem is not null)
+                dto.Flags.Add(performanceProblem);
+            else if (dto.PerformanceScorePercent is null)
                 dto.Flags.Add("No completed appraisal on record — performance cannot be assessed.");
             if (dto.TenureMonthsInCurrentRole < MinTenureMonths)
                 dto.Flags.Add($"Tenure in the current role is {dto.TenureMonthsInCurrentRole} month(s) — below the advisory minimum of {MinTenureMonths}.");

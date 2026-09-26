@@ -1,5 +1,6 @@
 using CyberErp.Hrms.App.Common.DTOs;
 using CyberErp.Hrms.App.Common.Exceptions;
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using FluentValidation;
@@ -276,6 +277,8 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
     // ---- Score (self / manager) ---------------------------------------------
     public class SaveAppraisalScores(
         IRepository<Appraisal> repository,
+        IRepository<ReviewCycle> reviewCycleRepository,
+        IRepository<RatingScaleLevel> ratingLevelRepository,
         IPerformanceHistoryWriter history,
         IAppraisalWorkflowService workflowService,
         IValidator<SaveAppraisalScoresDto> validator,
@@ -299,6 +302,41 @@ namespace CyberErp.Hrms.App.Features.Core.Performance
             // Identity gating from the workflow engine: only the configured approver for the current stage
             // (SelfAssessment → the subject employee; ManagerReview → the manager) may edit scores.
             await workflowService.EnsureCanActAsync(appraisal);
+
+            // ⚠️ THE ROOT CAUSE OF THE 1820% BUG. Nothing anywhere checked a score against the
+            // scale its cycle uses: SetSelfScore/SetManagerScore take any decimal, the DTO
+            // validator had no bound, and the UI offered none. So a manager typed 91 — plainly
+            // meaning "91% of the goal" — into an appraisal whose cycle runs on a 1–5 competency
+            // scale, and it was stored, averaged into the overall score, and read back by five
+            // different features as a percentage of 5.
+            //
+            // Caught here rather than in the DTO validator because the bound is not a constant:
+            // it belongs to the review cycle's rating scale, which only a query can supply.
+            var scaleId = await reviewCycleRepository.GetAll().AsNoTracking()
+                .Where(c => c.Id == appraisal.ReviewCycleId)
+                .Select(c => c.RatingScaleId).FirstOrDefaultAsync();
+            var levels = scaleId == Guid.Empty
+                ? []
+                : await ratingLevelRepository.GetAll().AsNoTracking()
+                    .Where(l => l.RatingScaleId == scaleId)
+                    .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                    .ToListAsync();
+
+            if (levels.Count > 0)
+            {
+                var (low, high, _) = AppraisalScore.RangeOf(levels);
+                var offenders = dto.Goals.Select(g => g.Score)
+                    .Concat(dto.Competencies.Select(c => c.Score))
+                    .Where(s => s.HasValue && !AppraisalScore.IsInRange(s!.Value, levels))
+                    .Select(s => s!.Value.ToString("0.##"))
+                    .Distinct()
+                    .ToList();
+
+                if (offenders.Count > 0)
+                    throw new ValidationException("score",
+                        $"Score(s) {string.Join(", ", offenders)} are outside this review cycle's rating scale "
+                        + $"({low:0.##}–{high:0.##}). Enter each score on that scale.");
+            }
 
             var goalScores = dto.Goals.Select(g => new AppraisalLineScore(g.LineId, g.Score, g.Comments));
             var compScores = dto.Competencies.Select(c => new AppraisalLineScore(c.LineId, c.Score, c.Comments));

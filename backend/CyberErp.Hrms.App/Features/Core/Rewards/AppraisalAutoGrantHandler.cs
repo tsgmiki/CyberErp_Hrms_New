@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.Performance;
 using CyberErp.Hrms.Dom.Entities.Core;
@@ -36,11 +37,17 @@ namespace CyberErp.Hrms.App.Features.Core.Rewards
                 .FirstOrDefaultAsync();
             if (cycle is null) return;
 
-            var max = await ratingLevelRepository.GetAll().AsNoTracking()
+            // ⚠️ THE MOST CONSEQUENTIAL OF THE FIVE READERS. This one does not display a number,
+            // it GRANTS things: badges whose AutoGrantMinScore is at or below the percentage. The
+            // old `score / max(Value) * 100` turned a 91 recorded against a 1–5 scale into 1820%,
+            // which clears every threshold any badge could define — one mis-keyed score would have
+            // auto-granted the entire badge catalogue, publicly, on the recognition wall. An
+            // unreadable score now grants nothing at all.
+            var levels = await ratingLevelRepository.GetAll().AsNoTracking()
                 .Where(l => l.RatingScaleId == cycle.RatingScaleId)
-                .Select(l => (decimal?)l.Value).MaxAsync() ?? 0m;
-            if (max <= 0) return;
-            var percent = Math.Round(score / max * 100m, 1);
+                .Select(l => new RatingLevelBounds(l.Value, l.MinScore, l.MaxScore))
+                .ToListAsync();
+            if (AppraisalScore.ToPercent(score, levels).Percent is not decimal percent) return;
 
             var eligible = await badgeRepository.GetAll().AsNoTracking()
                 .Where(b => b.IsActive && b.AutoGrantMinScore != null && b.AutoGrantMinScore <= percent)

@@ -297,6 +297,17 @@
 .bg-warning\/15 {
   background-color: color-mix(in srgb, var(--warning) 15%, transparent);
 }
+/* ⚠️ These two are USED across the app but were never registered, so they emitted nothing and
+   the advisory warning banners rendered as bare amber text - no background, no border. Every
+   palette opacity variant in this file is hand-written: Tailwind does not know these colours, so
+   an unwritten /nn is silently no styling rather than a build error. Verify against the BUILT
+   css, never by eye. (Still unregistered: bg-warning/5, bg-warning/20, border-warning/40, /50.) */
+.bg-warning\/10 {
+  background-color: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+.border-warning\/30 {
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+}
 .bg-error\/15 {
   background-color: color-mix(in srgb, var(--error) 15%, transparent);
 }
