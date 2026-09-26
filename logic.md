@@ -8849,3 +8849,67 @@ Verified end to end, with HR doing the revoking so both branches showed:
 | wording branch | HR revoked, so *"has been withdrawn"* and not *"has ended your cover"* — correct |
 
 Test delegation and alerts removed; policy restored to 80%. 210/210.
+
+### 12.116 Delegation rules, as a settings screen
+
+The policy was already a per-tenant row with a GET/PUT pair behind it — what it never had was a way
+for anybody to change it. HR could see the figures quoted on the delegation form and had no screen
+on which to set them.
+
+#### The screen
+
+`/delegationPolicy`, built on the **`salaryIncrementPolicy`** pattern: a singleton on
+`EntityModuleShell` with the list, add and back actions suppressed rather than left on screen doing
+nothing. Seven rules, each explained in plain language beside the control that sets it.
+
+⚠️ The form's `DEFAULTS` mirror `DelegationPolicy.CreateDefault()` exactly, so a tenant that has
+never saved sees **the rules already running** rather than a blank slate implying nothing is
+enforced. Two of the switches carry a consequence warning when turned off — switching off
+self-service says out loud that department heads will no longer be able to arrange cover before
+going on leave, which is the kind of thing worth learning before the save rather than after.
+
+#### One rule promoted from hardcoded to configurable
+
+**Own department only** (`RestrictToOwnDepartment`). §12.114 hardcoded it; some organisations are
+flat, or cover across sites. It widens WHO may be named, never what they may do — the seniority
+rules still apply, and HR is exempt either way.
+
+⚠️ **THE OTHER THREE GUARDS ARE NOT ON THE SCREEN, DELIBERATELY.** No onward delegation, no
+approving your own request, and an open step confers nothing. Those are invariants, not
+preferences: an organisation that switched any of them off would have an approval chain that does
+not mean anything, and a settings page offering the switch implies it is a reasonable thing to
+want. They are listed at the foot of the screen under *"Always enforced, and not configurable"*, so
+their absence is visible rather than silent.
+
+#### ⚠️ The migration default EF generated was wrong, and dangerous
+
+`AddColumn<bool>` produced `defaultValue: false`. The column encodes a rule **already in force** —
+every non-HR delegation was confined to the approver's own department, unconditionally — so taking
+EF's default would have silently flipped every existing tenant to *"anyone in the organisation may
+be named"* the moment the migration ran. A widening of who can hold approval authority, applied by
+a schema change nobody would read as a policy change. Set to `true`; verified the live row kept
+`RestrictToOwnDepartment = 1`.
+
+#### Permissions
+
+Granted exactly where the delegation **register** is, and nowhere else. Setting the rules for the
+whole organisation is strictly more powerful than arranging one stand-in: it decides who may ever
+hold anybody's authority.
+
+⚠️ Explicitly NOT seeded from the portal's self-service *My Delegations* grant — that belongs to
+every employee who can arrange their own cover, and attaching organisation-wide policy to it would
+hand the rules to the entire workforce.
+
+#### Verified — the rules actually drive behaviour
+
+All seven fields round-trip through `GET`/`PUT`. Then, with the policy loosened to 60% parity, no
+managerial requirement and a 30-day cap:
+
+| check | before | after |
+|---|---|---|
+| peer at **78.3%** salary parity | refused (80% policy) | **eligible** |
+| junior, 0% salary + non-managerial | 2 reasons | **1 reason**, quoting the new 60% |
+| 86-day window | allowed (90-day cap) | **refused**, "at most 30 day(s)" |
+
+Three separate rules moving with the stored configuration, not with the code. Policy restored to
+the shipped defaults; no delegations or alerts left behind. 210/210; build and lint clean.

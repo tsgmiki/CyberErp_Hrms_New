@@ -50,6 +50,7 @@ const NotificationTemplatePage = memo(lazy(() => import("@/pages/admin/notificat
 const WorkflowDefinitionPage = memo(lazy(() => import("@/pages/admin/workflowDefinition")));
 const ClearanceDepartmentPage = memo(lazy(() => import("@/pages/admin/clearanceDepartment")));
 const ApprovalDelegationPage = memo(lazy(() => import("@/pages/admin/approvalDelegation")));
+const DelegationPolicyPage = memo(lazy(() => import("@/pages/admin/delegationPolicy")));
 const WorkforcePlanPage = memo(lazy(() => import("@/pages/admin/workforcePlan")));
 const HiringRequestPage = memo(lazy(() => import("@/pages/admin/hiringRequest")));
 const JobRequisitionPage = memo(lazy(() => import("@/pages/admin/jobRequisition")));
@@ -162,6 +163,7 @@ export const ENTITY_ROUTES: EntityRouteDef[] = [
   { path: "workflowDefinition", Page: WorkflowDefinitionPage },
   { path: "clearanceDepartment", Page: ClearanceDepartmentPage },
   { path: "approvalDelegation", Page: ApprovalDelegationPage },
+  { path: "delegationPolicy", Page: DelegationPolicyPage },
   { path: "workforcePlan", Page: WorkforcePlanPage },
   { path: "hiringRequest", Page: HiringRequestPage },
   { path: "jobRequisition", Page: JobRequisitionPage },

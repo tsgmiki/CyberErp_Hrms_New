@@ -43,4 +43,6 @@ export interface DelegationPolicyModel {
   maxDelegationDays: number;
   defaultApprovalLimit?: number | null;
   allowSelfServiceDelegation: boolean;
+  /** Confine a stand-in to the approver's own department and those beneath it. */
+  restrictToOwnDepartment: boolean;
 }
