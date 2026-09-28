@@ -111,6 +111,7 @@ export type {
 } from "./masters/HrWorkflowModel";
 export type { default as ClearanceDepartmentModel } from "./masters/ClearanceDepartmentModel";
 export type { default as ApprovalDelegationModel } from "./masters/ApprovalDelegationModel";
+export type { default as PositionEntitlementModel } from "./masters/PositionEntitlementModel";
 export type {
   DelegationEligibilityModel,
   DelegationPolicyModel,

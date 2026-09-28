@@ -15,6 +15,7 @@ import getAllWorkLocation from "@/services/admin/workLocation/getAll";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
+import PositionEntitlements from "./entitlements";
 
 const FormProvider = memo(FormProviders);
 const lookupParam = { ...parameterInitialData, take: 100 };
@@ -205,6 +206,10 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
         }}
       />
       <StatusMessage formState={formState} status={formState?.status} message={formState?.message} />
+
+      {/* What the POST carries beyond its salary. Keyed on the SAVED id — a brand-new class has
+          nothing to hang an entitlement off, and the panel says so rather than appearing inert. */}
+      <PositionEntitlements positionClassId={formData.id || id || undefined} />
     </div>
   );
 }

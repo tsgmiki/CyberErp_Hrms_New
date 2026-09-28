@@ -9154,3 +9154,34 @@ happens to read it, but arranging a stand-in must not confer the right to change
 | withdraw BEFORE the start date | allowance **removed entirely** (0 remaining) — the bug above |
 
 All fixtures removed; policy restored to acting=off.
+
+#### The screen (added)
+
+A panel inside the **Position Class** form, not a screen of its own. Entitlements belong to the job
+definition — the same record that already owns the salary scale — so editing what a post is worth
+happens where the post is defined, beside its pay point.
+
+Two `SearchableSelect` pickers add an allowance or a benefit plan; each excludes what the post
+already carries, so a pick is never a no-op. Rows then edit in place: the value override blurs to
+save, and "Goes to a deputy" toggles `GrantedWhenActing` without a form round trip.
+
+⚠️ **The value box is blank, not zero, when the post defers to the catalogue.** Its placeholder
+shows the default that would actually apply (`default 3,000.00`, or `default 15%`), because a field
+reading `0` would say the post grants nothing — the opposite of what an empty override means.
+
+⚠️ **The panel refuses to appear for an unsaved class** and says why. An entitlement needs a
+position class to hang off; rendering disabled controls with no explanation would leave somebody
+clicking at them.
+
+⚠️ **And it states the thing everybody will otherwise assume:** adding an entitlement does NOT give
+it to whoever currently holds the post. It describes the job, and is applied to a deputy when they
+act in it. Without that line on screen the panel looks like a payroll action.
+
+⚠️ `hover:text-error` was written on the remove button and **is not a registered palette variant**,
+so the button would have had no hover feedback at all. Switched to the registered
+`hover:bg-error/10` and confirmed in the built css. That is the fifth time this session an
+unregistered palette utility has silently emitted nothing — see the note in §12.117 about a lint
+rule being the actual fix.
+
+Verified: all three endpoints the panel calls answer 200 (allowance search, benefit search,
+entitlement list). `tsc -b` clean, build green, ESLint 0 errors, 235/235.
