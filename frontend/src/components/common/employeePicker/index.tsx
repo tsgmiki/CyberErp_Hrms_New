@@ -88,6 +88,11 @@ function EmployeePickerBase({
         onChange={(e) => setTerm(e.target.value)}
       />
       <Search className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+      {/* ⚠️ hover:bg-muted, not hover:bg-secondary/40. Palette colours are unknown to Tailwind
+          here, so BOTH the base class and each variant must be hand-written in theme.css — and
+          no hover:bg-secondary/40 rule exists in either SPA, so the row highlight emitted
+          nothing at all and hovering the list did visibly nothing. hover:bg-muted is registered
+          in both. Verify against the BUILT css, never by eye. */}
       {open && !disabled && (
         <div className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-card shadow-lg">
           {(data?.options ?? []).length === 0 ? (
@@ -99,7 +104,7 @@ function EmployeePickerBase({
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => { onSelect(o.id, o.name); setOpen(false); }}
-                className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-secondary/40 ${o.id === value ? "bg-primary/10 text-primary" : "text-foreground"}`}
+                className={`flex w-full items-center justify-between px-3 py-1.5 text-left text-sm hover:bg-muted ${o.id === value ? "bg-primary/10 text-primary" : "text-foreground"}`}
               >
                 <span className="truncate">{o.name}</span>
                 <span className="ml-2 shrink-0 text-xs text-muted">{o.employeeNumber}</span>

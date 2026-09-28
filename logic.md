@@ -8966,3 +8966,23 @@ this change exists to add. Switched to `bg-primary/10`, confirmed against the bu
 > left alone here because it is a different screen.
 
 `tsc -b` clean, build green, ESLint 0 errors, 210/210.
+
+#### The same dead hover, in both EmployeePickers — and 43 files beyond them
+
+`EmployeePicker` used `hover:bg-secondary/40` for its row highlight, in BOTH SPAs. Neither registers
+that rule, so hovering the option list did visibly nothing.
+
+⚠️ **The variant is a separate registration from the base class.** Palette colours are unknown to
+Tailwind here, so `.bg-secondary\/40` and `.hover\:bg-secondary\/40:hover` are two hand-written
+rules and having one says nothing about the other. Home is the instructive case: it *does* ship
+`bg-secondary/40` as a base class and registers `hover:bg-secondary/60` — but never
+`hover:bg-secondary/40`, so the hover was dead there too while looking entirely plausible in the
+theme file.
+
+Both switched to **`hover:bg-muted`**, the general-purpose hover tint, registered in both SPAs and
+confirmed in each built bundle.
+
+> ⚠️ This is not confined to the picker. **31 HRMS files (58 uses) and 12 Home files (27 uses)**
+> still reference `hover:bg-secondary/40` and render no hover at all. Left alone here: the right
+> tint is a per-context judgement, not a find-and-replace, and restyling 43 files is not what
+> "fix the EmployeePicker highlight" asked for.
