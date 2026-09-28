@@ -8986,3 +8986,96 @@ confirmed in each built bundle.
 > still reference `hover:bg-secondary/40` and render no hover at all. Left alone here: the right
 > tint is a per-context judgement, not a find-and-replace, and restyling 43 files is not what
 > "fix the EmployeePicker highlight" asked for.
+
+### 12.118 Acting compensation — when standing in becomes a job
+
+The client's rule: past a threshold (their example, three months) the deputy is paid for the post
+they cover, and afterwards the period counts as work experience and they revert to their own
+salary. Every number is client-defined — `DelegationPolicy` owns whether this happens at all, how
+long is long enough, and whether the period becomes experience.
+
+#### Three decisions taken with the client up front
+
+| question | answer |
+|---|---|
+| Which salary? | The **post's scale rate** (`Position → PositionClass → SalaryScale`), not what its current holder personally earns — so a delegator paid above scale does not hand their pay history to a deputy. |
+| Automatic or approved? | **Raised for approval.** A delegation can be created self-service by a department head; the money it implies cannot. |
+| "Salary and benefits"? | **Salary now.** Benefits are not modelled per post — allowances and enrolments attach to PEOPLE — so the position would first need an entitlement set. Scoped separately rather than guessed at. |
+
+#### Qualification is on PLANNED length, not elapsed
+
+The pay change must be approved before it starts, and approval cannot be applied retroactively
+three months into an assignment somebody has already been underpaid for. A delegation cut short by
+an early withdrawal takes its assignment down with it.
+
+#### The guards that matter
+
+- ⚠️ **Nothing changes pay except the workflow handler.** Everything before it is a proposal, and an
+  assignment nobody approves simply sits there having cost nothing. With **no workflow configured
+  it stays pending** rather than activating itself — a pay change that approves itself because
+  nobody set up a chain is precisely the failure the approval step exists to prevent.
+- ⚠️ **An acting rate at or below the deputy's own raises nothing.** That is not compensation, it is
+  a pay cut wearing the word "acting".
+- ⚠️ **The original salary is re-snapshotted at approval**, not trusted from when the assignment was
+  raised. Approval can land weeks later, and an ordinary increment in between would otherwise be
+  erased when the assignment eventually reverts.
+- ⚠️ **Revert reads the snapshot, never the employee.** Reading their current salary at conclusion
+  returns the ACTING rate, which would quietly make the uplift permanent.
+- ⚠️ **Withdrawal unwinds pay BEFORE sending alerts.** If anything fails, the thing that matters —
+  somebody's salary — is already back.
+
+#### Conclusion is a nightly sweep, for a reason
+
+`TenantSweep.ActingAssignmentConclusion`, 04:00 daily. Nobody logs in to end their own acting pay;
+an assignment that ran past its end date would leave somebody on an elevated salary indefinitely —
+the one failure here that costs real money every day it goes unnoticed.
+
+⚠️ It had to be added to `ReconcileRecurringJobs`'s keep-list as well as registered. That list
+**deletes any job not named in it**, so a new sweep registers and is purged seconds later — the trap
+the file's own comment warns about (§12.91).
+
+The concluded period is written to `EmployeeExperience` with **`IsExternal = false`** — service with
+this organisation, not prior employment elsewhere. The distinction is not cosmetic: annual-leave
+accrual can be configured to count external experience differently. It closes a pleasing loop, since
+`DelegationEligibilityService` counts exactly these rows, so covering a post once helps qualify
+somebody to cover one again.
+
+#### ⚠️ Two generated migration defaults were wrong
+
+EF writes `0`/`false` for new non-nullable columns regardless of the entity's own default:
+
+| column | generated | corrected | why it mattered |
+|---|---|---|---|
+| `ActingCompensationEnabled` | `false` | `false` ✓ | correct — the feature must be OFF for existing tenants |
+| `ActingCompensationMinDays` | **`0`** | **`90`** | zero means EVERY delegation exceeds the threshold — a one-day stand-in would raise acting pay the moment somebody switched it on |
+| `RecordActingExperience` | **`false`** | **`true`** | silently drops the half of the client's rule about experience, invisibly, since nothing fails when a row is simply not written |
+
+Third time this session a generated default has contradicted a column's meaning. The pattern is
+worth stating plainly: **EF's default is a type default, never a semantic one.**
+
+#### ⚠️ The two thresholds trap each other
+
+A delegation may run at most `MaxDelegationDays` and must EXCEED `ActingCompensationMinDays`. On the
+shipped defaults both are **90**, so nothing can ever qualify — the feature would look configured
+and do nothing, with no error to explain why. The settings screen says so when both numbers are on
+screen together, and also names the workflow prerequisite.
+
+#### Verified end to end
+
+15 new tests (225/225). Against the live API with acting pay enabled at a 60-day threshold:
+
+| check | result |
+|---|---|
+| 30-day delegation | **0 assignments** — under the threshold |
+| 120-day delegation | assignment raised: **Chief Executive Officer**, 120 days, **78,210** (the post's rate) vs the deputy's own 61,250 |
+| status | **PendingApproval** |
+| deputy's salary while pending | **unchanged at 61,250** — nothing moved without approval |
+| delegation withdrawn | assignment **Cancelled**, salary still 61,250 |
+
+All test data removed; policy restored to acting=off, 90 days, 80% parity.
+
+#### Not built
+
+**Benefits.** Positions carry no entitlement set, so "the benefits associated with the post" has
+nothing to read. Modelling allowances/benefit plans on `PositionClass` is the real fix and a
+substantially larger change to the compensation module.

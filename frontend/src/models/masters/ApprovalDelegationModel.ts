@@ -45,4 +45,10 @@ export interface DelegationPolicyModel {
   allowSelfServiceDelegation: boolean;
   /** Confine a stand-in to the approver's own department and those beneath it. */
   restrictToOwnDepartment: boolean;
+  /** Whether a long delegation pays the deputy for the post they cover. */
+  actingCompensationEnabled: boolean;
+  /** Planned days a delegation must EXCEED to qualify. 90 = the client's "3 months". */
+  actingCompensationMinDays: number;
+  /** Write the concluded acting period into the deputy's experience record. */
+  recordActingExperience: boolean;
 }

@@ -2,7 +2,7 @@
 import React, { memo, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, CalendarClock, Coins, GraduationCap, Scale, UserCog } from "lucide-react";
+import { Briefcase, Building2, CalendarClock, Coins, GraduationCap, History, Scale, UserCog } from "lucide-react";
 import FormProviders from "@/components/common/formProvider/formProvider";
 import Loading from "@/components/common/loader/loader";
 import { getDelegationPolicy, saveDelegationPolicy } from "@/services/admin/approvalDelegation";
@@ -22,6 +22,11 @@ const DEFAULTS: DelegationPolicyModel = {
   defaultApprovalLimit: null,
   allowSelfServiceDelegation: true,
   restrictToOwnDepartment: true,
+  // Off by default, matching the engine: this rule SPENDS MONEY, so it is switched on
+  // deliberately rather than inherited by an upgrade.
+  actingCompensationEnabled: false,
+  actingCompensationMinDays: 90,
+  recordActingExperience: true,
 };
 
 /** Each rule, said once in plain language beside the control that sets it. */
@@ -63,6 +68,23 @@ const RULES = [
     body: "The most days a single delegation may run. An indefinite delegation is not a delegation, "
       + "it is an undocumented change to the approval chain that nobody revisits; a bounded window "
       + "forces the question to be asked again. Set 0 for no limit.",
+  },
+  {
+    icon: Briefcase,
+    title: "Acting compensation",
+    body: "Past the threshold, standing in stops being a favour and becomes a job: the deputy is "
+      + "paid the rate of the POST they are covering — taken from that position's salary scale, not "
+      + "from what its current holder personally earns — for the length of the assignment. It is "
+      + "raised for approval, never applied automatically, and the deputy reverts to their own "
+      + "salary when the cover ends. An acting rate that would not exceed what they already earn "
+      + "raises nothing.",
+  },
+  {
+    icon: History,
+    title: "Acting counts as experience",
+    body: "On conclusion, the period is written into the deputy's experience record as internal "
+      + "service. That feeds straight back into the rules above: covering a post once helps qualify "
+      + "somebody to cover one again.",
   },
   {
     icon: Coins,
@@ -122,6 +144,7 @@ function DelegationPolicyForm() {
         minDelegateExperienceYears: Number(formData.minDelegateExperienceYears ?? 0),
         minSalaryRatioPercent: Number(formData.minSalaryRatioPercent ?? 0),
         maxDelegationDays: Number(formData.maxDelegationDays ?? 0),
+        actingCompensationMinDays: Number(formData.actingCompensationMinDays ?? 90),
         // Blank means "no default ceiling", which is not a ceiling of zero.
         defaultApprovalLimit:
           formData.defaultApprovalLimit === null ||
@@ -207,6 +230,23 @@ function DelegationPolicyForm() {
               value: formData.allowSelfServiceDelegation ? "true" : "",
               onChange: toggle("allowSelfServiceDelegation"),
             },
+            {
+              name: "actingCompensationEnabled", label: "Pay the deputy for long cover",
+              type: "checkbox",
+              value: formData.actingCompensationEnabled ? "true" : "",
+              onChange: toggle("actingCompensationEnabled"),
+            },
+            {
+              name: "actingCompensationMinDays", label: "Acting threshold (days)",
+              type: "text", inputType: "number", placeholder: "e.g. 90",
+              value: formData.actingCompensationMinDays, onChange: changeHandler,
+            },
+            {
+              name: "recordActingExperience", label: "Count acting as experience",
+              type: "checkbox",
+              value: formData.recordActingExperience ? "true" : "",
+              onChange: toggle("recordActingExperience"),
+            },
           ],
         }}
       />
@@ -214,6 +254,28 @@ function DelegationPolicyForm() {
       {!policy && (
         <p className="mt-2 rounded-md border border-info/20 bg-info/15 px-3 py-2 text-xs text-muted">
           {t("No policy has been saved yet. These are the defaults already in force — save to make them explicit or to change them.")}
+        </p>
+      )}
+
+      {/* ⚠️ THE TRAP THESE TWO NUMBERS SET FOR EACH OTHER. A delegation may run at most
+          maxDelegationDays, and must EXCEED actingCompensationMinDays to earn acting pay. On the
+          shipped defaults both are 90, so no delegation can ever qualify — the feature would be
+          switched on, look configured, and do nothing at all, with no error anywhere to explain
+          why. Said here, where both numbers are on screen together. */}
+      {formData.actingCompensationEnabled &&
+        Number(formData.maxDelegationDays) > 0 &&
+        Number(formData.maxDelegationDays) <= Number(formData.actingCompensationMinDays) && (
+          <p className="mt-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+            {t("No delegation can qualify for acting pay: the longest one allowed is")}{" "}
+            {formData.maxDelegationDays} {t("days, and the acting threshold is")}{" "}
+            {formData.actingCompensationMinDays}{" "}
+            {t("days — a delegation must EXCEED the threshold. Raise the longest delegation, or lower the threshold.")}
+          </p>
+        )}
+
+      {formData.actingCompensationEnabled && (
+        <p className="mt-2 rounded-md border border-info/20 bg-info/15 px-3 py-2 text-xs text-muted">
+          {t("Qualifying delegations will raise an acting-pay assignment for approval. Nothing changes anybody's salary until it is approved, and it needs an active 'ActingAssignment' workflow — without one the assignment stays pending.")}
         </p>
       )}
 

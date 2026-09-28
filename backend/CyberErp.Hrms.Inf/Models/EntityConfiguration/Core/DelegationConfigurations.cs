@@ -44,6 +44,27 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    public class ActingAssignmentConfiguration : IEntityTypeConfiguration<ActingAssignment>
+    {
+        public void Configure(EntityTypeBuilder<ActingAssignment> builder)
+        {
+            builder.ToTable("ActingAssignment", "Hrms");
+            builder.HasKey(a => a.Id);
+
+            builder.Property(a => a.PositionTitle).IsRequired().HasMaxLength(200);
+            builder.Property(a => a.Notes).HasMaxLength(1000);
+            builder.Property(a => a.ActingSalary).HasPrecision(18, 2);
+            builder.Property(a => a.OriginalSalary).HasPrecision(18, 2);
+
+            // "Which assignments belong to this delegation" — asked on every save and every
+            // withdrawal, so it is an index rather than a scan.
+            builder.HasIndex(a => new { a.TenantId, a.DelegationId });
+            // The nightly sweep's query: active assignments whose end date has passed.
+            builder.HasIndex(a => new { a.TenantId, a.Status, a.EndDate });
+            builder.HasIndex(a => new { a.TenantId, a.EmployeeId });
+        }
+    }
+
     public class DelegationPolicyConfiguration : IEntityTypeConfiguration<DelegationPolicy>
     {
         public void Configure(EntityTypeBuilder<DelegationPolicy> builder)

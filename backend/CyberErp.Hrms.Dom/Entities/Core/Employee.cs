@@ -277,4 +277,33 @@ public class Employee : BaseEntity, IAggregateRoot, IBranchScoped, IAuditable
         if (salary.HasValue) Salary = salary;
         base.Update();
     }
+
+    /// <summary>
+    /// Pay this employee at a TEMPORARY acting rate while they cover another post.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Separate from <c>ApplyMovement</c>, which is how a PERMANENT pay change lands. This one
+    /// touches nothing else — not the position, not the salary scale, not the grade — because the
+    /// employee has not moved anywhere: they are doing another job for a while and being paid for
+    /// it. Leaving SalaryScaleId alone also means their grade still says what they actually are,
+    /// which is what the eventual revert depends on.
+    ///
+    /// <para>The figure to revert TO is not stored here. It is snapshotted on the
+    /// <c>ActingAssignment</c>, because reading it back off the employee at conclusion would return
+    /// the acting rate and quietly make the uplift permanent.</para>
+    /// </remarks>
+    public void ApplyActingSalary(decimal actingSalary)
+    {
+        if (actingSalary < 0)
+            throw new ArgumentException("An acting salary cannot be negative.", nameof(actingSalary));
+        Salary = actingSalary;
+        base.Update();
+    }
+
+    /// <summary>Put the employee back on their own salary when an acting assignment ends.</summary>
+    public void RevertActingSalary(decimal? originalSalary)
+    {
+        Salary = originalSalary;
+        base.Update();
+    }
 }

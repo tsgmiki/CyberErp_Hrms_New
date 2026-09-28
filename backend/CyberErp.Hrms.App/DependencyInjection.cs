@@ -63,6 +63,12 @@ namespace CyberErp.Hrms.App
             // approval inbox asks them once per row.
             services.AddScoped<Features.Core.Delegations.IDelegationEligibilityService,
                 Features.Core.Delegations.DelegationEligibilityService>();
+            services.AddScoped<Features.Core.Delegations.IActingCompensationService,
+                Features.Core.Delegations.ActingCompensationService>();
+            // Registered as an IWorkflowEntityHandler like every other module's outcome applier —
+            // this is the ONLY path that changes a deputy's pay.
+            services.AddScoped<Features.Core.Workflows.IWorkflowEntityHandler,
+                Features.Core.Delegations.ActingAssignmentWorkflowHandler>();
             services.AddScoped<Features.Core.Delegations.IDelegationScopeService,
                 Features.Core.Delegations.DelegationScopeService>();
             services.AddScoped<Features.Core.Delegations.IApprovalDelegationResolver,

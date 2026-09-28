@@ -1,4 +1,5 @@
 using CyberErp.Hrms.App.Common.Repositories;
+using CyberErp.Hrms.App.Features.Core.Delegations;
 using CyberErp.Hrms.App.Features.Core.Employees;
 using CyberErp.Hrms.App.Features.Core.Training;
 using CyberErp.Hrms.App.Features.Core.Trips;
@@ -45,7 +46,18 @@ namespace CyberErp.Hrms.Inf.Common
         /// <summary>HC263 — chase travel advances past their settlement deadline.</summary>
         TripSettlementReminders = 1,
         /// <summary>§12.88 — reconcile mandatory-training obligations, then chase the outstanding ones.</summary>
-        LearningCompliance = 2
+        LearningCompliance = 2,
+        /// <summary>
+        /// §12.118 — end acting assignments whose period has passed: revert the deputy's pay and
+        /// write the period into their experience record.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ A sweep and not an on-demand check, because the thing that must happen has no user
+        /// action behind it. Nobody logs in to end their own acting pay, and an assignment that
+        /// quietly ran past its end date would leave somebody on an elevated salary indefinitely —
+        /// the one failure in this feature that costs real money every day it goes unnoticed.
+        /// </remarks>
+        ActingAssignmentConclusion = 3
     }
 
     /// <summary>
@@ -179,6 +191,8 @@ namespace CyberErp.Hrms.Inf.Common
                 services.GetRequiredService<ITripSettlementReminder>().RunUnattendedAsync(),
             TenantSweep.LearningCompliance =>
                 services.GetRequiredService<ILearningComplianceChaser>().RunUnattendedAsync(),
+            TenantSweep.ActingAssignmentConclusion =>
+                services.GetRequiredService<IActingCompensationService>().ConcludeDueAsync(),
             _ => throw new ArgumentOutOfRangeException(nameof(sweep), sweep, "Unknown tenant sweep."),
         };
     }

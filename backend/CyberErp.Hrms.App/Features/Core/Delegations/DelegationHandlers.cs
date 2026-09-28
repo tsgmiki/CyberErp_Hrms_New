@@ -70,6 +70,14 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         public bool AllowSelfServiceDelegation { get; set; }
         /// <summary>Confine delegates to the approver's own department and those beneath it.</summary>
         public bool RestrictToOwnDepartment { get; set; }
+
+        // ---- Acting compensation ---------------------------------------------
+        /// <summary>Whether a long delegation pays the deputy for the post they cover.</summary>
+        public bool ActingCompensationEnabled { get; set; }
+        /// <summary>Planned days a delegation must exceed to qualify. Default 90 ("3 months").</summary>
+        public int ActingCompensationMinDays { get; set; } = 90;
+        /// <summary>Write the concluded period into the deputy's experience record.</summary>
+        public bool RecordActingExperience { get; set; } = true;
     }
 
     /// <summary>The eligibility answer, for the "can this person stand in?" preview on the form.</summary>
@@ -122,6 +130,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         IRepository<User> users,
         IDelegationEligibilityService eligibility,
         IDelegationScopeService scope,
+        IActingCompensationService actingCompensation,
         IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         IValidator<SaveApprovalDelegationDto> validator,
@@ -222,6 +231,21 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                 entity.Id, dto.FromEmployeeId, dto.ToEmployeeId, dto.StartDate, dto.EndDate, limit);
 
             await NotifyDelegateAsync(entity, isAmendment);
+
+            // ⚠️ AFTER the delegation is committed, and never in a way that can undo it. A long
+            // delegation MAY carry acting pay; whether it does is the client's policy, and whether
+            // the pay actually lands is an approver's decision. Raising the proposal must not be
+            // able to fail the thing that prompted it.
+            try
+            {
+                await actingCompensation.RaiseIfQualifyingAsync(entity);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex,
+                    "Delegation {Id}: failed to raise acting compensation; the delegation stands.", entity.Id);
+            }
+
             return entity.Id;
         }
 
@@ -317,6 +341,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         IRepository<ApprovalDelegation> repository,
         IRepository<User> users,
         IRepository<Employee> employees,
+        IActingCompensationService actingCompensation,
         IPortalNotifier portalNotifier,
         ICurrentUserService currentUser,
         ILogger<RevokeApprovalDelegation> logger) : IRevokeApprovalDelegation
@@ -356,6 +381,21 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             //
             // Best-effort throughout: the withdrawal itself is already committed and must stand
             // whatever the portal does.
+            // ⚠️ Unwind the pay FIRST, alerts second. If anything here fails, the state that
+            // matters — somebody's salary — has already been put back, and a missing notification
+            // is a smaller problem than a deputy left on an acting rate for cover that ended.
+            try
+            {
+                await actingCompensation.CancelForDelegationAsync(
+                    entity.Id, dto.Reason ?? "The delegation was withdrawn.");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Delegation {Id}: FAILED to unwind acting compensation. The deputy may still be "
+                    + "on the acting rate — check ActingAssignment.", entity.Id);
+            }
+
             try
             {
                 await portalNotifier.ResolveAsync(nameof(ApprovalDelegation), entity.Id);
@@ -598,7 +638,10 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                 MaxDelegationDays = p.MaxDelegationDays,
                 DefaultApprovalLimit = p.DefaultApprovalLimit,
                 AllowSelfServiceDelegation = p.AllowSelfServiceDelegation,
-                RestrictToOwnDepartment = p.RestrictToOwnDepartment
+                RestrictToOwnDepartment = p.RestrictToOwnDepartment,
+                ActingCompensationEnabled = p.ActingCompensationEnabled,
+                ActingCompensationMinDays = p.ActingCompensationMinDays,
+                RecordActingExperience = p.RecordActingExperience
             };
         }
     }
@@ -619,7 +662,9 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             {
                 entity.Update(dto.MinDelegateExperienceYears, dto.MinSalaryRatioPercent,
                     dto.RequireManagerialDelegate, dto.MaxDelegationDays, dto.DefaultApprovalLimit,
-                    dto.AllowSelfServiceDelegation, dto.RestrictToOwnDepartment);
+                    dto.AllowSelfServiceDelegation, dto.RestrictToOwnDepartment,
+                    dto.ActingCompensationEnabled, dto.ActingCompensationMinDays,
+                    dto.RecordActingExperience);
             }
             catch (ArgumentException ex) { throw new ValidationException("policy", ex.Message); }
 
