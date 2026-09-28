@@ -9185,3 +9185,64 @@ rule being the actual fix.
 
 Verified: all three endpoints the panel calls answer 200 (allowance search, benefit search,
 entitlement list). `tsc -b` clean, build green, ESLint 0 errors, 235/235.
+
+### Minimum experience: service and prior employment overlap, so they are merged
+
+The delegation seniority rule counts the STAND-IN's experience from two sources — internal service
+(`Employee.HireDate` → today) and prior `EmployeeExperience` rows. Prior employment is included on
+purpose: counting only internal service would disqualify an experienced senior hire in their first
+year, who is often exactly the person asked to cover a post.
+
+⚠️ **The two sources were ADDED, and only the prior rows were merged against each other.** So an
+`EmployeeExperience` row describing the job somebody STILL HOLDS was counted twice. Experience is a
+span of a person's life, not a quantity to sum — the moment two periods touch, adding them is wrong.
+
+**It was live.** The only experience row in `CERP` is exactly this shape:
+
+| Person | Experience row | Hired | Internal | Prior | Reported |
+|---|---|---|---|---:|---:|
+| Getaneh | 2006-09-06 → 2026-09-07 | 2006-09-06 | 20.1 | 20.0 | **40.1** ❌ |
+
+Twenty years read as forty.
+
+⚠️ **And delegation was feeding its own input.** `ActingCompensationService.RecordExperienceAsync`
+writes an `EmployeeExperience` row when an acting assignment ends (the `RecordActingExperience`
+policy), spanning the acting period — which lies **entirely inside** the person's employment by
+definition; they were an employee throughout. Every completed acting stint therefore added phantom
+years to that person's own future eligibility. A frequently-used deputy inflated fastest.
+
+The fault only ever made somebody MORE eligible, so nothing was refused wrongly — but the figure on
+the eligibility preview was wrong, and it would have begun admitting under-qualified stand-ins the
+moment HR raised the threshold above 2.
+
+#### The fix
+
+`App/Common/ExperienceSpan.cs` — pure, separate from the handler so the arithmetic is testable
+without a database, following `SiblingOrder`/`AppraisalScore`. `Years(periods)` merges overlapping
+spans and returns the years covered; `Merge(periods)` is exposed so a caller can show WHICH spans
+were counted, which is the only useful answer when an employee disputes their total.
+
+**Internal service is now just another period in the same merge**, not a separate addend.
+`DelegationEligibilityService.Compose(hireDate, priorRows, today)` is public and pure — the
+composition was the part that was wrong, so it is the part under test.
+
+⚠️ The breakdown shown to the user changed meaning: `Extra` is now what the prior rows **contribute
+beyond service**, not their raw length. So the three figures in "N years (X in service, Y prior)"
+always add up, and a row restating current employment honestly reads as `0 prior`. Getaneh now
+reads **20.1 (20.1 in service, 0 prior)**.
+
+Other guarantees kept: overlapping prior rows still merge among themselves; genuinely separate
+employment still adds; touching periods (one ends as the next begins) are one span; an open-ended
+row runs to today; a row with no start date is skipped; a future hire date contributes nothing; and
+⚠️ **an inverted row is dropped, never counted negative** — bad data must not be able to SUBTRACT
+from somebody's experience and push them under a threshold.
+
+#### Tests — 28 added, 263/263 green
+
+`ExperienceSpanTests` (14) covers the span arithmetic; `DelegationExperienceTests` (14) covers the
+composition, including Getaneh's exact record as a named regression.
+
+⚠️ **Verified the tests actually catch it:** reverting `Compose` to the old add-instead-of-merge
+makes three fail — `AnExperienceRowRestatingCurrentServiceDoesNotDoubleTheYears`,
+`AnOpenEndedRowForTheCurrentJobDoesNotDoubleTheYears` and `APriorRoleOverlappingServiceIsCountedOnce`.
+A regression test that has never been seen to fail is not evidence of anything.

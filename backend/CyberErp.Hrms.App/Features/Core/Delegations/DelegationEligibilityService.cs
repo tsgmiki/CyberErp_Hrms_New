@@ -1,3 +1,4 @@
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.Dom.Entities.Core;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +37,11 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
     /// experienced senior hire in their first year — exactly the person most likely to be asked to
     /// stand in — while counting only prior experience would ignore a twenty-year veteran who has
     /// never worked anywhere else.</para>
+    ///
+    /// <para>⚠️ …BUT THE TWO HALVES OVERLAP, so they are MERGED, never added. An
+    /// <c>EmployeeExperience</c> row describing the job somebody still holds is ordinary data
+    /// entry, and adding its length to their service counted that time twice. Both sources go into
+    /// one <see cref="ExperienceSpan"/> merge.</para>
     ///
     /// <para>⚠️ SALARY, NOT JOB GRADE. "Within N grades" is the obvious rule and it is not
     /// computable here: <c>JobGrade</c> carries a name and a code and no rank at all, so grades
@@ -84,14 +90,13 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
                 return new DelegationEligibilityResult(false, reasons, 0m, null);
 
             // ---- Experience: internal service + prior employment ------------------------------
-            var priorYears = await PriorExperienceYearsAsync(to.PersonId);
-            var internalYears = YearsSince(to.HireDate);
-            var totalYears = decimal.Round(internalYears + priorYears, 1);
+            var (totalYears, internalYears, extraYears) =
+                await ExperienceYearsAsync(to.PersonId, to.HireDate);
 
             if (policy.MinDelegateExperienceYears > 0 && totalYears < policy.MinDelegateExperienceYears)
                 reasons.Add(
                     $"The delegate has {totalYears:0.#} year(s) of experience "
-                    + $"({internalYears:0.#} in service, {priorYears:0.#} prior), below the "
+                    + $"({internalYears:0.#} in service, {extraYears:0.#} prior), below the "
                     + $"{policy.MinDelegateExperienceYears} year(s) this policy requires.");
 
             // ---- Salary parity -----------------------------------------------------------------
@@ -121,54 +126,60 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         }
 
         /// <summary>
-        /// Years of prior employment from <c>EmployeeExperience</c>.
+        /// The delegate's experience: internal service and prior employment, counted once.
         /// </summary>
+        /// <returns>
+        /// The total, the internal-service part, and how much the prior rows ADD BEYOND service —
+        /// not their raw length. The three always agree, so the sentence shown to a user adds up.
+        /// </returns>
         /// <remarks>
-        /// ⚠️ Overlapping engagements are NOT summed twice — the rows are merged into continuous
-        /// intervals first. Two concurrent part-time posts over the same three years are three
-        /// years of experience, not six, and people with several roles at one employer routinely
-        /// have overlapping rows. An open-ended row (no end date) counts to today; a row with no
-        /// start date cannot be measured and is skipped.
+        /// <para>⚠️ INTERNAL SERVICE IS JUST ANOTHER PERIOD IN THE SAME MERGE. It used to be added
+        /// to the prior-row total, and prior rows were merged only against each other — so an
+        /// <c>EmployeeExperience</c> row describing the job the person STILL HOLDS was counted
+        /// twice. That is not a corner case: it was the only experience row in the production
+        /// database, and it doubled a twenty-year veteran to forty years. Overlap between the two
+        /// sources is the normal case, not the exception, and the merge has to see both.</para>
+        ///
+        /// <para>An open-ended row (no end date) counts to today; a row with no start date cannot
+        /// be measured and is skipped; a hire date in the future contributes nothing.</para>
         /// </remarks>
-        private async Task<decimal> PriorExperienceYearsAsync(Guid personId)
+        private async Task<(decimal Total, decimal Internal, decimal Extra)> ExperienceYearsAsync(
+            Guid personId, DateTime? hireDate)
         {
             var rows = await experiences.GetAll().AsNoTracking()
                 .Where(x => x.PersonId == personId && x.StartDate != null)
                 .Select(x => new { Start = x.StartDate!.Value, x.EndDate })
                 .ToListAsync();
-            if (rows.Count == 0) return 0m;
 
-            var today = DateTime.UtcNow.Date;
-            var intervals = rows
-                .Select(r => (Start: r.Start.Date, End: (r.EndDate ?? today).Date))
-                .Where(r => r.End > r.Start)
-                .OrderBy(r => r.Start)
-                .ToList();
-            if (intervals.Count == 0) return 0m;
-
-            var merged = new List<(DateTime Start, DateTime End)>();
-            var current = intervals[0];
-            foreach (var next in intervals.Skip(1))
-            {
-                if (next.Start <= current.End)
-                    current = (current.Start, next.End > current.End ? next.End : current.End);
-                else
-                {
-                    merged.Add(current);
-                    current = next;
-                }
-            }
-            merged.Add(current);
-
-            var days = merged.Sum(m => (m.End - m.Start).TotalDays);
-            return (decimal)(days / 365.25);
+            return Compose(hireDate, [.. rows.Select(r => (r.Start, r.EndDate))], DateTime.UtcNow.Date);
         }
 
-        private static decimal YearsSince(DateTime? from)
+        /// <summary>
+        /// Combine internal service with prior employment rows. Pure, so the composition itself can
+        /// be tested — it is the part that was wrong, not the span arithmetic underneath it.
+        /// </summary>
+        /// <param name="hireDate">Start of current service. Null, or in the future, contributes nothing.</param>
+        /// <param name="priorRows">Prior employment. A null end date means "still open" and runs to <paramref name="today"/>.</param>
+        public static (decimal Total, decimal Internal, decimal Extra) Compose(
+            DateTime? hireDate,
+            IReadOnlyList<(DateTime Start, DateTime? End)> priorRows,
+            DateTime today)
         {
-            if (from is not DateTime start) return 0m;
-            var days = (DateTime.UtcNow.Date - start.Date).TotalDays;
-            return days <= 0 ? 0m : (decimal)(days / 365.25);
+            var service = hireDate is DateTime hired && hired.Date < today
+                ? new List<(DateTime, DateTime)> { (hired.Date, today) }
+                : [];
+
+            var prior = priorRows.Select(r => (r.Start.Date, (r.End ?? today).Date));
+
+            var internalYears = decimal.Round(ExperienceSpan.Years(service), 1);
+
+            // ⚠️ ONE merge over BOTH sources. Rounding each side and adding would reintroduce the
+            // original fault in miniature, and a prior row overlapping service would inflate again.
+            var totalYears = decimal.Round(ExperienceSpan.Years([.. service, .. prior]), 1);
+
+            // What the prior rows ADD. A row that merely restates current employment adds nothing,
+            // and saying "0 prior" is the honest reading of it.
+            return (totalYears, internalYears, totalYears - internalYears);
         }
     }
 }
