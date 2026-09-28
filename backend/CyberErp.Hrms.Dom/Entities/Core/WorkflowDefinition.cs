@@ -37,6 +37,8 @@ public static class WorkflowEntityTypes
     public const string TrainingNeedLocal = "TrainingNeed.Local";
     public const string TrainingNeedAbroad = "TrainingNeed.Abroad";
     public const string EmployeeGuarantee = "EmployeeGuarantee";
+    /// <summary>Paying a deputy at the rate of the post they cover, for a long delegation.</summary>
+    public const string ActingAssignment = "ActingAssignment";
 }
 
 /// <summary>

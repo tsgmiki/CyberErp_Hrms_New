@@ -78,6 +78,42 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
     /// </summary>
     public bool AllowSelfServiceDelegation { get; private set; } = true;
 
+    // ---- Acting compensation ------------------------------------------------
+    // Standing in for an afternoon is a favour; standing in for a quarter is a job. These decide
+    // where the client draws that line, and whether it carries money at all.
+
+    /// <summary>
+    /// Whether a long delegation raises an acting-compensation assignment.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ OFF by default, and deliberately. Every other rule on this policy narrows who may hold
+    /// authority; this one SPENDS MONEY. An existing client upgrading must not discover that
+    /// delegations quietly began changing people's pay — it is switched on once somebody decides
+    /// the organisation works that way.
+    /// </remarks>
+    public bool ActingCompensationEnabled { get; private set; }
+
+    /// <summary>
+    /// How long a delegation must run before the deputy is paid for the post they are covering.
+    /// Default 90 days — the client's "longer than 3 months".
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Measured on the delegation's PLANNED length, not elapsed time. The pay change needs
+    /// approving before it starts, which cannot happen retroactively three months in; and a
+    /// delegation cut short by an early return ends the assignment with it.
+    /// </remarks>
+    public int ActingCompensationMinDays { get; private set; } = 90;
+
+    /// <summary>
+    /// On conclusion, write the acting period into the deputy's experience record.
+    /// </summary>
+    /// <remarks>
+    /// Closes a pleasing loop: acting experience is exactly what
+    /// <c>DelegationEligibilityService</c> counts when deciding whether somebody is senior enough
+    /// to stand in, so covering a post once helps qualify you to cover one again.
+    /// </remarks>
+    public bool RecordActingExperience { get; private set; } = true;
+
     private DelegationPolicy() : base() { }
 
     /// <summary>The shipped defaults, used when a tenant has never configured the policy.</summary>
@@ -85,8 +121,11 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
 
     public void Update(int minDelegateExperienceYears, int minSalaryRatioPercent,
         bool requireManagerialDelegate, int maxDelegationDays, decimal? defaultApprovalLimit,
-        bool allowSelfServiceDelegation, bool restrictToOwnDepartment)
+        bool allowSelfServiceDelegation, bool restrictToOwnDepartment,
+        bool actingCompensationEnabled, int actingCompensationMinDays, bool recordActingExperience)
     {
+        if (actingCompensationMinDays < 1)
+            throw new ArgumentException("The acting threshold must be at least one day.", nameof(actingCompensationMinDays));
         if (minDelegateExperienceYears < 0)
             throw new ArgumentException("Minimum experience cannot be negative.", nameof(minDelegateExperienceYears));
         if (minSalaryRatioPercent is < 0 or > 1000)
@@ -103,6 +142,9 @@ public class DelegationPolicy : BaseEntity, IAggregateRoot, IAuditable
         DefaultApprovalLimit = defaultApprovalLimit;
         AllowSelfServiceDelegation = allowSelfServiceDelegation;
         RestrictToOwnDepartment = restrictToOwnDepartment;
+        ActingCompensationEnabled = actingCompensationEnabled;
+        ActingCompensationMinDays = actingCompensationMinDays;
+        RecordActingExperience = recordActingExperience;
         base.Update();
     }
 }

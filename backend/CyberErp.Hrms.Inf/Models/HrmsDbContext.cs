@@ -289,6 +289,7 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<ApprovalDelegation> ApprovalDelegation { get; set; }
     public DbSet<ApprovalDelegationScope> ApprovalDelegationScope { get; set; }
     public DbSet<DelegationPolicy> DelegationPolicy { get; set; }
+    public DbSet<ActingAssignment> ActingAssignment { get; set; }
     public DbSet<DocumentTemplate> DocumentTemplate { get; set; }
     public DbSet<NotificationEvent> NotificationEvent { get; set; }
     public DbSet<NotificationTemplate> NotificationTemplate { get; set; }
@@ -666,6 +667,7 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new ApprovalDelegationConfiguration());
         modelBuilder.ApplyConfiguration(new ApprovalDelegationScopeConfiguration());
         modelBuilder.ApplyConfiguration(new DelegationPolicyConfiguration());
+        modelBuilder.ApplyConfiguration(new ActingAssignmentConfiguration());
         modelBuilder.ApplyConfiguration(new DocumentTemplateConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationEventConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationTemplateConfiguration());

@@ -145,6 +145,15 @@ namespace CyberErp.Hrms.Api.Configuration
                 "learning-compliance-sweep",
                 job => job.RunAsync(TenantSweep.LearningCompliance), Cron.Daily(3), zone, HrmsQueues.Sweeps);   // 03:00 local daily
 
+            // End acting assignments whose period has passed (logic §12.118): revert the deputy's
+            // pay and write the period into their experience record. Runs at 04:00, AFTER the
+            // other sweeps — nothing here depends on them, but a pay reversion is the one nightly
+            // action somebody may have to explain in the morning, so it lands last and alone in
+            // the log rather than interleaved with three other jobs.
+            RecurringJob.AddOrUpdate<ITenantJobRunner>(
+                "acting-assignment-conclusion-sweep",
+                job => job.RunAsync(TenantSweep.ActingAssignmentConclusion), Cron.Daily(4), zone, HrmsQueues.Sweeps);   // 04:00 local daily
+
             // ⚠️ AddOrUpdate only ever ADDS. A renamed job id would leave its old definition
             // scheduled for ever — which is how a stale definition survived a rename before and had
             // to be purged by hand. Anything not registered above is removed here, so the schedule in
@@ -153,6 +162,7 @@ namespace CyberErp.Hrms.Api.Configuration
                 "employee-movements-due",
                 "trip-settlement-reminders",
                 "learning-compliance-sweep",
+                "acting-assignment-conclusion-sweep",
             ]);
 
             return app;
