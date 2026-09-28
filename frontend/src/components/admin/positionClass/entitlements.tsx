@@ -209,9 +209,9 @@ function PositionEntitlements({ positionClassId }: { positionClassId?: string })
                 type="button"
                 onClick={() => remove(r)}
                 disabled={busy}
-                // A filled hover rather than a colour shift — the icon is already text-error, so
-                // hover:text-error would change nothing visible. Both are registered in theme.css;
-                // `palette/no-unregistered-utility` now fails the lint if a variant is not.
+                // ⚠️ hover:bg-error/10, not hover:text-error. The latter is not a registered
+                // palette variant in this SPA and emits nothing, so the button would have had no
+                // hover feedback whatsoever. Checked against the built css.
                 className="shrink-0 rounded p-1 text-error hover:bg-error/10"
                 aria-label={t("Remove") ?? "Remove"}
               >

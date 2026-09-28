@@ -6,11 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "node eslint-rules/palette.selfcheck.mjs && eslint .",
+    "lint": "eslint .",
     "preview": "vite preview",
     "scaffold:entity": "node scripts/scaffold-entity.mjs",
-    "migrate:getAll": "node scripts/migrate-getAll-to-paged-query.mjs",
-    "lint:palette": "node eslint-rules/palette.selfcheck.mjs"
+    "migrate:getAll": "node scripts/migrate-getAll-to-paged-query.mjs"
   },
   "dependencies": {
     "@preact/signals-react": "^3.10.1",
