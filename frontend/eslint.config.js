@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import palette from './eslint-rules/palette.js'
 
 export default defineConfig([
   globalIgnores(['dist']),
@@ -15,6 +16,7 @@ export default defineConfig([
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
     ],
+    plugins: { palette },
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -25,6 +27,10 @@ export default defineConfig([
       'react-hooks/immutability': 'off',
       'react-hooks/refs': 'off',
       'react-hooks/static-components': 'off',
+      // ⚠️ Palette colours are hand-written CSS, not Tailwind's. An unregistered utility emits
+      // NOTHING — no background, no border, no hover — with no build error and nothing visible in
+      // review. This turns that into a lint failure. See eslint-rules/palette.js.
+      'palette/no-unregistered-utility': 'error',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-unsafe-function-type': 'warn',
