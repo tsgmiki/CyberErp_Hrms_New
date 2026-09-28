@@ -13,12 +13,20 @@ import {
 } from "@/services/admin/clearanceDepartment";
 import getAllUser from "@/services/admin/user/getAll";
 import getAllRole from "@/services/admin/role/getAll";
+import SearchableSelect from "@/components/common/searchableSelect";
 import Loading from "../../common/loader/loader";
 import { parameterInitialData } from "@/constants/initialization";
 import { activeStatusOptions, activeId, activeLabel } from "@/constants/orgStructure";
 
 const FormProvider = memo(FormProviders);
-const lookupParam = { ...parameterInitialData, take: 100 };
+
+/**
+ * ⚠️ 20, not 100. These lists are SEARCHED now, not scrolled: the term does the narrowing, so a
+ * short page is the whole point rather than a truncation. The old `take: 100` was a cap on what
+ * could be chosen at all — with ~500 accounts in this tenant, every user past the hundredth was
+ * simply absent from the dropdown, with nothing on screen to say so.
+ */
+const lookupParam = { ...parameterInitialData, take: 20 };
 
 function ClearanceDepartmentForm(props: { id: string; setId: (id: string) => void }) {
   const { id, setId } = props;
@@ -44,14 +52,6 @@ function ClearanceDepartmentForm(props: { id: string; setId: (id: string) => voi
     enabled: typeof id != "undefined" && id != "",
   });
 
-  const { data: users } = useQuery({
-    queryKey: ["users", lookupParam],
-    queryFn: () => getAllUser(lookupParam),
-  });
-  const { data: roles } = useQuery({
-    queryKey: ["roles", lookupParam],
-    queryFn: () => getAllRole(lookupParam),
-  });
 
   const submitHandler = async (e: any) => {
     e.preventDefault();
@@ -111,9 +111,6 @@ function ClearanceDepartmentForm(props: { id: string; setId: (id: string) => voi
     }
   }, [formState]);
 
-  const selectClass =
-    "h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground";
-
   return (
     <div className="text-foreground">
       {pending && <Loading />}
@@ -159,33 +156,39 @@ function ClearanceDepartmentForm(props: { id: string; setId: (id: string) => voi
               {t("Assign users and/or roles. Any single authorized user's approval clears this department. No approvers = open to any user.")}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <select
-              className={selectClass}
-              value=""
-              onChange={(e) => {
-                const u = (users?.data ?? []).find((x) => x.id === e.target.value);
-                if (u?.id) addApprover({ approverType: "User", approverId: u.id, displayName: u.fullName });
+          {/* Type-to-search, server-filtered. Each already-chosen approver is excluded from its
+              own list, so a pick is never a no-op. */}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <SearchableSelect
+              className="sm:w-56"
+              queryKey="userApproverOptions"
+              placeholder={t("Search users…") ?? "Search users…"}
+              excludeIds={approvers.filter((a) => a.approverType === "User").map((a) => a.approverId)}
+              fetchOptions={async (term) => {
+                const res = await getAllUser({ ...lookupParam, searchText: term });
+                return (res?.data ?? [])
+                  .filter((u) => !!u.id)
+                  .map((u) => ({ id: u.id!, label: u.fullName ?? u.userName ?? "", hint: u.userName }));
               }}
-            >
-              <option value="">{t("+ Add user approver")}</option>
-              {(users?.data ?? []).map((u) => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </select>
-            <select
-              className={selectClass}
-              value=""
-              onChange={(e) => {
-                const r = (roles?.data ?? []).find((x) => x.id === e.target.value);
-                if (r?.id) addApprover({ approverType: "Role", approverId: r.id, displayName: r.name });
+              onSelect={(o) =>
+                addApprover({ approverType: "User", approverId: o.id, displayName: o.label })
+              }
+            />
+            <SearchableSelect
+              className="sm:w-56"
+              queryKey="roleApproverOptions"
+              placeholder={t("Search roles…") ?? "Search roles…"}
+              excludeIds={approvers.filter((a) => a.approverType === "Role").map((a) => a.approverId)}
+              fetchOptions={async (term) => {
+                const res = await getAllRole({ ...lookupParam, searchText: term });
+                return (res?.data ?? [])
+                  .filter((r) => !!r.id)
+                  .map((r) => ({ id: r.id!, label: r.name ?? "" }));
               }}
-            >
-              <option value="">{t("+ Add role approver")}</option>
-              {(roles?.data ?? []).map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
+              onSelect={(o) =>
+                addApprover({ approverType: "Role", approverId: o.id, displayName: o.label })
+              }
+            />
           </div>
         </div>
 

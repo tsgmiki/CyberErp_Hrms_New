@@ -8913,3 +8913,56 @@ managerial requirement and a 30-day cap:
 
 Three separate rules moving with the stored configuration, not with the code. Policy restored to
 the shipped defaults; no delegations or alerts left behind. 210/210; build and lint clean.
+
+### 12.117 Searchable approver pickers
+
+The Clearance Department form assigned approvers through two plain `<select>` elements. Converting
+them to type-to-search dropdowns turned out to fix a data problem as well as a usability one.
+
+#### ⚠️ The dropdowns were not just unsearchable, they were incomplete
+
+A plain option list has to be bulk-loaded, so the call site capped itself:
+
+```tsx
+const lookupParam = { ...parameterInitialData, take: 100 };
+```
+
+This tenant has **501 user accounts**. The dropdown offered the first 100 and said nothing about
+the rest — **401 people simply could not be chosen as a clearance approver**, and the screen gave no
+hint that anyone was missing. Raising the cap is not the fix either: 501 `<option>` elements is a
+scroll, not a choice.
+
+Searching server-side removes the cap along with the scrolling. The list is short now because the
+term is narrow, not because it was truncated. Verified: searching `tesfa` returns **8 of 501**,
+including *Gezahegn Tesfaye* — a surname match, three hundred names down the alphabet, previously
+unreachable.
+
+**No backend change was needed.** `GET /User` and `GET /Role` already filtered on `SearchText`;
+nothing was calling them with one.
+
+#### `SearchableSelect`
+
+A reusable remote-search dropdown in `common/`, modelled on `EmployeePicker` (300 ms debounce,
+outside-click close, `onMouseDown` preventDefault so the list does not close before the click
+lands) with three additions:
+
+- **Keyboard**: ↑/↓ move, Enter picks, Escape closes, and the highlighted row is scrolled into
+  view. A "searchable dropdown" that can only be driven with a mouse has kept the worst half of the
+  control it replaced. Enter is a no-op on an empty list — otherwise it would submit the
+  surrounding form.
+- **It clears after each pick**, and has no `value` prop. This is an ADD control: the caller is
+  collecting several approvers, not holding one, and a picker still showing the last choice would
+  imply it was still selected.
+- **`excludeIds`** hides already-chosen approvers, so a pick can never be a no-op.
+
+#### ⚠️ The highlight colour would have been invisible
+
+`bg-secondary/40` is **not a registered palette variant in HRMS** and emits nothing. Copied from
+`EmployeePicker`, where it is a hover tint and the loss is cosmetic — but here it is the KEYBOARD
+CURSOR, so arrow keys would have moved a highlight nobody could see, silently removing the feature
+this change exists to add. Switched to `bg-primary/10`, confirmed against the built css.
+
+> `EmployeePicker` still has the original: its hover highlight does nothing. One word to fix,
+> left alone here because it is a different screen.
+
+`tsc -b` clean, build green, ESLint 0 errors, 210/210.
