@@ -9079,3 +9079,78 @@ All test data removed; policy restored to acting=off, 90 days, 80% parity.
 **Benefits.** Positions carry no entitlement set, so "the benefits associated with the post" has
 nothing to read. Modelling allowances/benefit plans on `PositionClass` is the real fix and a
 substantially larger change to the compensation module.
+
+### 12.119 Position benefit entitlements — the half §12.118 could not build
+
+§12.118 implemented "the salary and benefits associated with the deputized position" as salary
+only, because **benefits had nothing to read**: salary was a property of the post through
+`PositionClass.SalaryScale`, but allowances and benefit enrolments attach to PEOPLE. A deputy could
+be paid a post's salary and not its car allowance, which is not what covering a post means.
+
+#### `PositionEntitlement`
+
+What a post carries beyond pay, hung off **`PositionClass`** rather than `Position` — the class is
+the job definition and already owns the salary scale. Two Finance Officer posts in different units
+are the same job on the same terms, and duplicating the set per post would invite them to drift.
+
+One row points at either an `AllowanceType` or a `BenefitPlan`, never both: a row carrying both
+would read as valid and then resolve to whichever side the reader happened to check, at the moment
+somebody is being paid. Changing the kind clears the other side so no stale reference survives.
+
+⚠️ **`GrantedWhenActing`** — defaults true, because the point of acting compensation is the deputy
+gets the post's package. But a long-service award or a relocation benefit is tied to the substantive
+holder, and there has to be a way to say so that is not "delete the entitlement".
+
+⚠️ **Defining an entitlement does not enrol the post's current holder.** This is a statement about
+the JOB. Applying it to substantive holders is a separate exercise with real payroll consequences;
+it is read here only to decide what a deputy receives.
+
+#### Granting and withdrawing
+
+⚠️ **Every grant is dated to the assignment.** Both compensation entities already carry an effective
+window, so an acting allowance expires on its own even if nothing ever runs again — the failure mode
+of the alternative is an allowance somebody draws for years after the cover ended.
+
+⚠️ **And every grant is tagged** with the assignment id in its remark, which is how withdrawal finds
+exactly what this feature created. Matching on employee + allowance type would catch the deputy's
+OWN pre-existing transport allowance and cancel it on the way out.
+
+⚠️ **A deputy already in a benefit plan is never enrolled twice.** Two enrolments would double the
+contribution, and withdrawing "the acting one" afterwards would leave a mess nobody could reconcile.
+
+⚠️ **A percent-of-base allowance resolves against the ACTING salary**, which is the right answer: a
+housing allowance of 15% of base follows the base being paid.
+
+#### ⚠️ The bug the end-to-end test caught
+
+Cancelling an assignment **before its start date** left the granted allowance OPEN. The withdrawal
+tried to set `EffectiveTo` (today) earlier than `EffectiveFrom` (the future start); `EmployeeAllowance`
+correctly refuses that, the exception aborted the unwind, and the row survived — so the deputy would
+have begun drawing a 3,000 allowance on 1 October for cover that had been called off.
+
+Found only by running it: the unit tests pass either way, and the API answered **200** because the
+failure was swallowed by the best-effort wrapper around the unwind. Fixed by removing a grant that
+never took effect rather than trying to shorten it, and the same for an enrolment whose coverage had
+not begun.
+
+#### Permissions
+
+Gated on **`positionClass`**, the screen that defines the job — deliberately NOT on
+`approvalDelegation`. This is establishment data saying what a post is worth. Acting compensation
+happens to read it, but arranging a stand-in must not confer the right to change what a post pays.
+
+#### Verified end to end
+
+10 new tests (235/235). Against the live API, with a throwaway allowance type and an
+`ActingAssignment` workflow, all removed afterwards:
+
+| step | result |
+|---|---|
+| define what the CEO post carries | representation allowance, default 3,000, `Fixed` |
+| 4-month delegation | acting assignment raised, **PendingApproval** |
+| approve it | assignment **Active**; salary **61,250 → 78,210** (the post's rate) |
+| the entitlement followed | allowance **3,000**, dated **2026-10-01 → 2027-01-31**, tagged `[acting:…]` |
+| withdraw the delegation | assignment **Cancelled**, salary back to **61,250** |
+| withdraw BEFORE the start date | allowance **removed entirely** (0 remaining) — the bug above |
+
+All fixtures removed; policy restored to acting=off.

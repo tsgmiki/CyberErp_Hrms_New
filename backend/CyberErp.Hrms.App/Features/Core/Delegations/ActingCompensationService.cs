@@ -50,6 +50,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
         IRepository<EmployeeExperience> experiences,
         IRepository<WorkflowDefinition> workflowDefinitions,
         IDelegationEligibilityService eligibility,
+        IActingEntitlementService entitlements,
         IWorkflowService workflowService,
         ILogger<ActingCompensationService> logger) : IActingCompensationService
     {
@@ -169,7 +170,13 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             foreach (var assignment in open)
             {
                 var wasPaying = assignment.Cancel(reason);
-                if (wasPaying) await RevertPayAsync(assignment);
+                if (wasPaying)
+                {
+                    await RevertPayAsync(assignment);
+                    // Cut short: the entitlements end TODAY, not on the date the cover was
+                    // originally meant to run to.
+                    await entitlements.WithdrawAsync(assignment, DateTime.UtcNow.Date);
+                }
                 assignments.UpdateAsync(assignment);
             }
             await assignments.SaveChangesAsync();
@@ -190,6 +197,9 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             foreach (var assignment in due)
             {
                 await RevertPayAsync(assignment);
+                // Ran its course, so the entitlements end on the day the cover did. Most will
+                // already have expired on their own window; this closes any that did not.
+                await entitlements.WithdrawAsync(assignment, assignment.EndDate);
 
                 var recorded = false;
                 if (policy.RecordActingExperience)

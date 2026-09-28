@@ -21,6 +21,7 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
     public class ActingAssignmentWorkflowHandler(
         IRepository<ActingAssignment> assignments,
         IRepository<Employee> employees,
+        IActingEntitlementService entitlements,
         ILogger<ActingAssignmentWorkflowHandler> logger) : IWorkflowEntityHandler
     {
         public bool Supports(string entityType) => entityType == WorkflowEntityTypes.ActingAssignment;
@@ -50,6 +51,21 @@ namespace CyberErp.Hrms.App.Features.Core.Delegations
             employees.UpdateAsync(deputy);
             assignments.UpdateAsync(assignment);
             await assignments.SaveChangesAsync();
+
+            // The post's allowances and benefits follow its salary — that is what "the salary and
+            // benefits associated with the position" means. Dated to the assignment, so they
+            // expire with it even if nothing ever runs again.
+            try
+            {
+                await entitlements.GrantAsync(assignment);
+            }
+            catch (Exception ex)
+            {
+                // The salary is already applied and committed. An entitlement failure is a gap to
+                // fix, not a reason to leave somebody half-promoted with no pay change at all.
+                logger.LogError(ex,
+                    "Acting assignment {Id}: salary applied but post entitlements FAILED to grant.", entityId);
+            }
 
             logger.LogInformation(
                 "Acting assignment {Id} activated: {Employee} paid {Salary} until {End:yyyy-MM-dd}",

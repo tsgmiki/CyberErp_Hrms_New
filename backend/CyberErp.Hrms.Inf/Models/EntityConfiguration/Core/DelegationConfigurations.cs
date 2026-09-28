@@ -65,6 +65,41 @@ namespace CyberErp.Hrms.Inf.Models.EntityConfiguration
         }
     }
 
+    public class PositionEntitlementConfiguration : IEntityTypeConfiguration<PositionEntitlement>
+    {
+        public void Configure(EntityTypeBuilder<PositionEntitlement> builder)
+        {
+            builder.ToTable("PositionEntitlement", "Hrms");
+            builder.HasKey(e => e.Id);
+
+            builder.Property(e => e.Value).HasPrecision(18, 2);
+            builder.Property(e => e.Notes).HasMaxLength(500);
+
+            // A convenience accessor over the two nullable FKs, not a column. EF maps every public
+            // property by default and refuses one with no backing field and no setter.
+            builder.Ignore(e => e.ReferenceId);
+
+            // "What does this post carry" — the read every acting grant makes.
+            builder.HasIndex(e => new { e.TenantId, e.PositionClassId, e.IsActive });
+
+            // ⚠️ Restrict, never cascade. Deleting an allowance type out from under the posts that
+            // grant it would silently change what several jobs are worth; the delete should fail
+            // and make somebody look at the entitlements first.
+            builder.HasOne<AllowanceType>()
+                .WithMany()
+                .HasForeignKey(e => e.AllowanceTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<BenefitPlan>()
+                .WithMany()
+                .HasForeignKey(e => e.BenefitPlanId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne<PositionClass>()
+                .WithMany()
+                .HasForeignKey(e => e.PositionClassId)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
     public class DelegationPolicyConfiguration : IEntityTypeConfiguration<DelegationPolicy>
     {
         public void Configure(EntityTypeBuilder<DelegationPolicy> builder)

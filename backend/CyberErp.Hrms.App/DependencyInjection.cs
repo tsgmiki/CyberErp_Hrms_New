@@ -63,6 +63,14 @@ namespace CyberErp.Hrms.App
             // approval inbox asks them once per row.
             services.AddScoped<Features.Core.Delegations.IDelegationEligibilityService,
                 Features.Core.Delegations.DelegationEligibilityService>();
+            services.AddScoped<Features.Core.Delegations.ISavePositionEntitlement,
+                Features.Core.Delegations.SavePositionEntitlement>();
+            services.AddScoped<Features.Core.Delegations.IDeletePositionEntitlement,
+                Features.Core.Delegations.DeletePositionEntitlement>();
+            services.AddScoped<Features.Core.Delegations.IGetPositionEntitlements,
+                Features.Core.Delegations.GetPositionEntitlements>();
+            services.AddScoped<Features.Core.Delegations.IActingEntitlementService,
+                Features.Core.Delegations.ActingEntitlementService>();
             services.AddScoped<Features.Core.Delegations.IActingCompensationService,
                 Features.Core.Delegations.ActingCompensationService>();
             // Registered as an IWorkflowEntityHandler like every other module's outcome applier —
