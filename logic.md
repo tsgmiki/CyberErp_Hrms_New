@@ -9246,3 +9246,94 @@ composition, including Getaneh's exact record as a named regression.
 makes three fail — `AnExperienceRowRestatingCurrentServiceDoesNotDoubleTheYears`,
 `AnOpenEndedRowForTheCurrentJobDoesNotDoubleTheYears` and `APriorRoleOverlappingServiceIsCountedOnce`.
 A regression test that has never been seen to fail is not evidence of anything.
+
+### Bilingual "To Whom It May Concern" experience letter
+
+A `DocumentTemplate` of type `ExperienceLetter`, seeded by name like the other starters (idempotent
+— the existing **Seed default templates** button on the Document Templates screen creates it; no
+frontend change was needed).
+
+**Header:** date, employee name, current position, current salary — each labelled in both
+languages. The date carries both calendars (`{{Today}} | {{TodayEC}}`).
+
+**Details:** `{{ServiceHistoryTable}}` — one row per post, English left, Amharic right.
+
+⚠️ **One row per POST, not two independent lists side by side.** Two lists drift apart the moment
+one language wraps onto a second line, and a reader comparing them then matches the wrong post to
+the wrong dates.
+
+#### Where the history comes from
+
+⚠️ **`HireDate` + executed `EmployeeMovement` rows — NOT `EmployeeExperience`.** That table holds
+PRIOR employers, self-reported. A "To Whom It May Concern" letter attests to what THIS employer can
+vouch for; restating a candidate's account of other jobs over this organisation's signature is a
+different claim entirely. (It is also why the same two sources are read differently here and in
+[[delegation eligibility]], where total career experience IS the question.)
+
+⚠️ **Only `Completed` movements.** `Pending` and `Approved` are decisions, not facts — a
+future-dated promotion has not happened, and a letter stating it attests to something untrue.
+`Cancelled` never happened at all.
+
+`App/Common/ServiceHistory.cs` turns change EVENTS into SPANS, pure and testable like
+`SiblingOrder`/`ExperienceSpan`:
+
+- ⚠️ **A post ends the day BEFORE the next begins.** Movements record a start, not an end; off by
+  one prints a letter saying somebody held two posts on the same day, which is exactly what a
+  sceptical reader checks.
+- A movement on or before the hire date is **dropped** — it would open a period ending before it
+  began (a backdated correction, or a row on the wrong employee).
+- Two movements on one day collapse to the last; only that one landed, and the other would print a
+  zero-length period.
+- The current post is left **open** ("to date" / "እስከ አሁን"). Inventing today as an end date would
+  state that the employment had ended.
+- No hire date yields **nothing**: the letter's whole content is when service began.
+- ⚠️ A last working day before the final post began means the movement and the termination
+  disagree. It is **clamped** to a visibly odd one-day period — better than a period running
+  backwards, and better than silently dropping a post the person held.
+
+#### The Ethiopian calendar
+
+`App/Common/EthiopianDate.cs` is a **port of the SPA's `components/util/ethiopianDate.ts`,
+algorithm for algorithm** (JDN pivot; Amete Mihret epoch 1724221; leap when `year % 4 == 3`).
+
+⚠️ **.NET's own `EthiopicCalendar` is deliberately NOT used.** The two must name the same day as
+the UI, and a second independent implementation drifts at exactly the edges nobody tests — Pagume,
+and the leap year.
+
+⚠️ The era marker ዓ.ም is not decoration: a bare "2002" beside a Gregorian "2010" in the next column
+reads as a typo.
+
+#### ⚠️ The Amharic data is nearly absent
+
+**1 of 814 position classes has a `TitleA`; 111 of 1360 persons have an Amharic name.** The Amharic
+column therefore **falls back to the English title** (the user's choice when asked) — a blank cell
+would make the letter unusable today, whereas an untranslated one is merely untranslated.
+
+⚠️ And the single populated `TitleA` contains the ENGLISH text ("Cyber Security Expert"), so it is
+not a translation at all. The letter is correct and printable; it will not actually be bilingual in
+its position titles until HR fills `TitleA` in.
+
+#### Verified against real data
+
+Getaneh (NVI/035), hired 2006-09-06, promoted 2026-09-07 — the only completed movement in `CERP`:
+
+| | Position | Period |
+|---|---|---|
+| EN | Senior System Administrator | 06 Sep 2006 – 06 Sep 2026 |
+| AM | Senior System Administrator | ጳጉሜ 1, 1998 ዓ.ም – ጳጉሜ 1, 2018 ዓ.ም |
+| EN | Cyber Security Expert | 07 Sep 2026 – to date |
+| AM | Cyber Security Expert | ጳጉሜ 2, 2018 ዓ.ም – እስከ አሁን |
+
+The first period ends the day before the promotion; the second is open.
+
+⚠️ The E.C. conversions were checked by **compiling the frontend's own TypeScript and running it**,
+not by reasoning about the algorithm — my hand-worked value for 01 Jan 2010 was Tahsas 22 and the
+correct answer is **Tahsas 23**. The tests assert the verified pairs.
+
+**29 tests added** (`EthiopianDateTests` 15, `ServiceHistoryTests` 14), 292/292 green. The calendar
+tests include a day-by-day walk across 800 days spanning two Ethiopian new years, one of them a
+leap — an off-by-one at a month or year boundary is invisible in spot checks.
+
+**New tokens:** `{{ServiceHistoryTable}}`, `{{ServiceFrom}}`, `{{ServiceFromEC}}`, `{{ServiceTo}}`,
+`{{FullNameA}}`, `{{PositionA}}`, `{{HireDateEC}}`, `{{TodayEC}}` — all in the editor palette under
+**Experience**.

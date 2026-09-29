@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using CyberErp.Hrms.App.Common;
 using CyberErp.Hrms.App.Common.Repositories;
 using CyberErp.Hrms.App.Features.Core.DocumentTemplates.DTOs;
 using CyberErp.Hrms.App.Features.Core.Employees;
@@ -38,6 +39,8 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
     public partial class GenerateEmployeeDocument(
         IRepository<DocumentTemplate> templates,
         IRepository<EmployeeTermination> terminations,
+        IRepository<EmployeeMovement> movements,
+        IRepository<Position> positions,
         IGetEmployeeById getEmployee,
         IGetEmployeePhoto getPhoto,
         IGetCompanyLogo getLogo) : IGenerateEmployeeDocument
@@ -123,6 +126,17 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             Add("JobGrade", e.JobGradeName);
             Add("Salary", e.Salary?.ToString("N2", CultureInfo.InvariantCulture));
             Add("Today", DateTime.Now.ToString("dd MMM yyyy", CultureInfo.InvariantCulture));
+            Add("TodayEC", EthiopianDate.Format(DateTime.Now));
+
+            // Amharic header tokens. The full name is assembled from the *A parts rather than
+            // stored, exactly as {{FullName}} is; it comes out blank when none are recorded.
+            var fullNameA = string.Join(" ",
+                new[] { e.FirstNameA, e.FatherNameA, e.GrandFatherNameA }
+                    .Where(p => !string.IsNullOrWhiteSpace(p)));
+            Add("FullNameA", fullNameA);
+
+            // ---- Service history (experience letter) -------------------------------------------
+            await AddServiceHistoryTokensAsync(e, tokens, Add);
 
             // Termination tokens (Experience / Termination letters) — from the employee's latest
             // case, preferring the settled one; all blank when no case exists.
@@ -210,6 +224,129 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             return tokens;
         }
 
+        /// <summary>
+        /// The employee's post history at this organisation, bilingual, for an experience letter.
+        /// </summary>
+        /// <remarks>
+        /// <para>⚠️ ONLY EXECUTED MOVEMENTS COUNT. A Pending or Approved movement is a decision, not
+        /// a fact — a future-dated promotion has not happened, and a letter that states it is
+        /// attesting to something untrue. Cancelled ones never happened at all.</para>
+        ///
+        /// <para>⚠️ This is service AT THIS ORGANISATION, derived from <c>HireDate</c> plus
+        /// movements — NOT <c>EmployeeExperience</c>, which holds prior employers. A "To Whom It May
+        /// Concern" letter attests to what this employer can vouch for; restating a candidate's
+        /// self-reported history elsewhere over this organisation's signature is a different claim
+        /// entirely.</para>
+        ///
+        /// <para>⚠️ The Amharic column falls back to the English title when no <c>TitleA</c> is
+        /// recorded (813 of 814 position classes, at the time of writing). A blank cell would make
+        /// the letter unusable today; an untranslated one is merely untranslated.</para>
+        /// </remarks>
+        private async Task AddServiceHistoryTokensAsync(
+            EmployeeDto e, Dictionary<string, string> tokens, Action<string, string?> add)
+        {
+            var rows = await movements.GetAll().AsNoTracking()
+                .Where(m => m.EmployeeId == e.Id
+                            && m.Status == MovementStatus.Completed
+                            && m.ToPositionId != null)
+                .OrderBy(m => m.EffectiveDate)
+                .Select(m => new { m.EffectiveDate, m.FromPositionId, m.ToPositionId })
+                .ToListAsync();
+
+            // Every position referenced by the history, resolved to its class titles in one read.
+            var positionIds = rows.SelectMany(r => new[] { r.FromPositionId, r.ToPositionId })
+                .Where(id => id.HasValue).Select(id => id!.Value)
+                .Concat(e.PositionId.HasValue ? [e.PositionId.Value] : [])
+                .Distinct().ToList();
+
+            var titles = positionIds.Count == 0
+                ? []
+                : await positions.GetAll().AsNoTracking()
+                    .Where(p => positionIds.Contains(p.Id))
+                    .Select(p => new { p.Id, p.PositionClass!.Title, p.PositionClass.TitleA })
+                    .ToListAsync();
+
+            string? TitleOf(Guid? id) =>
+                id is Guid g ? titles.FirstOrDefault(t => t.Id == g)?.Title : null;
+            string? TitleAOf(Guid? id) =>
+                id is Guid g ? titles.FirstOrDefault(t => t.Id == g)?.TitleA : null;
+
+            add("PositionA", TitleAOf(e.PositionId) ?? e.PositionClassTitle);
+            add("HireDateEC", e.HireDate.HasValue ? EthiopianDate.Format(e.HireDate.Value) : null);
+
+            // The post held at hire: the first movement's "from" side is the record of it. Without
+            // any movement the employee has only ever held their current post.
+            var hiredAs = rows.Count > 0 ? TitleOf(rows[0].FromPositionId) : e.PositionClassTitle;
+            var hiredAsA = rows.Count > 0 ? TitleAOf(rows[0].FromPositionId) : TitleAOf(e.PositionId);
+
+            var lastWorkingDate = await terminations.GetAll().AsNoTracking()
+                .Where(x => x.EmployeeId == e.Id && x.Status == TerminationStatus.Settled)
+                .OrderByDescending(x => x.SettledAt)
+                .Select(x => (DateTime?)x.LastWorkingDate)
+                .FirstOrDefaultAsync();
+
+            var history = ServiceHistory.Build(
+                e.HireDate,
+                hiredAs ?? e.PositionClassTitle,
+                hiredAsA,
+                rows.Select(r => new PositionChange(
+                    r.EffectiveDate,
+                    TitleOf(r.ToPositionId) ?? string.Empty,
+                    TitleAOf(r.ToPositionId))),
+                lastWorkingDate);
+
+            add("ServiceFrom", history.Count > 0 ? FormatDate(history[0].From) : null);
+            add("ServiceFromEC", history.Count > 0 ? EthiopianDate.Format(history[0].From) : null);
+            add("ServiceTo", lastWorkingDate.HasValue ? FormatDate(lastWorkingDate) : "to date");
+
+            // System-built HTML, emitted raw like {{ClearanceTable}} — cell VALUES are still encoded.
+            tokens["ServiceHistoryTable"] = RenderServiceHistory(history);
+        }
+
+        /// <summary>
+        /// The bilingual history table: one row per post, English left, Amharic right.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ One row per POST rather than two independent lists side by side. Two lists would drift
+        /// apart the moment one language wrapped onto a second line, and a reader comparing them
+        /// would be matching the wrong post to the wrong dates.
+        /// </remarks>
+        private static string RenderServiceHistory(List<ServicePeriod> history)
+        {
+            if (history.Count == 0) return string.Empty;
+
+            const string th = "border:1px solid #999;padding:6px 10px;text-align:left;background:#f2f2f2;width:50%;";
+            const string td = "border:1px solid #ccc;padding:6px 10px;text-align:left;vertical-align:top;width:50%;";
+            const string dates = "color:#444;font-size:12px;";
+
+            var sb = new StringBuilder();
+            sb.Append("<table style=\"width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed;\">")
+              .Append("<thead><tr>")
+              .Append($"<th style=\"{th}\">Position &amp; Period</th>")
+              .Append($"<th style=\"{th}\">የሥራ መደብና ጊዜ</th>")
+              .Append("</tr></thead><tbody>");
+
+            foreach (var p in history)
+            {
+                var title = WebUtility.HtmlEncode(p.Title);
+                // Falls back to the English title — see the note on AddServiceHistoryTokensAsync.
+                var titleA = WebUtility.HtmlEncode(
+                    string.IsNullOrWhiteSpace(p.TitleAmharic) ? p.Title : p.TitleAmharic);
+
+                var rangeEn = $"{FormatDate(p.From)} – {(p.To.HasValue ? FormatDate(p.To) : "to date")}";
+                var rangeAm = $"{EthiopianDate.Format(p.From)} – "
+                    + (p.To.HasValue ? EthiopianDate.Format(p.To.Value) : "እስከ አሁን");
+
+                sb.Append("<tr>")
+                  .Append($"<td style=\"{td}\"><strong>{title}</strong><br/><span style=\"{dates}\">{rangeEn}</span></td>")
+                  .Append($"<td style=\"{td}\"><strong>{titleA}</strong><br/><span style=\"{dates}\">{rangeAm}</span></td>")
+                  .Append("</tr>");
+            }
+
+            sb.Append("</tbody></table>");
+            return sb.ToString();
+        }
+
         private async Task<string?> TryGetLogoDataUriAsync()
         {
             try
@@ -289,6 +426,15 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             new() { Token = "{{Remark}}", Label = "Request remark", Group = "Annual Leave" },
             new() { Token = "{{TotalLeaveDays}}", Label = "Grand total leave days", Group = "Annual Leave" },
             new() { Token = "{{LeaveDetailsTable}}", Label = "Leave lines (table)", Group = "Annual Leave" },
+            // Experience letter (HC022): service at THIS organisation, bilingual.
+            new() { Token = "{{ServiceHistoryTable}}", Label = "Position history, English + Amharic (table)", Group = "Experience" },
+            new() { Token = "{{ServiceFrom}}", Label = "Service start date", Group = "Experience" },
+            new() { Token = "{{ServiceFromEC}}", Label = "Service start date (Ethiopian)", Group = "Experience" },
+            new() { Token = "{{ServiceTo}}", Label = "Service end date, or ‘to date’", Group = "Experience" },
+            new() { Token = "{{FullNameA}}", Label = "Full name (Amharic)", Group = "Experience" },
+            new() { Token = "{{PositionA}}", Label = "Position title (Amharic)", Group = "Experience" },
+            new() { Token = "{{HireDateEC}}", Label = "Hire date (Ethiopian)", Group = "Experience" },
+            new() { Token = "{{TodayEC}}", Label = "Today’s date (Ethiopian)", Group = "Experience" },
             new() { Token = "{{Today}}", Label = "Today's date", Group = "Document" },
             new() { Token = "{{Photo}}", Label = "Photo (image)", Group = "Document" },
             new() { Token = "{{PhotoUrl}}", Label = "Photo URL (for <img src>)", Group = "Document" },
