@@ -9337,3 +9337,75 @@ leap — an off-by-one at a month or year boundary is invisible in spot checks.
 **New tokens:** `{{ServiceHistoryTable}}`, `{{ServiceFrom}}`, `{{ServiceFromEC}}`, `{{ServiceTo}}`,
 `{{FullNameA}}`, `{{PositionA}}`, `{{HireDateEC}}`, `{{TodayEC}}` — all in the editor palette under
 **Experience**.
+
+### The template editor destroyed every layout it could not represent
+
+**Reported as:** put data on the left and the right of a header, save, and everything ends up right
+aligned.
+
+**Cause:** TipTap is schema-driven. Anything its schema cannot represent is discarded when content
+is parsed — silently, with no error and nothing in the console. The editor ran StarterKit + Heading
++ Image + TextAlign + Highlight, which has **no `div` node, no `table` node, and no way to carry a
+`style` attribute**. Measured, in a real browser, against the actual seeded header:
+
+| in | out after one save |
+|---|---|
+| `<div style="display:flex">` left + right | `<p>{{Logo}}</p><p>{{Branch}}</p>` |
+| `<table><td>LEFT</td><td>RIGHT</td></table>` | `<p>LEFTRIGHT</p>` |
+| Transfer Notice's body table | `<p>New Role<strong>{{NewPosition}}</strong></p>` |
+| `<p style="text-align:right">` | **survives** |
+
+⚠️ Block-level `text-align` on a paragraph was the ONLY layout primitive in the whole schema, which
+is exactly why every left/right attempt collapsed to a single alignment. There was nothing else for
+the layout to become.
+
+⚠️ **And it was never only the header.** `headerHtml`, `body` and `footerHtml` all use the same
+`type: "editor"` field, so opening ANY template containing a table and pressing Save destroyed it.
+Found in live data: `To Whom It May Concern (Experience)`, updated 2026-09-29 11:28, had both its
+flex header and its entire header table flattened into paragraphs. (The Amharic text survived — the
+`?` in a sqlcmd dump is console encoding, not data loss.)
+
+#### The fix
+
+`components/ui/htmlEditorExtensions.ts`:
+
+- **`StyledDiv`** — a generic `<div>` node so containers round-trip instead of flattening. Low
+  `priority: 50` so it only claims divs no more specific node wanted.
+- **`StylePassthrough`** — keeps `style` and `class` on every node that can carry one.
+  ⚠️ It deliberately **strips `text-align`** and leaves that property to TextAlign. Both would
+  otherwise render it; `mergeAttributes` dedupes by CSS property, so whichever ran last would win
+  and a stale alignment in the raw string could silently override the button just pressed.
+
+`htmlEditorField.tsx`:
+
+- **`TableKit`** (`@tiptap/extension-table@3.23.4` — pinned; latest wants `@tiptap/pm@3.31` and the
+  project is on 3.23). Real tables, with toolbar actions for insert / add row / add column / delete.
+- **A "two columns (left / right)" button** inserting a 1×2 table. ⚠️ A table, not flexbox: this
+  markup is printed, and table layout is the one two-column mechanism every print renderer has
+  agreed on for twenty years.
+- **TextAlign now covers `tableCell`, `tableHeader` and `styledDiv`**, not just paragraph/heading —
+  otherwise the cells of the two-column layout could not be aligned, and `text-align` written on a
+  container was dropped.
+- **An HTML source toggle.** ⚠️ Not a power-user nicety — it is the escape hatch. A schema decides
+  what CAN be expressed and drops the rest without a word, and no schema will ever cover every
+  letterhead. ⚠️ The `value → setContent` sync is skipped while source mode is on, or half-typed
+  markup would be re-parsed and normalised on every keystroke, rewriting the author's tag under
+  their cursor.
+
+#### Verified in a real browser, not by reasoning
+
+Headless Chrome against a Vite-served probe, running the actual extension set. All four cases now
+round-trip, **and each was run through a second save to prove idempotence** — a save that is not
+stable corrupts a little more every time, which is the failure that had already damaged live data.
+
+```
+seeded flex header  SAVE1: <div style="display: flex; …"><div><p>{{Logo}}</p></div>
+                           <div style="text-align: right;">…</div></div>     STABLE: yes
+two-column table    SAVE1: <table …><td style="text-align: left;">…          STABLE: yes
+transfer body table SAVE1: <table style="width: 100%; …">…                   STABLE: yes
+right-aligned para  SAVE1: <p style="text-align: right;">RIGHT</p>           STABLE: yes
+```
+
+⚠️ **Already-damaged templates cannot be recovered by re-seeding** — the seeder is idempotent by
+NAME and skips a template that exists. The stored markup is gone. A damaged template has to be
+deleted and re-seeded, or repaired by hand through the new source view.
