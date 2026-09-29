@@ -194,6 +194,49 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
             "<div>_____________________________<br/>Authorized Signature</div>" +
             "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}}.</p>";
 
+        // ---- Bilingual "To Whom It May Concern" experience letter ----------------------------
+
+        private const string ExperienceLetterName = "To Whom It May Concern (Experience)";
+
+        /// <summary>
+        /// ⚠️ The header carries BOTH names. An Amharic reader should not have to read the English
+        /// line to learn whose letter this is, and <c>{{FullNameA}}</c> is blank for most people
+        /// (111 of 1360 persons have Amharic names recorded), so it sits on its own line and simply
+        /// disappears when absent rather than leaving a stranded label.
+        /// </summary>
+        private const string ExperienceLetterBody =
+            "<h2 style=\"text-align:center;margin:8px 0 4px;letter-spacing:1px;\">TO WHOM IT MAY CONCERN</h2>" +
+            "<h3 style=\"text-align:center;margin:0 0 18px;font-weight:600;color:#333;\">ለሚመለከተው ሁሉ</h3>" +
+
+            "<table style=\"width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;\">" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;width:32%;\">Date / ቀን</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\">{{Today}} &nbsp;|&nbsp; {{TodayEC}}</td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Employee Name / ስም</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\"><strong>{{FullName}}</strong><br/>{{FullNameA}}</td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Current Position / የአሁኑ የሥራ መደብ</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\"><strong>{{Position}}</strong></td></tr>" +
+            "<tr><td style=\"border:1px solid #ccc;padding:6px 8px;background:#f2f2f2;\">Current Salary / የአሁኑ ደመወዝ</td>" +
+            "<td style=\"border:1px solid #ccc;padding:6px 8px;\"><strong>{{Salary}}</strong></td></tr>" +
+            "</table>" +
+
+            "<p>This is to certify that <strong>{{FullName}}</strong> (Employee No. " +
+            "<strong>{{EmployeeNumber}}</strong>) has served this organization from " +
+            "<strong>{{ServiceFrom}}</strong> ({{ServiceFromEC}}) <strong>{{ServiceTo}}</strong>, " +
+            "holding the positions set out below.</p>" +
+
+            "<h4 style=\"margin:18px 0 8px;\">Experience Details / የሥራ ልምድ ዝርዝር</h4>" +
+            "{{ServiceHistoryTable}}" +
+
+            "<p style=\"margin-top:16px;\">This letter is issued at the employee's request and " +
+            "carries no obligation on the part of this organization.</p>" +
+            "<p>ይህ ደብዳቤ በሠራተኛው ጥያቄ መሠረት የተሰጠ ነው።</p>";
+
+        private const string ExperienceLetterFooter =
+            "<div style=\"display:flex;justify-content:space-between;margin-top:48px;\">" +
+            "<div>_____________________________<br/>Human Resources / የሰው ኃይል አስተዳደር</div>" +
+            "<div>_____________________________<br/>Authorized Signature / የተፈቀደ ፊርማ</div>" +
+            "</div><p style=\"margin-top:16px;font-size:12px;color:#555;\">Generated on {{Today}} ({{TodayEC}}).</p>";
+
         private const string TransferNoticeName = "Transfer Notice";
 
         private const string TransferNoticeBody =
@@ -298,6 +341,20 @@ namespace CyberErp.Hrms.App.Features.Core.DocumentTemplates
                     ClearanceHeader,
                     ClearanceFooter,
                     "Final clearance certificate for a terminated employee (offboarding checklist).");
+                await repository.AddAsync(template);
+                created++;
+            }
+
+            // Bilingual experience letter: service at this organisation, English beside Amharic.
+            if (!await repository.GetAll().AnyAsync(t => t.Name == ExperienceLetterName))
+            {
+                var template = DocumentTemplate.Create(
+                    ExperienceLetterName,
+                    DocumentTemplateType.ExperienceLetter,
+                    ExperienceLetterBody,
+                    ClearanceHeader,   // same logo/branch letterhead
+                    ExperienceLetterFooter,
+                    "Bilingual 'To Whom It May Concern' letter: position history in English and Amharic.");
                 await repository.AddAsync(template);
                 created++;
             }
