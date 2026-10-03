@@ -81,7 +81,10 @@ function WorkLocationForm(props: { id: string; setId: (id: string) => void }) {
     .map((l) => ({ id: l.id, name: `${l.name} (${l.locationType})` }));
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white — the sixth screen carrying that leftover; it pinned every
+    // unstyled descendant to white, which is invisible on the light-theme card and would have
+    // erased the section headings added below.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
@@ -92,12 +95,21 @@ function WorkLocationForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            {
+              name: "identityBreak", label: "Identification", type: "break", colSpan: "full",
+              sectionDescription: "What this location is called, and what kind of place it is.",
+            },
             { name: "code", label: "Code", placeholder: "Code", required: true, value: formData.code, onChange: changeHandler, error: formState?.zodErrors?.code, type: "text" },
             { name: "name", label: "Name", placeholder: "Name", required: true, value: formData.name, onChange: changeHandler, error: formState?.zodErrors?.name, type: "text" },
             {
               name: "locationType", label: "Location Type", required: true, type: "dropDown", onSelect: selectHandler,
               value: formData.locationType, displayValue: formData.locationType,
               error: formState?.zodErrors?.locationType, data: workLocationTypes as never,
+            },
+            {
+              name: "placementBreak", label: "Placement and details", type: "break", colSpan: "full",
+              sectionDescription:
+                "Where it sits in the Country → Region → City → Office hierarchy. Leave the parent empty to make it a top-level location.",
             },
             {
               name: "parentId", label: "Parent Location", type: "dropDown", onSelect: selectHandler,
