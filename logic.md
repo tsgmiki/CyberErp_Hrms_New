@@ -9643,3 +9643,35 @@ the global theme, which is off limits. Flagged rather than patched.
 Drove the whole flow: open the grade dropdown (38 options), pick "001 — 01", and the grid loads 15
 rows in pay order. Screenshotted the empty state, the picker and the ordered result.
 292/292 backend tests green.
+
+### Job Categories, polished
+
+Fifth screen in the pass. Frontend only — `GetAllJobCategories` already does
+`bool.TryParse(request.Status, …)` then `Where(x => x.IsActive == active)`, exactly like Position
+Classes, and `JobCategoryDto` already returns `IsActive`. So both the Status badge and the Status
+filter are honest without touching the API.
+
+- **Category** is the lead column (`gridPrimary`), bold, `text-primary`, click to edit — the code
+  used to be the headline, and the code identifies a category while the name is what a reader scans.
+- **Code** is monospaced and width-capped.
+- **Status** renders as a `Badge` (`success`/`muted`), matching Position Classes and Positions.
+- **Status filter** via `listFilters`, sending the strings `"true"`/`"false"` the API reads.
+- ⚠️ **Description is `line-clamp-2`**, not left to wrap. It is free text, and a single long
+  paragraph would otherwise set the row height for the entire table.
+- Absent values render an em dash; `gridOmit` keeps the actions out of card view.
+- `text-white` → `text-foreground` on the form wrapper — **the fifth screen carrying that leftover**
+  (Position Class, Job Grade, Salary Scale, Job Category so far; `position/form.tsx` is a modal and
+  never had it). Four visible fields, so no section headings.
+
+#### ⚠️ There is one job category in the entire database
+
+`Migrated` / `MIG`, active, no description — the catch-all from the NVI migration. So this screen
+shows almost nothing today and the polish is mostly invisible until categories are actually set up.
+The filter was therefore verified at the API rather than by watching a count change:
+
+```
+status=ALL -> 1      status=true -> 1      status=false -> 0
+```
+
+Verified in the running app: headers read `CATEGORY | CODE | DESCRIPTION | STATUS | ACTION` and the
+single row renders `Migrated | MIG | — | Active`, i.e. the em dash and the badge both work.
