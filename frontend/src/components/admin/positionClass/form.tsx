@@ -136,7 +136,10 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
   }, [formState]);
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white. `text-white` was pinning every unstyled descendant to
+    // white, which is invisible on the light-theme card — the section headings and helper text
+    // added below would have rendered as nothing at all.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
@@ -147,9 +150,18 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            {
+              name: "identityBreak", label: "Identification", type: "break", colSpan: "full",
+              sectionDescription: "What this job is called, and the code it is known by.",
+            },
             { name: "code", label: "Code", placeholder: "Code", required: true, value: formData.code, onChange: changeHandler, error: formState?.zodErrors?.code, type: "text" },
             { name: "title", label: "Title", placeholder: "Title", required: true, value: formData.title, onChange: changeHandler, error: formState?.zodErrors?.title, type: "text" },
             { name: "titleA", label: "Title (Amharic)", placeholder: "ርዕስ", value: formData.titleA, onChange: changeHandler, error: formState?.zodErrors?.titleA, type: "text" },
+            {
+              name: "payBreak", label: "Grade and pay", type: "break", colSpan: "full",
+              sectionDescription:
+                "The pay point this job sits on. Choosing a grade filters the steps available to it, and the step fixes the salary.",
+            },
             {
               name: "jobGradeId", label: "Job Grade", required: true, type: "dropDown", onSelect: gradeSelectHandler,
               value: formData.jobGradeId, displayValue: formData.jobGradeName,
@@ -170,6 +182,11 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
             },
             { name: "salaryDisplay", label: "Salary", value: formatMoney(formData.salary), type: "text", disabled: true },
             {
+              name: "placementBreak", label: "Placement", type: "break", colSpan: "full",
+              sectionDescription:
+                "Where the job sits in the organisation, and how many of it are established.",
+            },
+            {
               name: "jobCategoryId", label: "Job Category", required: true, type: "dropDown", onSelect: selectHandler,
               value: formData.jobCategoryId, displayValue: formData.jobCategoryName,
               error: formState?.zodErrors?.jobCategoryId,
@@ -189,14 +206,24 @@ function PositionClassForm(props: { id: string; setId: (id: string) => void }) {
               data: (locations?.data ?? []).map((l) => ({ id: l.id, name: l.name })) as never,
             },
             { name: "allocatedHeadcount", label: "Allocated Headcount", value: formData.allocatedHeadcount, onChange: changeHandler, inputType: "number", type: "text" },
-            { name: "minExperienceYears", label: "Min Experience (yrs)", value: formData.minExperienceYears, onChange: changeHandler, inputType: "number", type: "text" },
-            { name: "minimumAge", label: "Minimum Age", value: formData.minimumAge, onChange: changeHandler, error: formState?.zodErrors?.minimumAge, inputType: "number", type: "text" },
-            { name: "maximumAge", label: "Maximum Age", value: formData.maximumAge, onChange: changeHandler, error: formState?.zodErrors?.maximumAge, inputType: "number", type: "text" },
-            { name: "weeklyWorkingHours", label: "Weekly Working Hours", value: formData.weeklyWorkingHours, onChange: changeHandler, error: formState?.zodErrors?.weeklyWorkingHours, inputType: "number", type: "text" },
             {
               name: "isActive", label: "Status", type: "dropDown", onSelect: selectHandler,
               value: activeId(formData.isActive), displayValue: activeLabel(formData.isActive),
               data: activeStatusOptions as never,
+            },
+            {
+              name: "eligibilityBreak", label: "Requirements and terms", type: "break", colSpan: "full",
+              sectionDescription:
+                "What the job asks of whoever holds it. Leave any of these blank to impose no limit.",
+            },
+            { name: "minExperienceYears", label: "Min Experience (yrs)", value: formData.minExperienceYears, onChange: changeHandler, inputType: "number", type: "text" },
+            { name: "weeklyWorkingHours", label: "Weekly Working Hours", value: formData.weeklyWorkingHours, onChange: changeHandler, error: formState?.zodErrors?.weeklyWorkingHours, inputType: "number", type: "text" },
+            { name: "minimumAge", label: "Minimum Age", value: formData.minimumAge, onChange: changeHandler, error: formState?.zodErrors?.minimumAge, inputType: "number", type: "text" },
+            { name: "maximumAge", label: "Maximum Age", value: formData.maximumAge, onChange: changeHandler, error: formState?.zodErrors?.maximumAge, inputType: "number", type: "text" },
+            {
+              name: "profileBreak", label: "Role profile", type: "break", colSpan: "full",
+              sectionDescription:
+                "The written description of the job — what it requires, and what it is for.",
             },
             { name: "minQualifications", label: "Min Qualifications", value: formData.minQualifications, onChange: changeHandler, type: "textarea", colSpan: "full" },
             { name: "skills", label: "Skills", value: formData.skills, onChange: changeHandler, type: "textarea", colSpan: "full" },

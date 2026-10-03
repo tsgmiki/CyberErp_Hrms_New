@@ -9409,3 +9409,72 @@ right-aligned para  SAVE1: <p style="text-align: right;">RIGHT</p>           STA
 ⚠️ **Already-damaged templates cannot be recovered by re-seeding** — the seeder is idempotent by
 NAME and skips a template that exists. The stored markup is gone. A damaged template has to be
 deleted and re-seeded, or repaired by hand through the new source view.
+
+### Position Classes UI, polished within the existing structure
+
+No new components, no new patterns, no theme changes — every improvement uses a primitive the
+codebase already had and was simply not using on this screen.
+
+#### The form: 17 flat fields → 5 labelled sections
+
+Grouped with `type: "break"` + `sectionDescription`, which renders `FormSection` (heading + helper
+line + rule) — the same primitive `setting`, `documentTemplate` and `notificationTemplate` already
+use. **Identification** / **Grade and pay** / **Placement** / **Requirements and terms** /
+**Role profile**.
+
+⚠️ The section is named "Requirements and terms", not "Eligibility": it holds `weeklyWorkingHours`
+alongside the age and experience minimums, and weekly hours is a TERM of the job, not a threshold a
+candidate clears. A tidier-sounding heading would have been wrong about its own contents.
+
+⚠️ **`text-white` → `text-foreground` on the form wrapper.** It was pinning every unstyled
+descendant to white, which is invisible on the light-theme card — the new section headings and
+helper text would have rendered as nothing at all. (`jobGrade/form.tsx` still has the same wrapper;
+not touched here.)
+
+#### The list
+
+- **Position** is now the lead column (`gridPrimary`) — bold, `text-primary`, click to edit.
+- ⚠️ **The "Title (Amharic)" column is folded into it as a subtitle** rather than holding a column
+  of its own. Only 1 of 814 classes has a `TitleA`, so it was an empty strip the full width of the
+  grid; as a subtitle it simply does not appear until there is one.
+- **Grade** renders as a `Badge variant="secondary"`, **Status** as `success`/`muted`.
+- **Salary** and **Headcount** use `tabular-nums` so figures align down the column.
+- **Code** is monospaced — it is an identifier, not prose.
+- An absent value renders an em dash, never a blank cell that reads as a rendering fault.
+- `responsive: "lg"/"md"` demotes Category and Headcount on narrow screens; `gridOmit` keeps the
+  action buttons out of card view.
+
+#### ⚠️ The Status filter is real, not decorative
+
+`listFilters` with `paramKey: "status"` — the key `GetAllPositionClasses` ALREADY reads:
+`bool.TryParse(request.Status, …)` then `Where(x => x.IsActive == active)`. So the options send the
+strings `"true"`/`"false"`, not `"Active"`/`"Inactive"`. Verified against the live API before
+shipping it:
+
+```
+status=ALL   -> total 814
+status=true  -> total 814
+status=false -> total 0
+```
+
+A filter wired to a key the backend ignores looks like it works and changes nothing, which is worse
+than no filter.
+
+#### Verified visually, because this change is only visual
+
+`tsc` and a green build prove nothing about whether a screen LOOKS right. Ran the app (API on
+55900, Vite on 5174), drove headless Chrome over CDP with a zero-dependency driver (Node 22 has a
+global `WebSocket`), logged in through the real form and screenshotted the list, the form, and the
+form scrolled to the bottom. All three render as intended, and the entitlements panel below the
+form is unaffected.
+
+⚠️ Two CDP notes worth keeping: a hard `Page.navigate` to a protected route bounces to `/` because
+the reload drops the SPA session before the auth probe resolves — click the sidebar link instead;
+and React ignores a plain `input.value = x`, so fill through the native prototype setter plus a
+bubbling `input` event.
+
+⚠️ **Every palette utility used was checked against the BUILT css first** — `bg-success/15`,
+`border-success/20`, `bg-muted/30`, `text-muted-foreground`, `bg-primary/10` and the rest are all
+registered, so `Badge` renders with real colour here. The palette lint rule is gone (reverted on
+2026-09-28), so this is a manual check that has to be repeated each time; `grep` for these needs
+the escaped form (`.bg-success\/15`) or it silently reports nothing.
