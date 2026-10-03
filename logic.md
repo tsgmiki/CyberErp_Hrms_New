@@ -9478,3 +9478,60 @@ bubbling `input` event.
 registered, so `Badge` renders with real colour here. The palette lint rule is gone (reverted on
 2026-09-28), so this is a manual check that has to be repeated each time; `grep` for these needs
 the escaped form (`.bg-success\/15`) or it silently reports nothing.
+
+### Positions screen, polished — and one filter that had to be made real first
+
+Same treatment as the Position Classes screen, but the screen is shaped differently: a master/detail
+with the org tree on the left and the grid on the right, and a form that is a MODAL with two visible
+fields. So the work landed almost entirely in the grid.
+
+#### ⚠️ The backend could only filter one way
+
+`GetAllPositions` tested `request.IsVacant == true`. That is fine for the five placement dropdowns
+that ask for vacant-only, but it means a caller asking for `isVacant=false` **silently got
+everything back** — a filter that looks like it works and does nothing. Keyed on `HasValue` now, so
+both directions filter and an omitted parameter still means "no filter", leaving every existing
+caller untouched.
+
+Verified against the live endpoint before building any UI on it:
+
+```
+(none)         -> 1162      isVacant=true  ->  809
+isVacant=      -> 1162      isVacant=false ->  353
+```
+
+⚠️ The `isVacant=` row is the one that mattered: the "All" option serialises to an empty value
+(`toQueryString` stringifies anything non-null), and empty-string → `bool?` could have been a
+model-binding error rather than null. It binds to null, HTTP 200, no filter. 809 + 353 = 1162.
+
+#### The grid
+
+- **Position** is the lead column (`gridPrimary`): the post title bold and clickable, with the code
+  monospaced underneath. ⚠️ The code used to be the headline — but the code identifies a position
+  and the post title is what a reader is actually scanning for.
+- **Status** uses `Badge` (`success`/`muted`) instead of a hand-rolled span, so vacancy reads the
+  same as status does on Position Classes.
+- **Vacancy filter** — All / Vacant / Occupied, via `listFilters`.
+- The **Organization Unit** column is kept at `responsive: "md"`: usually redundant because the tree
+  scopes the grid to one unit, but with no node selected the header reads "All Positions" and the
+  unit is the only thing distinguishing two identically-titled posts.
+- Panel header is now a title plus a line of context ("Positions belonging directly to this unit").
+
+⚠️ **A record count in that header was built and then removed.** The list toolbar already prints
+"N records" a few pixels below it; a second count is duplication, not polish.
+
+#### The form
+
+Deliberately almost untouched. It holds two visible fields — position class and code — so the
+section headings that helped the 17-field Position Class form would be scaffolding around nothing.
+The one change: `modalSize` is `lg` only when editing. Adding showed two fields stranded in a
+half-empty dialog; editing additionally renders the Form Builder tabs, which genuinely need width.
+
+#### Verified in the running app
+
+Screenshotted the grid, then drove the filter through the real UI — open **More filters**, set
+Vacancy to Occupied, click **Apply filters** — and the list went to **353 records** with every
+visible row reading "Occupied", matching the API exactly.
+
+⚠️ The dialog needs **Apply** clicked; setting the select alone changes nothing, which is why the
+first run still showed 1162 and would have been easy to mistake for a broken filter.

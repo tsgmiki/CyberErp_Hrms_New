@@ -112,7 +112,10 @@ function PositionForm({
         showModal: true,
         modalVisible: true,
         modalTitle,
-        modalSize: "lg",
+        // ⚠️ Sized to what is actually in it. Adding shows two fields, and "lg" left them stranded
+        // in a half-empty dialog; editing additionally renders the Form Builder tabs below, which
+        // genuinely need the width.
+        modalSize: formData.id ? "lg" : "md",
         onModalClose: onClose,
         submitBtnTitle: "Save",
         components: [
