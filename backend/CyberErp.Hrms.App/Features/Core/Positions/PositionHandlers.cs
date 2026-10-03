@@ -146,9 +146,14 @@ namespace CyberErp.Hrms.App.Features.Core.Positions
             if (request.ParentId.HasValue)
                 query = query.Where(x => x.OrganizationUnitId == request.ParentId.Value);
 
-            // The employee form requests vacant-only positions for its placement dropdown.
-            if (request.IsVacant == true)
-                query = query.Where(x => x.IsVacant);
+            // The employee form requests vacant-only positions for its placement dropdown; the
+            // Positions screen filters EITHER way.
+            // ⚠️ Keyed on HasValue, not `== true`. The old form could only narrow to vacant, so a
+            // caller asking for isVacant=false silently got everything back — a filter that looks
+            // like it works and does nothing. Omitting the parameter still means "no filter", so
+            // every existing caller (the placement dropdowns, which all send true) is unaffected.
+            if (request.IsVacant.HasValue)
+                query = query.Where(x => x.IsVacant == request.IsVacant.Value);
 
             if (!string.IsNullOrWhiteSpace(request.SearchText))
             {
