@@ -70,7 +70,10 @@ function JobCategoryForm(props: { id: string; setId: (id: string) => void }) {
   if (notFound) return <RecordNotFound onBack={() => setId("")} />;
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white — the fifth screen carrying that leftover; it pinned every
+    // unstyled descendant to white, invisible on the light card. Four visible fields, so no section
+    // headings: they would be scaffolding around nothing.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
