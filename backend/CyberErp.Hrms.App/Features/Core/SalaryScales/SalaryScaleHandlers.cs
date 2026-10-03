@@ -130,7 +130,12 @@ namespace CyberErp.Hrms.App.Features.Core.SalaryScales
 
             var total = await query.CountAsync();
             var data = await query
-                .OrderBy(x => x.Step.Code).ThenBy(x => x.Step.Name)
+                // ⚠️ Ordered by SALARY, not step code. A salary scale is a ladder, and ordering by
+                // step code rendered it as 0Floor, Ceiling, 9, 10, 11, 12, 1, 13, 2 — with amounts
+                // jumping 1,650 → 4,135 → 3,135, which reads as unsorted data rather than a pay
+                // structure. Step code is kept as the tiebreak so equal salaries stay in a stable,
+                // repeatable order across pages.
+                .OrderBy(x => x.Salary).ThenBy(x => x.Step.Code)
                 .Skip(skip).Take(take)
                 .Select(x => new SalaryScaleDto
                 {

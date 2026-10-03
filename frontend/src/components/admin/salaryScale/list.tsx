@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { Coins } from "lucide-react";
 import GridAction from "../../common/gridAction/gridAction";
+import EmptyState from "../../common/emptyState";
+import DropDownField from "@/components/ui/dropDownField";
 import getAllSalaryScale from "@/services/admin/salaryScale/getAll";
 import deleteSalaryScale from "@/services/admin/salaryScale/delete";
 import type { SalaryScaleModel, JobGradeModel } from "@/models";
@@ -14,6 +17,9 @@ interface Props {
   onSelectJobGrade: (id: string) => void;
   jobGrades: JobGradeModel[];
 }
+
+/** An absent value reads as a dash, never a blank cell that looks like a rendering fault. */
+const dash = <span className="text-muted">—</span>;
 
 function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades }: Props) {
   const list = useEntityList({
@@ -29,6 +35,22 @@ function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades 
     setParam((p) => ({ ...p, jobGradeId, skip: 0 }));
   }, [jobGradeId, setParam]);
 
+  // `code — name`, matching the label the form shows for the same grade, so the two screens name
+  // a grade identically rather than one saying "01" and the other "001 — 01".
+  const gradeOptions = useMemo(
+    () =>
+      jobGrades.map((g) => ({
+        id: g.id,
+        name: g.code ? `${g.code} — ${g.name}` : (g.name ?? ""),
+      })),
+    [jobGrades],
+  );
+
+  const selectedGradeLabel = useMemo(
+    () => gradeOptions.find((g) => g.id === jobGradeId)?.name ?? "",
+    [gradeOptions, jobGradeId],
+  );
+
   const columns = useMemo(
     () =>
       [
@@ -36,27 +58,36 @@ function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades 
           name: "step",
           label: "Step",
           sort: true,
+          gridPrimary: true,
+          gridHideLabel: true,
           render: (text: string, record: SalaryScaleModel) => (
             <button
               type="button"
               onClick={() => record.id && editHandler(record.id)}
-              className="font-semibold"
+              className="text-left font-semibold text-primary hover:underline"
             >
-              {text}
+              {text || dash}
             </button>
           ),
         },
         {
           name: "salary",
           label: "Salary",
+          sort: true,
+          gridHighlight: true,
+          // ⚠️ Was an empty string for a missing salary. A pay scale row with no amount is the one
+          // thing somebody needs to SEE, not a cell that looks like the table failed to render.
           render: (_t: unknown, record: SalaryScaleModel) =>
-            record.salary != null
-              ? Number(record.salary).toLocaleString(undefined, { minimumFractionDigits: 2 })
-              : "",
+            record.salary == null ? dash : (
+              <span className="font-medium tabular-nums">
+                {Number(record.salary).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            ),
         },
         {
           name: "Action",
           label: "Action",
+          gridOmit: true,
           render: (_t: unknown, record: SalaryScaleModel) => (
             <GridAction
               id={record.id || ""}
@@ -75,21 +106,24 @@ function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades 
 
   return (
     <div className="space-y-4">
-      {/* Job Grade filter — the grid only shows data once a grade is chosen. */}
+      {/*
+        ⚠️ The grade picker is the standard DropDownFieldV2, not a raw <select>. The project's UI
+        standard is explicit that admin screens never hand-roll input/select/textarea/table, and a
+        bare <select> here was both the one unstyled control on the screen and unsearchable — which
+        matters at 38 grades and would only get worse.
+      */}
       <div className="max-w-md">
-        <label className="mb-1 block text-sm font-medium text-muted">Job Grade</label>
-        <select
+        <DropDownField
+          name="jobGradeFilter"
+          type="dropDown"
+          label="Job Grade"
+          labelWidth="w-[30%]"
+          placeholder="Select a job grade…"
           value={jobGradeId}
-          onChange={(e) => onSelectJobGrade(e.target.value)}
-          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
-        >
-          <option value="">Select a job grade…</option>
-          {jobGrades.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
+          displayValue={selectedGradeLabel}
+          data={gradeOptions as never}
+          onSelect={(_name: string, r: any) => onSelectJobGrade(r?.id ?? "")}
+        />
       </div>
 
       {jobGradeId ? (
@@ -100,9 +134,11 @@ function SalaryScaleList({ editHandler, jobGradeId, onSelectJobGrade, jobGrades 
           {...list}
         />
       ) : (
-        <div className="rounded-md border border-dashed border-border p-8 text-center text-sm text-muted">
-          Select a job grade above to view and manage its salary scale.
-        </div>
+        <EmptyState
+          icon={<Coins className="h-6 w-6" aria-hidden />}
+          title="Choose a job grade"
+          description="A salary scale row is one step of one job grade. Pick a grade above to see and manage its steps."
+        />
       )}
     </div>
   );

@@ -9581,3 +9581,65 @@ as strings), and let seniority rules read the grade ladder directly. That is a s
 migration, so it is flagged rather than built.
 
 Verified in the running app: screenshotted the list and the form.
+
+### Salary Scale, polished — including a scale that did not read as a scale
+
+Fourth screen in the pass, and the one with the most actually wrong with it.
+
+#### ⚠️ The screen hand-rolled a `<select>`
+
+The job-grade picker was a bare `<select>` — the one unstyled control on the screen, unsearchable
+across 38 grades, and a direct breach of the project's own UI standard, which says admin screens
+never hand-roll `input`/`select`/`textarea`/`table`. Replaced with the standard `DropDownField`
+(searchable, same look as every other picker in the app).
+
+⚠️ **`DropDownFieldV2` was tried first and is the WRONG component.** Despite the name it is not a
+newer `DropDownField`: it renders only a magnifier trigger with no visible selected value, built for
+the virtual table's column search. Standalone it produced a stranded label and a tiny icon button.
+`DropDownField` (v1) — the one `type: "dropDown"` maps to — is the right one.
+
+⚠️ **It opens on FOCUS, not click.** Worth knowing for any future UI test: clicking the input does
+nothing, and React delegates `onFocus` through `focusin`, so a driver must dispatch
+`new FocusEvent("focusin", { bubbles: true })`.
+
+The grade options now read `code — name` ("001 — 01"), matching the label the FORM already shows for
+the same grade, so the two screens name a grade identically.
+
+#### ⚠️ The scale was not in scale order
+
+`GetAllSalaryScales` ordered by `Step.Code` then `Step.Name`, which for this data produced:
+
+```
+0Floor 1,650 · Ceiling 4,135 · 9 3,135 · 10 3,325 · 11 3,520 · 12 3,720 · 1 1,795 · 13 3,925 · 2 1,945 …
+```
+
+A pay scale is a LADDER, and that reads as unsorted data rather than a pay structure. Now
+`OrderBy(Salary).ThenBy(Step.Code)` — the step code kept as a tiebreak so equal salaries stay in a
+stable, repeatable order across pages. The same query feeds the Position Class form's step
+dropdown, which is also better for it: the steps now offer themselves in pay order.
+
+```
+0Floor 1,650 · 1 1,795 · 2 1,945 · 3 2,100 · 4 2,260 · 5 2,425 · 6 2,595 · 7 2,770 · 8 2,950 · 9 3,135 …
+```
+
+The Salary column is also sortable now, so the ladder can be reversed without leaving the screen.
+
+#### The rest
+
+- **Step** is the lead column (`gridPrimary`), bold, `text-primary`, click to edit.
+- ⚠️ **A missing salary rendered as an EMPTY STRING.** A scale row with no amount is precisely the
+  thing somebody needs to see; it is an em dash now, like every other absent value in this pass.
+- `EmptyState` (the shared component) replaces the hand-rolled "select a job grade" box.
+- `text-white` → `text-foreground` on the form wrapper — the fourth screen carrying that leftover.
+  Three visible fields, so no section headings.
+
+⚠️ **`EmptyState` itself uses two unregistered palette utilities** — `bg-card/50` and `bg-muted/40`
+emit nothing, so its container tint and the icon circle's fill are invisible. It still renders
+correctly (dashed border, icon, title, description), and it is used as-is: fixing it means editing
+the global theme, which is off limits. Flagged rather than patched.
+
+#### Verified in the running app
+
+Drove the whole flow: open the grade dropdown (38 options), pick "001 — 01", and the grid loads 15
+rows in pay order. Screenshotted the empty state, the picker and the ordered result.
+292/292 backend tests green.

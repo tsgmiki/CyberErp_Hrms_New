@@ -83,7 +83,10 @@ function SalaryScaleForm({ id, setId, jobGradeId, gradeLabel }: Props) {
   }, [formState]);
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white — the same leftover fixed on the Position Class and Job
+    // Grade forms; it pinned every unstyled descendant to white, invisible on the light card.
+    // Three visible fields, so no section headings: they would be scaffolding around nothing.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
