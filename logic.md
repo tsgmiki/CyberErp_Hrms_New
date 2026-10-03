@@ -9535,3 +9535,49 @@ visible row reading "Occupied", matching the API exactly.
 
 ⚠️ The dialog needs **Apply** clicked; setting the select alone changes nothing, which is why the
 first run still showed 1162 and would have been easy to mistake for a broken filter.
+
+### Job Grades, polished — a deliberately small change
+
+Third screen in the same pass, and the honest answer is there is much less to do: `JobGradeDto` is
+exactly `{ Id, Name, NameA, Code }`. No status, no counts, no relations.
+
+- **Grade** is the lead column (`gridPrimary`), bold, `text-primary`, click to edit — the code used
+  to be the headline, and the code identifies a grade while the name is what a reader scans for.
+- **Code** is monospaced and width-capped; an absent value renders an em dash.
+- `gridOmit` keeps the action buttons out of card view.
+- `text-white` → `text-foreground` on the form wrapper — the same leftover fixed on the Position
+  Class form; it pinned every unstyled descendant to white, invisible on the light-theme card.
+
+#### ⚠️ What was deliberately NOT done
+
+**No status filter.** Position Classes and Positions both got one because `IsActive` and `IsVacant`
+exist and the API already filters on them. Job Grade has no such field, so a filter here would have
+to invent one.
+
+**The "Name (Amharic)" column was KEPT, not folded into the grade** the way the Amharic title was on
+Position Classes. That decision was data-driven, not stylistic: `TitleA` was populated for 1 record
+in 814, so its column was an empty strip. `NameA` is populated for **16 of 38**, so it carries real
+data and deserves its own column. Applying the earlier pattern here would have been pattern-matching
+over evidence.
+
+**No section headings on the form.** Three fields; headings would be scaffolding around nothing —
+same reasoning as the two-field Positions modal.
+
+#### ⚠️ `NameA` does not contain Amharic
+
+In this tenant it holds ROMAN NUMERALS: `01 → I`, `02 → II`, `JG 1 → JG I`. The field is being used
+as an alternative numbering notation, not a translation, while the UI labels it "Name (Amharic)".
+Left alone and surfaced to the user rather than relabelled — the schema intent is Amharic, other
+tenants may use it that way, and renaming a column on the strength of one tenant's data would be
+wrong.
+
+#### ⚠️ The gap that would actually make this screen useful
+
+Job grades carry **no rank**. This is the same limitation recorded against the delegation seniority
+rule: "within N grades" is not computable because `JobGrade` has a name and a code and no ordering,
+which is why that rule had to use SALARY as the ordered measure instead. A rank/sort-order column
+would make grades orderable, let the list sort meaningfully (today `JG 1` interleaves with `01`…`38`
+as strings), and let seniority rules read the grade ladder directly. That is a schema change plus a
+migration, so it is flagged rather than built.
+
+Verified in the running app: screenshotted the list and the form.
