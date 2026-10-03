@@ -89,7 +89,10 @@ function BranchForm(props: { id: string; setId: (id: string) => void }) {
   if (notFound) return <RecordNotFound onBack={() => setId("")} />;
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white — the seventh screen carrying that leftover; it pinned
+    // every unstyled descendant to white, invisible on the light card, which would have erased the
+    // section headings and the head-office warning added below.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
@@ -100,8 +103,21 @@ function BranchForm(props: { id: string; setId: (id: string) => void }) {
           isPending: isLoading,
           SubmitButton: "top",
           components: [
+            {
+              name: "identityBreak", label: "Identification", type: "break", colSpan: "full",
+              sectionDescription: "What this branch is called, and the code it is known by.",
+            },
             { name: "code", label: "Code", placeholder: "Code", required: true, value: formData.code, onChange: changeHandler, error: formState?.zodErrors?.code, type: "text" },
             { name: "name", label: "Name", placeholder: "Name", required: true, value: formData.name, onChange: changeHandler, error: formState?.zodErrors?.name, type: "text" },
+            {
+              name: "scopeBreak", label: "Placement and scope", type: "break", colSpan: "full",
+              // ⚠️ Head office is NOT a label. `IsHeadOffice()` is read as an authorisation
+              // short-circuit in several scope checks, so flagging a branch widens what everyone
+              // posted to it can see. Saying so here is the difference between an informed setting
+              // and a tick-box somebody sets because it sounds right.
+              sectionDescription:
+                "Where the branch sits in the branch tree. Leave the parent empty to make it top-level. ⚠️ Head office is not just a label — several scope checks treat users from a head-office branch as organisation-wide.",
+            },
             {
               name: "parentId", label: "Parent Branch", type: "dropDown", onSelect: selectHandler,
               value: formData.parentId, displayValue: formData.parentName,

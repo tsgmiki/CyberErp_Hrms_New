@@ -9714,3 +9714,42 @@ Verified in the running app: headers read
 `LOCATION | CODE | TYPE | PARENT | ADDRESS | STATUS | ACTION`, the row renders
 `Bishoftu | 001 | Region | — | Bishoftu | Active`, and the form shows both section headings with
 all seven fields under them.
+
+### Branches, polished — and the head-office flag made legible
+
+Seventh screen in the pass. Frontend only — `GetAllBranches` already parses `request.Status` and
+filters `IsActive`, and `BranchDto` already returns `Address`, `IsHeadOffice`, `IsActive`,
+`ParentName`.
+
+**List** — **Branch** leads (`gridPrimary`, bold, clickable), **Code** is monospaced, **Status** is
+a `Badge`, **Address** is surfaced for the first time (on the DTO, never shown), and the parent
+column's em dash marks a ROOT of the branch tree.
+
+⚠️ **"Head Office" was a Yes/No string and is now a badge shown only where the flag is set.** That
+is not styling. `ICurrentUserService.IsHeadOffice()` is read as an AUTHORISATION SHORT-CIRCUIT in
+several scope checks — delegation admin (`DelegationHandlers:149` literally assigns
+`var isHrAdmin = currentUser.IsHeadOffice()`), organization-unit scope, and more. Which branches
+carry the flag decides what the people posted to them can see, so it is worth reading down the
+column at a glance.
+
+**Form** — 7 visible fields → two sections, as on Work Locations: **Identification** (code, name)
+and **Placement and scope** (parent, head office, status, address, description).
+
+⚠️ The second section states the consequence in the UI: *"Head office is not just a label — several
+scope checks treat users from a head-office branch as organisation-wide."* It was previously a
+Yes/No dropdown with nothing to say what it did, which is how a tick-box gets set because it sounds
+right. `text-white` → `text-foreground`, the seventh screen carrying that leftover.
+
+#### ⚠️ Worth knowing about this tenant
+
+CERP has ONE branch — `001 / Head Office` — and it is flagged head office. The codebase already
+documents what that means: `PerformanceVisibilityService` carries a note that in a single-branch
+tenant where the one branch is flagged `IsHeadOffice`, the flag is true for EVERY employee-linked
+user, which is how ~73 checks written as `if (!scope.IsAdmin) narrow(...)` ended up never narrowing
+anything. That is the live configuration here. The screen now at least shows the flag plainly; the
+scoping consequence is a separate matter and is NOT changed by this commit.
+
+Verified in the running app: headers read
+`BRANCH | CODE | PARENT BRANCH | HEAD OFFICE | ADDRESS | STATUS | ACTION`, the row renders
+`Head Office | 001 | — | Head office | Bishoftu | Active`, the form shows both sections, and the
+head-office warning is present. Status filter checked at the API: `ALL → 1, true → 1, false → 0`.
