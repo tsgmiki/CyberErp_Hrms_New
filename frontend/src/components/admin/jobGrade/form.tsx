@@ -65,7 +65,10 @@ function JobGradeForm(props: { id: string; setId: (id: string) => void }) {
   }, [formState]);
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white. `text-white` pinned every unstyled descendant to white,
+    // which is invisible on the light-theme card — the same leftover fixed on the Position Class
+    // form. Three fields is too few to warrant section headings, so that is the only change here.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
