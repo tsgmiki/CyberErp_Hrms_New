@@ -9675,3 +9675,42 @@ status=ALL -> 1      status=true -> 1      status=false -> 0
 
 Verified in the running app: headers read `CATEGORY | CODE | DESCRIPTION | STATUS | ACTION` and the
 single row renders `Migrated | MIG | — | Active`, i.e. the em dash and the badge both work.
+
+### Work Locations, polished
+
+Sixth and last screen in the Organization pass. Frontend only — `GetAllWorkLocations` already parses
+`request.Status` and filters `IsActive`, and `WorkLocationDto` already returns `IsActive`,
+`Address`, `ParentName` and `LocationType`.
+
+**List** — **Location** leads (`gridPrimary`, bold, clickable), **Code** is monospaced, **Type** and
+**Status** are `Badge`s, and **Address** is surfaced as a column for the first time (it was on the
+DTO and never shown, yet it is the single most useful attribute of a work location). Address is
+`line-clamp-2` so one long entry cannot set the row height for the table.
+
+⚠️ **The em dash in the Parent column is meaningful, not cosmetic.** No parent is exactly what makes
+a location a ROOT of the Country → Region → City → Office hierarchy, so the blank cell it replaced
+was hiding the structure rather than just looking untidy.
+
+**Form** — 7 visible fields, enough to earn **two** sections (unlike the 3–4 field forms in this
+pass, which got none): **Identification** (code, name, type) and **Placement and details** (parent,
+status, address, description). The second section's description states the hierarchy and says that
+an empty parent makes a top-level location — a rule that was previously discoverable only by trying
+it. `text-white` → `text-foreground`, the sixth screen carrying that leftover.
+
+#### ⚠️ Deliberately NOT added: a Location Type filter
+
+The API has no `LocationType` parameter, so one would mean adding a field to the SHARED
+`GetAllRequest` used by every entity — disproportionate for a dropdown that would today offer a
+single value. Status filtering needed no API change and was added; type filtering is left as an
+option.
+
+#### ⚠️ One work location exists
+
+`001 / Bishoftu / Region`, active, a root, address "Bishoftu" — so like Job Categories this screen
+shows almost nothing today. The filter was verified at the API rather than by watching a count
+change: `ALL → 1, true → 1, false → 0`.
+
+Verified in the running app: headers read
+`LOCATION | CODE | TYPE | PARENT | ADDRESS | STATUS | ACTION`, the row renders
+`Bishoftu | 001 | Region | — | Bishoftu | Active`, and the form shows both section headings with
+all seven fields under them.
