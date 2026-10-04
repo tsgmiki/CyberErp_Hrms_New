@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { FileText, History, UserX, UserCheck, AlertTriangle } from "lucide-react";
 import DropDownField from "@/components/ui/dropDownField";
+import Badge, { type BadgeVariant } from "@/components/common/badge/badge";
 import { EntityListShell, useEntityList } from "@/template";
 import {
   getTerminatedEmployees,
@@ -24,16 +25,20 @@ import type DataTableColumnModel from "@/models/DataTableColumnModel";
 
 const fmtDate = (v?: string) => (v ? v.slice(0, 10) : "—");
 
-const CASE_TONE: Record<string, string> = {
-  Initiated: "bg-info/15 text-info",
-  ClearanceInProgress: "bg-warning/15 text-warning",
-  Settled: "bg-success/15 text-success",
-  Cancelled: "bg-muted/30 text-muted",
+/** An absent value reads as a dash, never a blank cell that looks like a rendering fault. */
+const dash = <span className="text-muted">—</span>;
+
+/** Case / clearance status → the shared Badge's variants, which the hand-rolled tones mapped onto. */
+const CASE_VARIANT: Record<string, BadgeVariant> = {
+  Initiated: "info",
+  ClearanceInProgress: "warning",
+  Settled: "success",
+  Cancelled: "muted",
 };
-const CLEAR_TONE: Record<string, string> = {
-  Pending: "bg-warning/15 text-warning",
-  Cleared: "bg-success/15 text-success",
-  Blocked: "bg-error/15 text-error",
+const CLEAR_VARIANT: Record<string, BadgeVariant> = {
+  Pending: "warning",
+  Cleared: "success",
+  Blocked: "error",
 };
 
 function initialsOf(name?: string) {
@@ -58,7 +63,9 @@ function Avatar({ record }: { record: TerminatedEmployeeModel }) {
     );
   }
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/20 text-xs font-bold text-muted">
+    // ⚠️ bg-secondary, not bg-muted/20 — the latter is unregistered and emits nothing, so the
+    // initials sat on no circle at all while the photo variant beside them had a border.
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold text-muted">
       {initialsOf(record.fullName)}
     </span>
   );
@@ -88,12 +95,12 @@ function ClearanceHistory({ items }: { items: TerminationClearanceModel[] }) {
       </thead>
       <tbody>
         {items.map((c) => (
-          <tr key={c.id} className="border-b border-border/60">
+          // ⚠️ border-border, not border-border/60 — /60 is unregistered, so these rows had no
+          // separator between them at all.
+          <tr key={c.id} className="border-b border-border">
             <td className="px-4 py-1.5 text-foreground">{c.department}</td>
             <td className="px-4 py-1.5">
-              <span className={`rounded px-2 py-0.5 text-xs font-semibold ${CLEAR_TONE[c.status] ?? ""}`}>
-                {t(c.status)}
-              </span>
+              <Badge variant={CLEAR_VARIANT[c.status] ?? "muted"}>{t(c.status)}</Badge>
             </td>
             <td className="px-4 py-1.5 text-muted">
               {c.clearedBy ? `${c.clearedBy} · ${fmtDate(c.clearedAt)}` : "—"}
@@ -159,12 +166,13 @@ function HistoryModal({
                 {t("No recorded termination case (status set directly).")}
               </p>
             )}
+            {/* ⚠️ border-border below, not /60 — unregistered, so cases ran together with no rule. */}
             {(cases ?? []).map((c) => (
-              <div key={c.id} className="border-b border-border/60 last:border-b-0">
+              <div key={c.id} className="border-b border-border last:border-b-0">
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-sm">
-                  <span className={`rounded px-2 py-0.5 text-xs font-semibold ${CASE_TONE[c.status ?? ""] ?? ""}`}>
+                  <Badge variant={CASE_VARIANT[c.status ?? ""] ?? "muted"}>
                     {t(c.status ?? "")}
-                  </span>
+                  </Badge>
                   <span className="rounded bg-secondary px-2 py-0.5 text-xs text-foreground">
                     {t(c.terminationType ?? "")}
                   </span>
@@ -421,12 +429,15 @@ function TerminationList() {
         {
           name: "fullName",
           label: "Employee",
+          sort: true,
+          gridPrimary: true,
+          gridHideLabel: true,
           render: (text: string, record: TerminatedEmployeeModel) => (
             <span className="flex items-center gap-2.5">
               <Avatar record={record} />
               <span className="min-w-0">
-                <span className="block truncate font-semibold">{text}</span>
-                <span className="block text-xs text-muted">{record.employeeNumber}</span>
+                <span className="block truncate font-semibold text-foreground">{text}</span>
+                <span className="block font-mono text-xs text-muted">{record.employeeNumber}</span>
               </span>
             </span>
           ),
@@ -434,44 +445,53 @@ function TerminationList() {
         {
           name: "terminationType",
           label: "Type",
+          gridHighlight: true,
           render: (text: string) =>
-            text ? (
-              <span className="rounded bg-secondary px-2 py-0.5 text-xs font-semibold text-foreground">
-                {t(text)}
-              </span>
-            ) : (
-              <span className="text-xs text-muted">—</span>
-            ),
+            text ? <Badge variant="secondary">{t(text)}</Badge> : dash,
         },
         {
           name: "lastWorkingDate",
           label: "Last Working Date",
-          render: (text: string) => fmtDate(text),
+          responsive: "md",
+          render: (text: string) =>
+            text ? <span className="tabular-nums">{fmtDate(text)}</span> : dash,
         },
         {
           name: "settledAt",
           label: "Settled At",
-          render: (text: string) => fmtDate(text),
+          responsive: "lg",
+          render: (text: string) =>
+            text ? <span className="tabular-nums">{fmtDate(text)}</span> : dash,
         },
         {
           name: "reason",
           label: "Reason",
-          render: (text: string) => (
-            <span className="block max-w-[260px] truncate text-muted" title={text}>
-              {text || "—"}
-            </span>
-          ),
+          responsive: "lg",
+          width: "w-56",
+          render: (text: string) =>
+            text ? (
+              <span className="line-clamp-2 text-muted" title={text}>
+                {text}
+              </span>
+            ) : (
+              dash
+            ),
         },
         {
           name: "Action",
           label: "Action",
+          gridOmit: true,
+          // ⚠️ All three buttons carried UNREGISTERED hover utilities that emit nothing —
+          // `hover:border-primary`, `hover:text-primary`, `hover:border-success` and
+          // `hover:bg-success/10`. None of them had any hover feedback at all. Opacity is core
+          // Tailwind, so it works without registering anything in the global theme.
           render: (_t: unknown, record: TerminatedEmployeeModel) => (
             <span className="inline-flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setHistoryFor(record)}
                 title={t("View History")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground transition-opacity hover:opacity-80"
               >
                 <History size={14} />
               </button>
@@ -479,7 +499,7 @@ function TerminationList() {
                 type="button"
                 onClick={() => setDocFor(record)}
                 title={t("Generate Document")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground hover:border-primary hover:text-primary"
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-foreground transition-opacity hover:opacity-80"
               >
                 <FileText size={14} />
               </button>
@@ -487,7 +507,7 @@ function TerminationList() {
                 type="button"
                 onClick={() => setReinstateFor(record)}
                 title={t("Reinstate Employee")}
-                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-success hover:border-success hover:bg-success/10"
+                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-success transition-opacity hover:opacity-80"
               >
                 <UserCheck size={14} />
               </button>
