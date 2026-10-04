@@ -9903,3 +9903,51 @@ missing history.
 Verified in the running app: headers read
 `EMPLOYEE | TYPE | LAST WORKING DATE | SETTLED AT | REASON | ACTION`, 145 records (matching the
 database count), and every data cell renders an em dash.
+
+### Transfer Requests, polished — four inert buttons out of five
+
+Eleventh screen in the pass.
+
+**List** — `Badge` replaces the hand-rolled chip for Kind and the `STATUS_TONE` map (the tones
+already mapped one-to-one onto the shared variants), employee numbers are monospaced, dates are
+`tabular-nums`, absent values are em dashes, and the grid-view hints are set.
+
+**Status filter** via `listFilters`. ⚠️ `status` is a `MovementStatus` ENUM NAME, not a boolean —
+`Enum.TryParse<MovementStatus>(request.Status, true, out …)`. It sits alongside the
+`movementType: "Transfer"` the list pins, and the filter PATCHES `param` rather than replacing it,
+so the pin survives. Proven against the live API:
+
+```
+movementType=Transfer                    -> 0
+movementType=Promotion                   -> 1
+movementType=Promotion&status=Completed  -> 1
+movementType=Promotion&status=Pending    -> 0
+```
+
+#### ⚠️ Four of the five action buttons had no hover
+
+`hover:bg-primary/10` (Edit), `hover:bg-success/10` (Execute), `hover:bg-warning/10` (Cancel) and
+`hover:bg-secondary/40` (Notice) are all unregistered and emit nothing. Only Delete's
+`hover:bg-error/10` happened to be written into `theme.css` — so exactly one button in five
+responded to the pointer and the other four looked inert. All five now share one core-Tailwind
+opacity class and behave identically.
+
+#### ⚠️ A refused action looked exactly like a successful one
+
+`runAction` stored only the message and rendered it as muted grey either way, so
+"this movement cannot be executed yet" was visually identical to "transfer executed" — on a screen
+whose buttons change somebody's position and salary. The outcome is kept with the message now and
+rendered success-green or error-red, with a dismiss control.
+
+⚠️ Using `border-success/20` and `border-error/20`: the `/30` and `/40` widths are NOT registered,
+which is the same trap found on the Organization Structure banner.
+
+#### ⚠️ There are no transfers in the database
+
+`Hrms.EmployeeMovement` holds exactly one row — Getaneh's Promotion — and zero Transfers, so this
+screen is empty and its columns could not be exercised as shipped. Verified by TEMPORARILY pointing
+`initialParam` at `movementType: "Promotion"`, screenshotting, and reverting: the row renders
+`Getaneh Deneke / NVI/035`, Kind `—` (a promotion carries no transfer kind), the change
+`SSA-01 — Senior System Administrator → CYE-01 — Cyber Security Expert`, `2026-09-07`,
+a green **Completed** badge, and the action buttons correctly greyed out for a completed movement.
+The empty state as shipped renders "No data available", 0 records, with the filter control present.
