@@ -79,7 +79,9 @@ function EmployeeFieldForm(props: { id: string; setId: (id: string) => void }) {
   const isSelect = formData.dataType === "Select";
 
   return (
-    <div className="text-white">
+    // ⚠️ text-foreground, not text-white — the eighth screen carrying that leftover; it pinned
+    // every unstyled descendant to white, which is invisible on the light-theme card.
+    <div className="text-foreground">
       {pending && <Loading />}
       <FormProvider
         ref={formRef}
