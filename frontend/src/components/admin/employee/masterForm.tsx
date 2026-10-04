@@ -300,14 +300,16 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
             <img src={photoSrc} alt="" className="h-14 w-14 rounded-full border border-border object-cover" />
           ) : (
             <span className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-primary/10">
-              <Camera className="h-6 w-6 text-primary/60" />
+              {/* ⚠️ Was text-primary/60 — unregistered, so the icon had no colour at all. */}
+              <Camera className="h-6 w-6 text-primary" />
             </span>
           )}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
             title={`${photoSrc ? t("Change Photo") : t("Upload Photo")} · ${t("JPG, PNG or WEBP · max 2 MB")}`}
-            className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-primary shadow-sm hover:bg-primary/10"
+            // ⚠️ hover:bg-primary/10 is unregistered — the photo badge had no hover either.
+            className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-primary shadow-sm transition-opacity hover:opacity-80"
           >
             <Camera size={12} />
           </button>
@@ -336,7 +338,10 @@ function MasterForm({ id, orgUnitId, orgUnitName, onSaved }: Props) {
             type="submit"
             form={FORM_ID}
             disabled={isLoading}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-accent shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-50"
+            // ⚠️ `hover:bg-primary-hover` is an UNREGISTERED palette utility and emits nothing, so
+            // the primary Save action had no hover state whatsoever. Opacity is core Tailwind and
+            // needs no theme entry.
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-accent shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {isLoading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
             {t("Save")}
