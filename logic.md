@@ -9858,3 +9858,48 @@ Verified in the running app: headers read
 `EMPLOYEE | ORGANIZATION UNIT | POSITION | JOB GRADE | HIRE DATE | STATUS | ACTION`, 346 records,
 avatars and formatted dates render, and selecting "Terminated only" in the filter dialog returns
 rows whose status cell reads Terminated.
+
+### Termination List, polished — five dead utilities on one screen
+
+Tenth screen in the pass. One 545-line file holding the register, a history modal and a reinstate
+modal.
+
+**List** — `Badge` replaces the hand-rolled chip for Type and both tone maps (`CASE_TONE`,
+`CLEAR_TONE`) in the modals; the tones already mapped one-to-one onto the shared variants. Employee
+numbers are monospaced, dates are `tabular-nums`, Reason is `line-clamp-2` in a capped column, and
+the grid-view hints are set. Measured: `overflow 0px` — this screen has no tree beside it, so all
+six columns fit.
+
+#### ⚠️ Five unregistered palette utilities, all emitting nothing
+
+| was | what it broke | now |
+|---|---|---|
+| `hover:border-primary` + `hover:text-primary` | **History and Document buttons had no hover** | `hover:opacity-80` |
+| `hover:border-success` + `hover:bg-success/10` | **Reinstate button had no hover** | `hover:opacity-80` |
+| `bg-muted/20` | **the avatar fallback circle had no fill** — initials floated on nothing, while the photo variant beside them carried a border | `bg-secondary` |
+| `border-border/60` (×2) | **clearance rows and case rows had no separator at all** | `border-border` |
+
+The avatar fix was verified by computed style rather than by eye: `getComputedStyle(...)
+.backgroundColor` now returns `rgb(235, 242, 250)` — that is `--secondary`, i.e. the circle is
+actually painted.
+
+#### ⚠️ No filter added, because the API has none
+
+`GetTerminatedEmployees` supports only `SearchText`; there is no status or type parameter. Adding
+one means extending the SHARED `GetAllRequest`, the same judgement declined on Work Locations. The
+search box already covers name and employee number.
+
+#### ⚠️ There are 145 terminated employees and ZERO termination cases
+
+`Hrms.EmployeeTermination` is empty: the NVI migration set `IsTerminated`/`EmploymentStatus`
+directly without creating case records. So Type, Last Working Date, Settled At and Reason are blank
+for every one of the 145 rows, and the History modal has nothing to show — it already says
+"No recorded termination case (status set directly)".
+
+This is why the em-dash treatment matters more here than anywhere else in the pass: four of the six
+columns are empty for every row, and a grid of blank cells reads as a broken screen rather than as
+missing history.
+
+Verified in the running app: headers read
+`EMPLOYEE | TYPE | LAST WORKING DATE | SETTLED AT | REASON | ACTION`, 145 records (matching the
+database count), and every data cell renders an em dash.
