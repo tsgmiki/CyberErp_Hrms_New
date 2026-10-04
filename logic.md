@@ -9991,3 +9991,58 @@ What was verified: the endpoint accepts the parameter without error for every st
 unparseable one — `DisciplinaryMeasure/paged?status=…` returns HTTP 200 and `total 0` for ALL, Open,
 Resolved and `Nonsense` alike, `Enum.TryParse` simply ignoring what it cannot parse — and the UI
 renders "No data available", 0 records, with the filter dropdown populated from the shared constant.
+
+### Company Assets, polished — every button on the row was inert
+
+Thirteenth screen in the pass.
+
+#### ⚠️ ALL FOUR action hovers emitted nothing
+
+`hover:text-primary` (Assign, Edit), `hover:text-success` (Return to pool) and `hover:text-error`
+(Delete) are all unregistered, so **not one button on the row responded to the pointer** — and
+because each button was `text-muted` with colour applied only on hover, they were also all the same
+grey. They now carry their colour outright and dim on hover, which needs no palette variant.
+
+A fifth, `bg-secondary/40`, was the Status fallback: an unrecognised status rendered as unstyled
+text with no chip at all. `Badge` handles it now, with `secondary` as the fallback variant.
+
+#### The hand-rolled dialog is now the shared `Modal`
+
+It was the only dialog on the screen built by hand (`fixed inset-0 … bg-black/40`), and both its
+close and cancel buttons used `hover:bg-secondary/40` — unregistered, so neither responded either.
+
+⚠️ Checked before swapping, because of the known top-layer trap: HRMS's `Modal` is a plain
+positioned `div` with `role="dialog"`, **not** a native `<dialog>`, so there is no top layer and the
+`EmployeePicker` inside it (a child at `z-30`) renders above the dialog body rather than behind it.
+Confirmed in the browser — `dialog tag: DIV`, and the picker is present and visible.
+
+#### ⚠️ A refused action looked exactly like a successful one
+
+`refresh()` took only the message and rendered it muted grey either way, so a rejected assign or
+delete was indistinguishable from a successful one — on a screen that moves custody of company
+property. It now takes the whole `{ ok, message }` result, renders success-green or error-red with
+a dismiss control, and only invalidates the query when the action actually succeeded.
+
+**Status filter** via `listFilters`; `status` is an `AssetStatus` enum name.
+
+#### Verified with a real row, created and removed
+
+The asset register is EMPTY, so the columns could not be exercised as they stand. Unlike a
+disciplinary case — rejected on the last screen because it ships a notifier and attaches to a real
+person — an asset record attaches to NOBODY and raises nothing, so one temporary row was created
+through the API, used, and deleted:
+
+```
+POST   /CompanyAsset   -> 31a6fb03-…        status ALL 1 · Available 1 · Assigned 0 · Retired 0
+DELETE /CompanyAsset/… -> "Deleted successfully"
+after: API total 0 · SELECT COUNT(*) Hrms.CompanyAsset = 0
+```
+
+With the row present: headers `ASSET | CATEGORY | STATUS | ASSIGNED TO | ACTION`, the row rendering
+name + monospaced serial, `IT Equipment`, a green **Available** badge, an em dash for unassigned,
+and the three action icons; the Assign dialog opening as a proper modal with title, the asset as its
+description, the employee picker and a Cancel/Assign footer.
+
+⚠️ Git-Bash gotcha, hit again: an em dash in a `curl -d` JSON body corrupts the payload
+(`"The JSON value could not be converted to System.String"`). Write the body to a file and use
+`--data-binary @file`.
