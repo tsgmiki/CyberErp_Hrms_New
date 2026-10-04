@@ -10107,3 +10107,58 @@ would strip the native arrow and leave no sign it opens.
 is pressed — so the whole editor was exercised with nothing persisted: empty state, Add Question
 twice, two rows with their inputs and selects, first row's up-arrow disabled, last row's down-arrow
 disabled. Confirmed afterwards that the table still holds 0 rows.
+
+### Custom Fields, polished — the first screen with TWO real filters
+
+Fifteenth screen in the pass.
+
+**List** — **Label** leads (`gridPrimary`, bold, clickable), **Applies To** is a `Badge`, **Status**
+is a `Badge`, **Order** is `tabular-nums`, absent values are em dashes, and the grid-view hints are
+set. `text-white` → `text-foreground` on the form, the eighth screen carrying that leftover.
+
+⚠️ **Field Key is monospaced.** It is the programmatic key the value is stored and merged under —
+document templates resolve `{{name}}` against it — so reading it character by character is the
+point, and a proportional font makes `l`/`1`/`I` and `O`/`0` ambiguous.
+
+⚠️ **Required is flagged only when it IS required.** The common case is "No", and a column of "No"
+is noise that hides the handful that matter.
+
+#### Two filters, because the API genuinely supports two
+
+`GetAllEmployeeFields` reads BOTH `Status` and `OwnerType`. ⚠️ They parse DIFFERENTLY and their
+values are not interchangeable: `status` goes through `bool.TryParse` ("true"/"false") while
+`ownerType` goes through `Enum.TryParse<EmployeeFieldOwnerType>` (the enum NAME).
+
+⚠️ **The owner options are DERIVED from `fieldOwnerTypeOptions`** — the same constant the form's
+dropdown and `ownerTypeLabel` use — and that mattered here more than anywhere else in the pass:
+one entry's id and name deliberately differ, **`Dependent` displays as "Family"**. Hardcoding the
+visible list would have sent `Family` as the value, which `Enum.TryParse` cannot match, and the
+filter would have silently returned everything.
+
+Proven against the live API with two temporary rows (one active/Employee/required, one
+inactive/Dependent/optional):
+
+```
+ALL 2 · status=true 1 · status=false 1
+ownerType=Employee 1 · ownerType=Dependent 1 · ownerType=Education 0
+```
+
+and in the browser the dropdown offers `All forms / Employee / Education / Experience / Family /
+Movement / Discipline / Termination` while the row for `Dependent` renders the badge "Family".
+
+#### Verified with temporary rows, then removed
+
+The definition table was empty. A field DEFINITION attaches to no person and raises no notifier —
+it is pure configuration, like the Company Asset row earlier and unlike the disciplinary case that
+was declined — so two were created through the API, used, and deleted:
+
+```
+POST   /EmployeeField ×2  -> 27240164-… , bbcf721a-…
+DELETE /EmployeeField/… ×2 -> "Deleted successfully"
+after: API total 0 · SELECT COUNT(*) Hrms.EmployeeFieldDefinition = 0
+```
+
+Rendered: `LABEL | APPLIES TO | FIELD KEY | DATA TYPE | REQUIRED | STATUS | ORDER | ACTION`, with
+`zzTempUiCheck1` showing an Employee badge, a monospaced key, an amber **Required** badge, a green
+**Active** badge and order 901; and `zzTempUiCheck2` showing a Family badge, an em dash for not
+required, and a grey **Inactive** badge.
