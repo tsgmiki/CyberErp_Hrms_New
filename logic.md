@@ -9753,3 +9753,45 @@ Verified in the running app: headers read
 `BRANCH | CODE | PARENT BRANCH | HEAD OFFICE | ADDRESS | STATUS | ACTION`, the row renders
 `Head Office | 001 | — | Head office | Bishoftu | Active`, the form shows both sections, and the
 head-office warning is present. Status filter checked at the API: `ALL → 1, true → 1, false → 0`.
+
+### Organization Structure, polished — and a dead border found in the process
+
+Eighth screen in the pass, and the first with enough data to see the result properly: **121 units**
+across BusinessUnit (2), Directorate (9), Department (35) and Team (75), 2 of them roots.
+
+**Grid** — **Unit** leads (`gridPrimary`, bold, clickable), **Code** is monospaced, **Type** is a
+`Badge` (four real values here, so it carries the LEVEL of the unit rather than decorating one
+repeated word), **Headcount** is `tabular-nums`, **Status** is a `Badge`, and a Status filter is
+wired through `listFilters`. Panel header gains a line of context ("Top-level units, with no parent
+above them"), and deliberately NO record count — the toolbar below already prints one.
+
+⚠️ **Headcount is recorded for 2 of 121 units**, so that column is mostly dashes. Kept anyway: the
+figure is load-bearing where it IS set (workforce planning reads it), and a dash states "not
+established" far more clearly than a blank cell. The form's section description now says the same
+thing, so a blank does not read as a field somebody forgot.
+
+⚠️ **Work Location was NOT added as a column** — null for 118 of 121 units, so it would have been
+an empty strip, the same judgement made against the Amharic title on Position Classes.
+
+**Form** — a modal with 9 visible fields → three sections, which render correctly inside the
+`<dialog>`: **Identification** (code, name, type), **Placement** (branch, parent, work location),
+**Establishment and status** (headcount, status, description).
+
+#### ⚠️ `border-error/30` is dead, and it is everywhere
+
+The error banner here used raw Tailwind `red-300`/`red-50`/`red-700`. Those DO render, but they are
+fixed values that ignore the theme and will not follow dark mode, so the obvious fix was to match
+the palette version the Positions grid uses — `border-error/30 bg-error/15 text-error`.
+
+**Checking first was the right call: `border-error/30` is not registered in `theme.css` and emits
+nothing.** Only `border-error/20` is. So the Positions banner — and at least five other call sites
+(`employee/childManager`, `employee/terminationSection`, `employeeGuarantee/list`,
+`jobApplication/interviewsModal`, `jobApplication/offerModal`) — has an invisible border today.
+This screen uses `border-error/20`; the others are left alone and flagged, since fixing them
+properly means registering `/30` in the global theme.
+
+Verified in the running app: headers read `UNIT | CODE | TYPE | HEADCOUNT | STATUS | ACTION`, the
+two root units render `Bord Of Director | 001 | Department | 1 | Active` and
+`Planning, Monitoring and Evaluation Department | PME-01 | Department | — | Active`, the tree and
+the Tree/Org-Chart toggle are untouched, and the modal shows all three section headings.
+Status filter at the API: `ALL → 121, true → 121, false → 0`.
