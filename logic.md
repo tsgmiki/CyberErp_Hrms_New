@@ -10046,3 +10046,64 @@ description, the employee picker and a Cancel/Assign footer.
 ⚠️ Git-Bash gotcha, hit again: an em dash in a `curl -d` JSON body corrupts the payload
 (`"The JSON value could not be converted to System.String"`). Write the body to a file and use
 `--data-binary @file`.
+
+### Exit Questionnaire, polished — and the input focus that never fired
+
+Fourteenth screen in the pass. Not a list: a singleton question BUILDER.
+
+#### ⚠️ Every field on the screen had no focus indicator
+
+It defined its own `INPUT` constant ending in `focus:border-primary` — **the single most common dead
+utility in this codebase** (95 uses when the palette was audited). It emits nothing, so focusing a
+question field changed nothing at all.
+
+Now `FORM_INPUT_CLASS`, the shared control class, which gets its focus border from a HAND-WRITTEN
+rule rather than a palette variant:
+
+```css
+.input-focus:focus { outline: none; border-color: var(--primary) !important; }
+```
+
+Confirmed present in the served stylesheet, and `--primary` resolves to `#0a4fa3`. ⚠️ The computed
+border could NOT be read back as blue in headless Chrome because `document.hasFocus()` is false
+there, so `:focus` never matches however the element is focused — a false negative worth knowing
+about before concluding a focus style is broken.
+
+Using the shared class also aligns the height (40px), radius and placeholder colour with every
+other field in the app.
+
+⚠️ **A regression I introduced and then fixed:** `FORM_INPUT_CLASS` carries `w-full`, which pushed
+the type select onto a line of its own. Appending `w-auto` does NOT fix it — Tailwind resolves
+conflicting utilities by their order in the GENERATED STYLESHEET, not in the class attribute. The
+select class is therefore built by REPLACING `w-full`, and measured afterwards: select 144px, input
+950px, both on one 40px row.
+
+#### ⚠️ Three more dead utilities
+
+`hover:bg-secondary/40` (Add Question) and `hover:text-primary` / `hover:text-error` on the move and
+remove buttons. The row buttons were `text-muted` with colour applied only on hover, so they were
+permanently grey AND inert. They now carry their colour outright and dim on hover — verified by
+computed style: the remove button is `rgb(239, 68, 68)`, i.e. `--error`.
+
+The move buttons are also `disabled` at the ends now, so it is visible that the first question
+cannot move up and the last cannot move down.
+
+#### The rest
+
+- A SUCCESS message used to render in neutral grey (`bg-secondary/20 text-muted`) while only a
+  failure was coloured — "saved" read as a passing remark rather than a confirmation. Both outcomes
+  now state themselves in their own colour.
+- The hand-rolled empty box becomes the shared `EmptyState`, with a description that explains the
+  snapshot rule rather than just saying there is nothing there.
+
+⚠️ **The native `<select>` is kept deliberately.** Three fixed options in a dense repeating row is
+exactly what it is for, and the app's `DropDownField` is a searchable popup that would be heavier
+and worse here. It carries the shared control class so it matches — minus `appearance-none`, which
+would strip the native arrow and leave no sign it opens.
+
+#### Verified without writing anything
+
+`Hrms.ExitQuestionnaire` is empty, and questions are pure client state until **Save Questionnaire**
+is pressed — so the whole editor was exercised with nothing persisted: empty state, Add Question
+twice, two rows with their inputs and selects, first row's up-arrow disabled, last row's down-arrow
+disabled. Confirmed afterwards that the table still holds 0 rows.
