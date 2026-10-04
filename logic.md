@@ -9951,3 +9951,43 @@ screen is empty and its columns could not be exercised as shipped. Verified by T
 `SSA-01 — Senior System Administrator → CYE-01 — Cyber Security Expert`, `2026-09-07`,
 a green **Completed** badge, and the action buttons correctly greyed out for a completed movement.
 The empty state as shipped renders "No data available", 0 records, with the filter control present.
+
+### Disciplinary Cases, polished
+
+Twelfth screen in the pass.
+
+**List** — `Badge` replaces the hand-rolled `STATUS_TONE` map and the Measure chip, the employee
+number is monospaced, Violation is `line-clamp-2` in a capped column, dates are `tabular-nums`,
+absent values are em dashes, and the grid-view hints are set.
+
+⚠️ **The three "blocks" chips stay visually loud**, now as `Badge variant="error"`. They are not
+decoration: each is a HARD BLOCK that `IDisciplinaryEligibilityService` enforces against a reward, a
+promotion or a salary increment, and they are the reason the Lifetime column exists at all. The
+`affectsSalaryIncrement !== false` test is preserved — that flag DEFAULTS to blocking, so a record
+written before the flag existed has no value and must still block.
+
+**Status filter** via `listFilters`. ⚠️ `status` is a `DisciplinaryStatus` ENUM NAME
+(`Enum.TryParse<DisciplinaryStatus>`), and the options are DERIVED from `disciplinaryStatusOptions`
+— the same constant the form's dropdown and `disciplinaryStatusLabel` already use — so the filter
+cannot drift out of step with the statuses the rest of the screen offers. Confirmed in the browser:
+the dropdown renders `All / Open / Under Review / Resolved / Cancelled`, i.e. the NAME "Under
+Review" while the value sent is the id `UnderReview`.
+
+⚠️ `hover:bg-primary/10` on Edit is unregistered and emits nothing, while Delete's
+`hover:bg-error/10` happens to be in `theme.css` — so one button responded to the pointer and the
+other did not. Both use the same core-Tailwind opacity now.
+
+#### ⚠️ There are no disciplinary cases, and I did not manufacture one
+
+`Hrms.DisciplinaryMeasure` is empty, so the columns could not be exercised with real rows. Unlike
+the Transfer Requests screen — where a Promotion row could be borrowed by temporarily repointing
+`initialParam` — there is no second source to borrow from here.
+
+**Creating a case to test with was deliberately rejected.** The module ships a notifier (D1), the
+record attaches to a REAL employee, and a disciplinary record is exactly the kind of thing that must
+not appear and disappear on somebody's file for the sake of a screenshot.
+
+What was verified: the endpoint accepts the parameter without error for every status including an
+unparseable one — `DisciplinaryMeasure/paged?status=…` returns HTTP 200 and `total 0` for ALL, Open,
+Resolved and `Nonsense` alike, `Enum.TryParse` simply ignoring what it cannot parse — and the UI
+renders "No data available", 0 records, with the filter dropdown populated from the shared constant.
