@@ -123,12 +123,22 @@ function OrganizationUnitForm({ id, presetParentId, presetParentName, onClose, o
         onModalClose: onClose,
         submitBtnTitle: "Save",
         components: [
+          {
+            name: "identityBreak", label: "Identification", type: "break", colSpan: "full",
+            sectionDescription:
+              "What this unit is called, and where it sits in the BusinessUnit → Directorate → Department → Team ladder.",
+          },
           { name: "code", label: "Code", placeholder: "Code", required: true, value: formData.code, onChange: changeHandler, error: formState?.zodErrors?.code, type: "text" },
           { name: "name", label: "Name", placeholder: "Name", required: true, value: formData.name, onChange: changeHandler, error: formState?.zodErrors?.name, type: "text" },
           {
             name: "unitType", label: "Unit Type", required: true, type: "dropDown", onSelect: selectHandler,
             value: formData.unitType, displayValue: formData.unitType,
             error: formState?.zodErrors?.unitType, data: organizationUnitTypes as never,
+          },
+          {
+            name: "placementBreak", label: "Placement", type: "break", colSpan: "full",
+            sectionDescription:
+              "Which branch owns it, which unit it reports to, and where its people work. Leave the parent empty to make it a top-level unit.",
           },
           {
             name: "branchId", label: "Branch", type: "dropDown", onSelect: selectHandler,
@@ -149,6 +159,14 @@ function OrganizationUnitForm({ id, presetParentId, presetParentName, onClose, o
             value: formData.workLocationId, displayValue: formData.workLocationName,
             param: locationParam, setParam: setLocationParam as any, isLoading: locationsLoading,
             data: (locations?.data ?? []).map((l) => ({ id: l.id, name: l.name })) as never,
+          },
+          {
+            name: "detailBreak", label: "Establishment and status", type: "break", colSpan: "full",
+            // ⚠️ Worth stating: headcount is read by workforce planning, and it is recorded for
+            // only 2 of 121 units today — so "blank" needs to mean "nothing established yet"
+            // rather than looking like a field somebody forgot.
+            sectionDescription:
+              "Approved headcount for the unit, and whether it is still in use. Headcount feeds workforce planning; leave it blank if nothing is established yet.",
           },
           { name: "allocatedHeadcount", label: "Allocated Headcount", value: formData.allocatedHeadcount, onChange: changeHandler, inputType: "number", type: "text" },
           {
