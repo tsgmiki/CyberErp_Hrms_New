@@ -9795,3 +9795,66 @@ two root units render `Bord Of Director | 001 | Department | 1 | Active` and
 `Planning, Monitoring and Evaluation Department | PME-01 | Department | — | Active`, the tree and
 the Tree/Org-Chart toggle are untouched, and the modal shows all three section headings.
 Status filter at the API: `ALL → 121, true → 121, false → 0`.
+
+### Employees register, polished — and a filter label that would have lied
+
+Ninth screen in the pass, and the largest module (23 files). Scope kept to the REGISTER and the
+master form's broken styling: `masterForm` already groups its fields into Personal / Contact /
+Employment / Custom with its own renderer, so it needed no sectioning.
+
+**List** — `Badge` replaces the hand-rolled `STATUS_TONE` map (the tones already mapped one-to-one
+onto the shared variants), Job Grade becomes a badge, the employee number is monospaced, absent
+values render em dashes, and `gridPrimary`/`gridHighlight`/`gridOmit` are set. The panel header
+gains a context line and no record count.
+
+⚠️ **Hire Date was rendering the RAW backend value** — an ISO timestamp in a grid cell. Now through
+`formatBackendDate`, `tabular-nums`.
+
+#### ⚠️ "All" would have been a lie
+
+`GetAllEmployees` EXCLUDES terminated staff from the directory unless the caller explicitly asks
+for that status — they belong to the Termination List, and the handler says so. Measured against
+the live API:
+
+```
+no filter → 346      Active → 346      Terminated → 145      Retired → 0      (491 on file)
+```
+
+So a blank option labelled "All" would have quietly hidden 145 people — they would look like they
+were never hired. The options read **"Current staff (default)"** and **"Terminated only"** instead.
+
+⚠️ And `status` here is an **enum name**, not `"true"`/`"false"` like every other list in this pass:
+`Enum.TryParse<EmploymentStatus>`. Sending a boolean parses as nothing and silently returns the
+unfiltered set — verified: `status=true` → 346, exactly the same as no filter.
+
+#### ⚠️ Dead palette utilities, found and worked around
+
+An audit of `list`/`masterForm`/`profile` found **8 unregistered palette utilities that emit
+nothing**. Fixed by substituting core-Tailwind equivalents, since registering them means editing the
+global theme:
+
+| was | broke | now |
+|---|---|---|
+| `hover:border-primary hover:text-primary` | Documents button had NO hover at all | `hover:opacity-80` |
+| `hover:bg-primary-hover` | **the primary Save button had no hover** | `hover:opacity-90` |
+| `text-primary/60` | camera placeholder icon had no colour | `text-primary` |
+| `hover:bg-primary/10` | photo-upload badge had no hover | `hover:opacity-80` |
+
+Still dead and left alone, because any substitute changes design intent: `bg-card/60` (the saving
+overlay has no backdrop, so the form stays fully legible behind the spinner), `bg-secondary/30` and
+`hover:border-primary/40` (the managerial-toggle card has no tint and no hover border).
+
+#### Layout: measured, not eyeballed
+
+The grid sits beside the org tree, and the table overflowed its panel. Measured rather than judged
+by eye: `scrollWidth 1082` vs `container 920` — **162px of overflow, with Status clipped**. Capping
+Organization Unit to `w-44` and Position to `w-40` (both `line-clamp-2`) and folding the Documents
+column into the Action cell — it is a per-row action — brought it to **82px, Status fully visible**.
+
+⚠️ Action is still partly beyond the fold at this width, which is acceptable because the tree
+collapses: verified by clicking its collapse control, after which `container 1212, overflow 0`.
+
+Verified in the running app: headers read
+`EMPLOYEE | ORGANIZATION UNIT | POSITION | JOB GRADE | HIRE DATE | STATUS | ACTION`, 346 records,
+avatars and formatted dates render, and selecting "Terminated only" in the filter dialog returns
+rows whose status cell reads Terminated.
