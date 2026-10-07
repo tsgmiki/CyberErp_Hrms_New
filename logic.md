@@ -10162,3 +10162,102 @@ Rendered: `LABEL | APPLIES TO | FIELD KEY | DATA TYPE | REQUIRED | STATUS | ORDE
 `zzTempUiCheck1` showing an Employee badge, a monospaced key, an amber **Required** badge, a green
 **Active** badge and order 901; and `zzTempUiCheck2` showing a Family badge, an em dash for not
 required, and a grey **Inactive** badge.
+
+## 13. Attendance (HC041–HC043) — Phase 3 foundation
+
+### 13.1 Why six tables and not one
+
+| table | holds | mutable? |
+|---|---|---|
+| `WorkShift` | a working pattern: start, end, break, grace, thresholds | yes |
+| `EmployeeShiftAssignment` | who works which shift, **dated** | yes |
+| `AttendanceDevice` | a registered source of events + its sync health | yes |
+| `AttendanceEnrollment` | the id a terminal knows an employee by | yes |
+| `AttendancePunch` | one raw clock event **exactly as reported** | **no** |
+| `AttendanceDay` | the derived verdict for one employee-day | yes, with audit |
+
+⚠️ **The punch is the evidence and is never edited.** Every correction lands on `AttendanceDay`,
+which keeps `DerivedStatus` beside `Status` plus who overrode it, when and why. If an administrator
+could rewrite a punch there would be nothing left to appeal to in an attendance dispute. The single
+mutation `AttendancePunch` allows is `ResolveTo`, which only ever FILLS A BLANK — it refuses to move
+an already-attributed punch to a different employee.
+
+⚠️ **Assignments are dated, not a column on the employee.** Attendance for last month must still be
+read against the shift the person was on THEN; a current-shift column silently rewrites history
+every time somebody moves to nights.
+
+⚠️ **A shift says nothing about which days are worked.** That is `WorkWeekConfiguration`
+(Full/Half/Rest per weekday) and `Holiday`, both already owned by `IWorkingCalendar` — whose own
+doc comment already said it was built to be "reused by leave requests, attendance and timesheets".
+A second "works Saturday?" flag here would give two answers to one question and leave and
+attendance would eventually disagree about the same date.
+
+### 13.2 The integration seam
+
+⚠️ `AttendanceDevice.Protocol` is a **string**, not an enum, and that is the whole design. It is the
+key an adapter claims through `Supports(protocol)` — the same extension shape the workflow engine
+uses for its 28 entity types. An enum would mean no new machine could be supported without editing
+the domain and running a migration, which is exactly what "must support future integrations" rules
+out.
+
+All four arrival paths — scheduled pull, device push, file import, manual entry — funnel into the
+one `AttendancePunch` table, so deduplication and employee resolution have ONE implementation
+instead of one per transport.
+
+⚠️ **The re-read guard** is a FILTERED unique index on `(TenantId, AttendanceDeviceId, ExternalId)`.
+A terminal's log pulled twice reports the same external ids, so the second pull inserts nothing
+rather than doubling everybody's day. Filtered because a manual punch has no external id, and SQL
+Server treats NULLs as equal in a unique index unless they are filtered out.
+
+⚠️ **An unresolvable punch is KEPT, not dropped.** Somebody really did stand at that door; discarding
+the event because an enrolment is missing destroys the only proof they were there. `EmployeeId` is
+nullable and `UnresolvedReason` says why, for an administrator to attach later.
+
+### 13.3 The verdict (`AttendanceEvaluation`, pure)
+
+Pure and separate from the handler, following `SiblingOrder` / `ExperienceSpan` / `ServiceHistory`.
+
+⚠️ **Precedence is the point**, in this order: **holiday → rest day → approved leave → punches**.
+A person on approved leave on a public holiday must report as the holiday, or the entitlement is
+spent on a day nobody was due to work.
+
+⚠️ **Work on a holiday or rest day is recorded but does not become "Present".** The minutes are kept
+so overtime (Phase 4) has something to pay from; calling it present would consume a day's
+entitlement for a day nobody owed.
+
+⚠️ **Punches PAIR UP; they are not measured first-to-last.** A terminal on every door records the
+lunch trip home, and first-to-last would pay for it. A dangling punch — clocked in, never out —
+earns NOTHING rather than being stretched to the end of the shift, because inventing an exit time
+is how a missed punch becomes unearned hours.
+
+⚠️ **Lateness is measured from the scheduled start, not from the end of grace.** Twenty minutes late
+against a ten-minute grace is twenty minutes late; grace only decides whether it counts at all.
+Reporting ten would understate every late arrival in the building.
+
+⚠️ **Night shifts cross midnight.** 22:00–06:00 is eight hours, not minus sixteen, and an arrival at
+00:30 is 150 minutes late against the previous day's 22:00 start — not sixteen hours.
+
+The working calendar scales the result: a full attendance on a half-work Saturday is worth 0.5, not
+1. The calendar decides what the date is worth; attendance decides how much of it was earned.
+
+**23 tests**, 315/315 overall.
+
+### 13.4 ⚠️ The migration is written but NOT applied
+
+`AddAttendanceCapture` (six tables, purely additive — zero `DropTable`/`AlterColumn`/`DropColumn`
+in `Up`) could not be applied: **SQL Server cannot read `CERP.mdf`**.
+
+```
+Msg 823, Level 24, State 2
+The operating system returned error 21 (The device is not ready.) to SQL Server
+during a read at offset 0x1ae000 in file 'D:\Workspace\CyberErp\Database\CERP.mdf'
+```
+
+The database reports `state_desc = ONLINE`, but every read fails — including `sys.objects`, so even
+"which tables exist" cannot be answered. Ordinary file I/O on D: is fine (git, the build and the
+test suite all work), so this is the `.mdf` or its storage, not the whole drive.
+
+⚠️ **Nothing was half-applied and nothing was repaired.** No `DBCC` was run, the service was not
+restarted and CERP was not taken offline — an 823 is a storage-integrity fault and guessing at it
+risks the data. Re-run `dotnet ef database update -p CyberErp.Hrms.Inf -s CyberErp.Hrms.Api` once
+the file is readable again.
