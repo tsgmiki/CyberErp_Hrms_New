@@ -83,6 +83,16 @@ public class HrmsDbContext : MultiTenantDbContext
     public DbSet<LeaveRequest> LeaveRequest { get; set; }
     public DbSet<LeaveRequestLine> LeaveRequestLine { get; set; }
     public DbSet<WorkWeekConfiguration> WorkWeekConfiguration { get; set; }
+
+    // Attendance (HC041–HC043). ⚠️ Every BaseEntity needs an explicit DbSet or the NodaTime Instant
+    // convention in OnModelCreating misses it and the migration fails — see the Insurance module note.
+    public DbSet<WorkShift> WorkShift { get; set; }
+    public DbSet<EmployeeShiftAssignment> EmployeeShiftAssignment { get; set; }
+    public DbSet<AttendanceDevice> AttendanceDevice { get; set; }
+    public DbSet<AttendanceEnrollment> AttendanceEnrollment { get; set; }
+    public DbSet<AttendancePunch> AttendancePunch { get; set; }
+    public DbSet<AttendanceDay> AttendanceDay { get; set; }
+
     public DbSet<Report> Report { get; set; }
     public DbSet<ReportField> ReportField { get; set; }
     public DbSet<ReportFieldOutput> ReportFieldOutput { get; set; }
@@ -468,6 +478,15 @@ public class HrmsDbContext : MultiTenantDbContext
         modelBuilder.ApplyConfiguration(new LeaveRequestConfiguration());
         modelBuilder.ApplyConfiguration(new LeaveRequestLineConfiguration());
         modelBuilder.ApplyConfiguration(new WorkWeekConfigurationConfiguration());
+
+        // Attendance (HC041–HC043)
+        modelBuilder.ApplyConfiguration(new WorkShiftConfiguration());
+        modelBuilder.ApplyConfiguration(new EmployeeShiftAssignmentConfiguration());
+        modelBuilder.ApplyConfiguration(new AttendanceDeviceConfiguration());
+        modelBuilder.ApplyConfiguration(new AttendanceEnrollmentConfiguration());
+        modelBuilder.ApplyConfiguration(new AttendancePunchConfiguration());
+        modelBuilder.ApplyConfiguration(new AttendanceDayConfiguration());
+
         modelBuilder.ApplyConfiguration(new ReportConfiguration());
         modelBuilder.ApplyConfiguration(new ReportFieldConfiguration());
         modelBuilder.ApplyConfiguration(new ReportFieldOutputConfiguration());
